@@ -704,6 +704,18 @@ class FontFormatPanel(Widget):
         self.tateChuYokoChecker.clicked.connect(
             self.on_tate_chu_yoko_changed
         )
+        self.romanAlignmentChecker = QFontChecker(self)
+        self.romanAlignmentChecker.setObjectName(
+            'FontRomanAlignmentChecker'
+        )
+        self.romanAlignmentChecker.setToolTip(
+            self.tr('Standard Vertical Roman Alignment')
+        )
+        self.romanAlignmentChecker.clicked.connect(
+            lambda checked: self.on_param_changed(
+                'standard_vertical_roman_alignment', checked
+            )
+        )
 
         self.strokeWidthBox = SizeComboBox([0, 10], 'stroke_width', self)
         self.strokeWidthBox.setObjectName("FontFormatSizeBox")
@@ -826,6 +838,7 @@ class FontFormatPanel(Widget):
         vertical_layout = QHBoxLayout()
         vertical_layout.addWidget(self.verticalChecker)
         vertical_layout.addWidget(self.tateChuYokoChecker)
+        vertical_layout.addWidget(self.romanAlignmentChecker)
         vertical_layout.setSpacing(0)
         vertical_layout.setContentsMargins(0, 0, 0, 0)
         hl2.addLayout(vertical_layout)
@@ -1150,6 +1163,9 @@ class FontFormatPanel(Widget):
         self.strokeColorPicker.setPickerColor(font_format.stroke_color())
         self.strokeWidthBox.setValue(font_format.stroke_width)
         self.verticalChecker.setChecked(font_format.vertical)
+        self.romanAlignmentChecker.setChecked(
+            font_format.standard_vertical_roman_alignment
+        )
         self.alignBtnGroup.setAlignment(font_format.alignment)
         self.textadvancedfmt_panel.set_active_format(font_format)
         if update_transform_panel:

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QPointF, QRectF
+from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
     QFont,
@@ -46,6 +46,7 @@ from ballontranslator.ui.text_engine.vertical_layout import (
     _uncached_line_ink_bounds,
     PUNSET_ALIGNCENTER,
     PUNSET_BRACKET,
+    PUNSET_COMPACT,
     PUNSET_HALF,
     PUNSET_NONBRACKET,
     PUNSET_PAUSEORSTOP,
@@ -942,9 +943,9 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         self.addCleanup(panel.deleteLater)
 
         panel.set_textblk_item(item)
-        panel.on_param_changed(
-            'standard_vertical_roman_alignment', False
-        )
+        self.assertTrue(panel.romanAlignmentChecker.isChecked())
+        panel.romanAlignmentChecker.click()
+        self.assertFalse(panel.romanAlignmentChecker.isChecked())
         panel.set_textblk_item()
         panel.on_param_changed(
             'standard_vertical_roman_alignment', False
@@ -1256,6 +1257,73 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             first_line.x() - final_line.x(),
             item.layout.calculate_line_spacing(final_width, 1.5),
         )
+
+    def test_global_compact_punctuation_uses_half_cells_without_document_edits(self):
+        original = C.pcfg.compact_vertical_punctuation_spacing
+        try:
+            for standard in (True, False):
+                with self.subTest(standard=standard):
+                    C.pcfg.compact_vertical_punctuation_spacing = False
+                    item = self._make_item('木，。（』木', standard)
+                    document = item.document()
+                    legacy_final_top = item.layout.y_offset_lst[0][5][0]
+                    revision = document.revision()
+                    undo_steps = document.availableUndoSteps()
+                    html = item.toHtml()
+
+                    C.pcfg.compact_vertical_punctuation_spacing = True
+                    item.refreshVerticalLayout()
+
+                    offsets = item.layout.y_offset_lst[0]
+                    regular_height = offsets[0][1] - offsets[0][0]
+                    for position in range(1, 5):
+                        top, bottom = offsets[position]
+                        self.assertAlmostEqual(
+                            bottom - top,
+                            regular_height / 2,
+                        )
+                        ink, cell = self._ink_and_cell(item, position)
+                        self.assertGreaterEqual(ink.top(), cell.top() - 1.0)
+                        self.assertLessEqual(ink.bottom(), cell.bottom() + 1.0)
+                        self.assertIn(
+                            item.layout.hitTest(
+                                cell.center(),
+                                Qt.HitTestAccuracy.FuzzyHit,
+                            ),
+                            (position, position + 1),
+                        )
+
+                    self.assertLess(offsets[5][0], legacy_final_top)
+                    self.assertEqual(document.revision(), revision)
+                    self.assertEqual(document.availableUndoSteps(), undo_steps)
+                    self.assertEqual(item.toHtml(), html)
+
+                    for char in PUNSET_COMPACT:
+                        punctuation = self._make_item(char, standard)
+                        ink, cell = self._ink_and_cell(punctuation, 0)
+                        self.assertGreaterEqual(ink.top(), cell.top() - 2.0)
+                        self.assertLessEqual(ink.bottom(), cell.bottom() + 2.0)
+        finally:
+            C.pcfg.compact_vertical_punctuation_spacing = original
+
+    def test_compact_punctuation_keeps_normal_character_spacing(self):
+        original = C.pcfg.compact_vertical_punctuation_spacing
+        C.pcfg.compact_vertical_punctuation_spacing = True
+        try:
+            for spacing in (1.1, 1.5, 2.0):
+                with self.subTest(spacing=spacing):
+                    item = self._make_item('木。木', True, spacing)
+                    centers = [
+                        self._ink_and_cell(item, position)[0].center().y()
+                        for position in range(3)
+                    ]
+                    self.assertAlmostEqual(
+                        centers[1],
+                        (centers[0] + centers[2]) / 2,
+                        delta=1.0,
+                    )
+        finally:
+            C.pcfg.compact_vertical_punctuation_spacing = original
 
     def test_standard_punctuation_is_centered_and_chinese_is_upper_right(self):
         for char in PUNSET_PAUSEORSTOP:

@@ -17,6 +17,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils import shared as C
+from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
 from .annotations import text_combine_upright_ranges
 from .cache import KeyedLruCache
@@ -66,6 +67,7 @@ PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝', ')'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
+PUNSET_COMPACT = PUNSET_PAUSEORSTOP.union(PUNSET_BRACKET)
 
 PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
 PUNSET_VERNEEDROTATE = PUNSET_NONBRACKET.union(PUNSET_BRACKET).union(PUNSET_HALF)
@@ -346,7 +348,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 old_value = char_format.letter_spacing
                 record = self._line_record(block, line_number)
                 spacing_unit = record.get(
-                    'text_combine_height', char_format.tbr.height()
+                    'text_combine_height',
+                    char_format.tbr.height(),
                 )
                 final_line_delta = 0.0
                 final_positive_spacing = max(
@@ -506,6 +509,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 record = char_records.get(char_idx, {})
                 base_width = record.get('base_width', line_width)
                 left_margin = record.get('left_margin', 0.0)
+                compact_advance = record.get('compact_punctuation_advance')
+                compact_leading_trim = record.get(
+                    'compact_punctuation_leading_trim', 0.0
+                )
 
                 space_shift = 0
                 if num_lspaces > 0:
@@ -532,7 +539,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             -non_bracket_br.top()
                             - non_bracket_br.height()
                         )
-                        if char in PUNSET_BRACKETL:
+                        if compact_leading_trim > 0:
+                            xoff = -compact_leading_trim
+                        elif char in PUNSET_BRACKETL:
                             if ii == 0:
                                 xoff = -non_bracket_br.left()
                             else:
@@ -563,7 +572,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         )
                         yoff = (
                             -tight_rect.top()
-                            + (cfmt.tbr.height() - tight_rect.height()) / 2
+                            + (
+                                (
+                                    compact_advance
+                                    if compact_advance is not None
+                                    else cfmt.tbr.height()
+                                )
+                                - tight_rect.height()
+                            ) / 2
                         )
                     else:
                         act_rect = _line_ink_bounds(line, space_shift)
@@ -575,7 +591,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             yoff = (
                                 -act_rect.top()
                                 + (
-                                    cfmt.tbr.height()
+                                    (
+                                        compact_advance
+                                        if compact_advance is not None
+                                        else cfmt.tbr.height()
+                                    )
                                     - act_rect.height()
                                 ) / 2
                             )
@@ -1667,6 +1687,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()
+        compact_punctuation = pcfg.compact_vertical_punctuation_spacing
 
         block.clearLayout()
         clear_horizontal_ruby_layout(block)
@@ -1850,7 +1871,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     else blk_text[char_idx]
                 )
                 is_first_lbracket = (
-                    char_idx - num_lspaces == 0
+                    not compact_punctuation
+                    and char_idx - num_lspaces == 0
                     and char in PUNSET_BRACKETL
                     and self.needs_vertical_rotation(char)
                 )
@@ -1903,6 +1925,38 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     else:
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                     tbr_h += spacing_advance
+
+                # Ruby owns one max(base, annotation) unit; do not desync its
+                # shared paint, cursor, and hit geometry from those metrics.
+                if (
+                    compact_punctuation
+                    and not is_text_combine
+                    and ruby_metric is None
+                    and char in PUNSET_COMPACT
+                    and _grapheme_count(text.strip()) == 1
+                ):
+                    full_advance = max(tbr_h - spacing_advance, 0.0)
+                    ink_bounds = _line_ink_bounds(line, space_shift)
+                    visible_ink_advance = (
+                        ink_bounds.width()
+                        if self.needs_vertical_rotation(char)
+                        else ink_bounds.height()
+                    )
+                    compact_advance = min(
+                        full_advance,
+                        max(
+                            cfmt.tbr.height() / 2,
+                            visible_ink_advance,
+                        ),
+                    )
+                    tbr_h = compact_advance + spacing_advance
+                    record = char_records.setdefault(char_idx, {})
+                    record['compact_punctuation_advance'] = compact_advance
+                    if char in PUNSET_BRACKETL:
+                        record['compact_punctuation_leading_trim'] = max(
+                            full_advance - compact_advance,
+                            0.0,
+                        )
             elif char_idx - num_lspaces < blk_text_len:
                 cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()

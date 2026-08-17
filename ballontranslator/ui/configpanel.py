@@ -684,6 +684,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     check_update = Signal()
     reload_textstyle = Signal(bool)
     font_list_changed = Signal(bool)
+    compact_vertical_punctuation_changed = Signal(bool)
     show_pre_MT_keyword_window = Signal()
     show_MT_keyword_window = Signal()
     show_OCR_keyword_window = Signal()
@@ -967,7 +968,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         global_fntfmt_group.addWidget(ConfigTextLabel(
             self.tr('Pipeline Font Formatting'),
             CONFIG_FONTSIZE_CONTENT,
-            QFont.Weight.Bold,
+            QFont.Weight.Normal,
         ))
         global_fntfmt_group.addWidget(global_fntfmt_widget)
         self.let_fntsize_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Size'), parent=self, insert_stretch=True)
@@ -1093,8 +1094,25 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         vertical_layout_group.addWidget(ConfigTextLabel(
             self.tr('Vertical Text Layout'),
             CONFIG_FONTSIZE_CONTENT,
-            QFont.Weight.Bold,
+            QFont.Weight.Normal,
         ))
+
+        (
+            self.compact_vertical_punctuation_checker,
+            compact_vertical_punctuation_row,
+        ) = checkbox_with_label(
+            self.tr('Compact punctuation spacing'),
+            discription=self.tr(
+                'Remove extra spacing around punctuation in vertical text.'
+            ),
+        )
+        self.compact_vertical_punctuation_checker.setChecked(
+            pcfg.compact_vertical_punctuation_spacing
+        )
+        self.compact_vertical_punctuation_checker.toggled.connect(
+            self.on_compact_vertical_punctuation_changed
+        )
+        vertical_layout_group.addWidget(compact_vertical_punctuation_row)
 
         auto_tcy_group = Widget()
         auto_tcy_group.setObjectName('ConfigInlineRow')
@@ -1115,7 +1133,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         auto_tcy_title = ConfigTextLabel(
             self.tr('Automatic Tate-chu-yoko'),
             CONFIG_FONTSIZE_CONTENT,
-            QFont.Weight.Bold,
+            QFont.Weight.Normal,
             parent=auto_tcy_header,
         )
         font = auto_tcy_title.font()
@@ -1587,6 +1605,13 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         pcfg.auto_tate_chu_yoko.enabled = enabled
         self.auto_tate_chu_yoko_options.setVisible(enabled)
 
+    def on_compact_vertical_punctuation_changed(
+        self,
+        enabled: bool,
+    ) -> None:
+        pcfg.compact_vertical_punctuation_spacing = enabled
+        self.compact_vertical_punctuation_changed.emit(enabled)
+
     def on_auto_tate_chu_yoko_max_length_changed(self, value: int) -> None:
         pcfg.auto_tate_chu_yoko.max_length = value
 
@@ -1789,6 +1814,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_writing_mode_combox.setCurrentIndex(pcfg.let_writing_mode_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
         self.let_letter_case_buttons[pcfg.let_letter_case].setChecked(True)
+        self.compact_vertical_punctuation_checker.setChecked(
+            pcfg.compact_vertical_punctuation_spacing
+        )
         auto_tcy = pcfg.auto_tate_chu_yoko
         self.auto_tate_chu_yoko_checker.setChecked(auto_tcy.enabled)
         self.auto_tate_chu_yoko_max_length.setValue(auto_tcy.max_length)

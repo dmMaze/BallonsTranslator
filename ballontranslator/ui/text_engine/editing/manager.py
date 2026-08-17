@@ -381,6 +381,11 @@ class SceneTextManager(QObject):
 
         self._text_move_snapshot = {}
 
+    def refresh_vertical_layouts(self, _enabled: bool) -> None:
+        """Refresh current vertical items after a global layout change."""
+        for item in self.textblk_item_list:
+            item.refreshVerticalLayout()
+
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
         n_blk = len(self.textblk_item_list)
         if n_blk < 1:

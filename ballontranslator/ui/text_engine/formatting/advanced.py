@@ -480,25 +480,9 @@ class TextAdvancedFormatPanel(PanelArea):
         self.opacity_unit = _atomic_unit(
             self.top_section, self.opacity_label, self.opacity_box
         )
-        self.vertical_roman_checker = TextCheckerLabel(
-            self.tr('Standard Vertical Roman Alignment'),
-            checked=True,
-            parent=self.top_section,
-        )
-        self.vertical_roman_checker.setWordWrap(True)
-        self.vertical_roman_checker.setToolTip(
-            self.tr('Keep Roman characters upright in vertical text')
-        )
-        self.vertical_roman_checker.checkStateChanged.connect(
-            self.on_vertical_roman_alignment_changed
-        )
-        self.vertical_roman_unit = _atomic_unit(
-            self.top_section, self.vertical_roman_checker
-        )
         self.top_atomic_units = (
             self.linespacing_type_unit,
             self.opacity_unit,
-            self.vertical_roman_unit,
         )
         self.top_layout = AdaptiveWrapLayout(self.top_section)
         for unit in self.top_atomic_units:
@@ -738,16 +722,8 @@ class TextAdvancedFormatPanel(PanelArea):
     def on_linespacing_type_changed(self) -> None:
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
-    def on_vertical_roman_alignment_changed(self, checked: bool) -> None:
-        self.on_format_changed(
-            'standard_vertical_roman_alignment', checked
-        )
-
     def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
-        self.vertical_roman_checker.setCheckState(
-            font_format.standard_vertical_roman_alignment
-        )
 
         self.shadow_group.color_label.setPickerColor(font_format.shadow_color)
         self.shadow_group.strength_box.setValue(font_format.shadow_strength)

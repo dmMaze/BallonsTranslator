@@ -1481,6 +1481,14 @@ QFontChecker#FontTateChuYokoChecker::indicator:checked {
     image: url(resources/icons/fontfmt_tate_chu_yoko_activate.svg);
 }
 
+QFontChecker#FontRomanAlignmentChecker::indicator {
+    image: url(resources/icons/fontfmt_roman_alignment.svg);
+}
+
+QFontChecker#FontRomanAlignmentChecker::indicator:checked {
+    image: url(resources/icons/fontfmt_roman_alignment_activate.svg);
+}
+
 SizeControlLabel#fontStrokeLabel {
     font-size: 13px;
 }

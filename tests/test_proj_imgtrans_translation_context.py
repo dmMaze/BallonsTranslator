@@ -23,6 +23,15 @@ def _module_config(**kwargs):
 
 class LLMContextConfigTest(unittest.TestCase):
 
+    def test_legacy_translate_context_is_migrated_without_manual_cleanup(self):
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            json.dump({'module': {'translate_by_textblock': True}}, temp)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        self.assertEqual(loaded.module.translate_context, 'textblock')
+        self.assertFalse(hasattr(loaded.module, 'translate_by_textblock'))
+
     def test_llm_context_defaults_and_invalid_values_are_safe(self):
         with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
             json.dump({'module': {}}, temp)

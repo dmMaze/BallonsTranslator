@@ -268,10 +268,46 @@ class RunPipelineDialogTests(unittest.TestCase):
             'enabled': 'yes',
             'max_length': 0,
             'include_numbers': 1,
-            'include_letters': None,
+            'include_letters': True,
             'additional_chars': [],
         })
-        self.assertEqual(invalid.auto_tate_chu_yoko, AutoTateChuYokoConfig())
+        self.assertEqual(
+            invalid.auto_tate_chu_yoko,
+            AutoTateChuYokoConfig(include_letters=True),
+        )
+
+    def test_compact_vertical_punctuation_config_is_enabled_by_default(self):
+        self.assertTrue(ProgramConfig().compact_vertical_punctuation_spacing)
+
+        config = ProgramConfig(
+            compact_vertical_punctuation_spacing=False,
+        )
+        restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
+        self.assertFalse(restored.compact_vertical_punctuation_spacing)
+
+        invalid = ProgramConfig(
+            compact_vertical_punctuation_spacing='yes',
+        )
+        self.assertTrue(invalid.compact_vertical_punctuation_spacing)
+
+    def test_compact_vertical_punctuation_control_updates_config(self):
+        original = pcfg.compact_vertical_punctuation_spacing
+        pcfg.compact_vertical_punctuation_spacing = False
+        panel = ConfigPanel()
+        changes = []
+        panel.compact_vertical_punctuation_changed.connect(changes.append)
+        try:
+            checker = panel.compact_vertical_punctuation_checker
+            self.assertFalse(checker.isChecked())
+            self.assertTrue(checker.toolTip())
+
+            checker.click()
+
+            self.assertTrue(pcfg.compact_vertical_punctuation_spacing)
+            self.assertEqual(changes, [True])
+        finally:
+            panel.close()
+            pcfg.compact_vertical_punctuation_spacing = original
 
     def test_auto_tate_chu_yoko_controls_update_config(self):
         original = pcfg.auto_tate_chu_yoko.copy()

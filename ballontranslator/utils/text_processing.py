@@ -140,7 +140,8 @@ def finalize_translation_text(
     target_is_cjk = target_language in LANGSET_CJK
     if target_is_cjk:
         if source_is_cjk:
-            text = full_len(text)
+            # text = full_len(text)
+            pass
         else:
             text = half_len(text)
             text = re.sub(r'([?.!"])\s+', r'\1', text)

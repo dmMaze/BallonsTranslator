@@ -482,6 +482,9 @@ class MainWindow(mainwindow_cls):
         self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.font_list_changed.connect(self.on_show_only_custom_font)
+        self.configPanel.compact_vertical_punctuation_changed.connect(
+            self.st_manager.refresh_vertical_layouts
+        )
         if pcfg.let_show_only_custom_fonts_flag or pcfg.excluded_fonts:
             self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 

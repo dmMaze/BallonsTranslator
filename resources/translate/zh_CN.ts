@@ -483,6 +483,16 @@
         <translation>字体排除</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1104"/>
+        <source>Compact punctuation spacing</source>
+        <translation>缩短符号字距</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1106"/>
+        <source>Remove extra spacing around punctuation in vertical text.</source>
+        <translation>移除竖排文字中标点符号周围多余的字距。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="984"/>
         <source>Result image format</source>
         <translation>结果图格式</translation>

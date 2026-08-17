@@ -1,6 +1,7 @@
 import json, os, string, traceback
 import os.path as osp
 import copy
+from dataclasses import fields
 from typing import Callable, Optional
 
 from . import shared
@@ -265,25 +266,16 @@ class AutoTateChuYokoConfig(Config):
         return frozenset(characters)
 
     def __post_init__(self) -> None:
-        if not isinstance(self.enabled, bool):
-            LOGGER.warning('Discard invalid auto_tate_chu_yoko.enabled config.')
-            self.enabled = False
-        if (
-            not isinstance(self.max_length, int)
-            or isinstance(self.max_length, bool)
-            or not 1 <= self.max_length <= 99
-        ):
-            LOGGER.warning('Discard invalid auto_tate_chu_yoko.max_length config.')
-            self.max_length = 4
-        if not isinstance(self.include_numbers, bool):
-            LOGGER.warning('Discard invalid auto_tate_chu_yoko.include_numbers config.')
-            self.include_numbers = True
-        if not isinstance(self.include_letters, bool):
-            LOGGER.warning('Discard invalid auto_tate_chu_yoko.include_letters config.')
-            self.include_letters = False
-        if not isinstance(self.additional_chars, str):
-            LOGGER.warning('Discard invalid auto_tate_chu_yoko.additional_chars config.')
-            self.additional_chars = ''
+        for setting in fields(self):
+            value = getattr(self, setting.name)
+            valid = type(value) is setting.type
+            if setting.name == 'max_length':
+                valid = valid and 1 <= value <= 99
+            if not valid:
+                LOGGER.warning(
+                    f'Discard invalid auto_tate_chu_yoko.{setting.name} config.'
+                )
+                setattr(self, setting.name, setting.default)
 
 
 @nested_dataclass
@@ -294,6 +286,7 @@ class ProgramConfig(Config):
     mirrors: NetworkMirrorsConfig = field(default_factory=lambda: NetworkMirrorsConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     auto_tate_chu_yoko: AutoTateChuYokoConfig = field(default_factory=AutoTateChuYokoConfig)
+    compact_vertical_punctuation_spacing: bool = True
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())
     show_page_list: bool = False
@@ -361,23 +354,11 @@ class ProgramConfig(Config):
     expand_ttransform_panel: bool = True
     excluded_fonts: List[str] = field(default_factory=list)
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.auto_tate_chu_yoko, AutoTateChuYokoConfig):
-            LOGGER.warning('Discard invalid auto_tate_chu_yoko config.')
-            self.auto_tate_chu_yoko = AutoTateChuYokoConfig()
-        if self.let_letter_case not in OCRTextPostprocess.Valid:
-            LOGGER.warning('Discard invalid let_letter_case config.')
-            self.let_letter_case = OCRTextPostprocess.NONE
-
     @staticmethod
     def load(cfg_path: str):
         
         with open(cfg_path, 'r', encoding='utf8') as f:
             config_dict = json.loads(f.read())
-
-        if 'let_uppercase_flag' in config_dict:
-            LOGGER.warning('Discard removed let_uppercase_flag config.')
-            config_dict.pop('let_uppercase_flag')
 
         if 'excluded_fonts' in config_dict:
             excluded_fonts = config_dict['excluded_fonts']
@@ -409,7 +390,6 @@ class ProgramConfig(Config):
                     if module_cfg['translate_by_textblock']
                     else TranslateContext.Page
                 )
-            module_cfg.pop('translate_by_textblock', None)
             if module_cfg.get('textdetector') == 'rtdetr_v2':
                 module_cfg['textdetector'] = 'ctbd'
             if 'textdetector_params' in module_cfg:

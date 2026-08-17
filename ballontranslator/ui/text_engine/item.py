@@ -698,6 +698,23 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
         self.visual_geometry_changed.emit()
 
+    def refreshVerticalLayout(
+        self,
+        repaint_background: bool = True,
+    ) -> None:
+        """Refresh derived vertical geometry after a global setting change."""
+        if not isinstance(self.layout, VerticalTextDocumentLayout):
+            return
+
+        # Punctuation and orientation changes can expose ink outside the box.
+        self.prepareGeometryChange()
+        self.layout.reLayout()
+        self.geometry_controller.flush_deferred_compilation()
+        if repaint_background:
+            self.repaint_background()
+        self.update()
+        self.visual_geometry_changed.emit()
+
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
 
