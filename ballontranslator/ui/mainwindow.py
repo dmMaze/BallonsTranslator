@@ -1695,6 +1695,9 @@ class MainWindow(mainwindow_cls):
                     blk.italic = gf.italic
                     blk.font_weight = gf.font_weight
                     blk.underline = gf.underline
+                    blk.fontformat.standard_vertical_roman_alignment = (
+                        gf.standard_vertical_roman_alignment
+                    )
                     sw = blk.stroke_width
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
