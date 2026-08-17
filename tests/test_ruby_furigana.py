@@ -405,11 +405,11 @@ class RubyFuriganaTest(unittest.TestCase):
         self.assertEqual(len(containers), 1)
         self.assertEqual((containers[0].start, containers[0].units[0].text), (0, 'とう'))
 
-    def test_control_keys_use_native_editor_instead_of_inserting_text(self):
-        for key, text, position, expected in (
-            (Qt.Key.Key_Backspace, '\b', 1, 'a'),
-            (Qt.Key.Key_Delete, '\x7f', 0, 'a'),
-            (Qt.Key.Key_Escape, '\x1b', 1, 'aa'),
+    def test_non_text_keys_use_native_editor(self):
+        for key, position, expected in (
+            (Qt.Key.Key_Backspace, 1, 'a'),
+            (Qt.Key.Key_Delete, 0, 'a'),
+            (Qt.Key.Key_Escape, 1, 'aa'),
         ):
             with self.subTest(key=key):
                 item = self._item(text='aa')
@@ -424,11 +424,36 @@ class RubyFuriganaTest(unittest.TestCase):
                     QEvent.Type.KeyPress,
                     key,
                     Qt.KeyboardModifier.NoModifier,
-                    text,
                 ))
 
                 self.assertEqual(item.toPlainText(), expected)
-                self.assertNotIn(text, item.toPlainText())
+
+    def test_navigation_keys_do_not_edit_or_add_undo_steps(self):
+        for key, modifiers, selection, expected in (
+            (Qt.Key.Key_Left, Qt.KeyboardModifier.NoModifier, (1, 2), (1, 1)),
+            (Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier, (1, 2), (2, 2)),
+            (Qt.Key.Key_Left, Qt.KeyboardModifier.ShiftModifier, (2, 2), (1, 2)),
+        ):
+            with self.subTest(key=key, modifiers=modifiers):
+                item = self._item(text='abc')
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                item.startEdit()
+                item.setTextCursor(_select(item.document(), *selection))
+                item.document().clearUndoRedoStacks()
+                item.updateUndoSteps()
+
+                item.keyPressEvent(QKeyEvent(
+                    QEvent.Type.KeyPress,
+                    key,
+                    modifiers,
+                ))
+
+                cursor = item.textCursor()
+                self.assertEqual(item.toPlainText(), 'abc')
+                self.assertEqual((cursor.position(), cursor.anchor()), expected)
+                self.assertEqual(item.document().availableUndoSteps(), 0)
+                self.assertEqual(item.document().pageCount(), 1)
 
     def test_ime_replacement_range_never_transfers_mono_reading(self):
         item = self._item(text='東京')
@@ -503,16 +528,20 @@ class RubyFuriganaTest(unittest.TestCase):
             item.setTextCursor(cursor)
             return item
 
-        key_item = grouped_item()
-        key_item.keyPressEvent(QKeyEvent(
-            QEvent.Type.KeyPress,
-            Qt.Key.Key_Return,
-            Qt.KeyboardModifier.NoModifier,
-            '\n',
-        ))
-        self.assertEqual(key_item.toPlainText(), '東\n京')
-        self.assertEqual(ruby_containers(key_item.document()), ())
-        self.assertNotIn('<ruby', to_rich_text_html(key_item.document()))
+        for key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            with self.subTest(key=key):
+                key_item = grouped_item()
+                key_item.keyPressEvent(QKeyEvent(
+                    QEvent.Type.KeyPress,
+                    key,
+                    Qt.KeyboardModifier.NoModifier,
+                    '\n',
+                ))
+                self.assertEqual(key_item.toPlainText(), '東\n京')
+                self.assertEqual(ruby_containers(key_item.document()), ())
+                self.assertNotIn(
+                    '<ruby', to_rich_text_html(key_item.document())
+                )
 
         paste_item = grouped_item()
         paste_item.insert_plain_text_at_cursor('\u2028')

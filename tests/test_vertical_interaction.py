@@ -1,19 +1,21 @@
 import os
 import unittest
+from typing import List
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
     QImage,
+    QKeyEvent,
     QPainter,
     QTextCharFormat,
     QTextCursor,
 )
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.textblock import TextBlock
@@ -29,8 +31,9 @@ class VerticalInteractionTest(unittest.TestCase):
         text: str,
         *,
         letter_spacing: float = 1.0,
+        height: int = 300,
     ) -> TextBlkItem:
-        bounds = [0, 0, 220, 300]
+        bounds = [0, 0, 220, height]
         block = TextBlock(bounds)
         block._bounding_rect = list(bounds)
         block.translation = text
@@ -258,6 +261,78 @@ class VerticalInteractionTest(unittest.TestCase):
 
         item.layout.reLayout()
         self.assertEqual(item.layout._selection_geometry_cache, {})
+
+    def test_left_right_moves_between_vertical_columns(self):
+        probe = self._make_item('A' * 40, height=180)
+
+        def column_positions(item: TextBlkItem) -> List[List[int]]:
+            block = item.document().firstBlock()
+            layout = block.layout()
+            columns = {}
+            for line_number in range(layout.lineCount()):
+                line = layout.lineAt(line_number)
+                columns.setdefault(float(line.x()), []).append(
+                    block.position() + line.textStart()
+                )
+            return [columns[x] for x in sorted(columns, reverse=True)]
+
+        capacity = max(map(len, column_positions(probe)))
+        item = self._make_item('A' * (capacity * 3 + 1), height=180)
+        columns = column_positions(item)
+        self.assertEqual([len(column) for column in columns], [
+            capacity,
+            capacity,
+            capacity,
+            1,
+        ])
+
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        item.startEdit()
+        original_text = item.toPlainText()
+        item.document().clearUndoRedoStacks()
+        item.updateUndoSteps()
+
+        def set_position(position: int) -> None:
+            cursor = item.textCursor()
+            cursor.setPosition(position)
+            item.setTextCursor(cursor)
+
+        def press(
+            key: Qt.Key,
+            modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+        ) -> None:
+            item.keyPressEvent(QKeyEvent(
+                QEvent.Type.KeyPress,
+                key,
+                modifiers,
+            ))
+
+        start = columns[1][1]
+        set_position(start)
+        press(Qt.Key.Key_Left)
+        self.assertEqual(item.textCursor().position(), columns[2][1])
+        press(Qt.Key.Key_Right)
+        self.assertEqual(item.textCursor().position(), start)
+
+        set_position(start)
+        press(Qt.Key.Key_Left, Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual(
+            (item.textCursor().position(), item.textCursor().anchor()),
+            (columns[2][1], start),
+        )
+
+        # A short column clamps the first move, but the original visual row is
+        # retained when moving back into a taller neighboring column.
+        sticky_start = columns[2][-1]
+        set_position(sticky_start)
+        press(Qt.Key.Key_Left)
+        self.assertEqual(item.textCursor().position(), len(original_text))
+        press(Qt.Key.Key_Right)
+        self.assertEqual(item.textCursor().position(), sticky_start)
+
+        self.assertEqual(item.toPlainText(), original_text)
+        self.assertEqual(item.document().availableUndoSteps(), 0)
 
 
 if __name__ == '__main__':

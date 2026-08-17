@@ -1323,6 +1323,76 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             block = block.next()
         return QRectF()
 
+    def adjacent_column_cursor_position(
+        self,
+        cursor_position: int,
+        horizontal_direction: int,
+        preferred_y: float,
+    ) -> Optional[int]:
+        """Return the caret position in the adjacent visual column.
+
+        ``horizontal_direction`` is negative for the column to the left and
+        positive for the column to the right. The caller keeps ``preferred_y``
+        stable across repeated moves, matching Qt's horizontal line navigation.
+
+        >>> callable(VerticalTextDocumentLayout.adjacent_column_cursor_position)
+        True
+        """
+        if horizontal_direction not in (-1, 1):
+            raise ValueError('horizontal_direction must be -1 or 1')
+
+        block = self.document().findBlock(cursor_position)
+        if not block.isValid():
+            return None
+        layout = block.layout()
+        line = layout.lineForTextPosition(
+            cursor_position - block.position()
+        )
+        if not line.isValid():
+            return None
+        current_x = line.x()
+        line_number = line.lineNumber()
+        step = 1 if horizontal_direction < 0 else -1
+
+        target_block = block
+        target_line_number = line_number + step
+        target_line = QTextLine()
+        while target_block.isValid():
+            target_layout = target_block.layout()
+            while 0 <= target_line_number < target_layout.lineCount():
+                candidate = target_layout.lineAt(target_line_number)
+                x_delta = candidate.x() - current_x
+                if x_delta * horizontal_direction > 1e-6:
+                    target_line = candidate
+                    break
+                target_line_number += step
+            if target_line.isValid():
+                break
+            target_block = (
+                target_block.next()
+                if horizontal_direction < 0
+                else target_block.previous()
+            )
+            if target_block.isValid():
+                target_layout = target_block.layout()
+                target_line_number = (
+                    0
+                    if horizontal_direction < 0
+                    else target_layout.lineCount() - 1
+                )
+
+        if not target_line.isValid():
+            return None
+        target_center_x = (
+            target_line.x()
+            + self._vertical_line_width(
+                target_block, target_line_number
+            ) / 2
+        )
+        return self._source_hit_test(
+            QPointF(target_center_x, preferred_y)
+        )
+
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
         self.deferred_cursor_position = context.cursorPosition
@@ -1546,8 +1616,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.has_selection = has_selection
         painter.restore()
 
-    def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
-        point = self.map_input_point(point)
+    def _source_hit_test(self, point: QPointF) -> int:
+        """Resolve a point already expressed in source-layout coordinates.
+
+        >>> callable(VerticalTextDocumentLayout._source_hit_test)
+        True
+        """
         ruby_hit = self._ruby_hit_test(point)
         if ruby_hit is not None:
             return ruby_hit
@@ -1587,6 +1661,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 break
             blk = blk.next()
         return blk.position() + off
+
+    def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
+        return self._source_hit_test(self.map_input_point(point))
 
     def layoutBlock(self, block: QTextBlock):
         doc = self.document()

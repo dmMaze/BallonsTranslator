@@ -100,6 +100,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.input_method_from = -1
         self.input_method_text = ''
         self.block_change_signal = False
+        self._vertical_navigation_y: Optional[float] = None
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
@@ -111,7 +112,8 @@ class TextBlkItem(QGraphicsTextItem):
         )
         self.geometry_controller.finish_initialization()
 
-    def inputMethodEvent(self, e: QInputMethodEvent):
+    def inputMethodEvent(self, e: QInputMethodEvent) -> None:
+        self._vertical_navigation_y = None
         if self.pre_editing == False:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
@@ -158,6 +160,42 @@ class TextBlkItem(QGraphicsTextItem):
         self._update_nonlinear_editing_ui()
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
+        self._vertical_navigation_y = None
+        super().setTextCursor(cursor)
+        self._emit_inline_format_changed()
+        self._update_nonlinear_editing_ui()
+
+    def _move_cursor_across_vertical_column(
+        self,
+        horizontal_direction: int,
+        keep_anchor: bool,
+    ) -> None:
+        """Move the active caret to the adjacent vertical text column.
+
+        >>> callable(TextBlkItem._move_cursor_across_vertical_column)
+        True
+        """
+        cursor = self.textCursor()
+        if self._vertical_navigation_y is None:
+            caret = self.layout.source_cursor_rect(cursor.position())
+            if caret.isEmpty():
+                return
+            self._vertical_navigation_y = caret.center().y()
+        target = self.layout.adjacent_column_cursor_position(
+            cursor.position(),
+            horizontal_direction,
+            self._vertical_navigation_y,
+        )
+        if target is None:
+            return
+        move_mode = (
+            QTextCursor.MoveMode.KeepAnchor
+            if keep_anchor
+            else QTextCursor.MoveMode.MoveAnchor
+        )
+        cursor.setPosition(target, move_mode)
+        # This is a cursor-only operation; bypass the public setter so the
+        # preferred row survives consecutive Left/Right key presses.
         super().setTextCursor(cursor)
         self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
@@ -671,6 +709,24 @@ class TextBlkItem(QGraphicsTextItem):
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
 
+        vertical_column_navigation = (
+            self.isEditing()
+            and isinstance(self.layout, VerticalTextDocumentLayout)
+            and e.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)
+            and e.modifiers() in (
+                Qt.KeyboardModifier.NoModifier,
+                Qt.KeyboardModifier.ShiftModifier,
+            )
+        )
+        if vertical_column_navigation:
+            self._move_cursor_across_vertical_column(
+                -1 if e.key() == Qt.Key.Key_Left else 1,
+                e.modifiers() == Qt.KeyboardModifier.ShiftModifier,
+            )
+            e.accept()
+            return
+        self._vertical_navigation_y = None
+
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -705,7 +761,7 @@ class TextBlkItem(QGraphicsTextItem):
                 e.accept()
                 self.redo_signal.emit()
                 return
-        elif e.key() == Qt.Key.Key_Return:
+        elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             e.accept()
             cursor = self.textCursor()
             cursor.beginEditBlock()
@@ -716,7 +772,7 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor.endEditBlock()
             self.setTextCursor(cursor)
             return
-        elif e.text().isprintable():
+        elif e.text() and e.text().isprintable():
             e.accept()
             cursor = self.textCursor()
             cursor.beginEditBlock()
@@ -861,6 +917,7 @@ class TextBlkItem(QGraphicsTextItem):
         return min_font_size
 
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self._vertical_navigation_y = None
         if not self.isEditing():
             self.startEdit(pos=event.pos())
         else:
@@ -881,6 +938,7 @@ class TextBlkItem(QGraphicsTextItem):
         return super().contextMenuEvent(event)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self._vertical_navigation_y = None
         if event.button() == Qt.MouseButton.LeftButton:
             if self.isEditing():
                 self.geometry_controller.begin_input_mapping()

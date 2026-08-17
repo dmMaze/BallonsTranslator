@@ -331,6 +331,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def documentSize(self) -> QSizeF:
         return QSizeF(self.max_width, self.max_height)
 
+    def pageCount(self) -> int:
+        return 1
+
     def frameBoundingRect(self, frame: QTextFrame) -> QRectF:
         return QRectF(
             0,
