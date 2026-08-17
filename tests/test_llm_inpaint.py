@@ -195,7 +195,7 @@ class LLMInpaintTest(unittest.TestCase):
 
         self.assertEqual(result.shape, (2, 2, 3))
         call = self.inpainter.http_client.calls[0]
-        self.assertEqual(call['url'], 'https://image.example/v1/images/edits')
+        self.assertEqual(call['url'], 'https://image.example/v1')
         self.assertEqual(call['data']['model'], 'black-forest-labs/flux.2-klein-4b')
         self.assertIn('image', call['files'])
 

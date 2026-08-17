@@ -48,6 +48,7 @@ PROVIDER_DEFAULTS = {
             "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
         ],
         "support_image": True,
+        "image_base_url": "https://api.openai.com/v1/images/edits",
         "image_model_options": ["gpt-image-2"]
     },
     "DeepSeek": {
@@ -410,6 +411,8 @@ def _merge_builtin_profile_options(profile: LLMProfile) -> LLMProfile:
     profile.image_model_options = _merge_profile_options(
         defaults.get('image_model_options'), profile.image_model_options, profile.image_model,
     )
+    if provider == 'OpenAI' and not profile.image_base_url:
+        profile.image_base_url = defaults['image_base_url']
     return profile
 
 

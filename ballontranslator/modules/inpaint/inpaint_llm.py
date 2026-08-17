@@ -462,7 +462,7 @@ class LLMInpaint(InpainterBase):
         api_key = self._api_key_for_profile(profile)
         args = self._api_args(profile, image_file, prompt=prompt)
         response = client.post(
-            self._join_url(base_url, '/images/edits'),
+            base_url,
             headers=self._headers(api_key),
             data={
                 'model': args['model'],

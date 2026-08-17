@@ -47,6 +47,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.name = 'Saved OpenAI'
         profile.base_url = 'https://saved.example/v1'
+        profile.image_base_url = 'https://saved.example/image-edit'
         profile.api_key = 'saved-key'
         profile.model_options = ['saved-model']
 
@@ -56,6 +57,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(profile_to_dict(first), profile_to_dict(second))
         self.assertEqual(first.name, 'Saved OpenAI')
         self.assertEqual(first.base_url, 'https://saved.example/v1')
+        self.assertEqual(first.image_base_url, 'https://saved.example/image-edit')
         self.assertEqual(first.api_key, 'saved-key')
 
     def test_load_profiles_leaves_custom_profiles_unchanged(self):
@@ -218,6 +220,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(profile.prompt, DEFAULT_TRANSLATION_PROMPT)
         self.assertEqual(profile.vision_prompt, DEFAULT_OCR_PROMPT)
         self.assertEqual(profile.image_prompt, DEFAULT_INPAINT_PROMPT)
+        self.assertEqual(profile.image_base_url, 'https://api.openai.com/v1/images/edits')
         self.assertFalse(hasattr(profile, 'invalid_repeat_count'))
         self.assertEqual(profile.max_tokens, 8192)
         self.assertFalse(profile.json_schema_response_format)
