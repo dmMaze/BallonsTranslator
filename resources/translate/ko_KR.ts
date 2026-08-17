@@ -1499,6 +1499,47 @@ All existing translation results will be cleared!</source>
         <source>Keyword substitution for machine translation source text</source>
         <translation>원문에 대한 키워드 치환(전처리)</translation>
     </message>
+    <message>
+        <source>Warning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Please open a project first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No current file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notice</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No text blocks on current page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not enough text blocks touched by the path (need at least 2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Continue Drawing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply reorder?</source>
+        <translation type="unfinished"></translation>
+    </message>
+
 </context>
 <context>
     <name>ModuleManager</name>
@@ -3984,6 +4025,11 @@ All existing translation results will be cleared!</source>
         <source>Keyword substitution for machine translation source text</source>
         <translation>원문에 대한 키워드 치환(전처리)</translation>
     </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation type="unfinished"></translation>
+    </message>
+
 </context>
 <context>
     <name>TorchInstallHelperDialog</name>
@@ -4374,6 +4420,11 @@ All existing translation results will be cleared!</source>
         <source>Reset to default</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation type="unfinished"></translation>
+    </message>
+
 </context>
 <context>
     <name>ShortcutEditor</name>

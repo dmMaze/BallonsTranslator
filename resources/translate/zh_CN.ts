@@ -1679,6 +1679,47 @@ All existing translation results will be cleared!</source>
         <source>Continue</source>
         <translation type="vanished">继续</translation>
     </message>
+    <message>
+        <source>Warning</source>
+        <translation>警告</translation>
+    </message>
+    <message>
+        <source>Please open a project first</source>
+        <translation>请先打开一个项目</translation>
+    </message>
+    <message>
+        <source>No current file</source>
+        <translation>没有当前文件</translation>
+    </message>
+    <message>
+        <source>Notice</source>
+        <translation>提示</translation>
+    </message>
+    <message>
+        <source>No text blocks on current page</source>
+        <translation>当前页面没有文本框</translation>
+    </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation>路径重排</translation>
+    </message>
+    <message>
+        <source>Not enough text blocks touched by the path (need at least 2).</source>
+        <translation>路径未触碰足够的文本框（至少需要2个）</translation>
+    </message>
+    <message>
+        <source>Continue Drawing</source>
+        <translation>继续绘制</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <source>Apply reorder?</source>
+        <translation>应用重排？</translation>
+    </message>
+
 </context>
 <context>
     <name>ModuleManager</name>
@@ -4457,6 +4498,11 @@ All existing translation results will be cleared!</source>
         <source>Run without update textstyle</source>
         <translation type="vanished">Run且不覆盖已有字体样式</translation>
     </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation>路径重排</translation>
+    </message>
+
 </context>
 <context>
     <name>TorchInstallHelperDialog</name>
@@ -4914,6 +4960,11 @@ All existing translation results will be cleared!</source>
         <source>Reset to default</source>
         <translation>重置为默认</translation>
     </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation>路径重排</translation>
+    </message>
+
 </context>
 <context>
     <name>ShortcutEditor</name>

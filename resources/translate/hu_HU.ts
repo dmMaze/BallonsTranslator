@@ -814,6 +814,47 @@ Minden eddigi fordítás elveszik!</translation>
         <source>Export to </source>
         <translation>Exportálás ide </translation>
     </message>
+    <message>
+        <source>Warning</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Please open a project first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No current file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notice</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No text blocks on current page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not enough text blocks touched by the path (need at least 2).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Continue Drawing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply reorder?</source>
+        <translation type="unfinished"></translation>
+    </message>
+
 </context>
 <context>
     <name>ModuleManager</name>
@@ -1313,6 +1354,11 @@ Minden eddigi fordítás elveszik!</translation>
         <source>Translate page</source>
         <translation>Oldal fordítása</translation>
     </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation type="unfinished"></translation>
+    </message>
+
 </context>
 <context>
     <name>TranslateThread</name>
@@ -1500,6 +1546,11 @@ Minden eddigi fordítás elveszik!</translation>
         <source>Reset to default</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Path Reorder</source>
+        <translation type="unfinished"></translation>
+    </message>
+
 </context>
 <context>
     <name>ShortcutEditor</name>
