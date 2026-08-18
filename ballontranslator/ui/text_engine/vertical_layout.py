@@ -65,8 +65,9 @@ PUNSET_PAUSEORSTOP = {
     '。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁈', '⁉',
 }
 PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
-PUNSET_BRACKETL = {'「', '『', '“', '‘', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
-PUNSET_BRACKETR = {'」', '』', '”', '’', '）', '》', '〉', '】', '〗', '〕', '］', '｝', ')'}
+# ‶ pairs with either 〟 or ″ as the closing mark.
+PUNSET_BRACKETL = {'「', '『', '“', '‘', '‶', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
+PUNSET_BRACKETR = {'」', '』', '”', '’', '〟', '″', '）', '》', '〉', '】', '〗', '〕', '］', '｝', ')'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 PUNSET_COMPACT = PUNSET_PAUSEORSTOP.union(PUNSET_BRACKET)
 
@@ -86,8 +87,8 @@ _LINE_INK_BOUNDS_CACHE: KeyedLruCache[tuple, QRectF] = KeyedLruCache(
     LINE_INK_BOUNDS_CACHE_MAX_ENTRIES
 )
 
-PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’'}
-PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘'}
+PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’', '〟', '″'}
+PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘', '‶'}
 
 Dingbats_vertical_aligncenter = r'\u2700-\u275A\u2761-\u2767\u2776-\u27BF'
 Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mode
