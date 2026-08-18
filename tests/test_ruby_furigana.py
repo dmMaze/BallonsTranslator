@@ -880,165 +880,230 @@ class RubyFuriganaTest(unittest.TestCase):
                     (0, 1, 2) if ruby_type == 'group' else (0, 1),
                 )
 
-    def test_cjk_space_around_and_latin_center_share_both_writing_modes(self):
+    def test_space_around_expands_latin_and_mixed_but_not_bopomofo(self):
         def group_item(vertical: bool, reading: str) -> TextBlkItem:
             item = self._item(
                 vertical=vertical,
-                text='哈尔滨佛学院',
+                text='是发达省份',
                 bounds=(0, 0, 520, 520),
             )
             apply_ruby(
-                _select(item.document(), 0, 6), 'group', reading
+                _select(item.document(), 0, 5), 'group', reading
             )
             item.layout.reLayoutEverything()
             return item
 
         for vertical in (False, True):
-            with self.subTest(vertical=vertical):
-                cjk = group_item(vertical, '哈佛')
-                block = cjk.document().firstBlock()
-                if vertical:
-                    placement = cjk.layout._vertical_ruby_placements(block)[0]
-                else:
-                    line = block.layout().lineAt(0)
-                    placement = cjk.layout._ruby_line_placements(block, line)[0]
-                self.assertEqual(len(placement.geometries), 2)
-                metrics = QFontMetricsF(placement.char_format.font())
-                advance = (
-                    metrics.height()
-                    if vertical else metrics.horizontalAdvance('哈')
-                )
-                extent = (
-                    placement.cell.height()
-                    if vertical else placement.cell.width()
-                )
-                free = extent - 2 * advance
-                expected = (
-                    placement.cell.top() + free / 4 + advance / 2
-                    if vertical
-                    else placement.cell.left() + free / 4 + advance / 2
-                )
-                actual = (
-                    placement.geometries[0].bounds.center().y()
-                    if vertical
-                    else placement.geometries[0].bounds.center().x()
-                )
-                self.assertAlmostEqual(actual, expected, delta=0.6)
-                centers = [
-                    geometry.bounds.center().y()
-                    if vertical else geometry.bounds.center().x()
-                    for geometry in placement.geometries
-                ]
-                self.assertAlmostEqual(
-                    (centers[0] + centers[1]) / 2,
-                    placement.cell.center().y()
-                    if vertical else placement.cell.center().x(),
-                    delta=0.6,
-                )
-                self.assertGreater(centers[1] - centers[0], advance)
-
-                for reading in ('AB', 'ＡＢ', 'ㄏㄚ'):
-                    latin = group_item(vertical, reading)
-                    block = latin.document().firstBlock()
-                    if vertical:
-                        placement = latin.layout._vertical_ruby_placements(
-                            block
-                        )[0]
-                        centers = [
-                            geometry.bounds.center().y()
-                            for geometry in placement.geometries
-                        ]
-                        self.assertEqual(len(centers), 2)
-                        self.assertAlmostEqual(
-                            centers[1] - centers[0],
-                            QFontMetricsF(
-                                placement.char_format.font()
-                            ).height(),
-                            delta=0.6,
-                        )
-                        self.assertAlmostEqual(
-                            (centers[0] + centers[1]) / 2,
-                            placement.cell.center().y(),
-                            delta=0.6,
-                        )
-                    else:
-                        placement = latin.layout._ruby_line_placements(
+            for reading in ('测试', 'AAA', 'A测试'):
+                with self.subTest(vertical=vertical, reading=reading):
+                    item = group_item(vertical, reading)
+                    block = item.document().firstBlock()
+                    metric = item.layout._ruby_metrics[0][0]
+                    placement = (
+                        item.layout._vertical_ruby_placements(block)[0]
+                        if vertical
+                        else item.layout._ruby_line_placements(
                             block, block.layout().lineAt(0)
                         )[0]
-                        self.assertEqual(len(placement.geometries), 1)
-                        self.assertAlmostEqual(
-                            placement.geometries[0].bounds.center().x(),
-                            placement.cell.center().x(),
-                            delta=0.6,
-                        )
-
-                mixed_text = '漢字AVㄅ'
-                mixed = group_item(vertical, mixed_text)
-                block = mixed.document().firstBlock()
-                placement = (
-                    mixed.layout._vertical_ruby_placements(block)[0]
-                    if vertical
-                    else mixed.layout._ruby_line_placements(
-                        block, block.layout().lineAt(0)
-                    )[0]
-                )
-                font_metrics = QFontMetricsF(placement.char_format.font())
-                if vertical:
-                    runs = tuple(mixed_text)
-                    self.assertEqual(len(placement.geometries), len(runs))
-                    advances = [font_metrics.height()] * len(runs)
-                else:
-                    runs = tuple(
-                        run for run, _position in _space_around_positions(
-                            mixed_text,
-                            placement.char_format.font(),
-                            placement.cell.width(),
-                            vertical=False,
-                        )
                     )
-                    self.assertEqual(runs, ('漢', '字AVㄅ'))
-                    self.assertEqual(len(placement.geometries), 2)
+                    runs = tuple(reading)
+                    self.assertEqual(
+                        tuple(
+                            run.source.document.toPlainText()
+                            for run in placement.paint_runs
+                        ),
+                        runs,
+                    )
+                    font_metrics = QFontMetricsF(
+                        placement.char_format.font()
+                    )
                     advances = [
-                        font_metrics.horizontalAdvance(run) for run in runs
+                        font_metrics.height()
+                        if vertical
+                        else font_metrics.horizontalAdvance(run)
+                        for run in runs
                     ]
-                    self.assertLess(
-                        font_metrics.horizontalAdvance('AV'),
-                        font_metrics.horizontalAdvance('A')
-                        + font_metrics.horizontalAdvance('V'),
-                    )
-                self.assertEqual(
-                    tuple(
-                        run.source.document.toPlainText()
-                        for run in placement.paint_runs
-                    ),
-                    runs,
-                )
-                centers = [
-                    geometry.bounds.center().y()
-                    if vertical else geometry.bounds.center().x()
-                    for geometry in placement.geometries
-                ]
-                expected_gap = (
-                    (
+                    centers = [
+                        geometry.bounds.center().y()
+                        if vertical else geometry.bounds.center().x()
+                        for geometry in placement.geometries
+                    ]
+                    if vertical:
+                        cross_centers = [
+                            geometry.bounds.center().x()
+                            for geometry in placement.geometries
+                        ]
+                        for cross_center in cross_centers[1:]:
+                            self.assertAlmostEqual(
+                                cross_center, cross_centers[0], delta=0.02
+                            )
+                    extent = (
                         placement.cell.height()
                         if vertical else placement.cell.width()
-                    ) - sum(advances)
-                ) / 2
-                self.assertAlmostEqual(
-                    centers[1] - centers[0]
-                    - (advances[0] + advances[1]) / 2,
-                    expected_gap,
-                    delta=0.6,
-                )
-                for index in range(1, len(centers) - 1):
+                    )
+                    expected_gap = (extent - sum(advances)) / len(runs)
+                    self.assertGreater(expected_gap, 0.0)
+                    for index in range(len(centers) - 1):
+                        self.assertAlmostEqual(
+                            centers[index + 1] - centers[index]
+                            - (advances[index] + advances[index + 1]) / 2,
+                            expected_gap,
+                            delta=0.6,
+                        )
+                    expected_center = (
+                        placement.cell.center().y()
+                        + metric.annotation_center_offset
+                        if vertical else placement.cell.center().x()
+                    )
                     self.assertAlmostEqual(
-                        centers[index + 1] - centers[index]
-                        - (advances[index] + advances[index + 1]) / 2,
-                        0.0,
+                        (
+                            centers[0] - advances[0] / 2
+                            + centers[-1] + advances[-1] / 2
+                        ) / 2,
+                        expected_center,
                         delta=0.6,
                     )
 
-    def test_horizontal_latin_base_keeps_native_kerning_when_centered(self):
+            item = group_item(vertical, 'ㄏㄚ')
+            block = item.document().firstBlock()
+            placement = (
+                item.layout._vertical_ruby_placements(block)[0]
+                if vertical
+                else item.layout._ruby_line_placements(
+                    block, block.layout().lineAt(0)
+                )[0]
+            )
+            runs = tuple(
+                run.source.document.toPlainText()
+                for run in placement.paint_runs
+            )
+            self.assertEqual(runs, ('ㄏ', 'ㄚ') if vertical else ('ㄏㄚ',))
+            centers = [
+                geometry.bounds.center().y()
+                if vertical else geometry.bounds.center().x()
+                for geometry in placement.geometries
+            ]
+            expected_center = (
+                placement.cell.center().y()
+                + item.layout._ruby_metrics[0][0].annotation_center_offset
+                if vertical else placement.cell.center().x()
+            )
+            self.assertAlmostEqual(
+                (centers[0] + centers[-1]) / 2,
+                expected_center,
+                delta=0.6,
+            )
+            if vertical:
+                self.assertAlmostEqual(
+                    centers[1] - centers[0],
+                    QFontMetricsF(placement.char_format.font()).height(),
+                    delta=0.6,
+                )
+
+    def test_vertical_group_and_mono_use_complete_selected_range(self):
+        for ruby_type, reading in (
+            ('group', '测试'),
+            ('mono', 'A A A A A'),
+        ):
+            with self.subTest(ruby_type=ruby_type):
+                item = self._item(
+                    vertical=True,
+                    text='是发达省份',
+                    bounds=(0, 0, 520, 700),
+                )
+                item.startEdit()
+                item.setTextCursor(_select(item.document(), 0, 5))
+                item.setRuby(ruby_type, reading, 'over')
+                block = item.document().firstBlock()
+                container = ruby_containers(item.document())[0]
+                placements = item.layout._vertical_ruby_placements(block)
+                self.assertEqual((container.start, container.end), (0, 5))
+                self.assertEqual(item.textCursor().selectedText(), '是发达省份')
+                final_line = block.layout().lineForTextPosition(4)
+                final_cells = item.layout._vertical_line_cells(
+                    block, final_line.lineNumber()
+                )
+                self.assertEqual(final_cells[-1][:2], (4, 5))
+                for metric, placement in zip(
+                    item.layout._ruby_metrics[0], placements
+                ):
+                    local_start = metric.unit.start - block.position()
+                    local_end = metric.unit.end - block.position()
+                    first = block.layout().lineForTextPosition(local_start)
+                    last = block.layout().lineForTextPosition(local_end - 1)
+                    last_format = item.layout.get_char_fontfmt(
+                        block.blockNumber(), local_end - 1
+                    )
+                    expected_center = (
+                        first.y() + last.y() + last_format.tbr.height()
+                    ) / 2
+                    geometries = placement.geometries
+                    self.assertLess(metric.annotation_center_offset, 0.0)
+                    self.assertAlmostEqual(
+                        (
+                            geometries[0].bounds.center().y()
+                            + geometries[-1].bounds.center().y()
+                        ) / 2,
+                        expected_center,
+                        delta=0.6,
+                    )
+                if ruby_type == 'group':
+                    self.assertAlmostEqual(
+                        placements[0].cell.bottom(),
+                        final_cells[-1][3],
+                        delta=0.02,
+                    )
+
+    def test_vertical_mono_expands_latin_and_mixed_readings_per_pair(self):
+        item = self._item(
+            vertical=True,
+            text='测试',
+            bounds=(0, 0, 520, 700),
+        )
+        selection = _select(item.document(), 0, 2)
+        apply_letter_spacing(selection, 4.0, vertical=True)
+        apply_ruby(selection, 'mono', 'AAA A测试')
+        item.layout.reLayoutEverything()
+        block = item.document().firstBlock()
+        placements = item.layout._vertical_ruby_placements(block)
+        self.assertEqual(len(placements), 2)
+        for placement, expected_runs in zip(
+            placements, (tuple('AAA'), tuple('A测试'))
+        ):
+            self.assertEqual(
+                tuple(
+                    run.source.document.toPlainText()
+                    for run in placement.paint_runs
+                ),
+                expected_runs,
+            )
+            centers = [
+                run.geometry.bounds.center().y()
+                for run in placement.paint_runs
+            ]
+            cross_centers = [
+                run.geometry.bounds.center().x()
+                for run in placement.paint_runs
+            ]
+            for cross_center in cross_centers[1:]:
+                self.assertAlmostEqual(
+                    cross_center, cross_centers[0], delta=0.02
+                )
+            advances = [
+                QFontMetricsF(placement.char_format.font()).height()
+            ] * len(expected_runs)
+            expected_gap = (
+                placement.cell.height() - sum(advances)
+            ) / len(expected_runs)
+            self.assertGreater(expected_gap, 0.0)
+            for first, second in zip(centers, centers[1:]):
+                self.assertAlmostEqual(
+                    second - first - advances[0],
+                    expected_gap,
+                    delta=0.6,
+                )
+
+    def test_horizontal_latin_base_expands_native_geometry_and_paint(self):
         def kerning_item() -> TextBlkItem:
             item = self._item(text='AVX', bounds=(0, 0, 520, 220))
             char_format = QTextCharFormat()
@@ -1075,20 +1140,17 @@ class RubyFuriganaTest(unittest.TestCase):
         native_cursors = [
             item.layout._cursor_x(line, position) for position in range(4)
         ]
-        for position in range(4):
-            self.assertAlmostEqual(
-                native_cursors[position], plain_cursors[position], delta=0.02
-            )
-
         metric = item.layout._ruby_metrics[0][0]
         cell = item.layout._ruby_unit_cell(block, line, metric)
         carets = [
             item.layout.source_cursor_rect(position).center().x()
             for position in range(4)
         ]
+        self.assertEqual(metric.base_opportunity_ends, (1,))
+        self.assertGreater(native_cursors[1], plain_cursors[1])
         self.assertAlmostEqual(
-            carets[1] - carets[0],
-            plain_cursors[1] - plain_cursors[0],
+            native_cursors[1] - plain_cursors[1],
+            metric.base_gap,
             delta=0.02,
         )
         self.assertAlmostEqual(cell.width(), metric.extent, delta=0.6)
@@ -1116,112 +1178,63 @@ class RubyFuriganaTest(unittest.TestCase):
         base_spans = {
             (call.args[1], call.args[2]) for call in geometry.call_args_list
         }
-        self.assertIn((0, 2), base_spans)
-        self.assertNotIn((0, 1), base_spans)
-        self.assertNotIn((1, 1), base_spans)
+        self.assertIn((0, 1), base_spans)
+        self.assertIn((1, 1), base_spans)
 
-    def test_long_annotation_distributes_only_eligible_shorter_base(self):
+    def test_long_annotation_distributes_shorter_cjk_and_latin_base(self):
         reading = 'とてもながいとうきょう'
         for vertical in (False, True):
-            with self.subTest(vertical=vertical, base='CJK'):
-                item = self._item(
-                    vertical=vertical,
-                    text='東京',
-                    bounds=(0, 0, 520, 520),
-                )
-                apply_ruby(
-                    _select(item.document(), 0, 2), 'group', reading
-                )
-                item.layout.reLayoutEverything()
-                block = item.document().firstBlock()
-                metric = item.layout._ruby_metrics[0][0]
-                self.assertEqual(metric.base_opportunity_ends, (1,))
-                if vertical:
-                    cell = item.layout._vertical_ruby_unit_cell(block, metric)
-                    advance = metric.base_advance / 2
-                    centers = [
-                        block.layout().lineForTextPosition(index).y()
-                        + advance / 2
-                        for index in range(2)
-                    ]
-                    cursor = item.layout.source_cursor_rect(1)
-                    axis_center = cursor.center().y()
-                    cell_start, cell_end = cell.top(), cell.bottom()
-                else:
-                    line = block.layout().lineAt(0)
-                    cell = item.layout._ruby_unit_cell(block, line, metric)
-                    font_metrics = QFontMetricsF(
-                        _select(item.document(), 0, 1).charFormat().font()
+            for base in ('東京', 'AB'):
+                with self.subTest(vertical=vertical, base=base):
+                    plain = self._item(vertical=vertical, text=base)
+                    item = self._item(
+                        vertical=vertical,
+                        text=base,
+                        bounds=(0, 0, 520, 520),
                     )
-                    advance = font_metrics.horizontalAdvance('東')
-                    edge = metric.base_gap / 2
-                    centers = [
-                        item.layout._cursor_x(line, index) + edge + advance / 2
-                        for index in range(2)
-                    ]
-                    cursor = item.layout.source_cursor_rect(1)
-                    axis_center = cursor.center().x()
-                    cell_start, cell_end = cell.left(), cell.right()
-                self.assertGreater(metric.base_gap, 0.0)
-                self.assertAlmostEqual(
-                    centers[0] - advance / 2 - cell_start,
-                    metric.base_gap / 2,
-                    delta=0.6,
-                )
-                self.assertAlmostEqual(
-                    centers[1] - centers[0] - advance,
-                    metric.base_gap,
-                    delta=0.6,
-                )
-                self.assertAlmostEqual(
-                    cell_end - centers[1] - advance / 2,
-                    metric.base_gap / 2,
-                    delta=0.6,
-                )
-                self.assertAlmostEqual(
-                    (centers[0] + centers[1]) / 2,
-                    (cell_start + cell_end) / 2,
-                    delta=0.6,
-                )
-                self.assertLess(centers[0], axis_center)
-                self.assertLess(axis_center, centers[1])
-
-            with self.subTest(vertical=vertical, base='Latin'):
-                plain = self._item(vertical=vertical, text='AB')
-                item = self._item(
-                    vertical=vertical,
-                    text='AB',
-                    bounds=(0, 0, 520, 520),
-                )
-                apply_ruby(
-                    _select(item.document(), 0, 2), 'group', reading
-                )
-                item.layout.reLayoutEverything()
-                block = item.document().firstBlock()
-                metric = item.layout._ruby_metrics[0][0]
-                self.assertEqual(metric.base_opportunity_ends, ())
-                if vertical:
-                    base_delta = (
-                        block.layout().lineForTextPosition(1).y()
-                        - block.layout().lineForTextPosition(0).y()
+                    apply_ruby(
+                        _select(item.document(), 0, 2), 'group', reading
                     )
+                    item.layout.reLayoutEverything()
+                    block = item.document().firstBlock()
                     plain_block = plain.document().firstBlock()
-                    plain_delta = (
-                        plain_block.layout().lineForTextPosition(1).y()
-                        - plain_block.layout().lineForTextPosition(0).y()
+                    metric = item.layout._ruby_metrics[0][0]
+                    self.assertEqual(metric.base_opportunity_ends, (1,))
+                    self.assertGreater(metric.base_gap, 0.0)
+                    if vertical:
+                        base_delta = (
+                            block.layout().lineForTextPosition(1).y()
+                            - block.layout().lineForTextPosition(0).y()
+                        )
+                        plain_delta = (
+                            plain_block.layout().lineForTextPosition(1).y()
+                            - plain_block.layout().lineForTextPosition(0).y()
+                        )
+                        cell = item.layout._vertical_ruby_unit_cell(
+                            block, metric
+                        )
+                        cell_extent = cell.height()
+                    else:
+                        line = block.layout().lineAt(0)
+                        plain_line = plain_block.layout().lineAt(0)
+                        base_delta = (
+                            item.layout._cursor_x(line, 1)
+                            - item.layout._cursor_x(line, 0)
+                        )
+                        plain_delta = (
+                            plain.layout._cursor_x(plain_line, 1)
+                            - plain.layout._cursor_x(plain_line, 0)
+                        )
+                        cell = item.layout._ruby_unit_cell(block, line, metric)
+                        cell_extent = cell.width()
+                    self.assertAlmostEqual(
+                        base_delta - plain_delta,
+                        metric.base_gap,
+                        delta=0.6,
                     )
-                else:
-                    line = block.layout().lineAt(0)
-                    plain_line = plain.document().firstBlock().layout().lineAt(0)
-                    base_delta = (
-                        item.layout._cursor_x(line, 1)
-                        - item.layout._cursor_x(line, 0)
+                    self.assertAlmostEqual(
+                        cell_extent, metric.extent, delta=0.6
                     )
-                    plain_delta = (
-                        plain.layout._cursor_x(plain_line, 1)
-                        - plain.layout._cursor_x(plain_line, 0)
-                    )
-                self.assertAlmostEqual(base_delta, plain_delta, delta=0.6)
 
     def test_vertical_item_resize_uses_actual_one_sided_annotation_width(self):
         for position in ('over', 'under'):
@@ -1720,7 +1733,7 @@ class RubyFuriganaTest(unittest.TestCase):
             for x in range(0, vertical_image.width(), 8)
         ))
 
-    def test_panel_validates_mono_count_and_exposes_edit_remove(self):
+    def test_panel_editor_emits_apply_shows_errors_and_exposes_remove(self):
         group = RubyFuriganaGroup()
         edits = []
         removals = []
@@ -1732,16 +1745,25 @@ class RubyFuriganaTest(unittest.TestCase):
         group.remove_requested.connect(lambda: removals.append(True))
         group.set_state(
             'mono', 'とう', 'over',
-            can_create=True, editable=False, base_count=2,
+            editable=False,
         )
-        self.assertFalse(group.apply_button.isEnabled())
+        group.apply_button.click()
+        self.assertEqual(edits, [('mono', 'とう', 'over')])
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.advanced.QMessageBox.warning'
+        ) as warning:
+            group.set_error('Invalid Ruby')
+        warning.assert_called_once()
+        self.assertEqual(warning.call_args.args[2], 'Invalid Ruby')
         group.text_edit.setText('とう きょう')
-        self.assertTrue(group.apply_button.isEnabled())
         group._emit_apply()
-        self.assertEqual(edits, [('mono', 'とう きょう', 'over')])
+        self.assertEqual(
+            edits,
+            [('mono', 'とう', 'over'), ('mono', 'とう きょう', 'over')],
+        )
         group.set_state(
             'group', 'とうきょう', 'under',
-            can_create=False, editable=True, base_count=2,
+            editable=True,
         )
         self.assertTrue(group.remove_button.isEnabled())
         group.remove_button.click()

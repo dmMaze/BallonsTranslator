@@ -28,7 +28,6 @@ from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
-from .rendering.indexing import _grapheme_ranges, _utf16_slice
 from .annotations import (
     AnnotationProperty,
     TEXT_COMBINE_ALL,
@@ -1419,44 +1418,22 @@ class TextBlkItem(QGraphicsTextItem):
 
     def ruby_editor_values(
         self,
-    ) -> tuple[str, str, str, bool, bool, int]:
-        """Return values and creation state for the Advanced Format panel."""
+    ) -> tuple[str, str, str, bool]:
+        """Return the current Ruby editor values for the Advanced panel."""
         cursor = self.textCursor()
         container = ruby_container_for_cursor(cursor)
         if container is None:
-            start = cursor.selectionStart()
-            end = cursor.selectionEnd()
-            block = self.document().findBlock(start)
-            can_create = (
-                cursor.hasSelection()
-                and block.isValid()
-                and block == self.document().findBlock(end - 1)
-            )
-            base_count = (
-                len(_grapheme_ranges(_utf16_slice(
-                    block.text(), start - block.position(), end - start
-                )))
-                if can_create else 0
-            )
-            return 'group', '', 'over', False, can_create, base_count
+            return 'group', '', 'over', False
         text = (
             container.units[0].text
             if container.ruby_type == 'group'
             else ' '.join(unit.text for unit in container.units)
         )
-        block = self.document().findBlock(container.start)
-        base_count = len(_grapheme_ranges(_utf16_slice(
-            block.text(),
-            container.start - block.position(),
-            container.length,
-        )))
         return (
             container.ruby_type,
             text,
             container.position,
             True,
-            False,
-            base_count,
         )
 
     def setRuby(self, ruby_type: str, text: str, position: str) -> None:

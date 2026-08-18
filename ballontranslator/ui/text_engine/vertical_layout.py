@@ -1063,6 +1063,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 context=context,
                 glyph_slant_angle=angle,
                 format_index=block_metrics.format_index,
+                inline_offset=metric.annotation_center_offset,
             ))
         return tuple(placements)
 
@@ -1152,6 +1153,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     vertical=True,
                     glyph_slant_angle=angle,
                     format_index=block_metrics.format_index,
+                    inline_offset=metric.annotation_center_offset,
                 )
                 base_cell = self._vertical_ruby_base_cell(block, metric)
                 annotation_hit = placement.ink_bounds.contains(point)

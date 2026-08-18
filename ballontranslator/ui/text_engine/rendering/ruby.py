@@ -71,6 +71,7 @@ class RubyUnitMetrics:
     annotation_cross_extent: float
     base_opportunity_ends: tuple[int, ...] = ()
     base_gap: float = 0.0
+    annotation_center_offset: float = 0.0
 
     @property
     def extent(self) -> float:
@@ -299,10 +300,9 @@ def _space_around_spacing(
     """Return graphemes, eligible boundaries, and one full opportunity.
 
     The two half-size edge spaces together consume one full opportunity.
-    Bopomofo and Latin have no internal Ruby-justification opportunities.
 
     >>> _space_around_spacing('漢字A', 20.0)[1:]
-    ((1,), 10.0)
+    ((1, 2), 6.666666666666667)
     >>> _space_around_spacing('ㄅㄆ', 20.0)[1:]
     ((), 20.0)
     """
@@ -314,7 +314,13 @@ def _space_around_spacing(
         return any(
             script in name
             for script in (
-                'CJK', 'IDEOGRAPHIC', 'HIRAGANA', 'KATAKANA', 'HANGUL',
+                'CJK',
+                'IDEOGRAPHIC',
+                'HIRAGANA',
+                'KATAKANA',
+                'HANGUL',
+                'LATIN',
+                'ROMAN NUMERAL',
             )
         )
 
@@ -323,7 +329,8 @@ def _space_around_spacing(
         for (start, end), (next_start, next_end) in zip(
             graphemes, graphemes[1:]
         )
-        if distributable(start, end) and distributable(next_start, next_end)
+        if distributable(start, end)
+        and distributable(next_start, next_end)
     )
     gap = max(0.0, extra) / (len(opportunities) + 1)
     return graphemes, opportunities, gap
@@ -336,17 +343,16 @@ def _space_around_positions(
     *,
     vertical: bool,
 ) -> tuple[tuple[str, float], ...]:
-    """Return CJK space-around centers along one Ruby inline axis.
+    """Return space-around centers along one Ruby inline axis.
 
-    Non-CJK text stays contiguous and centered. Horizontal text remains one
-    shaped run; vertical text remains its ordinary gapless upright stack.
+    A horizontal run keeps native shaping when it does not need expansion.
 
     >>> len(_space_around_positions('AB', QFont(), 100, vertical=False))
-    1
+    2
     >>> len(_space_around_positions('哈佛', QFont(), 100, vertical=False))
     2
     >>> len(_space_around_positions('ＡＢ', QFont(), 100, vertical=False))
-    1
+    2
     """
     ranges, opportunities, _gap = _space_around_spacing(text, 0.0)
     graphemes = tuple(
@@ -355,12 +361,13 @@ def _space_around_positions(
     if not graphemes:
         return ()
     metrics = QFontMetricsF(font)
-    if not vertical and not opportunities:
-        return ((text, extent / 2),)
     if vertical:
         runs = tuple(zip(graphemes, ranges))
         advances = tuple(metrics.height() for _grapheme in graphemes)
     else:
+        natural_advance = metrics.horizontalAdvance(text)
+        if extent <= natural_advance + 1e-6:
+            return ((text, extent / 2),)
         runs = []
         run_start = 0
         for opportunity_end in opportunities:
@@ -378,14 +385,17 @@ def _space_around_positions(
         advances = tuple(
             metrics.horizontalAdvance(run) for run, _range in runs
         )
+        if extent <= sum(advances) + 1e-6:
+            return ((text, extent / 2),)
     free = max(0.0, extent - sum(advances))
     gap = free / (len(opportunities) + 1)
     cursor = gap / 2
     positions = []
-    for index, ((run, _range), advance) in enumerate(zip(runs, advances)):
+    opportunity_ends = frozenset(opportunities)
+    for (run, _range), advance in zip(runs, advances):
         positions.append((run, cursor + advance / 2))
         cursor += advance
-        if index < len(opportunities):
+        if _range[1] in opportunity_ends:
             cursor += gap
     return tuple(positions)
 
@@ -396,9 +406,8 @@ def _annotation_cross_extent(
 ) -> float:
     """Measure the widest actual annotation glyph, not a font maximum."""
     width = 0.0
-    for grapheme, _position in _space_around_positions(
-        text, char_format.font(), 0.0, vertical=True
-    ):
+    for start, end in _grapheme_ranges(text):
+        grapheme = _utf16_slice(text, start, end - start)
         _layout, line = _temporary_line(grapheme, char_format.font())
         geometry = glyph_geometry(
             line,
@@ -583,6 +592,7 @@ def vertical_ruby_metrics(
             local_start = unit.start - block.position()
             base_text = _utf16_slice(block_text, local_start, unit.length)
             base_advance = 0.0
+            trailing_spacing = 0.0
             for start, end in _grapheme_ranges(base_text):
                 grapheme = _utf16_slice(base_text, start, end - start)
                 char_format = _format_at(
@@ -610,10 +620,14 @@ def vertical_ruby_metrics(
                 spacing = letter_spacing_value(
                     char_format, letter_spacing_fallback
                 )
-                base_advance += max(
+                advance = max(
                     0.0,
                     natural_advance + reference_height * (spacing - 1.0),
                 )
+                base_advance += advance
+                # Tracking trails the glyph frame. Half of the final trailing
+                # advance separates the unit-cell center from its glyph center.
+                trailing_spacing = advance - natural_advance
             ruby_format = ruby_char_format(
                 block, local_start, format_index=format_index
             )
@@ -633,6 +647,7 @@ def vertical_ruby_metrics(
                 _annotation_cross_extent(unit.text, ruby_format),
                 opportunities,
                 gap,
+                -trailing_spacing / 2,
             ))
     return RubyBlockMetrics.create(metrics, format_index)
 
@@ -927,18 +942,17 @@ def _vertical_runs(
         return ()
     base_height = QFontMetricsF(char_format.font()).height() / RUBY_FONT_SCALE
     gap = base_height * RUBY_GAP_SCALE
-    x = (
-        cell.right() + gap
+    cross_extent = max(
+        geometry.bounds.width()
+        for _grapheme, _baseline, geometry, _inline_center in source
+    )
+    center_x = (
+        cell.right() + gap + cross_extent / 2
         if position == 'over'
-        else cell.left() - gap
+        else cell.left() - gap - cross_extent / 2
     )
     result = []
     for grapheme, baseline, geometry, inline_center in source:
-        center_x = (
-            x + geometry.bounds.width() / 2
-            if position == 'over'
-            else x - geometry.bounds.width() / 2
-        )
         center = QPointF(center_x, cell.top() + inline_center)
         result.append(_paint_run(
             grapheme,
@@ -961,6 +975,7 @@ def ruby_placement(
     context: Optional[QAbstractTextDocumentLayout.PaintContext] = None,
     glyph_slant_angle: float = 0.0,
     format_index: Optional[RubyFormatIndex] = None,
+    inline_offset: float = 0.0,
 ) -> RubyPlacement:
     char_format = ruby_char_format(
         block,
@@ -969,13 +984,26 @@ def ruby_placement(
         unit.length,
         format_index,
     )
+    annotation_cell = QRectF(cell)
+    annotation_cell.translate(
+        0.0 if vertical else inline_offset,
+        inline_offset if vertical else 0.0,
+    )
     paint_runs = (
         _vertical_runs(
-            unit.text, char_format, cell, container.position, glyph_slant_angle
+            unit.text,
+            char_format,
+            annotation_cell,
+            container.position,
+            glyph_slant_angle,
         )
         if vertical
         else _horizontal_runs(
-            unit.text, char_format, cell, container.position, glyph_slant_angle
+            unit.text,
+            char_format,
+            annotation_cell,
+            container.position,
+            glyph_slant_angle,
         )
     )
     return RubyPlacement(unit, QRectF(cell), paint_runs, char_format)

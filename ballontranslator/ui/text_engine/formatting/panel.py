@@ -990,11 +990,23 @@ class FontFormatPanel(Widget):
     ) -> None:
         item = self.textblk_item
         if item is None:
+            self.textadvancedfmt_panel.ruby_group.set_error(
+                self.tr('Select base text to apply Ruby.')
+            )
             return
         try:
             item.setRuby(ruby_type, text, position)
         except RubyValidationError as error:
             messages = {
+                'Select non-empty base text before applying Ruby': self.tr(
+                    'Select base text to apply Ruby.'
+                ),
+                'Ruby text cannot be empty': self.tr(
+                    'Ruby text cannot be empty.'
+                ),
+                'Mono Ruby needs one whitespace-separated reading per base grapheme': self.tr(
+                    'Mono Ruby needs one whitespace-separated reading per base grapheme.'
+                ),
                 'Ruby cannot partially overlap an existing container': self.tr(
                     'Ruby cannot partially overlap an existing container.'
                 ),
@@ -1013,13 +1025,7 @@ class FontFormatPanel(Widget):
             )
             self._restore_ruby_edit_focus(item)
             return
-        values = item.ruby_editor_values()
-        self.textadvancedfmt_panel.set_ruby_state(
-            *values[:3],
-            editable=values[3],
-            can_create=values[4],
-            base_count=values[5],
-        )
+        self.textadvancedfmt_panel.set_ruby_state(*item.ruby_editor_values())
         self._restore_ruby_edit_focus(item)
 
     def on_ruby_remove_requested(self) -> None:
@@ -1027,13 +1033,7 @@ class FontFormatPanel(Widget):
         if item is None:
             return
         item.removeRuby()
-        values = item.ruby_editor_values()
-        self.textadvancedfmt_panel.set_ruby_state(
-            *values[:3],
-            editable=values[3],
-            can_create=values[4],
-            base_count=values[5],
-        )
+        self.textadvancedfmt_panel.set_ruby_state(*item.ruby_editor_values())
         self._restore_ruby_edit_focus(item)
 
     def resolve_text_transform_edits_for_save(self):
@@ -1128,10 +1128,7 @@ class FontFormatPanel(Widget):
             )
             self.set_tate_chu_yoko_enabled(False)
             self.textadvancedfmt_panel.set_ruby_state(
-                'group', '', 'over',
-                editable=False,
-                can_create=False,
-                base_count=0,
+                'group', '', 'over', False,
             )
         else:
             self.formatBtnGroup.emphasisBtn.set_values(
@@ -1140,12 +1137,8 @@ class FontFormatPanel(Widget):
             self.set_tate_chu_yoko_enabled(
                 self.textblk_item.tate_chu_yoko_enabled()
             )
-            values = self.textblk_item.ruby_editor_values()
             self.textadvancedfmt_panel.set_ruby_state(
-                *values[:3],
-                editable=values[3],
-                can_create=values[4],
-                base_count=values[5],
+                *self.textblk_item.ruby_editor_values()
             )
 
     def set_active_format(

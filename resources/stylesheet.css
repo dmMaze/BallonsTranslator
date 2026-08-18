@@ -2310,6 +2310,20 @@ SmallComboBox {
     background-color: @transtexteditBackgroundColor;
 }
 
+QGroupBox#RubyFuriganaGroup QLineEdit,
+QGroupBox#RubyFuriganaGroup QPushButton {
+    font-size: 12px;
+}
+
+QGroupBox#RubyFuriganaGroup QLineEdit {
+    height: 20px;
+}
+
+QGroupBox#RubyFuriganaGroup QPushButton {
+    height: 24px;
+    padding: 0px 8px;
+}
+
 SmallConfigPutton {
     height: 20px;
     width: 20px;

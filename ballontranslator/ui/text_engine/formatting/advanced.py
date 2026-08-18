@@ -7,6 +7,7 @@ from qtpy.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -280,18 +281,14 @@ class RubyFuriganaGroup(QGroupBox):
 
     def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
+        self.setObjectName('RubyFuriganaGroup')
         self.setTitle(self.tr('Ruby / Furigana'))
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-        self._can_create = False
-        self._editable = False
-        self._base_count = 0
-
         self.type_combobox = SmallComboBox(parent=self)
         self.type_combobox.addItem(self.tr('Group'), 'group')
         self.type_combobox.addItem(self.tr('Mono'), 'mono')
-        self.type_combobox.activated.connect(self._refresh_validation)
         self.type_label = _word_wrap_label(
             SmallParamLabel(self.tr('Type'), parent=self)
         )
@@ -301,7 +298,6 @@ class RubyFuriganaGroup(QGroupBox):
         self.text_edit.setToolTip(
             self.tr('For Mono Ruby, separate readings with whitespace')
         )
-        self.text_edit.textChanged.connect(self._refresh_validation)
         self.text_edit.returnPressed.connect(self._emit_apply)
         self.text_label = _word_wrap_label(
             SmallParamLabel(self.tr('Reading'), parent=self)
@@ -314,12 +310,17 @@ class RubyFuriganaGroup(QGroupBox):
             SmallParamLabel(self.tr('Position'), parent=self)
         )
 
-        self.apply_button = QPushButton(self.tr('Apply / Update'), self)
+        self.apply_button = QPushButton(self.tr('Apply'), self)
+        self.apply_button.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+        )
         self.apply_button.clicked.connect(self._emit_apply)
         self.remove_button = QPushButton(self.tr('Remove'), self)
+        self.remove_button.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+        )
         self.remove_button.clicked.connect(self.remove_requested.emit)
-        self.validation_label = QLabel(self)
-        self.validation_label.setWordWrap(True)
+        self.remove_button.setEnabled(False)
 
         type_unit = _atomic_unit(
             self, self.type_label, self.type_combobox
@@ -327,60 +328,34 @@ class RubyFuriganaGroup(QGroupBox):
         position_unit = _atomic_unit(
             self, self.position_label, self.position_combobox
         )
-        selector_row, self.adaptive_layout = _adaptive_row(
+        selector_row, _ = _adaptive_row(
             self, type_unit, position_unit
         )
-        text_unit = _atomic_unit(self, self.text_label, self.text_edit)
-        button_unit = _atomic_unit(
-            self, self.apply_button, self.remove_button
+        text_unit = _atomic_unit(
+            self,
+            self.text_label,
+            self.text_edit,
+            self.apply_button,
+            self.remove_button,
         )
-        layout = QVBoxLayout(self)
-        layout.addWidget(selector_row)
-        layout.addWidget(text_unit)
-        layout.addWidget(self.validation_label)
-        layout.addWidget(button_unit)
-        self._refresh_validation()
+        self.adaptive_layout = QVBoxLayout(self)
+        self.adaptive_layout.addWidget(selector_row)
+        self.adaptive_layout.addWidget(text_unit)
 
     def _emit_apply(self) -> None:
-        if not self.apply_button.isEnabled():
-            return
         self.apply_requested.emit(
             str(self.type_combobox.currentData()),
             self.text_edit.text(),
             str(self.position_combobox.currentData()),
         )
 
-    def _refresh_validation(self, *_args) -> None:
-        text = self.text_edit.text()
-        ruby_type = str(self.type_combobox.currentData() or 'group')
-        valid = bool(text.strip()) and (self._can_create or self._editable)
-        message = ''
-        if ruby_type == 'mono' and text.strip():
-            reading_count = len(text.split())
-            if reading_count != self._base_count:
-                valid = False
-                message = self.tr(
-                    'Mono Ruby needs one whitespace-separated reading per base grapheme.'
-                )
-        elif not self._can_create and not self._editable:
-            message = self.tr('Select base text to apply Ruby.')
-        self.validation_label.setText(message)
-        self.apply_button.setEnabled(valid)
-        self.remove_button.setEnabled(self._editable)
-
     def set_state(
         self,
         ruby_type: str,
         text: str,
         position: str,
-        *,
-        can_create: bool,
         editable: bool,
-        base_count: int,
     ) -> None:
-        self._can_create = can_create
-        self._editable = editable
-        self._base_count = base_count
         for combobox, value in (
             (self.type_combobox, ruby_type),
             (self.position_combobox, position),
@@ -390,10 +365,14 @@ class RubyFuriganaGroup(QGroupBox):
                 combobox.setCurrentIndex(index)
         if self.text_edit.text() != text:
             self.text_edit.setText(text)
-        self._refresh_validation()
+        self.remove_button.setEnabled(editable)
 
     def set_error(self, message: str) -> None:
-        self.validation_label.setText(message)
+        QMessageBox.warning(
+            self,
+            self.tr('Ruby / Furigana'),
+            message,
+        )
 
 
 class TextAdvancedFormatPanel(PanelArea):
@@ -503,9 +482,9 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
-        vlayout.addWidget(self.ruby_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
+        vlayout.addWidget(self.ruby_group)
 
         self.setContentLayout(vlayout)
         self.vlayout = vlayout
@@ -746,16 +725,6 @@ class TextAdvancedFormatPanel(PanelArea):
         ruby_type: str,
         text: str,
         position: str,
-        *,
-        can_create: bool,
         editable: bool,
-        base_count: int,
     ) -> None:
-        self.ruby_group.set_state(
-            ruby_type,
-            text,
-            position,
-            can_create=can_create,
-            editable=editable,
-            base_count=base_count,
-        )
+        self.ruby_group.set_state(ruby_type, text, position, editable)
