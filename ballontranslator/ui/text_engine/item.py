@@ -544,7 +544,7 @@ class TextBlkItem(QGraphicsTextItem):
                 self.setRotation(angle)
             self.blk.angle = angle
 
-    def setVertical(self, vertical: bool):
+    def setVertical(self, vertical: bool) -> None:
 
         is_editing = self.isEditing()
         preserve_selection_direction = not self._text_transform_is_neutral()
@@ -582,7 +582,16 @@ class TextBlkItem(QGraphicsTextItem):
         controller = self.geometry_controller
         with controller.defer_compilation():
             block_change_signal = self.block_change_signal
+            was_repainting = self.repainting
+            was_relayout_on_changed = (
+                self.layout.relayout_on_changed if valid_layout else None
+            )
             self.block_change_signal = True
+            self.repainting = True
+            if valid_layout:
+                # This layout is about to be replaced; formatting it again is
+                # pure transition overhead.
+                self.layout.relayout_on_changed = False
             try:
                 set_document_letter_spacing_writing_mode(
                     doc,
@@ -591,6 +600,9 @@ class TextBlkItem(QGraphicsTextItem):
                 )
             finally:
                 self.block_change_signal = block_change_signal
+                self.repainting = was_repainting
+                if valid_layout:
+                    self.layout.relayout_on_changed = was_relayout_on_changed
 
             # QTextCursor formatting emits contentsChanged synchronously while
             # the old layout is still attached. Keep the writing-mode flag
@@ -628,6 +640,11 @@ class TextBlkItem(QGraphicsTextItem):
                 layout = VerticalTextDocumentLayout(doc, self.fontformat)
             else:
                 layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+            if valid_layout:
+                # setDocumentLayout() immediately announces the existing
+                # document. Defer that provisional zero-size layout and run
+                # one settled pass after the final size and renderer are set.
+                layout.relayout_on_changed = False
             self.layout = layout
             doc.setDocumentLayout(layout)
             layout.setEffectPadding(effect_padding)
@@ -638,7 +655,11 @@ class TextBlkItem(QGraphicsTextItem):
             layout.documentSizeChanged.connect(self.docSizeChanged)
 
             if valid_layout:
-                layout.setMaxSize(rect.width(), rect.height())
+                layout.setMaxSize(
+                    rect.width(), rect.height(), relayout=False
+                )
+                layout.relayout_on_changed = True
+                layout.reLayoutEverything()
                 controller.refresh_compiled_geometry()
                 self.repaint_background()
         if is_editing:

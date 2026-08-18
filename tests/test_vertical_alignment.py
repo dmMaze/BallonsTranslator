@@ -181,6 +181,21 @@ class VerticalAlignmentTest(unittest.TestCase):
             1 / 64,
         )
 
+    def test_writing_mode_switch_runs_only_the_settled_layout(self):
+        item = self._make_item(TextAlignment.Center)
+        item.setVertical(False)
+        discarded_layout = item.layout
+
+        with patch.object(
+            discarded_layout,
+            'reLayoutEverything',
+            wraps=discarded_layout.reLayoutEverything,
+        ) as discarded_relayout:
+            item.setVertical(True)
+
+        self.assertEqual(discarded_relayout.call_count, 0)
+        self.assertEqual(item.layout.layout_generation, 1)
+
     def test_writing_mode_switch_detaches_the_old_slant_layout(self):
         item = self._make_item(
             TextAlignment.Center,
