@@ -8,6 +8,7 @@ from qtpy.QtGui import QDrag, QFontMetrics, QColor, QPixmap, QPainter, QContextM
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.config import save_text_styles, text_styles
 from ballontranslator.utils import config as C
+from ..font_family import qfont_with_family
 from ...custom_widget import PanelArea, Widget, FlowLayout
 from ...misc import themed_icon_url
 
@@ -207,8 +208,10 @@ class TextStyleLabel(Widget):
         return super().mouseMoveEvent(event)
 
     def updatePreview(self):
-        font = self.stylelabel.font()
-        font.setFamily(self.fontfmt.font_family)
+        font = qfont_with_family(
+            self.stylelabel.font(),
+            self.fontfmt.font_family,
+        )
         self.stylelabel.setFont(font)
 
         d = int(self.colorw.width() * 0.66)

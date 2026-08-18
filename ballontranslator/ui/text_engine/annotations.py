@@ -35,6 +35,11 @@ from ballontranslator.utils.fontformat import (
     import_font_weight_html,
 )
 from ballontranslator.utils.logger import logger as LOGGER
+from .font_family import (
+    html_uses_project_font_family,
+    normalize_document_font_families,
+    restore_project_font_families_in_html,
+)
 from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
 
 
@@ -1021,6 +1026,8 @@ def load_rich_text_html(
             _preprocess_ruby_html(html), qt6=QT6
         )
         document.setHtml(qt_html)
+        if html_uses_project_font_family(qt_html):
+            normalize_document_font_families(document)
         lowered_html = qt_html.lower()
         extension_ranges, paragraph_distances = (
             _rich_text_extensions_from_html(document, qt_html)
@@ -1756,7 +1763,9 @@ def to_rich_text_html(
             line_spacing_type_fallback,
         ),
     )
-    return export_font_weight_html(extended_html, qt6=QT6)
+    return restore_project_font_families_in_html(
+        export_font_weight_html(extended_html, qt6=QT6)
+    )
 
 
 def emphasis_values(char_format: QTextCharFormat) -> tuple[str, str]:

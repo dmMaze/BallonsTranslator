@@ -15,6 +15,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, pt2px
+from .font_family import qfont_with_family
 from .annotations import letter_spacing_value, line_spacing_values
 
 
@@ -91,8 +92,12 @@ def paint_context_without_selection_ranges(
     return delegated
 
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
-    font = QFont(ffamily, int(size), weight, italic)
+    # QFont's string constructor splits comma-bearing family names into a
+    # fallback list. The shared boundary preserves one database family name.
+    font = qfont_with_family(QFont(), ffamily)
     font.setPointSizeF(size)
+    font.setWeight(weight)
+    font.setItalic(italic)
     return QFontMetricsF(font)
 
 @lru_cache(maxsize=2048)

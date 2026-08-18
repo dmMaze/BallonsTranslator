@@ -17,6 +17,7 @@ from ballontranslator.utils.config import AutoTateChuYokoConfig
 from ballontranslator.utils.fontformat import font_weight_to_qt
 from ballontranslator.utils.message import create_error_dialog
 from ballontranslator.utils.textblock import TextBlock
+from .font_family import qfont_with_family
 from .annotations import (
     apply_auto_text_combine_upright,
     apply_letter_spacing,
@@ -30,8 +31,10 @@ def _load_text_block_document(block: TextBlock) -> QTextDocument:
     """Build a formatting document without constructing a scene item."""
     document = QTextDocument()
     font_format = block.fontformat
-    font = document.defaultFont()
-    font.setFamily(font_format.font_family)
+    font = qfont_with_family(
+        document.defaultFont(),
+        font_format.font_family,
+    )
     font.setPointSizeF(font_format.size_pt)
     font.setWeight(QFont.Weight(font_weight_to_qt(
         font_format.font_weight,

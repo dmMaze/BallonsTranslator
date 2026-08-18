@@ -71,6 +71,10 @@ direct Normal/Bold toggle. Per-range rich text uses the native CSS
 boundary normalizes Qt 5's legacy serializer scale so both bindings write the
 same CSS values and still load older Qt 5 rich text at its original weight.
 
+Pass project and font-UI family names through `qfont_with_family()` instead of
+Qt constructors or setters. It leaves ordinary families unchanged and aliases
+Qt-unsafe names; saved data keeps the original name.
+
 Before save, page change, undo/redo, or scene replacement, resolve or cancel
 pending edits and previews. Before removing items, release their effect, glyph,
 and surface resources.

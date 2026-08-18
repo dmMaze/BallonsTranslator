@@ -19,6 +19,10 @@ from ballontranslator.utils.fontformat import (
     font_weight_to_qt,
     pt2px,
 )
+from .font_family import (
+    font_family_for_project,
+    qfont_with_family,
+)
 from ..misc import td_pattern, table_pattern
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
@@ -1056,7 +1060,7 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat = self.fontformat.deepcopy()
         fontformat.frgb = [color.red(), color.green(), color.blue()]
         fontformat.font_weight = font_weight_from_qt(font.weight())
-        fontformat.font_family = font.family()
+        fontformat.font_family = font_family_for_project(font.family())
         if self.isEditing():
             fontformat.font_size = pt2px(font.pointSizeF())
         else:
@@ -1086,9 +1090,10 @@ class TextBlkItem(QGraphicsTextItem):
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         format = cursor.charFormat()
-        font = self.document().defaultFont()
-
-        font.setFamily(ffmat.font_family)
+        font = qfont_with_family(
+            self.document().defaultFont(),
+            ffmat.font_family,
+        )
         font.setPointSizeF(ffmat.size_pt)
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
@@ -1244,9 +1249,7 @@ class TextBlkItem(QGraphicsTextItem):
         lastpos = doc.rootFrame().lastPosition()
         if cursor.selectionStart() == 0 and \
             cursor.selectionEnd() == lastpos:
-            font = doc.defaultFont()
-            font.setFamily(value)
-            doc.setDefaultFont(font)
+            doc.setDefaultFont(qfont_with_family(doc.defaultFont(), value))
 
         sel_start = cursor.selectionStart()
         sel_end = cursor.selectionEnd()
@@ -1263,13 +1266,7 @@ class TextBlkItem(QGraphicsTextItem):
                 if pos1 < pos2:
                     cfmt = fragment.charFormat()
                     under_line = cfmt.fontUnderline()
-                    cfont = cfmt.font()
-                    font = QFont(value, cfont.pointSize(), cfont.weight(), cfont.italic())
-                    font.setPointSizeF(cfont.pointSizeF())
-                    font.setBold(font.bold())
-                    font.setWordSpacing(cfont.wordSpacing())
-                    font.setLetterSpacing(cfont.letterSpacingType(), cfont.letterSpacing())
-                    cfmt.setFont(font)
+                    cfmt.setFont(qfont_with_family(cfmt.font(), value))
                     cfmt.setFontUnderline(under_line)
                     cursor.setPosition(pos1)
                     cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
@@ -1278,7 +1275,7 @@ class TextBlkItem(QGraphicsTextItem):
             block = block.next()
 
         cfmt = cursor.charFormat()
-        cfmt.setFontFamily(value)
+        cfmt.setFont(qfont_with_family(cfmt.font(), value))
         self.set_cursor_cfmt(cursor, cfmt)
 
     def setFontWeight(
