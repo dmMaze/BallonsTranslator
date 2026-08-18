@@ -136,12 +136,17 @@ text.
 
 `rendering/ruby.py` is the shared measurement and glyph-geometry boundary.
 Horizontal and vertical layouts reserve `max(base advance, annotation
-advance)` and use CSS Ruby's initial `space-around` for whichever run is
-shorter. Spacing is added only at adjacent eligible CJK boundaries; Latin,
-Bopomofo, and mixed ineligible boundaries remain contiguous. Group units stay
-indivisible and mono breaks remain limited to boundaries between pairs,
-and reuse the resulting cells for paint, cursor, selection, hit testing, ink
-bounds, effects, and transforms. Ruby derives its font and glyph styling from
+advance)` and apply a manga-oriented `space-around` policy to whichever run is
+shorter. Adjacent CJK, Latin, and mixed CJK/Latin graphemes receive a full
+space, while the two edges receive half spaces; Latin eligibility is an app
+extension to W3C's default Ruby justification opportunities. Group units stay
+indivisible and mono breaks remain limited to boundaries between pairs. The
+resulting cells are reused for paint, cursor, selection, hit testing, ink
+bounds, effects, and transforms. Vertical Ruby centers on all selected base
+character frames before their final trailing character-spacing advance, so
+group and mono readings share the base glyphs' visual inline center. Its
+upright annotation glyphs also share one horizontal column center instead of
+aligning their inner ink edges. Ruby derives its font and glyph styling from
 the relevant base fragment at 50% size. When Ruby and emphasis use the same
 side, Ruby stays nearest the base and emphasis consumes the accumulated outer
 margin. Ruby remains annotation text, not editable document characters.

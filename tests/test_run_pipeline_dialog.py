@@ -234,6 +234,42 @@ class RunPipelineDialogTests(unittest.TestCase):
             panel.close()
             pcfg.let_letter_case = original
 
+    def test_quick_insert_characters_config_defaults_and_round_trip(self):
+        default_characters = '『』「」♥♡★☆※♩♬'
+        self.assertEqual(
+            ProgramConfig().quick_insert_characters,
+            default_characters,
+        )
+
+        config = ProgramConfig(quick_insert_characters='♥☆')
+        restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
+        self.assertEqual(restored.quick_insert_characters, '♥☆')
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'config.json')
+            with open(path, 'w', encoding='utf8') as config_file:
+                json.dump(
+                    {'darkmode': True, 'quick_insert_characters': []},
+                    config_file,
+                )
+            invalid = ProgramConfig.load(path)
+        self.assertTrue(invalid.darkmode)
+        self.assertEqual(invalid.quick_insert_characters, default_characters)
+
+    def test_quick_insert_characters_control_updates_config(self):
+        original = pcfg.quick_insert_characters
+        pcfg.quick_insert_characters = '♥☆'
+        panel = ConfigPanel()
+        try:
+            self.assertEqual(panel.quick_insert_characters_edit.text(), '♥☆')
+
+            panel.quick_insert_characters_edit.setText('!?')
+
+            self.assertEqual(pcfg.quick_insert_characters, '!?')
+        finally:
+            panel.close()
+            pcfg.quick_insert_characters = original
+
     def test_auto_tate_chu_yoko_config_defaults_and_round_trip(self):
         defaults = ProgramConfig().auto_tate_chu_yoko
         self.assertFalse(defaults.enabled)

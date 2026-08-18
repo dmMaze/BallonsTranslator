@@ -1003,6 +1003,14 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
 
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
+        self.quick_insert_characters_edit, _ = typesettingConfigPanel.addLineEdit(
+            self.tr('Quick insert characters')
+        )
+        self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
+        self.quick_insert_characters_edit.textChanged.connect(
+            self.on_quick_insert_characters_changed
+        )
+
         self.exclude_fonts_btn = QPushButton(self.tr('Hide Unused Fonts'), parent=self)
         self.exclude_fonts_btn.clicked.connect(self.show_font_exclusion_dialog)
         font_exclusion_block = typesettingConfigPanel.addBlockWidget(
@@ -1606,6 +1614,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_autolayout_changed(self):
         pcfg.let_autolayout_flag = self.let_autolayout_checker.isChecked()
 
+    def on_quick_insert_characters_changed(self, text: str) -> None:
+        pcfg.quick_insert_characters = text
+
     def on_letter_case_changed(self, checked: bool) -> None:
         button = self.sender()
         if checked and isinstance(button, QRadioButton):
@@ -1827,6 +1838,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_family_combox.setCurrentIndex(pcfg.let_family_flag)
         self.let_writing_mode_combox.setCurrentIndex(pcfg.let_writing_mode_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
+        self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
         self.let_letter_case_buttons[pcfg.let_letter_case].setChecked(True)
         self.compact_vertical_punctuation_checker.setChecked(
             pcfg.compact_vertical_punctuation_spacing

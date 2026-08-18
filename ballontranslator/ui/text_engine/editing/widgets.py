@@ -5,11 +5,12 @@ from typing import List
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
+from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
 import numpy as np
 
 from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
+from .context_menu import create_text_edit_context_menu
 from ballontranslator.utils.config import pcfg
 from ...spellcheck import SpellCheckManager, SpellCheckHighlighter
 
@@ -503,7 +504,46 @@ class SourceTextEdit(QTextEdit):
 
         
 class TransTextEdit(SourceTextEdit):
-    pass
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        cursor = self.textCursor()
+        menu, quick_insert_actions = create_text_edit_context_menu(
+            self,
+            has_selection=cursor.hasSelection(),
+            can_undo=self.document().isUndoAvailable(),
+            can_redo=self.document().isRedoAvailable(),
+        )
+
+        self.in_acts = True
+        changed = False
+        try:
+            action = menu.exec(event.globalPos())
+            operation = action.data() if action is not None else None
+            if action in quick_insert_actions:
+                self.insertPlainText(operation)
+                changed = True
+            elif operation == 'undo':
+                self.undo_signal.emit()
+            elif operation == 'redo':
+                self.redo_signal.emit()
+            elif operation == 'cut':
+                self.cut()
+                changed = True
+            elif operation == 'copy':
+                self.copy()
+            elif operation == 'paste':
+                self.paste_flag = True
+                self.paste()
+                changed = True
+            elif operation == 'delete':
+                cursor.removeSelectedText()
+                self.setTextCursor(cursor)
+                changed = True
+
+            if changed:
+                self.handle_content_change()
+        finally:
+            self.in_acts = False
+        event.accept()
 
 
 class RowIndexEditor(QLineEdit):

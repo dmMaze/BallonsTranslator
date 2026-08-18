@@ -242,6 +242,11 @@
         <translation>嵌字</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1007"/>
+        <source>Quick insert characters</source>
+        <translation>快捷输入字符</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="711"/>
         <source>Spell Checker</source>
         <translation>拼写检查</translation>
@@ -485,12 +490,12 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1104"/>
         <source>Compact punctuation spacing</source>
-        <translation>缩短符号字距</translation>
+        <translation>紧凑标点间距</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1106"/>
         <source>Remove extra spacing around punctuation in vertical text.</source>
-        <translation>移除竖排文字中标点符号周围多余的字距。</translation>
+        <translation>移除竖排文本中标点周围的多余间距</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="984"/>
@@ -643,6 +648,106 @@
     <message>
         <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
         <translation type="vanished">允许的最大拼写错误字符数。数值越大匹配范围越广，但搜索速度越慢。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1253"/>
+        <source>Additional Characters</source>
+        <translation>其他字符</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1151"/>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1135"/>
+        <source>Automatic Tate-chu-yoko</source>
+        <translation>自动纵中横</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1144"/>
+        <source>Automatically combine matching character runs into one upright horizontal unit in vertical text.</source>
+        <translation>自动将匹配的连续字符合并为竖排文本中的一个横排单元</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1046"/>
+        <source>Capitalize</source>
+        <translation>句首大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1033"/>
+        <source>Choose how translated text letter case is adjusted after keyword substitution.</source>
+        <translation>如何调整译文中的字母大小写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1055"/>
+        <source>Convert translated text to uppercase.</source>
+        <translation>将译文转换为大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1234"/>
+        <source>Include consecutive Latin letters from A to Z and a to z in automatic runs.</source>
+        <translation>自动合并时包含连续的 A-Z 和 a-z 拉丁字母</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1216"/>
+        <source>Include consecutive digits from 0 to 9 in automatic runs.</source>
+        <translation>自动合并时包含连续的 0-9 数字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1043"/>
+        <source>Keep translated text letter case unchanged.</source>
+        <translation>保持译文中的字母大小写不变</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1025"/>
+        <source>Letter Case</source>
+        <translation>大小写转换</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1226"/>
+        <source>Letters</source>
+        <translation>字母</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1049"/>
+        <source>Lowercase translated text, then capitalize the first letter of each sentence.</source>
+        <translation>先将译文转换为小写，再将每个句子的首字母大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1176"/>
+        <source>Maximum Run Length</source>
+        <translation>最大连续字符数</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1184"/>
+        <source>Maximum number of consecutive matching characters to combine.</source>
+        <translation>可合并的连续匹配字符的最大数量</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1208"/>
+        <source>Numbers</source>
+        <translation>数字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1261"/>
+        <source>Other characters that can participate in an automatic run.</source>
+        <translation>可参与自动合并的其他字符</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="970"/>
+        <source>Pipeline Font Formatting</source>
+        <translation>自动化流程字体格式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1053"/>
+        <source>Uppercase</source>
+        <translation>全部大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1096"/>
+        <source>Vertical Text Layout</source>
+        <translation>竖排特性</translation>
     </message>
 </context>
 <context>
@@ -879,6 +984,67 @@
     <message>
         <source>Effect</source>
         <translation type="vanished">特效</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="699"/>
+        <source>Combine the selected text into one upright vertical cell</source>
+        <translation>将所选文本合并为竖排中的一个横排单元</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="654"/>
+        <source>Font Weight</source>
+        <translation>字重</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1008"/>
+        <source>Mono Ruby needs one whitespace-separated reading per base grapheme.</source>
+        <translation>单字注释要求每个基文字符对应一个以空格分隔的读音</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1017"/>
+        <source>Ruby base text cannot contain paragraph or forced line breaks.</source>
+        <translation>注释基文不能包含段落或强制换行</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1014"/>
+        <source>Ruby cannot overlap Tate-chu-yoko.</source>
+        <translation>注释不能与纵中横重叠</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1011"/>
+        <source>Ruby cannot partially overlap an existing container.</source>
+        <translation>注释范围不能与现有注释范围部分重叠</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1005"/>
+        <source>Ruby text cannot be empty.</source>
+        <translation>注释文本不能为空</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="994"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1002"/>
+        <source>Select base text to apply Ruby.</source>
+        <translation>请选择要添加注释的基文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="712"/>
+        <source>Standard Vertical Roman Alignment</source>
+        <translation>标准垂直罗马对齐方式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="958"/>
+        <source>Tate-chu-yoko cannot overlap Ruby.</source>
+        <translation>纵中横不能与注释重叠</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1023"/>
+        <source>Unable to apply Ruby to this selection.</source>
+        <translation>无法为当前选区应用注释</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="961"/>
+        <source>Unable to apply Tate-chu-yoko to this selection.</source>
+        <translation>无法为当前选区应用纵中横</translation>
     </message>
 </context>
 <context>
@@ -3701,6 +3867,36 @@ All existing translation results will be cleared!</source>
         <source>Render without update text style</source>
         <translation>不覆盖已有字体样式</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="806"/>
+        <source>Capitalize</source>
+        <translation>句首大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="793"/>
+        <source>Choose how OCR text letter case is adjusted after keyword substitution.</source>
+        <translation>关键词替换后如何调整 OCR 文本中的字母大小写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="815"/>
+        <source>Convert OCR text to uppercase.</source>
+        <translation>将 OCR 文本转换为大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="803"/>
+        <source>Keep OCR text letter case unchanged.</source>
+        <translation>保持 OCR 文本中的字母大小写不变</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="809"/>
+        <source>Lowercase OCR text, then capitalize the first letter of each sentence.</source>
+        <translation>先将 OCR 文本转换为小写，再将每个句子的首字母大写</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="813"/>
+        <source>Uppercase</source>
+        <translation>全部大写</translation>
+    </message>
 </context>
 <context>
     <name>SecretLineEditor</name>
@@ -4792,6 +4988,252 @@ All existing translation results will be cleared!</source>
         <source>Failed to install &apos;pyspellchecker&apos;:
 </source>
         <translation>&apos;pyspellchecker&apos; 安装失败</translation>
+    </message>
+</context>
+<context>
+    <name>AutoTateChuYokoThread</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/pipeline_formatting.py" line="196"/>
+        <source>Failed to apply automatic Tate-chu-yoko.</source>
+        <translation>纵中横规则应用失败</translation>
+    </message>
+</context>
+<context>
+    <name>EmphasisToolButton</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="166"/>
+        <source>Emphasis Marks</source>
+        <translation>着重号</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="183"/>
+        <source>Filled Circle</source>
+        <translation>实心圆</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="181"/>
+        <source>Filled Dot</source>
+        <translation>实心圆点</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="185"/>
+        <source>Filled Double Circle</source>
+        <translation>实心双圆</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="189"/>
+        <source>Filled Sesame</source>
+        <translation>实心芝麻点</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="187"/>
+        <source>Filled Triangle</source>
+        <translation>实心三角</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="174"/>
+        <source>Marks</source>
+        <translation>符号</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="184"/>
+        <source>Open Circle</source>
+        <translation>空心圆</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="182"/>
+        <source>Open Dot</source>
+        <translation>空心小圆点</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="186"/>
+        <source>Open Double Circle</source>
+        <translation>空心双圆</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="190"/>
+        <source>Open Sesame</source>
+        <translation>空心芝麻点</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="188"/>
+        <source>Open Triangle</source>
+        <translation>空心三角</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="209"/>
+        <source>Over / Left</source>
+        <translation>上方 / 左侧</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="207"/>
+        <source>Over / Right</source>
+        <translation>上方 / 右侧</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
+        <source>Position</source>
+        <translation>位置</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="210"/>
+        <source>Under / Left</source>
+        <translation>下方 / 左侧</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="208"/>
+        <source>Under / Right</source>
+        <translation>下方 / 右侧</translation>
+    </message>
+</context>
+<context>
+    <name>FontWeightComboBox</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="453"/>
+        <source>Black</source>
+        <translation>黑体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="451"/>
+        <source>Bold</source>
+        <translation>粗体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="450"/>
+        <source>Demi Bold</source>
+        <translation>半粗</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="452"/>
+        <source>Extra Bold</source>
+        <translation>中黑</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="446"/>
+        <source>Extra Light</source>
+        <translation>超细</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="447"/>
+        <source>Light</source>
+        <translation>细体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="449"/>
+        <source>Medium</source>
+        <translation>中等</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="448"/>
+        <source>Normal</source>
+        <translation>常规</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="445"/>
+        <source>Thin</source>
+        <translation>瘦体</translation>
+    </message>
+</context>
+<context>
+    <name>RubyFuriganaGroup</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="313"/>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="299"/>
+        <source>For Mono Ruby, separate readings with whitespace</source>
+        <translation>单字注释时，请用空格分隔各个读音</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="290"/>
+        <source>Group</source>
+        <translation>整体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="291"/>
+        <source>Mono</source>
+        <translation>单字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="307"/>
+        <source>Over / Right</source>
+        <translation>上方 / 右侧</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="310"/>
+        <source>Position</source>
+        <translation>位置</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="303"/>
+        <source>Reading</source>
+        <translation>注释</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="318"/>
+        <source>Remove</source>
+        <translation>移除</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="285"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="373"/>
+        <source>Ruby / Furigana</source>
+        <translation>注释 / 振假名</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="297"/>
+        <source>Ruby text</source>
+        <translation>注释文本</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="293"/>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="308"/>
+        <source>Under / Left</source>
+        <translation>下方 / 左侧</translation>
+    </message>
+</context>
+<context>
+    <name>TextEditingContextMenu</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="21"/>
+        <source>Undo</source>
+        <translation>撤销</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="28"/>
+        <source>Redo</source>
+        <translation>重做</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="37"/>
+        <source>Cut</source>
+        <translation>剪切</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="44"/>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="51"/>
+        <source>Paste</source>
+        <translation>粘贴</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="61"/>
+        <source>Delete</source>
+        <translation>删除</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/editing/context_menu.py" line="69"/>
+        <source>Quick Insert</source>
+        <translation>快捷输入</translation>
     </message>
 </context>
 </TS>

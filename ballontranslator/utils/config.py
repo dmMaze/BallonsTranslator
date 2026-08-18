@@ -287,6 +287,7 @@ class ProgramConfig(Config):
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     auto_tate_chu_yoko: AutoTateChuYokoConfig = field(default_factory=AutoTateChuYokoConfig)
     compact_vertical_punctuation_spacing: bool = True
+    quick_insert_characters: str = '『』「」♥♡★☆※♩♬'
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())
     show_page_list: bool = False
@@ -359,6 +360,12 @@ class ProgramConfig(Config):
         
         with open(cfg_path, 'r', encoding='utf8') as f:
             config_dict = json.loads(f.read())
+
+        if not isinstance(config_dict.get('quick_insert_characters', ''), str):
+            LOGGER.warning(
+                'Discard invalid quick_insert_characters config: expected a string.'
+            )
+            config_dict.pop('quick_insert_characters')
 
         if 'excluded_fonts' in config_dict:
             excluded_fonts = config_dict['excluded_fonts']

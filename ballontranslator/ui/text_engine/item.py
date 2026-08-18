@@ -2,7 +2,16 @@ import numpy as np
 from typing import Callable, List, Optional, Tuple, Union
 
 from qtpy import QT6
-from qtpy.QtWidgets import QApplication, QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
+from qtpy.QtWidgets import (
+    QApplication,
+    QGraphicsItem,
+    QWidget,
+    QGraphicsSceneContextMenuEvent,
+    QGraphicsSceneHoverEvent,
+    QGraphicsTextItem,
+    QStyleOptionGraphicsItem,
+    QGraphicsSceneMouseEvent,
+)
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
@@ -23,6 +32,7 @@ from .font_family import (
     font_family_for_project,
     qfont_with_family,
 )
+from .editing.context_menu import create_text_edit_context_menu
 from ..misc import td_pattern, table_pattern
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
@@ -785,13 +795,7 @@ class TextBlkItem(QGraphicsTextItem):
             elif e.key() in (Qt.Key.Key_C, Qt.Key.Key_X):
                 cursor = self.textCursor()
                 if cursor.hasSelection():
-                    QApplication.clipboard().setMimeData(
-                        create_rich_text_mime(
-                            cursor,
-                            line_spacing_fallback=self.fontformat.line_spacing,
-                            line_spacing_type_fallback=self.fontformat.line_spacing_type,
-                        )
-                    )
+                    self._copy_selected_text()
                     if e.key() == Qt.Key.Key_X:
                         cursor.removeSelectedText()
                         self.setTextCursor(cursor)
@@ -974,9 +978,57 @@ class TextBlkItem(QGraphicsTextItem):
         else:
             self.moving.emit(self)
 
-    # QT 5.15.x causing segmentation fault 
-    def contextMenuEvent(self, event):
-        return super().contextMenuEvent(event)
+    def _copy_selected_text(self) -> None:
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            return
+        QApplication.clipboard().setMimeData(
+            create_rich_text_mime(
+                cursor,
+                line_spacing_fallback=self.fontformat.line_spacing,
+                line_spacing_type_fallback=self.fontformat.line_spacing_type,
+            )
+        )
+
+    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent) -> None:
+        if not self.isEditing():
+            return super().contextMenuEvent(event)
+        event.accept()
+        self.show_editing_context_menu(event.screenPos())
+
+    def show_editing_context_menu(
+        self,
+        screen_pos: QPoint,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        cursor = self.textCursor()
+        has_selection = cursor.hasSelection()
+        menu, quick_insert_actions = create_text_edit_context_menu(
+            parent,
+            has_selection=has_selection,
+            can_undo=self.document().isUndoAvailable(),
+            can_redo=self.document().isRedoAvailable(),
+        )
+
+        action = menu.exec(screen_pos)
+        operation = action.data() if action is not None else None
+        if action in quick_insert_actions:
+            self.insert_plain_text_at_cursor(operation)
+        elif operation == 'undo':
+            self.undo_signal.emit()
+        elif operation == 'redo':
+            self.redo_signal.emit()
+        elif operation == 'cut':
+            self._copy_selected_text()
+            cursor.removeSelectedText()
+            self.setTextCursor(cursor)
+        elif operation == 'copy':
+            self._copy_selected_text()
+        elif operation == 'paste':
+            self.pasted.emit(self.idx)
+        elif operation == 'delete':
+            cursor.removeSelectedText()
+            self.setTextCursor(cursor)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         self._vertical_navigation_y = None
