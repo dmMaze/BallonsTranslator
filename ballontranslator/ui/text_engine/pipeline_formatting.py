@@ -1,8 +1,10 @@
-"""Final text-document formatting at the completed-page boundary."""
+"""Final text-document formatting at page and project boundaries."""
 
-from typing import Sequence
+import threading
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from qtpy import QT6
+from qtpy.QtCore import QThread, Signal
 from qtpy.QtGui import (
     QColor,
     QFont,
@@ -13,6 +15,7 @@ from qtpy.QtGui import (
 
 from ballontranslator.utils.config import AutoTateChuYokoConfig
 from ballontranslator.utils.fontformat import font_weight_to_qt
+from ballontranslator.utils.message import create_error_dialog
 from ballontranslator.utils.textblock import TextBlock
 from .annotations import (
     apply_auto_text_combine_upright,
@@ -120,3 +123,73 @@ def apply_auto_tate_chu_yoko(
         )
         changed += 1
     return changed
+
+
+class AutoTateChuYokoThread(QThread):
+    """Apply automatic Tate-chu-yoko to project documents off the UI thread.
+
+    >>> issubclass(AutoTateChuYokoThread, QThread)
+    True
+    """
+
+    progress_changed = Signal(int, str)
+    processing_finished = Signal(int, object)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._pages: List[Tuple[str, List[TextBlock]]] = []
+        self._settings = AutoTateChuYokoConfig()
+        self._stop_event = threading.Event()
+
+    def start_processing(
+        self,
+        pages: Dict[str, List[TextBlock]],
+        settings: AutoTateChuYokoConfig,
+    ) -> bool:
+        if self.isRunning():
+            return False
+        self._pages = list(pages.items())
+        self._settings = settings.copy()
+        self._stop_event.clear()
+        self.start()
+        return True
+
+    def request_stop(self) -> None:
+        self._stop_event.set()
+
+    def run(self) -> None:
+        changed_blocks: List[TextBlock] = []
+        error: Optional[Exception] = None
+        try:
+            total_pages = len(self._pages)
+            for page_index, (page_name, blocks) in enumerate(
+                self._pages,
+                start=1,
+            ):
+                for block in blocks:
+                    if self._stop_event.is_set():
+                        break
+                    if apply_auto_tate_chu_yoko(
+                        (block,),
+                        self._settings,
+                    ):
+                        changed_blocks.append(block)
+                if self._stop_event.is_set():
+                    break
+                self.progress_changed.emit(
+                    round(page_index / total_pages * 100),
+                    page_name,
+                )
+        except Exception as exception:
+            error = exception
+
+        self.processing_finished.emit(
+            len(changed_blocks),
+            tuple(changed_blocks),
+        )
+        if error is not None:
+            create_error_dialog(
+                error,
+                self.tr('Failed to apply automatic Tate-chu-yoko.'),
+                'AutoTateChuYokoApplyFailed',
+            )

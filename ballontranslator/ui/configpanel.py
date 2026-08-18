@@ -685,6 +685,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     reload_textstyle = Signal(bool)
     font_list_changed = Signal(bool)
     compact_vertical_punctuation_changed = Signal(bool)
+    apply_auto_tate_chu_yoko_requested = Signal()
     show_pre_MT_keyword_window = Signal()
     show_MT_keyword_window = Signal()
     show_OCR_keyword_window = Signal()
@@ -1146,6 +1147,11 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         auto_tcy_title.setToolTip(auto_tcy_tooltip)
         auto_tcy_header_layout.addWidget(self.auto_tate_chu_yoko_checker)
         auto_tcy_header_layout.addWidget(auto_tcy_title)
+        self.auto_tate_chu_yoko_apply_btn = QPushButton(
+            self.tr('Apply'),
+            auto_tcy_header,
+        )
+        auto_tcy_header_layout.addWidget(self.auto_tate_chu_yoko_apply_btn)
         auto_tcy_header_layout.addStretch()
         auto_tcy_layout.addWidget(auto_tcy_header)
 
@@ -1284,9 +1290,13 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             auto_tcy.additional_chars
         )
         self.auto_tate_chu_yoko_options.setVisible(auto_tcy.enabled)
+        self.auto_tate_chu_yoko_apply_btn.setVisible(auto_tcy.enabled)
 
         self.auto_tate_chu_yoko_checker.toggled.connect(
             self.on_auto_tate_chu_yoko_changed
+        )
+        self.auto_tate_chu_yoko_apply_btn.clicked.connect(
+            self.on_apply_auto_tate_chu_yoko_clicked
         )
         self.auto_tate_chu_yoko_max_length.valueChanged.connect(
             self.on_auto_tate_chu_yoko_max_length_changed
@@ -1604,6 +1614,10 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_auto_tate_chu_yoko_changed(self, enabled: bool) -> None:
         pcfg.auto_tate_chu_yoko.enabled = enabled
         self.auto_tate_chu_yoko_options.setVisible(enabled)
+        self.auto_tate_chu_yoko_apply_btn.setVisible(enabled)
+
+    def on_apply_auto_tate_chu_yoko_clicked(self) -> None:
+        self.apply_auto_tate_chu_yoko_requested.emit()
 
     def on_compact_vertical_punctuation_changed(
         self,
@@ -1826,6 +1840,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             auto_tcy.additional_chars
         )
         self.auto_tate_chu_yoko_options.setVisible(auto_tcy.enabled)
+        self.auto_tate_chu_yoko_apply_btn.setVisible(auto_tcy.enabled)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
         self.intermediate_imgformat_combobox.setCurrentText(pcfg.intermediate_imgsave_ext.replace('.', '').upper())

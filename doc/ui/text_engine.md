@@ -98,15 +98,17 @@ independent applications remain separate. CSS stores
 identity. Its cell, overflow, cursor, hit-test, and paint behavior is specified
 in [Text layout](text_layout.md).
 
-The optional automatic pipeline pass runs only after a page translation or a
-rendering-only style update. It removes existing tate-chu-yoko ranges, then
-applies fresh groups to maximal runs from the configured character set that fit
-the maximum length and do not overlap Ruby. A disabled pass leaves authored
-formatting untouched; an enabled pass with an empty character set only removes
-the existing groups. Rendering with text-style updates disabled skips the pass.
-The TextBlock-to-document bridge for this pass is owned by
+The optional automatic pipeline pass runs after a page translation or a
+rendering-only style update. The Typesetting Apply action runs the same pass on
+every project page in a cancellable document worker without rendering or
+saving. The pass removes existing tate-chu-yoko ranges, then applies fresh
+groups to maximal runs from the configured character set that fit the maximum
+length and do not overlap Ruby. A disabled pass leaves authored formatting
+untouched; an enabled pass with an empty character set only removes the existing
+groups. Rendering with text-style updates disabled skips the pass. The
+TextBlock-to-document bridge for this pass is owned by
 `ballontranslator/ui/text_engine/pipeline_formatting.py`; `MainWindow` only
-triggers it at the completed-page boundary.
+triggers it at the completed-page and manual project-action boundaries.
 
 Keep one shared inline range boundary: reserve stable live property IDs,
 coalesce equal extension values, emit one semantic span per resulting text

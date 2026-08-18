@@ -2,6 +2,7 @@ import gc
 import json
 import os
 import tempfile
+import threading
 import unittest
 import weakref
 from types import SimpleNamespace
@@ -11,7 +12,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QObject, QEvent, QPoint, Qt
 from qtpy.QtGui import QColor, QTextCursor, QTextDocument
-from qtpy.QtTest import QTest
+from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -48,6 +49,7 @@ from ballontranslator.ui.text_engine.annotations import (
     to_rich_text_html,
 )
 from ballontranslator.ui.text_engine.pipeline_formatting import (
+    AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
 )
 from ballontranslator.utils.config import (
@@ -310,9 +312,12 @@ class RunPipelineDialogTests(unittest.TestCase):
         original = pcfg.auto_tate_chu_yoko.copy()
         pcfg.auto_tate_chu_yoko = AutoTateChuYokoConfig()
         panel = ConfigPanel()
+        apply_requested = Mock()
+        panel.apply_auto_tate_chu_yoko_requested.connect(apply_requested)
         try:
             self.assertFalse(panel.auto_tate_chu_yoko_checker.isChecked())
             self.assertTrue(panel.auto_tate_chu_yoko_options.isHidden())
+            self.assertTrue(panel.auto_tate_chu_yoko_apply_btn.isHidden())
 
             panel.auto_tate_chu_yoko_checker.click()
             panel.auto_tate_chu_yoko_max_length.setValue(6)
@@ -321,6 +326,9 @@ class RunPipelineDialogTests(unittest.TestCase):
             panel.auto_tate_chu_yoko_additional_chars.setText('!?')
 
             self.assertFalse(panel.auto_tate_chu_yoko_options.isHidden())
+            self.assertFalse(panel.auto_tate_chu_yoko_apply_btn.isHidden())
+            panel.auto_tate_chu_yoko_apply_btn.click()
+            apply_requested.assert_called_once_with()
             self.assertEqual(
                 pcfg.auto_tate_chu_yoko,
                 AutoTateChuYokoConfig(
@@ -1468,6 +1476,127 @@ class RunPipelineDialogTests(unittest.TestCase):
         restored = QTextDocument()
         load_rich_text_html(restored, block.rich_text, vertical=False)
         self.assertEqual(text_combine_upright_ranges(restored.firstBlock()), ())
+
+    def test_auto_tate_chu_yoko_thread_processes_all_pages(self):
+        number_block = TextBlock(translation='12')
+        number_block.vertical = True
+        letter_block = TextBlock(translation='AB')
+        letter_block.vertical = True
+        thread = AutoTateChuYokoThread()
+        progress = QSignalSpy(thread.progress_changed)
+        finished = QSignalSpy(thread.processing_finished)
+
+        self.assertTrue(thread.start_processing(
+            {
+                '001.png': [number_block],
+                '002.png': [letter_block],
+            },
+            AutoTateChuYokoConfig(
+                enabled=True,
+                max_length=2,
+                include_letters=True,
+            ),
+        ))
+        self.assertTrue(thread.wait(5000))
+        self.app.processEvents()
+
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0][0], 2)
+        self.assertEqual(len(progress), 2)
+        self.assertEqual(list(progress[-1]), [100, '002.png'])
+        for block in (number_block, letter_block):
+            document = QTextDocument()
+            load_rich_text_html(document, block.rich_text, vertical=True)
+            self.assertEqual(
+                [(start, length) for start, length, _ in
+                 text_combine_upright_ranges(document.firstBlock())],
+                [(0, 2)],
+            )
+
+    def test_auto_tate_chu_yoko_thread_honors_stop_request(self):
+        entered_formatter = threading.Event()
+        release_formatter = threading.Event()
+
+        def slow_formatter(*_args):
+            entered_formatter.set()
+            release_formatter.wait(5)
+            return 0
+
+        thread = AutoTateChuYokoThread()
+        with patch(
+            'ballontranslator.ui.text_engine.pipeline_formatting.apply_auto_tate_chu_yoko',
+            side_effect=slow_formatter,
+        ) as formatter:
+            self.assertTrue(thread.start_processing(
+                {
+                    '001.png': [TextBlock(), TextBlock()],
+                    '002.png': [TextBlock()],
+                },
+                AutoTateChuYokoConfig(enabled=True),
+            ))
+            self.assertTrue(entered_formatter.wait(5))
+            thread.request_stop()
+            release_formatter.set()
+            self.assertTrue(thread.wait(5000))
+
+        self.assertEqual(formatter.call_count, 1)
+
+    def test_manual_auto_tate_chu_yoko_starts_document_worker_only(self):
+        worker = Mock()
+        worker.isRunning.return_value = False
+        worker.start_processing.return_value = True
+        progress = Mock()
+        text_manager = Mock()
+        pages = {'001.png': [TextBlock(translation='12')]}
+        owner = SimpleNamespace(
+            imgtrans_proj=SimpleNamespace(is_empty=False, pages=pages),
+            auto_tate_chu_yoko_thread=worker,
+            auto_tate_chu_yoko_progress=progress,
+            st_manager=text_manager,
+        )
+
+        MainWindow.apply_auto_tate_chu_yoko_to_project(owner)
+
+        text_manager.updateTextBlkList.assert_called_once_with()
+        worker.start_processing.assert_called_once_with(
+            pages,
+            pcfg.auto_tate_chu_yoko,
+        )
+        progress.zero_progress.assert_called_once_with()
+        progress.show_fitted.assert_called_once_with()
+
+    def test_manual_auto_tate_chu_yoko_syncs_only_changed_live_documents(self):
+        changed = TextBlock(translation='12')
+        changed.rich_text = '<html>changed</html>'
+        unchanged = TextBlock(translation='plain')
+        changed_item = SimpleNamespace(
+            blk=changed,
+            load_rich_text_html=Mock(),
+        )
+        unchanged_item = SimpleNamespace(
+            blk=unchanged,
+            load_rich_text_html=Mock(),
+        )
+        owner = SimpleNamespace(
+            auto_tate_chu_yoko_progress=Mock(),
+            st_manager=SimpleNamespace(
+                textblk_item_list=[changed_item, unchanged_item]
+            ),
+            canvas=Mock(),
+        )
+
+        MainWindow.on_auto_tate_chu_yoko_processing_finished(
+            owner,
+            1,
+            (changed,),
+        )
+
+        owner.auto_tate_chu_yoko_progress.hide.assert_called_once_with()
+        changed_item.load_rich_text_html.assert_called_once_with(
+            changed.rich_text
+        )
+        unchanged_item.load_rich_text_html.assert_not_called()
+        owner.canvas.setProjSaveState.assert_called_once_with(True)
 
     def test_auto_tate_chu_yoko_runs_only_at_pipeline_format_boundaries(self):
         blocks = [TextBlock()]
