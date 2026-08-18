@@ -725,7 +725,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             brush = selection.format.background()
             if brush.style() == Qt.BrushStyle.NoBrush:
                 continue
-            for metric in self._ruby_metrics[block.blockNumber()].overlapping(
+            for metric in self._ruby_metrics[block.blockNumber()].contained(
                 selection.cursor.selectionStart(),
                 selection.cursor.selectionEnd(),
             ):

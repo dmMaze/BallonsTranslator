@@ -2017,6 +2017,25 @@ def ruby_container_for_cursor(
     return None
 
 
+def ruby_containers_intersecting_cursor(
+    cursor: QTextCursor,
+) -> tuple[RubyContainerRange, ...]:
+    """Return every container touched by the selection or caret."""
+    start = cursor.selectionStart()
+    end = cursor.selectionEnd()
+    if cursor.hasSelection():
+        return tuple(
+            container
+            for container in ruby_containers(cursor.document())
+            if container.start < end and container.end > start
+        )
+    return tuple(
+        container
+        for container in ruby_containers(cursor.document())
+        if container.start <= cursor.position() < container.end
+    )
+
+
 def _ruby_readings(
     ruby_type: str,
     text: str,
@@ -2167,16 +2186,19 @@ def apply_ruby(
 
 
 def remove_ruby(cursor: QTextCursor) -> bool:
-    """Remove the whole container identified by ``cursor``."""
-    container = ruby_container_for_cursor(cursor)
-    if container is None:
+    """Remove every Ruby container intersecting ``cursor`` in one undo step."""
+    containers = ruby_containers_intersecting_cursor(cursor)
+    if not containers:
         return False
     work = QTextCursor(cursor.document())
     work.beginEditBlock()
     try:
-        work.setPosition(container.start)
-        work.setPosition(container.end, QTextCursor.MoveMode.KeepAnchor)
-        work.mergeCharFormat(_clear_ruby_modifier())
+        for container in containers:
+            work.setPosition(container.start)
+            work.setPosition(
+                container.end, QTextCursor.MoveMode.KeepAnchor
+            )
+            work.mergeCharFormat(_clear_ruby_modifier())
     finally:
         work.endEditBlock()
     return True

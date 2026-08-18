@@ -56,6 +56,7 @@ from .annotations import (
     prepare_ruby_insertion,
     remove_ruby,
     ruby_container_for_cursor,
+    ruby_containers_intersecting_cursor,
     set_document_letter_spacing_writing_mode,
     text_combine_upright_values,
     to_rich_text_html,
@@ -1475,7 +1476,12 @@ class TextBlkItem(QGraphicsTextItem):
         cursor = self.textCursor()
         container = ruby_container_for_cursor(cursor)
         if container is None:
-            return 'group', '', 'over', False
+            return (
+                'group',
+                '',
+                'over',
+                bool(ruby_containers_intersecting_cursor(cursor)),
+            )
         text = (
             container.units[0].text
             if container.ruby_type == 'group'
@@ -1500,7 +1506,7 @@ class TextBlkItem(QGraphicsTextItem):
             self.is_formatting = False
 
     def removeRuby(self) -> bool:
-        """Remove the complete Ruby container at the active cursor."""
+        """Remove Ruby containers intersecting the active cursor."""
         cursor = self.textCursor()
         self.is_formatting = True
         try:
