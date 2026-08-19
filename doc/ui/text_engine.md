@@ -184,9 +184,10 @@ states, and independent states combine in the standard CSS
 `font-variant-ligatures` declaration. The parser also preserves historical
 ligature tokens and treats `normal` and `none` as the CSS aggregate values;
 `none` disables common, discretionary, historical, and contextual features.
-There is deliberately no `FontFormat` or project-JSON field. Qt 5 keeps Qt 6
-feature tokens through load/save even though it cannot apply or edit those
-axes.
+`FontFormat` keeps item/global fallback states so new and empty text items have
+a stable insertion format; non-empty ranges remain owned by rich text. Qt 5
+keeps Qt 6 feature tokens through load/save even though it cannot apply or edit
+those axes.
 
 Native shaping is derived from that semantic CSS. Qt disables optional
 ligatures whenever native letter spacing is set, including identity 100%

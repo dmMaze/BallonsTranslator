@@ -584,6 +584,9 @@ class FontFormat(Config):
     font_weight: FontWeight = None
     line_spacing: float = 1.2
     letter_spacing: float = 1.15
+    ligature_common: str = 'default'
+    ligature_discretionary: str = 'default'
+    ligature_contextual: str = 'default'
     opacity: float = 1.
     shadow_radius: float = 0.
     shadow_strength: float = 1.
@@ -639,6 +642,19 @@ class FontFormat(Config):
                 self.standard_vertical_roman_alignment,
             )
             self.standard_vertical_roman_alignment = True
+
+        for name in (
+            'ligature_common',
+            'ligature_discretionary',
+            'ligature_contextual',
+        ):
+            if getattr(self, name) not in {'default', 'enabled', 'disabled'}:
+                LOGGER.warning(
+                    'Ignoring invalid %s value (%r); using default.',
+                    name,
+                    getattr(self, name),
+                )
+                setattr(self, name, 'default')
 
         self.font_weight = coerce_font_weight(self.font_weight)
         if not isinstance(self.text_transform, TextTransformStack):

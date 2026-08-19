@@ -40,6 +40,9 @@ from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
 from .annotations import (
     AnnotationProperty,
+    LIGATURE_COMMON,
+    LIGATURE_CONTEXTUAL,
+    LIGATURE_DISCRETIONARY,
     TEXT_COMBINE_ALL,
     apply_emphasis,
     apply_ligature_axis,
@@ -60,6 +63,7 @@ from .annotations import (
     ruby_container_for_cursor,
     ruby_containers_intersecting_cursor,
     set_document_letter_spacing_writing_mode,
+    set_ligature_axes,
     sync_native_ligature_shaping,
     text_combine_upright_values,
     to_rich_text_html,
@@ -1173,6 +1177,17 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat.underline = font.underline()
         fontformat.italic = font.italic()
         fontformat.letter_spacing = self.letter_spacing_value()
+        if self.document().isEmpty():
+            for axis in (
+                LIGATURE_COMMON,
+                LIGATURE_DISCRETIONARY,
+                LIGATURE_CONTEXTUAL,
+            ):
+                setattr(
+                    fontformat,
+                    f'ligature_{axis}',
+                    self.ligature_axis_value(axis),
+                )
         (
             fontformat.line_spacing,
             fontformat.line_spacing_type,
@@ -1222,10 +1237,17 @@ class TextBlkItem(QGraphicsTextItem):
             AnnotationProperty.LETTER_SPACING,
             ffmat.letter_spacing,
         )
-        sync_native_ligature_shaping(
+        set_ligature_axes(
             format,
+            {
+                axis: getattr(ffmat, f'ligature_{axis}')
+                for axis in (
+                    LIGATURE_COMMON,
+                    LIGATURE_DISCRETIONARY,
+                    LIGATURE_CONTEXTUAL,
+                )
+            },
             vertical=ffmat.vertical,
-            letter_spacing_fallback=ffmat.letter_spacing,
         )
         cursor.setCharFormat(format)
         cursor.select(QTextCursor.SelectionType.Document)

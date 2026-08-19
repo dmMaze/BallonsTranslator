@@ -53,7 +53,6 @@ from ..annotations import (
     EMPHASIS_GLYPHS,
     EMPHASIS_POSITIONS,
     EMPHASIS_STYLES,
-    LIGATURE_DEFAULT,
     RubyValidationError,
 )
 from .advanced import TextAdvancedFormatPanel
@@ -950,6 +949,9 @@ class FontFormatPanel(Widget):
             restore_canvas_view_focus()
 
     def on_ligature_axis_changed(self, axis: str, state: str) -> None:
+        if self.global_mode():
+            setattr(self.global_format, f'ligature_{axis}', state)
+            self.update_text_style_label()
         if self.textblk_item is not None:
             items = [self.textblk_item]
         else:
@@ -1157,9 +1159,11 @@ class FontFormatPanel(Widget):
         for axis in self.textadvancedfmt_panel.ligature_comboboxes:
             self.textadvancedfmt_panel.set_ligature_axis(
                 axis,
-                LIGATURE_DEFAULT
-                if self.textblk_item is None
-                else self.textblk_item.ligature_axis_value(axis),
+                (
+                    getattr(font_format, f'ligature_{axis}')
+                    if self.textblk_item is None
+                    else self.textblk_item.ligature_axis_value(axis)
+                ),
             )
 
     def set_active_format(

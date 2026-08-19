@@ -637,6 +637,10 @@ def _rewrite_cursor_char_formats(
         char_format = changed_format(cursor.charFormat())
         if char_format is not None:
             cursor.setCharFormat(char_format)
+            if cursor.document().isEmpty():
+                # Qt rebuilds an empty caret format from its block after text
+                # is inserted and deleted, so keep that insertion owner equal.
+                cursor.setBlockCharFormat(char_format)
         return
 
     document = cursor.document()
@@ -2223,29 +2227,48 @@ def apply_ligature_axis(
     vertical: bool,
 ) -> None:
     """Apply one CSS ligature axis to a selection or insertion format."""
-    if axis not in _LIGATURE_AXIS_TOKENS:
-        raise ValueError(f'unsupported ligature axis: {axis!r}')
-    if state not in LIGATURE_AXIS_VALUES:
-        raise ValueError(f'unsupported ligature axis value: {state!r}')
+    _rewrite_cursor_char_formats(
+        cursor,
+        lambda char_format: set_ligature_axes(
+            char_format,
+            {axis: state},
+            vertical=vertical,
+        ),
+    )
 
-    def rewrite(char_format: QTextCharFormat) -> None:
-        value = _font_variant_ligatures_with_axis(
-            font_variant_ligatures_value(char_format),
-            axis,
-            state,
+
+def set_ligature_axes(
+    char_format: QTextCharFormat,
+    states: dict[str, str],
+    *,
+    vertical: bool,
+) -> None:
+    """Set semantic ligature axes on one character format.
+
+    >>> fmt = QTextCharFormat()
+    >>> set_ligature_axes(
+    ...     fmt, {LIGATURE_DISCRETIONARY: LIGATURE_ENABLED}, vertical=False
+    ... )
+    >>> ligature_axis_value(fmt, LIGATURE_DISCRETIONARY)
+    'enabled'
+    """
+    value = font_variant_ligatures_value(char_format)
+    for axis, state in states.items():
+        if axis not in _LIGATURE_AXIS_TOKENS:
+            raise ValueError(f'unsupported ligature axis: {axis!r}')
+        if state not in LIGATURE_AXIS_VALUES:
+            raise ValueError(f'unsupported ligature axis value: {state!r}')
+        value = _font_variant_ligatures_with_axis(value, axis, state)
+    if value == FONT_VARIANT_LIGATURES_NORMAL:
+        char_format.clearProperty(
+            AnnotationProperty.FONT_VARIANT_LIGATURES
         )
-        if value == FONT_VARIANT_LIGATURES_NORMAL:
-            char_format.clearProperty(
-                AnnotationProperty.FONT_VARIANT_LIGATURES
-            )
-        else:
-            char_format.setProperty(
-                AnnotationProperty.FONT_VARIANT_LIGATURES,
-                value,
-            )
-        sync_native_ligature_shaping(char_format, vertical=vertical)
-
-    _rewrite_cursor_char_formats(cursor, rewrite)
+    else:
+        char_format.setProperty(
+            AnnotationProperty.FONT_VARIANT_LIGATURES,
+            value,
+        )
+    sync_native_ligature_shaping(char_format, vertical=vertical)
 
 
 def set_document_letter_spacing_writing_mode(
