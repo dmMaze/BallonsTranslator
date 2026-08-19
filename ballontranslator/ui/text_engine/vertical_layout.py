@@ -79,7 +79,13 @@ PUNSET_VERNEEDROTATE = (
     | PUNSET_HALF
     | PUNSET_INSEPARABLE_REPEAT
 )
-PUNSET_STANDARD_VERTICAL_ROMAN = PUNSET_VERNEEDROTATE.difference(PUNSET_HALF)
+PUNSET_STANDARD_VERTICAL_ROMAN = (
+    PUNSET_VERNEEDROTATE - PUNSET_HALF
+) | PUNSET_NONBRACKET
+_STANDARD_SHAPED_ROTATION_CHARS = ''.join(
+    sorted(PUNSET_STANDARD_VERTICAL_ROMAN)
+)
+_SHAPED_ROTATION_CHARS = ''.join(sorted(PUNSET_VERNEEDROTATE))
 # The shared glyph cache owns full paths at layout-specific offsets. Vertical
 # settlement needs only normalized bounds reusable across documents and lines.
 LINE_INK_BOUNDS_CACHE_MAX_ENTRIES = 2048
@@ -144,6 +150,37 @@ def _inseparable_punctuation_run(
     if columns < 2:
         return None
     return run_start, columns
+
+
+def _single_glyph_character(
+    line: QTextLine,
+    candidates: str,
+) -> Optional[str]:
+    """Return the encoded candidate matching a one-glyph shaped line.
+
+    >>> _single_glyph_character(QTextLine(), '「') is None
+    True
+    """
+    if not line.isValid():
+        return None
+    shaped = [
+        (run, int(glyph_index))
+        for run in line.glyphRuns()
+        for glyph_index in run.glyphIndexes()
+    ]
+    if len(shaped) != 1 or shaped[0][1] == 0:
+        return None
+    run, glyph_index = shaped[0]
+    raw_font = run.rawFont()
+    if not raw_font.isValid():
+        return None
+    for char, candidate_index in zip(
+        candidates,
+        raw_font.glyphIndexesForString(candidates),
+    ):
+        if int(candidate_index) == glyph_index:
+            return char
+    return None
 
 
 def _uncached_line_ink_bounds(
@@ -255,6 +292,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 and _is_non_fullwidth_roman(char)
             )
         )
+
+    def _line_orientation_char(
+        self,
+        line: QTextLine,
+        source_char: str,
+        text: str,
+    ) -> str:
+        """Use an encoded substitute glyph's existing punctuation rule."""
+        if line.textLength() <= 1:
+            return source_char
+        if (
+            self.needs_vertical_rotation(source_char)
+            or _grapheme_count(text.strip()) <= 1
+        ):
+            return source_char
+        candidates = (
+            _STANDARD_SHAPED_ROTATION_CHARS
+            if self.fontformat.standard_vertical_roman_alignment
+            else _SHAPED_ROTATION_CHARS
+        )
+        return _single_glyph_character(line, candidates) or source_char
 
     def centers_vertical_glyph(self, char: str) -> bool:
         if char in PUNSET_PAUSEORSTOP:
@@ -548,6 +606,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if line_width < 0:
                     line_width = cfmt.tbr.width()
                 record = char_records.get(char_idx, {})
+                char = record.get('orientation_char', char)
                 base_width = record.get('base_width', line_width)
                 left_margin = record.get('left_margin', 0.0)
                 compact_advance = record.get('compact_punctuation_advance')
@@ -765,6 +824,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 run_height = max(content_bottom - content_top, 0.0)
                 cell_height = run_height / len(graphemes)
                 char = _utf16_char_at(block.text(), content_start)
+                char = self._line_record(block, line_number).get(
+                    'orientation_char', char
+                )
                 if len(graphemes) > 1 and self.needs_vertical_rotation(char):
                     char_format = self.get_char_fontfmt(
                         block.blockNumber(), content_start
@@ -1302,6 +1364,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if char_offset < 0:
             return line, QPointF(), QTransform()
         char = _utf16_char_at(block_text, char_offset)
+        char = self._line_record(block, line_number).get(
+            'orientation_char', char
+        )
         x_offset, y_offset = self._draw_offset[block_number][line_number]
         orientation = QTransform()
         if self.needs_vertical_rotation(char):
@@ -1481,8 +1546,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_text_len = (
                 _utf16_length(blk_text) if utf16_indexing else len(blk_text)
             )
-            char_records = self.per_char_records[blk_no]
-
             line_spaces_lst = self.line_spaces_lst[blk_no]
             uniform_block_drawn = (
                 custom_rendering
@@ -1516,12 +1579,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 xoff, yoff = self._draw_offset[blk_no][ii]
 
-                char = (
-                    _utf16_char_at(blk_text, char_idx)
-                    if utf16_indexing
-                    else blk_text[char_idx]
-                )
-                cfmt = self.get_char_fontfmt(blk_no, char_idx)
                 if custom_rendering:
                     if not uniform_block_drawn:
                         render_delegate.draw_vertical_line(
@@ -1572,12 +1629,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_context = self._selection_foreground_context(
                         line_context
                     )
-                line_width = -1
-                if char_idx in char_records:
-                    line_width = char_records[char_idx]['line_width']
-                if line_width < 0:
-                    line_width = cfmt.tbr.width()
-
                 placement = self.vertical_line_placement(block, ii)
                 if self.is_tate_chu_yoko_line(block, ii):
                     if placement is not None:
@@ -1610,15 +1661,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         (self.layout_generation, blk_no, ii),
                         background_overlays=selection_backgrounds,
                     )
-                elif self.needs_vertical_rotation(char):
-                    line_x, line_y = line.x(), line.y()
-                    y_x = line_y - line_x
-                    y_p_x = line_y + line_x
-                    transform = QTransform(0, 1, 0, -1, 0, 0, y_p_x, y_x, 1)
-                    inv_transform = QTransform(0, -1, 0, 1, 0, 0, -y_x, y_p_x, 1)
-                    painter.setTransform(transform, True)
-                    line.draw(painter, QPointF(xoff, yoff))
-                    painter.setTransform(inv_transform, True)
+                elif placement is not None and not placement[2].isIdentity():
+                    _placed_line, offset, orientation = placement
+                    inverse, _invertible = orientation.inverted()
+                    painter.setTransform(orientation, True)
+                    line.draw(painter, offset)
+                    painter.setTransform(inverse, True)
                 else:
                     line.draw(painter, QPointF(xoff, yoff))
 
@@ -1957,11 +2005,22 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 )
 
                 tbr_h = cfmt.tbr.height() + spacing_advance
-                char = (
+                source_char = (
                     _utf16_char_at(blk_text, char_idx)
                     if utf16_indexing
                     else blk_text[char_idx]
                 )
+                char = (
+                    source_char
+                    if is_text_combine
+                    else self._line_orientation_char(
+                        line, source_char, text
+                    )
+                )
+                if char != source_char:
+                    char_records.setdefault(char_idx, {})[
+                        'orientation_char'
+                    ] = char
                 is_first_lbracket = (
                     not compact_punctuation
                     and char_idx - num_lspaces == 0
@@ -2010,11 +2069,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if char.isalpha():
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
-                    elif char in {'…', '⋯', '—', '～'}:
-                        # Qt may shape repeated marks as one cluster. Apply
-                        # semantic spacing once to the resulting line.
-                        tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                     else:
+                        # Rotated punctuation keeps Qt's natural advance;
+                        # joined runs subdivide that same occupied extent.
                         tbr_h = line.naturalTextWidth() - num_lspaces * space_w
                     tbr_h += spacing_advance
 

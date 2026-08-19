@@ -23,11 +23,22 @@ from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_processing import capitalize_sentences
 
 
-def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit: Union[TransTextEdit, TextBlkItem], pos: int, added_text: str, joint_previous: bool = False):
-    ori_count = target_edit.document().characterCount()
-    new_count = src_edit.document().characterCount()
-    removed = ori_count + len(added_text) - new_count
+def propagate_user_edit(
+    target_edit: Union[TransTextEdit, TextBlkItem],
+    pos: int,
+    removed: int,
+    added_text: str,
+    joint_previous: bool = False,
+) -> None:
+    """Replay one raw Qt UTF-16 edit in the paired document.
 
+    Glyph clusters do not affect document positions, and the source-provided
+    removal count avoids Python code-point length inference for supplementary
+    characters.
+
+    >>> callable(propagate_user_edit)
+    True
+    """
     cursor = target_edit.textCursor()
     cursor.setPosition(pos)
     if joint_previous:
@@ -35,7 +46,16 @@ def propagate_user_edit(src_edit: Union[TransTextEdit, TextBlkItem], target_edit
     else:
         cursor.beginEditBlock()
     if removed > 0:
-        cursor.setPosition(pos + removed, QTextCursor.MoveMode.KeepAnchor)
+        # Some Qt document replacements include the terminal paragraph
+        # separator in charsRemoved. It is not cursor-selectable.
+        selection_end = min(
+            pos + removed,
+            target_edit.document().characterCount() - 1,
+        )
+        cursor.setPosition(
+            selection_end,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
     if isinstance(target_edit, TextBlkItem):
         prepare_ruby_insertion(cursor, added_text)
     cursor.insertText(added_text)

@@ -42,6 +42,7 @@ from .annotations import (
     AnnotationProperty,
     TEXT_COMBINE_ALL,
     apply_emphasis,
+    apply_ligature_axis,
     apply_line_spacing,
     apply_letter_spacing,
     apply_ruby,
@@ -50,6 +51,7 @@ from .annotations import (
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
+    ligature_axis_value,
     letter_spacing_value,
     line_spacing_values,
     load_rich_text_html,
@@ -58,6 +60,7 @@ from .annotations import (
     ruby_container_for_cursor,
     ruby_containers_intersecting_cursor,
     set_document_letter_spacing_writing_mode,
+    sync_native_ligature_shaping,
     text_combine_upright_values,
     to_rich_text_html,
     validated_line_spacing,
@@ -81,7 +84,7 @@ class TextBlkItem(QGraphicsTextItem):
     redo_signal = Signal()
     undo_signal = Signal()
     push_undo_stack = Signal(int, bool)
-    propagate_user_edited = Signal(int, str, bool)
+    propagate_user_edited = Signal(int, int, str, bool)
     visual_geometry_changed = Signal()
     inline_format_changed = Signal()
 
@@ -110,8 +113,10 @@ class TextBlkItem(QGraphicsTextItem):
         self.old_undo_steps = 0
         self.in_redo_undo = False
         self.change_from: int = 0
+        self.change_removed: int = 0
         self.change_added: int = 0
         self.input_method_from = -1
+        self.input_method_removed = 0
         self.input_method_text = ''
         self.block_change_signal = False
         self._vertical_navigation_y: Optional[float] = None
@@ -128,31 +133,40 @@ class TextBlkItem(QGraphicsTextItem):
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
         self._vertical_navigation_y = None
-        if self.pre_editing == False:
+        if not self.pre_editing:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
+            self.input_method_removed = (
+                cursor.selectionEnd() - cursor.selectionStart()
+            )
         if e.preeditString() == '':
             self.pre_editing = False
             self.input_method_text = e.commitString()
         else:
             self.pre_editing = True
+        replacement_length = e.replacementLength()
+        replacement_start = None
+        replacement_end = None
+        if replacement_length > 0:
+            cursor = self.textCursor()
+            document_end = max(0, self.document().characterCount() - 1)
+            replacement_start = max(
+                0,
+                min(
+                    document_end,
+                    cursor.position() + e.replacementStart(),
+                ),
+            )
+            replacement_end = min(
+                document_end, replacement_start + replacement_length
+            )
+            self.input_method_from = replacement_start
+            self.input_method_removed = replacement_end - replacement_start
         if e.commitString():
             cursor = self.textCursor()
             cursor.beginEditBlock()
             prepare_cursor = QTextCursor(cursor)
-            replacement_length = e.replacementLength()
-            if replacement_length > 0:
-                document_end = max(0, self.document().characterCount() - 1)
-                replacement_start = max(
-                    0,
-                    min(
-                        document_end,
-                        cursor.position() + e.replacementStart(),
-                    ),
-                )
-                replacement_end = min(
-                    document_end, replacement_start + replacement_length
-                )
+            if replacement_start is not None:
                 prepare_cursor.setPosition(replacement_start)
                 prepare_cursor.setPosition(
                     replacement_end, QTextCursor.MoveMode.KeepAnchor
@@ -167,6 +181,14 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor.endEditBlock()
         else:
             super().inputMethodEvent(e)
+        if (
+            e.preeditString() == ''
+            and not e.commitString()
+            and replacement_length == 0
+        ):
+            self.input_method_from = -1
+            self.input_method_removed = 0
+            self.input_method_text = ''
         # Preedit text and attributes live in QTextLayout, so they need an
         # explicit surface invalidation even when the document revision does
         # not change. The next paint is cached until another IME event.
@@ -238,11 +260,14 @@ class TextBlkItem(QGraphicsTextItem):
 
                 if not self.is_formatting:
                     change_from = self.change_from
+                    removed = self.change_removed
                     added_text = ''
                     if self.input_method_from != -1:
                         added_text = self.input_method_text
                         change_from = self.input_method_from
+                        removed = self.input_method_removed
                         self.input_method_from = -1
+                        self.input_method_removed = 0
 
                     elif self.change_added > 0:
                         cursor = QTextCursor(self.document())
@@ -260,8 +285,15 @@ class TextBlkItem(QGraphicsTextItem):
                         )
                         added_text = cursor.selectedText()
 
-                    self.propagate_user_edited.emit(change_from, added_text, joint_previous)
-                    self.change_added = 0
+                    if removed > 0 or added_text:
+                        self.propagate_user_edited.emit(
+                            change_from,
+                            removed,
+                            added_text,
+                            joint_previous,
+                        )
+                self.change_added = 0
+                self.change_removed = 0
 
                 if new_steps > 0:
                     self.old_undo_steps = undo_steps
@@ -694,11 +726,10 @@ class TextBlkItem(QGraphicsTextItem):
                     AnnotationProperty.LETTER_SPACING,
                     spacing,
                 )
-                insertion_format.setFontLetterSpacingType(
-                    QFont.SpacingType.PercentageSpacing
-                )
-                insertion_format.setFontLetterSpacing(
-                    100 if vertical else spacing * 100
+                sync_native_ligature_shaping(
+                    insertion_format,
+                    vertical=vertical,
+                    letter_spacing_fallback=spacing,
                 )
                 cursor.setCharFormat(insertion_format)
             self.setTextCursor(cursor)
@@ -757,6 +788,7 @@ class TextBlkItem(QGraphicsTextItem):
         if not self.pre_editing:
             if self.hasFocus():
                 self.change_from = from_
+                self.change_removed = removed
                 self.change_added = added
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
@@ -1190,9 +1222,10 @@ class TextBlkItem(QGraphicsTextItem):
             AnnotationProperty.LETTER_SPACING,
             ffmat.letter_spacing,
         )
-        format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-        format.setFontLetterSpacing(
-            100 if ffmat.vertical else ffmat.letter_spacing * 100
+        sync_native_ligature_shaping(
+            format,
+            vertical=ffmat.vertical,
+            letter_spacing_fallback=ffmat.letter_spacing,
         )
         cursor.setCharFormat(format)
         cursor.select(QTextCursor.SelectionType.Document)
@@ -1398,6 +1431,9 @@ class TextBlkItem(QGraphicsTextItem):
             self.fontformat.letter_spacing,
         )
 
+    def ligature_axis_value(self, axis: str) -> str:
+        return ligature_axis_value(self._active_char_format(), axis)
+
     def _active_block_format(self) -> QTextBlockFormat:
         cursor = self.textCursor()
         if cursor.hasSelection():
@@ -1457,6 +1493,17 @@ class TextBlkItem(QGraphicsTextItem):
             lambda cursor: apply_emphasis(cursor, style, position)
         )
 
+    def setLigatureAxis(self, axis: str, state: str) -> None:
+        """Apply one ligature axis to the active text range."""
+        self._apply_text_format(
+            lambda cursor: apply_ligature_axis(
+                cursor,
+                axis,
+                state,
+                vertical=self.fontformat.vertical,
+            )
+        )
+
     def tate_chu_yoko_enabled(self) -> bool:
         value, _group_id = text_combine_upright_values(
             self._active_char_format()
@@ -1466,7 +1513,11 @@ class TextBlkItem(QGraphicsTextItem):
     def setTateChuYoko(self, enabled: bool) -> None:
         """Combine one selected run, or change the insertion format."""
         self._apply_text_format(
-            lambda cursor: apply_text_combine_upright(cursor, enabled)
+            lambda cursor: apply_text_combine_upright(
+                cursor,
+                enabled,
+                vertical=self.fontformat.vertical,
+            )
         )
 
     def ruby_editor_values(

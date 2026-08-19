@@ -53,6 +53,7 @@ from ..annotations import (
     EMPHASIS_GLYPHS,
     EMPHASIS_POSITIONS,
     EMPHASIS_STYLES,
+    LIGATURE_DEFAULT,
     RubyValidationError,
 )
 from .advanced import TextAdvancedFormatPanel
@@ -779,6 +780,9 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.ruby_apply_requested.connect(
             self.on_ruby_apply_requested
         )
+        self.textadvancedfmt_panel.ligature_axis_changed.connect(
+            self.on_ligature_axis_changed
+        )
         self.textadvancedfmt_panel.ruby_remove_requested.connect(
             self.on_ruby_remove_requested
         )
@@ -942,6 +946,16 @@ class FontFormatPanel(Widget):
             items = SW.canvas.selected_text_items()
         for item in items:
             item.setEmphasis(style, position)
+        if items:
+            restore_canvas_view_focus()
+
+    def on_ligature_axis_changed(self, axis: str, state: str) -> None:
+        if self.textblk_item is not None:
+            items = [self.textblk_item]
+        else:
+            items = SW.canvas.selected_text_items()
+        for item in items:
+            item.setLigatureAxis(axis, state)
         if items:
             restore_canvas_view_focus()
 
@@ -1139,6 +1153,13 @@ class FontFormatPanel(Widget):
             )
             self.textadvancedfmt_panel.set_ruby_state(
                 *self.textblk_item.ruby_editor_values()
+            )
+        for axis in self.textadvancedfmt_panel.ligature_comboboxes:
+            self.textadvancedfmt_panel.set_ligature_axis(
+                axis,
+                LIGATURE_DEFAULT
+                if self.textblk_item is None
+                else self.textblk_item.ligature_axis_value(axis),
             )
 
     def set_active_format(

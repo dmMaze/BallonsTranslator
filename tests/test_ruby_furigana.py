@@ -48,7 +48,6 @@ from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.glyph import resolve_paint_spans
 from ballontranslator.ui.text_engine.rendering.ruby import (
     RUBY_FONT_SCALE,
-    _space_around_positions,
     draw_ruby_placement,
 )
 from ballontranslator.ui.text_engine.rendering.native_document import (
@@ -374,15 +373,13 @@ class RubyFuriganaTest(unittest.TestCase):
                 apply_ruby(
                     _select(item.document(), 0, 2), ruby_type, reading
                 )
-                source = self._item(text='X東京')
-                propagate_user_edit(source, item, 0, 'X')
+                propagate_user_edit(item, 0, 0, 'X')
                 self.assertEqual(item.toPlainText(), 'X東京')
                 self.assertEqual(ruby_containers(item.document())[0].start, 1)
 
         mono = self._item(text='東京X')
         apply_ruby(_select(mono.document(), 0, 2), 'mono', 'とう きょう')
-        source = self._item(text='東AX')
-        propagate_user_edit(source, mono, 1, 'A')
+        propagate_user_edit(mono, 1, 1, 'A')
         containers = ruby_containers(mono.document())
         self.assertEqual(mono.toPlainText(), '東AX')
         self.assertEqual(len(containers), 1)
@@ -554,8 +551,7 @@ class RubyFuriganaTest(unittest.TestCase):
         self.assertEqual(ruby_containers(ime_item.document()), ())
 
         side_item = grouped_item()
-        source = self._item(text='東\n京')
-        propagate_user_edit(source, side_item, 1, '\n')
+        propagate_user_edit(side_item, 1, 0, '\n')
         self.assertEqual(ruby_containers(side_item.document()), ())
 
     def test_mono_boundary_insertion_and_unit_deletion_are_structural(self):

@@ -26,6 +26,13 @@ from ...custom_widget import (
 )
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ballontranslator.utils.fontformat import FontFormat
+from ..annotations import (
+    FONT_FEATURES_AVAILABLE,
+    LIGATURE_AXIS_VALUES,
+    LIGATURE_COMMON,
+    LIGATURE_CONTEXTUAL,
+    LIGATURE_DISCRETIONARY,
+)
 
 def _word_wrap_label(label: QLabel):
     label.setWordWrap(True)
@@ -378,6 +385,7 @@ class RubyFuriganaGroup(QGroupBox):
 class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
+    ligature_axis_changed = Signal(str, str)
     ruby_apply_requested = Signal(str, str, str)
     ruby_remove_requested = Signal()
 
@@ -440,6 +448,66 @@ class TextAdvancedFormatPanel(PanelArea):
             self.linespacing_type_combobox,
         )
 
+        self.ligature_group = QGroupBox(
+            self.tr('Ligature'), self.scrollContent
+        )
+        self.ligature_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        ligature_specs = [(
+            LIGATURE_COMMON,
+            self.tr('Common'),
+            self.tr(
+                'Set common ligatures for the selected text; '
+                'non-identity letter spacing disables them'
+            ),
+        )]
+        if FONT_FEATURES_AVAILABLE:
+            ligature_specs.extend((
+                (
+                    LIGATURE_DISCRETIONARY,
+                    self.tr('Discretionary'),
+                    self.tr(
+                        'Set font-specific optional ligatures for the '
+                        'selected text; non-identity letter spacing '
+                        'disables them'
+                    ),
+                ),
+                (
+                    LIGATURE_CONTEXTUAL,
+                    self.tr('Contextual'),
+                    self.tr(
+                        'Set contextual alternate glyphs for the '
+                        'selected text'
+                    ),
+                ),
+            ))
+        self.ligature_comboboxes = {}
+        ligature_units = []
+        for axis, label, tooltip in ligature_specs:
+            combo = SmallComboBox(parent=self.ligature_group)
+            for option, value in zip(
+                (self.tr('Default'), self.tr('On'), self.tr('Off')),
+                LIGATURE_AXIS_VALUES,
+            ):
+                combo.addItem(option, value)
+            combo.setProperty('ligature-axis', axis)
+            combo.setToolTip(tooltip)
+            combo.activated.connect(self.on_ligature_axis_changed)
+            self.ligature_comboboxes[axis] = combo
+            ligature_units.append(_atomic_unit(
+                self.ligature_group,
+                _word_wrap_label(
+                    SmallParamLabel(label, parent=self.ligature_group)
+                ),
+                combo,
+            ))
+        self.ligature_row, self.ligature_layout = _adaptive_row(
+            self.ligature_group, *ligature_units
+        )
+        self.ligature_group_layout = QVBoxLayout(self.ligature_group)
+        self.ligature_group_layout.addWidget(self.ligature_row)
+
         self.opacity_box = SmallSizeComboBox(
             [0, 1], 'opacity', self.top_section, init_value=1.
         )
@@ -482,6 +550,7 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
+        vlayout.addWidget(self.ligature_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
         vlayout.addWidget(self.ruby_group)
@@ -591,6 +660,7 @@ class TextAdvancedFormatPanel(PanelArea):
             layout.minimumSize().width()
             for layout in (
                 self.top_layout,
+                self.ligature_layout,
                 self.ruby_group.adaptive_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
@@ -701,6 +771,11 @@ class TextAdvancedFormatPanel(PanelArea):
     def on_linespacing_type_changed(self) -> None:
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
+    def on_ligature_axis_changed(self, _index: int) -> None:
+        combo = self.sender()
+        axis = str(combo.property('ligature-axis'))
+        self.ligature_axis_changed.emit(axis, str(combo.currentData()))
+
     def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
 
@@ -719,6 +794,15 @@ class TextAdvancedFormatPanel(PanelArea):
     def set_line_spacing_type(self, spacing_type: int) -> None:
         if not self.linespacing_type_combobox.hasFocus():
             self.linespacing_type_combobox.setCurrentIndex(int(spacing_type))
+
+    def set_ligature_axis(self, axis: str, value: str) -> None:
+        combo = self.ligature_comboboxes.get(axis)
+        if combo is None:
+            return
+        index = combo.findData(value)
+        if index < 0 or combo.hasFocus():
+            return
+        combo.setCurrentIndex(index)
 
     def set_ruby_state(
         self,

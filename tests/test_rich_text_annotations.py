@@ -21,6 +21,7 @@ from qtpy.QtGui import (
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
+    QTextFormat,
     QTransform,
 )
 from qtpy.QtTest import QTest
@@ -40,19 +41,33 @@ from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.misc import doc_replace, pixmap2ndarray
 from ballontranslator.ui.text_engine.annotations import (
     AnnotationProperty,
+    FONT_FEATURES_AVAILABLE,
+    FONT_VARIANT_LIGATURES_NONE,
+    FONT_VARIANT_LIGATURES_NORMAL,
     LETTER_SPACING_ATTRIBUTE,
     LINE_DISTANCE_ATTRIBUTE,
+    LIGATURE_COMMON,
+    LIGATURE_CONTEXTUAL,
+    LIGATURE_DEFAULT,
+    LIGATURE_DISABLED,
+    LIGATURE_DISCRETIONARY,
+    LIGATURE_ENABLED,
+    LIGATURE_HISTORICAL,
     TEXT_COMBINE_ID_ATTRIBUTE,
     apply_auto_text_combine_upright,
     apply_emphasis,
+    apply_ligature_axis,
     apply_letter_spacing,
     apply_line_spacing,
     apply_text_combine_upright,
     apply_ruby,
+    canonical_font_variant_ligatures,
     create_rich_text_mime,
     emphasis_values,
+    font_variant_ligatures_value,
     insert_rich_text_mime,
     letter_spacing_value,
+    ligature_axis_value,
     line_spacing_values,
     load_rich_text_html,
     ruby_containers,
@@ -66,6 +81,7 @@ from ballontranslator.ui.text_engine.formatting.panel import (
 )
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine.editing.commands import TextItemEditCommand
+from ballontranslator.ui.text_engine.editing.commands import propagate_user_edit
 from ballontranslator.ui.text_engine import effect_renderer as effect_rendering
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering import emphasis as emphasis_rendering
@@ -99,6 +115,22 @@ def _format_at(document: QTextDocument, start: int, length: int = 1):
     cursor.setPosition(start)
     cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
     return cursor.charFormat()
+
+
+def _glyph_indexes(document: QTextDocument) -> tuple[int, ...]:
+    document.setTextWidth(1000)
+    document.documentLayout().documentSize()
+    layout = document.firstBlock().layout()
+    return tuple(
+        glyph
+        for line_index in range(layout.lineCount())
+        for run in layout.lineAt(line_index).glyphRuns()
+        for glyph in run.glyphIndexes()
+    )
+
+
+def _glyph_count(document: QTextDocument) -> int:
+    return len(_glyph_indexes(document))
 
 
 def _line_spacing_at(
@@ -294,6 +326,549 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(letter_spacing_value(_format_at(document, 1)), 1.4)
         self.assertEqual(letter_spacing_value(_format_at(document, 2)), 1.0)
         self.assertEqual(letter_spacing_value(_format_at(document, 3)), 0.8)
+
+    def test_font_variant_ligature_css_round_trip_and_normal_reset(self):
+        source = QTextDocument('fiX')
+        cursor = QTextCursor(source)
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        apply_ligature_axis(
+            cursor, LIGATURE_COMMON, LIGATURE_ENABLED, vertical=False
+        )
+        apply_ligature_axis(
+            cursor,
+            LIGATURE_DISCRETIONARY,
+            LIGATURE_ENABLED,
+            vertical=False,
+        )
+        apply_ligature_axis(
+            cursor,
+            LIGATURE_CONTEXTUAL,
+            LIGATURE_DISABLED,
+            vertical=False,
+        )
+
+        html = to_rich_text_html(source)
+        restored = QTextDocument()
+        load_rich_text_html(restored, html)
+
+        self.assertIn(
+            'font-variant-ligatures: common-ligatures '
+            'discretionary-ligatures no-contextual',
+            html,
+        )
+        restored_format = _format_at(restored, 0, 2)
+        self.assertEqual(
+            ligature_axis_value(restored_format, LIGATURE_COMMON),
+            LIGATURE_ENABLED,
+        )
+        self.assertEqual(
+            ligature_axis_value(restored_format, LIGATURE_DISCRETIONARY),
+            LIGATURE_ENABLED,
+        )
+        self.assertEqual(
+            ligature_axis_value(restored_format, LIGATURE_CONTEXTUAL),
+            LIGATURE_DISABLED,
+        )
+        self.assertEqual(
+            font_variant_ligatures_value(_format_at(restored, 2)),
+            FONT_VARIANT_LIGATURES_NORMAL,
+        )
+
+        for axis in (
+            LIGATURE_COMMON,
+            LIGATURE_DISCRETIONARY,
+            LIGATURE_CONTEXTUAL,
+        ):
+            apply_ligature_axis(
+                cursor, axis, LIGATURE_DEFAULT, vertical=False
+            )
+        self.assertNotIn(
+            'font-variant-ligatures', to_rich_text_html(source)
+        )
+
+    def test_ligature_css_none_and_qt5_safe_values_round_trip(self):
+        self.assertEqual(
+            canonical_font_variant_ligatures(
+                'contextual discretionary-ligatures'
+            ),
+            'discretionary-ligatures contextual',
+        )
+        self.assertIsNone(canonical_font_variant_ligatures(
+            'contextual no-contextual'
+        ))
+        document = QTextDocument()
+        load_rich_text_html(
+            document,
+            '<p><span style="font-variant-ligatures: none;">fi</span>'
+            '<span style="font-variant-ligatures: '
+            'discretionary-ligatures no-contextual;">st</span></p>',
+        )
+
+        none_format = _format_at(document, 0, 2)
+        self.assertEqual(
+            font_variant_ligatures_value(none_format),
+            FONT_VARIANT_LIGATURES_NONE,
+        )
+        for axis in (
+            LIGATURE_COMMON,
+            LIGATURE_DISCRETIONARY,
+            LIGATURE_HISTORICAL,
+            LIGATURE_CONTEXTUAL,
+        ):
+            self.assertEqual(
+                ligature_axis_value(none_format, axis),
+                LIGATURE_DISABLED,
+            )
+        if FONT_FEATURES_AVAILABLE:
+            font = none_format.font()
+            for name in ('liga', 'clig', 'dlig', 'hlig', 'calt'):
+                tag = QFont.Tag.fromString(name)
+                self.assertTrue(font.isFeatureSet(tag))
+                self.assertEqual(font.featureValue(tag), 0)
+        trailing_format = _format_at(document, 2, 2)
+        self.assertEqual(
+            ligature_axis_value(
+                trailing_format, LIGATURE_DISCRETIONARY
+            ),
+            LIGATURE_ENABLED,
+        )
+        self.assertEqual(
+            ligature_axis_value(trailing_format, LIGATURE_CONTEXTUAL),
+            LIGATURE_DISABLED,
+        )
+        exported = to_rich_text_html(document)
+        self.assertIn('font-variant-ligatures: none', exported)
+        self.assertIn(
+            'font-variant-ligatures: '
+            'discretionary-ligatures no-contextual',
+            exported,
+        )
+
+    def test_common_ligature_shaping_and_tracking_precedence(self):
+        if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
+            self.skipTest('DejaVu Serif is unavailable')
+
+        def shaped_document(state: str, spacing: float) -> QTextDocument:
+            document = QTextDocument('fi')
+            document.setDefaultFont(QFont('DejaVu Serif', 24))
+            cursor = QTextCursor(document)
+            cursor.select(QTextCursor.SelectionType.Document)
+            apply_letter_spacing(cursor, spacing, vertical=False)
+            apply_ligature_axis(
+                cursor, LIGATURE_COMMON, state, vertical=False
+            )
+            return document
+
+        self.assertEqual(
+            _glyph_count(shaped_document(LIGATURE_DEFAULT, 1.0)),
+            1,
+        )
+        self.assertEqual(
+            _glyph_count(shaped_document(LIGATURE_ENABLED, 1.0)),
+            1,
+        )
+        self.assertEqual(
+            _glyph_count(shaped_document(LIGATURE_DISABLED, 1.0)),
+            2,
+        )
+        tracked = shaped_document(LIGATURE_ENABLED, 1.15)
+        self.assertEqual(_glyph_count(tracked), 2)
+        if FONT_FEATURES_AVAILABLE:
+            font = _format_at(tracked, 0, 2).font()
+            for name in ('liga', 'clig', 'dlig', 'hlig'):
+                self.assertFalse(
+                    font.isFeatureSet(QFont.Tag.fromString(name))
+                )
+
+    def test_ligature_import_preserves_standard_css_letter_spacing(self):
+        document = QTextDocument()
+        load_rich_text_html(
+            document,
+            '<span style="letter-spacing: 0.2em; '
+            'font-variant-ligatures: no-common-ligatures;">fi</span>',
+        )
+
+        char_format = _format_at(document, 0)
+        self.assertEqual(
+            char_format.fontLetterSpacingType(),
+            QFont.SpacingType.PercentageSpacing,
+        )
+        self.assertAlmostEqual(char_format.fontLetterSpacing(), 120.0)
+
+    def test_reapplying_ligature_axis_is_a_document_noop(self):
+        document = QTextDocument('fi')
+        cursor = QTextCursor(document)
+        cursor.select(QTextCursor.SelectionType.Document)
+        apply_ligature_axis(
+            cursor, LIGATURE_COMMON, LIGATURE_DISABLED, vertical=False
+        )
+        document.clearUndoRedoStacks()
+        changes = []
+        document.contentsChanged.connect(lambda: changes.append(True))
+
+        apply_ligature_axis(
+            cursor, LIGATURE_COMMON, LIGATURE_DISABLED, vertical=False
+        )
+
+        self.assertEqual(document.availableUndoSteps(), 0)
+        self.assertEqual(changes, [])
+
+    def test_whole_item_ligature_format_reaches_empty_paragraphs(self):
+        item = self._make_item(False, text='\nA\n\nB')
+        item.setLigatureAxis(LIGATURE_COMMON, LIGATURE_DISABLED)
+        for block_number in (0, 2):
+            block = item.document().findBlockByNumber(block_number)
+            cursor = QTextCursor(block)
+            self.assertEqual(
+                ligature_axis_value(cursor.charFormat(), LIGATURE_COMMON),
+                LIGATURE_DISABLED,
+            )
+            cursor.insertText('fi')
+            self.assertEqual(
+                ligature_axis_value(cursor.charFormat(), LIGATURE_COMMON),
+                LIGATURE_DISABLED,
+            )
+
+    def test_common_ligature_insertion_survives_writing_mode_round_trip(self):
+        if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
+            self.skipTest('DejaVu Serif is unavailable')
+
+        item = self._make_item(False, text='X')
+        item.setFontFamily('DejaVu Serif')
+        item.setLetterSpacing(1.0)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        item.setLigatureAxis(LIGATURE_COMMON, LIGATURE_ENABLED)
+
+        item.setVertical(True)
+        item.setVertical(False)
+        cursor = item.textCursor()
+        self.assertFalse(cursor.charFormat().hasProperty(
+            QTextFormat.Property.FontLetterSpacing
+        ))
+        cursor.insertText('fi')
+        item.setTextCursor(cursor)
+
+        self.assertEqual(_glyph_count(item.document()), 2)
+
+    def test_qt6_discretionary_shaping_and_tracking(self):
+        if not FONT_FEATURES_AVAILABLE:
+            self.skipTest('Qt 6.11 font features are unavailable')
+        if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
+            self.skipTest('DejaVu Serif is unavailable')
+
+        document = QTextDocument('st')
+        document.setDefaultFont(QFont('DejaVu Serif', 24))
+        cursor = QTextCursor(document)
+        cursor.select(QTextCursor.SelectionType.Document)
+        self.assertEqual(_glyph_count(document), 2)
+        apply_ligature_axis(
+            cursor,
+            LIGATURE_DISCRETIONARY,
+            LIGATURE_ENABLED,
+            vertical=False,
+        )
+        self.assertEqual(_glyph_count(document), 1)
+        apply_letter_spacing(cursor, 1.15, vertical=False)
+        self.assertEqual(_glyph_count(document), 2)
+        apply_letter_spacing(cursor, 1.0, vertical=False)
+        self.assertEqual(_glyph_count(document), 1)
+
+    def test_qt6_contextual_alternates_shape(self):
+        if not FONT_FEATURES_AVAILABLE:
+            self.skipTest('Qt 6.11 font features are unavailable')
+        if QFontInfo(QFont('Fira Code')).family() != 'Fira Code':
+            self.skipTest('Fira Code is unavailable')
+        contextual = QTextDocument('->x')
+        contextual.setDefaultFont(QFont('Fira Code', 24))
+        contextual_cursor = QTextCursor(contextual)
+        contextual_cursor.select(QTextCursor.SelectionType.Document)
+        default_glyphs = _glyph_indexes(contextual)
+        apply_ligature_axis(
+            contextual_cursor,
+            LIGATURE_CONTEXTUAL,
+            LIGATURE_DISABLED,
+            vertical=False,
+        )
+        self.assertNotEqual(_glyph_indexes(contextual), default_glyphs)
+        apply_ligature_axis(
+            contextual_cursor,
+            LIGATURE_CONTEXTUAL,
+            LIGATURE_ENABLED,
+            vertical=False,
+        )
+        self.assertEqual(_glyph_indexes(contextual), default_glyphs)
+
+        vertical = self._make_item(True, text='->x')
+        vertical.setFontFamily('Fira Code')
+        vertical.setLigatureAxis(
+            LIGATURE_CONTEXTUAL, LIGATURE_DISABLED
+        )
+        vertical.layout.reLayout()
+        layout = vertical.document().firstBlock().layout()
+        disabled_glyphs = tuple(
+            glyph
+            for line_index in range(layout.lineCount())
+            for run in layout.lineAt(line_index).glyphRuns()
+            for glyph in run.glyphIndexes()
+        )
+        vertical.setLigatureAxis(
+            LIGATURE_CONTEXTUAL, LIGATURE_ENABLED
+        )
+        vertical.layout.reLayout()
+        layout = vertical.document().firstBlock().layout()
+        enabled_glyphs = tuple(
+            glyph
+            for line_index in range(layout.lineCount())
+            for run in layout.lineAt(line_index).glyphRuns()
+            for glyph in run.glyphIndexes()
+        )
+        self.assertNotEqual(enabled_glyphs, disabled_glyphs)
+        self.assertEqual(
+            [
+                layout.lineAt(index).textLength()
+                for index in range(layout.lineCount())
+            ],
+            [1, 1, 1],
+        )
+
+    def test_vertical_cells_do_not_ligate_but_tate_chu_yoko_can(self):
+        if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
+            self.skipTest('DejaVu Serif is unavailable')
+
+        def vertical_item() -> TextBlkItem:
+            item = self._make_item(True, text='fi')
+            item.setFontFamily('DejaVu Serif')
+            item.setLetterSpacing(1.0)
+            item.setLigatureAxis(LIGATURE_COMMON, LIGATURE_ENABLED)
+            item.layout.reLayout()
+            return item
+
+        ordinary = vertical_item()
+        ordinary_layout = ordinary.document().firstBlock().layout()
+        self.assertEqual(
+            [
+                ordinary_layout.lineAt(index).textLength()
+                for index in range(ordinary_layout.lineCount())
+            ],
+            [1, 1],
+        )
+        ordinary.setVertical(False)
+        self.assertEqual(_glyph_count(ordinary.document()), 1)
+        ordinary.setVertical(True)
+        ordinary_layout = ordinary.document().firstBlock().layout()
+        self.assertEqual(
+            [
+                ordinary_layout.lineAt(index).textLength()
+                for index in range(ordinary_layout.lineCount())
+            ],
+            [1, 1],
+        )
+
+        combined = vertical_item()
+        cursor = QTextCursor(combined.document())
+        cursor.select(QTextCursor.SelectionType.Document)
+        combined.setTextCursor(cursor)
+        combined.setTateChuYoko(True)
+        combined.layout.reLayout()
+        combined_line = combined.document().firstBlock().layout().lineAt(0)
+        self.assertEqual(combined_line.textLength(), 2)
+        self.assertEqual(
+            sum(
+                len(run.glyphIndexes())
+                for run in combined_line.glyphRuns()
+            ),
+            1,
+        )
+
+    def test_qt6_vertical_discretionary_ligature_keeps_logical_cells(self):
+        if not FONT_FEATURES_AVAILABLE:
+            self.skipTest('Qt 6.11 font features are unavailable')
+        if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
+            self.skipTest('DejaVu Serif is unavailable')
+
+        item = self._make_item(True, text='st')
+        item.setFontFamily('DejaVu Serif')
+        item.setLetterSpacing(1.0)
+        item.setLigatureAxis(
+            LIGATURE_DISCRETIONARY, LIGATURE_ENABLED
+        )
+        item.layout.reLayout()
+        block = item.document().firstBlock()
+        line = block.layout().lineAt(0)
+        cells = item.layout._vertical_line_cells(block, 0)
+
+        self.assertEqual(block.layout().lineCount(), 1)
+        self.assertEqual(line.textLength(), 2)
+        self.assertEqual(
+            sum(len(run.glyphIndexes()) for run in line.glyphRuns()),
+            1,
+        )
+        self.assertEqual(
+            [(start, end) for start, end, *_rest in cells],
+            [(0, 1), (1, 2)],
+        )
+        cell_height = item.layout.get_char_fontfmt(0, 0).tbr.height()
+        self.assertAlmostEqual(cells[-1][3] - cells[0][2], cell_height)
+        for _start, _end, top, bottom, _is_space in cells:
+            self.assertAlmostEqual(bottom - top, cell_height / 2)
+        self.assertEqual(
+            [
+                item.layout.source_cursor_rect(position).top()
+                for position in range(3)
+            ],
+            [cells[0][2], cells[0][3], cells[1][3]],
+        )
+        x = line.x() + 1.0
+        for start, end, top, bottom, _is_space in cells:
+            height = bottom - top
+            self.assertEqual(
+                item.layout.hitTest(
+                    QPointF(x, top + height / 4),
+                    Qt.HitTestAccuracy.FuzzyHit,
+                ),
+                start,
+            )
+            self.assertEqual(
+                item.layout.hitTest(
+                    QPointF(x, bottom - height / 4),
+                    Qt.HitTestAccuracy.FuzzyHit,
+                ),
+                end,
+            )
+
+        wrapped = self._make_item(
+            True, bounds=(0, 0, 200, 45), text='Ast'
+        )
+        wrapped.setFontFamily('DejaVu Serif')
+        wrapped.setLetterSpacing(1.0)
+        wrapped.setLigatureAxis(
+            LIGATURE_DISCRETIONARY, LIGATURE_ENABLED
+        )
+        wrapped.layout.reLayout()
+        wrapped_layout = wrapped.document().firstBlock().layout()
+        leading = wrapped_layout.lineAt(0)
+        cluster = wrapped_layout.lineAt(1)
+        self.assertEqual(cluster.textLength(), 2)
+        self.assertNotAlmostEqual(cluster.x(), leading.x())
+        self.assertAlmostEqual(cluster.y(), 0.0)
+
+    def test_qt6_vertical_discretionary_punctuation_uses_shaped_advance(self):
+        if not FONT_FEATURES_AVAILABLE:
+            self.skipTest('Qt 6.11 font features are unavailable')
+        if QFontInfo(QFont('YW HeiTi')).family() != 'YW HeiTi':
+            self.skipTest('YW HeiTi is unavailable')
+
+        item = self._make_item(
+            True, bounds=(0, 0, 320, 1050), text='哈!!!~~哈'
+        )
+        item.setStandardVerticalRomanAlignment(False)
+        item.setFontFamily('YW HeiTi')
+        item.setFontSize(120)
+        item.setLetterSpacing(1.0)
+        item.setLigatureAxis(
+            LIGATURE_DISCRETIONARY, LIGATURE_ENABLED
+        )
+        item.layout.reLayout()
+        block = item.document().firstBlock()
+        layout = block.layout()
+
+        self.assertEqual(
+            [
+                layout.lineAt(index).textLength()
+                for index in range(layout.lineCount())
+            ],
+            [1, 3, 2, 1],
+        )
+        first_x = layout.lineAt(0).x()
+        for index in range(layout.lineCount()):
+            self.assertAlmostEqual(layout.lineAt(index).x(), first_x)
+        for index in (1, 2):
+            line = layout.lineAt(index)
+            cells = item.layout._vertical_line_cells(block, index)
+            self.assertEqual(len(cells), line.textLength())
+            self.assertAlmostEqual(
+                cells[-1][3] - cells[0][2],
+                line.naturalTextWidth(),
+            )
+
+    def test_qt6_vertical_substitution_uses_result_glyph_orientation(self):
+        if not FONT_FEATURES_AVAILABLE:
+            self.skipTest('Qt 6.11 font features are unavailable')
+        if QFontInfo(QFont('YW HeiTi')).family() != 'YW HeiTi':
+            self.skipTest('YW HeiTi is unavailable')
+
+        item = self._make_item(
+            True, bounds=(0, 0, 320, 500), text='@01'
+        )
+        item.setFontFamily('YW HeiTi')
+        item.setFontSize(120)
+        item.setLetterSpacing(1.0)
+        item.setLigatureAxis(
+            LIGATURE_DISCRETIONARY, LIGATURE_ENABLED
+        )
+        item.layout.reLayout()
+        block = item.document().firstBlock()
+        line = block.layout().lineAt(0)
+        runs = line.glyphRuns()
+
+        self.assertEqual((line.textStart(), line.textLength()), (0, 3))
+        self.assertEqual(len(runs), 1)
+        self.assertEqual(
+            list(runs[0].glyphIndexes()),
+            list(runs[0].rawFont().glyphIndexesForString('「')),
+        )
+        self.assertFalse(item.layout.needs_vertical_rotation('@'))
+        self.assertFalse(
+            item.layout.vertical_line_placement(block, 0)[2].isIdentity()
+        )
+
+    def test_vertical_single_punctuation_keeps_native_cell_advance(self):
+        if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
+            self.skipTest('DejaVu Serif is unavailable')
+
+        for state, spacing in (
+            (LIGATURE_DISABLED, 1.0),
+            (LIGATURE_ENABLED, 1.15),
+        ):
+            with self.subTest(state=state, spacing=spacing):
+                item = self._make_item(True, text='~')
+                item.setFontFamily('DejaVu Serif')
+                item.setFontSize(120)
+                item.setLetterSpacing(spacing)
+                item.setLigatureAxis(LIGATURE_COMMON, state)
+                item.layout.reLayout()
+                block = item.document().firstBlock()
+                line = block.layout().lineAt(0)
+                cells = item.layout._vertical_line_cells(block, 0)
+                char_format = item.layout.get_char_fontfmt(0, 0)
+                expected_advance = (
+                    line.naturalTextWidth()
+                    + char_format.tbr.height() * (spacing - 1)
+                )
+
+                self.assertEqual(line.textLength(), 1)
+                self.assertAlmostEqual(
+                    cells[0][3] - cells[0][2], expected_advance
+                )
+
+    def test_raw_utf16_propagation_handles_supplementary_replacement(self):
+        target = self._make_item(False, text='aX')
+
+        propagate_user_edit(target, 1, 1, '\U0001f600')
+
+        self.assertEqual(target.toPlainText(), 'a\U0001f600')
+
+        clustered = self._make_item(False, text='stX')
+        clustered.setFontFamily('DejaVu Serif')
+        clustered.setLigatureAxis(
+            LIGATURE_DISCRETIONARY, LIGATURE_ENABLED
+        )
+        propagate_user_edit(clustered, 1, 1, 'a')
+        self.assertEqual(clustered.toPlainText(), 'saX')
 
     def test_line_spacing_selection_is_block_scoped_and_end_exclusive(self):
         document = QTextDocument()
@@ -765,6 +1340,12 @@ class RichTextAnnotationTest(unittest.TestCase):
         apply_emphasis(cursor, 'open sesame', 'over right')
         apply_text_combine_upright(cursor, True)
         apply_letter_spacing(cursor, 1.4, vertical=False)
+        apply_ligature_axis(
+            cursor,
+            LIGATURE_DISCRETIONARY,
+            LIGATURE_ENABLED,
+            vertical=False,
+        )
         apply_line_spacing(cursor, 0.8, LineSpacingType.Distance)
 
         mime = create_rich_text_mime(cursor)
@@ -776,6 +1357,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertIn(LINE_DISTANCE_ATTRIBUTE, mime.html())
         self.assertIn('text-emphasis-style: open sesame', mime.html())
         self.assertIn('text-combine-upright: all', mime.html())
+        self.assertIn(
+            'font-variant-ligatures: discretionary-ligatures',
+            mime.html(),
+        )
         self.assertEqual(target.toPlainText(), 'copy')
         self.assertEqual(
             emphasis_values(_format_at(target, 0, 4)),
@@ -788,6 +1373,13 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(
             text_combine_upright_values(_format_at(target, 0, 4))[0],
             'all',
+        )
+        self.assertEqual(
+            ligature_axis_value(
+                _format_at(target, 0, 4),
+                LIGATURE_DISCRETIONARY,
+            ),
+            LIGATURE_ENABLED,
         )
         self.assertEqual(
             _line_spacing_at(target, 0),
@@ -2439,6 +3031,30 @@ class RichTextAnnotationTest(unittest.TestCase):
             1.8,
         )
 
+    def test_document_undo_redo_restores_ligature_axis(self):
+        item = self._make_item(False, text='fiX')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setLigatureAxis(LIGATURE_COMMON, LIGATURE_DISABLED)
+
+        item.document().undo()
+        self.assertEqual(
+            ligature_axis_value(
+                _format_at(item.document(), 0), LIGATURE_COMMON
+            ),
+            LIGATURE_DEFAULT,
+        )
+        item.document().redo()
+        self.assertEqual(
+            ligature_axis_value(
+                _format_at(item.document(), 0), LIGATURE_COMMON
+            ),
+            LIGATURE_DISABLED,
+        )
+
     def test_document_undo_redo_restores_line_spacing_pair(self):
         item = self._make_item(False, text='A\nB')
         item.startEdit()
@@ -2619,6 +3235,93 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertTrue(panel.tateChuYokoChecker.isChecked())
 
+    def test_advanced_ligature_axis_edits_only_inline_format(self):
+        item = self._make_item(False, text='stX')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+
+        with patch.object(
+            shared,
+            'register_view_widget',
+            lambda *_args: None,
+            create=True,
+        ):
+            panel = FontFormatPanel(self.app)
+        self.addCleanup(panel.deleteLater)
+        panel.global_format = FontFormat()
+        panel.textblk_item = item
+        panel.set_active_format(item.fontformat)
+        propagated = []
+        item.propagate_user_edited.connect(
+            lambda *args: propagated.append(args)
+        )
+        stack = QUndoStack()
+        pushed_steps = []
+
+        def push_history(num_steps: int, is_formatting: bool) -> None:
+            pushed_steps.append((num_steps, is_formatting))
+            stack.push(TextItemEditCommand(item, None, num_steps, panel))
+
+        item.push_undo_stack.connect(push_history)
+        self.addCleanup(item.push_undo_stack.disconnect, push_history)
+
+        expected_axes = {LIGATURE_COMMON}
+        if FONT_FEATURES_AVAILABLE:
+            expected_axes.update((
+                LIGATURE_DISCRETIONARY,
+                LIGATURE_CONTEXTUAL,
+            ))
+        self.assertEqual(
+            set(panel.textadvancedfmt_panel.ligature_comboboxes),
+            expected_axes,
+        )
+        axis = (
+            LIGATURE_DISCRETIONARY
+            if FONT_FEATURES_AVAILABLE
+            else LIGATURE_COMMON
+        )
+        state = (
+            LIGATURE_ENABLED
+            if FONT_FEATURES_AVAILABLE
+            else LIGATURE_DISABLED
+        )
+        combo = panel.textadvancedfmt_panel.ligature_comboboxes[axis]
+        index = combo.findData(state)
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.panel.'
+            'restore_canvas_view_focus'
+        ):
+            combo.setCurrentIndex(index)
+            combo.activated.emit(index)
+
+        self.assertEqual(
+            ligature_axis_value(
+                _format_at(item.document(), 0, 2), axis
+            ),
+            state,
+        )
+        self.assertEqual(
+            ligature_axis_value(_format_at(item.document(), 2), axis),
+            LIGATURE_DEFAULT,
+        )
+        self.assertEqual(len(pushed_steps), 1)
+        self.assertGreater(pushed_steps[0][0], 0)
+        self.assertTrue(pushed_steps[0][1])
+        stack.undo()
+        self.assertEqual(
+            ligature_axis_value(_format_at(item.document(), 0), axis),
+            LIGATURE_DEFAULT,
+        )
+        stack.redo()
+        self.assertEqual(
+            ligature_axis_value(_format_at(item.document(), 0), axis),
+            state,
+        )
+        self.assertEqual(propagated, [])
+
     def test_font_panel_tracks_the_active_inline_format(self):
         previous_active_format = C.active_format
         self.addCleanup(
@@ -2639,6 +3342,24 @@ class RichTextAnnotationTest(unittest.TestCase):
         modified.mergeCharFormat(char_format)
         apply_emphasis(modified, 'open circle', 'under left')
         apply_letter_spacing(modified, 1.4, vertical=False)
+        apply_ligature_axis(
+            modified,
+            LIGATURE_COMMON,
+            LIGATURE_ENABLED,
+            vertical=False,
+        )
+        apply_ligature_axis(
+            modified,
+            LIGATURE_DISCRETIONARY,
+            LIGATURE_ENABLED,
+            vertical=False,
+        )
+        apply_ligature_axis(
+            modified,
+            LIGATURE_CONTEXTUAL,
+            LIGATURE_DISABLED,
+            vertical=False,
+        )
 
         caret = QTextCursor(item.document())
         caret.setPosition(1)
@@ -2667,6 +3388,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             panel.letterSpacingBox.param_changed,
             panel.formatBtnGroup.param_changed,
             panel.formatBtnGroup.emphasisBtn.emphasis_changed,
+            panel.textadvancedfmt_panel.ligature_axis_changed,
         ):
             signal.connect(lambda *_args: feedback.append(True))
         revision = item.document().revision()
@@ -2689,6 +3411,25 @@ class RichTextAnnotationTest(unittest.TestCase):
             ('open circle', 'under left'),
         )
         self.assertEqual(panel.letterSpacingBox.value(), 1.4)
+        self.assertEqual(
+            panel.textadvancedfmt_panel.ligature_comboboxes[
+                LIGATURE_COMMON
+            ].currentData(),
+            LIGATURE_ENABLED,
+        )
+        if FONT_FEATURES_AVAILABLE:
+            self.assertEqual(
+                panel.textadvancedfmt_panel.ligature_comboboxes[
+                    LIGATURE_DISCRETIONARY
+                ].currentData(),
+                LIGATURE_ENABLED,
+            )
+            self.assertEqual(
+                panel.textadvancedfmt_panel.ligature_comboboxes[
+                    LIGATURE_CONTEXTUAL
+                ].currentData(),
+                LIGATURE_DISABLED,
+            )
         self.assertEqual(C.active_format.font_weight, active.font_weight)
 
         caret.setPosition(2)
@@ -2701,6 +3442,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertFalse(panel.formatBtnGroup.italicBtn.isChecked())
         self.assertFalse(panel.formatBtnGroup.underlineBtn.isChecked())
         self.assertFalse(panel.formatBtnGroup.emphasisBtn.isChecked())
+        self.assertTrue(all(
+            combo.currentData() == LIGATURE_DEFAULT
+            for combo in panel.textadvancedfmt_panel.ligature_comboboxes.values()
+        ))
 
 
 if __name__ == '__main__':

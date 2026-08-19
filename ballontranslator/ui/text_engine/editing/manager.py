@@ -1095,18 +1095,34 @@ class SceneTextManager(QObject):
         blkitem = self.textblk_item_list[edit.idx] if is_trans else None
         self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem), update_pushed_step=not is_trans)
 
-    def on_propagate_textitem_edit(self, pos: int, added_text: str, joint_previous: bool):
+    def on_propagate_textitem_edit(
+        self,
+        pos: int,
+        removed: int,
+        added_text: str,
+        joint_previous: bool,
+    ) -> None:
         blk_item: TextBlkItem = self.sender()
         edit = self.pairwidget_list[blk_item.idx].e_trans
-        propagate_user_edit(blk_item, edit, pos, added_text, joint_previous)
+        propagate_user_edit(
+            edit, pos, removed, added_text, joint_previous
+        )
         self.canvas.push_text_command(command=None, update_pushed_step=True)
 
-    def on_propagate_transwidget_edit(self, pos: int, added_text: str, joint_previous: bool):
+    def on_propagate_transwidget_edit(
+        self,
+        pos: int,
+        removed: int,
+        added_text: str,
+        joint_previous: bool,
+    ) -> None:
         edit: TransTextEdit = self.sender()
         blk_item = self.textblk_item_list[edit.idx]
         if blk_item.isEditing():
             blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        propagate_user_edit(edit, blk_item, pos, added_text, joint_previous)
+        propagate_user_edit(
+            blk_item, pos, removed, added_text, joint_previous
+        )
         self.canvas.push_text_command(command=None, update_pushed_step=True)
 
     def apply_fontformat(self, fontformat: FontFormat):

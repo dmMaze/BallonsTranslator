@@ -1371,6 +1371,9 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             self.assertTrue(
                 chinese.layout.needs_vertical_rotation(char), char
             )
+            self.assertTrue(
+                standard.layout.needs_vertical_rotation(char), char
+            )
         for char in PUNSET_BRACKET | PUNSET_HALF:
             self.assertTrue(
                 chinese.layout.needs_vertical_rotation(char), char

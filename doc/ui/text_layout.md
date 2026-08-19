@@ -46,7 +46,12 @@ versionless and follow the compatibility rules in [Text engine](text_engine.md).
 
 `HorizontalTextDocumentLayout` keeps Qt shaping, cursor positions, glyph runs,
 and `WrapAtWordBoundaryOrAnywhere`. Character spacing is passed to Qt as a
-range font property. Qt still chooses visible-text line ranges, but overflowing
+range font property when tracking is non-identity or common ligatures are
+disabled. Identity spacing that allows common ligatures stays unset because an
+explicit Qt letter-spacing property suppresses optional ligatures even at
+100%. Qt 6.11 applies the independent common, discretionary, historical, and
+contextual feature tags after that spacing decision; tracking still wins over
+optional ligatures. Qt still chooses visible-text line ranges, but overflowing
 U+0020 suffixes receive derived continuation-row cells because Qt hangs those
 spaces on the preceding line. The cells shift following lines and are shared by
 box growth, caret painting, selection, and hit testing. A partially occupied
@@ -87,6 +92,15 @@ It keeps its natural horizontal advance centered on the column; excess width
 is paint overflow and must not widen the column or move neighboring columns.
 Whitespace inside the group remains part of the horizontal run. Emphasis adds
 layout margins or ink overflow around the same established line placement.
+Every enabled font feature may shape inside that horizontal run at identity
+semantic spacing. Ordinary vertical cells retain explicit identity spacing so
+common ligatures remain separated. Under Qt 6.11, contextual alternates and
+explicit discretionary ligatures also apply to ordinary vertical text. A
+multi-grapheme shaped cluster keeps one logical cursor interval and UTF-16 range
+per source grapheme within its shaped occupied extent, and moves intact to the
+next column when it does not fit the remaining height. If its single result
+glyph is also encoded as existing vertical punctuation in the same font, that
+punctuation's orientation rule applies instead of the source trigger text.
 
 Ruby/furigana is an attached layout annotation rather than a detached overlay.
 Group Ruby treats its complete base as one indivisible unit; mono Ruby treats
@@ -184,6 +198,9 @@ Qt text positions and fragment lengths are UTF-16 code units. Use the shared
 UTF-16 and grapheme helpers whenever Python strings meet `QTextLine` positions,
 especially for emoji, tate-chu-yoko, cursor placement, and hit testing. Never
 return a caret inside a surrogate pair or combined run.
+Ligatures do not change these positions: paired-editor propagation replays
+Qt's removed count and inserted text rather than deriving a range from glyph
+count or Python code-point length.
 
 `vertical_line_placement()` is the common placement boundary for rotated
 glyphs, tate-chu-yoko, emphasis, Glyph Slant, and effect rendering. Cursor,
@@ -246,7 +263,8 @@ affected combinations of:
 
 - horizontal and vertical writing, both Roman modes, and all alignments;
 - first, middle, terminal, exact-fit, overflow, newline, and whitespace cases;
-- non-identity line spacing and fragmented character spacing;
+- non-identity line spacing, fragmented character spacing, and tracking versus
+  common/discretionary-ligature precedence;
 - punctuation, joined marks, tate-chu-yoko, emphasis, effects, and Glyph Slant;
 - UTF-16 text, selection, cursor, insertion, hit testing, resize, and mode
   switching.

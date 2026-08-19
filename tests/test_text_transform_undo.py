@@ -208,12 +208,14 @@ class TextTransformTestBase(unittest.TestCase):
         propagated = []
         pushed_steps = []
 
-        def on_propagate(position, added_text, joint_previous):
-            propagated.append((position, added_text, joint_previous))
+        def on_propagate(position, removed, added_text, joint_previous):
+            propagated.append(
+                (position, removed, added_text, joint_previous)
+            )
             propagate_user_edit(
-                edit,
                 item,
                 position,
+                removed,
                 added_text,
                 joint_previous,
             )
@@ -241,7 +243,10 @@ class TextTransformTestBase(unittest.TestCase):
             pair.hide()
 
         self.assertFalse(edit.pre_editing)
-        self.assertEqual(propagated, [(len(text_before), commit_text, False)])
+        self.assertEqual(
+            propagated,
+            [(len(text_before), 0, commit_text, False)],
+        )
         self.assertEqual(pushed_steps, [1])
         self.assertEqual(stack.count(), stack_count + 1)
         self.assertEqual(edit.toPlainText(), text_before + commit_text)
@@ -1379,6 +1384,75 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
+    def test_pair_editor_emits_raw_utf16_replacement_range(self):
+        _item, pair = self._make_pair(0, 'aX', False)
+        edit = pair.e_trans
+        pair.show()
+        edit.setFocus()
+        self.app.processEvents()
+        cursor = edit.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        edit.setTextCursor(cursor)
+        propagated = []
+        edit.propagate_user_edited.connect(
+            lambda *args: propagated.append(args)
+        )
+
+        cursor.insertText('\U0001f600')
+        self.app.processEvents()
+        pair.hide()
+
+        self.assertEqual(edit.toPlainText(), 'a\U0001f600')
+        self.assertEqual(propagated, [(1, 1, '\U0001f600', False)])
+
+    def test_pair_editor_emits_empty_ime_replacement_range(self):
+        _item, pair = self._make_pair(0, 'aX', False)
+        edit = pair.e_trans
+        pair.show()
+        edit.setFocus()
+        self.app.processEvents()
+        cursor = edit.textCursor()
+        cursor.setPosition(1)
+        edit.setTextCursor(cursor)
+        propagated = []
+        edit.propagate_user_edited.connect(
+            lambda *args: propagated.append(args)
+        )
+
+        event = QInputMethodEvent('', [])
+        event.setCommitString('', 0, 1)
+        QApplication.sendEvent(edit, event)
+        self.app.processEvents()
+        pair.hide()
+
+        self.assertEqual(edit.toPlainText(), 'a')
+        self.assertEqual(propagated, [(1, 1, '', False)])
+
+    def test_cancelled_preedit_does_not_capture_next_key_edit(self):
+        _item, pair = self._make_pair(0, 'aX', False)
+        edit = pair.e_trans
+        pair.show()
+        edit.setFocus()
+        self.app.processEvents()
+        cursor = edit.textCursor()
+        cursor.setPosition(1)
+        edit.setTextCursor(cursor)
+        propagated = []
+        edit.propagate_user_edited.connect(
+            lambda *args: propagated.append(args)
+        )
+
+        QApplication.sendEvent(edit, QInputMethodEvent('z', []))
+        QApplication.sendEvent(edit, QInputMethodEvent('', []))
+        cursor = edit.textCursor()
+        cursor.insertText('Z')
+        self.app.processEvents()
+        pair.hide()
+
+        self.assertEqual(edit.toPlainText(), 'aZX')
+        self.assertEqual(propagated, [(1, 0, 'Z', False)])
+
     def test_capitalize_selected_items_is_one_synced_undo_command(self):
         original = 'hELLO WORLD. next ONE!'
         capitalized = 'Hello world. Next one!'
@@ -2404,12 +2478,12 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 pair = TransPairWidget(0, False)
                 pair.e_trans.setPlainText(item.toPlainText())
                 propagated = []
-                def record_and_propagate(position, text, joint):
+                def record_and_propagate(position, removed, text, joint):
                     propagated.append((position, text))
                     propagate_user_edit(
-                        item,
                         pair.e_trans,
                         position,
+                        removed,
                         text,
                         joint,
                     )

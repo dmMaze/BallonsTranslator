@@ -82,12 +82,13 @@ and surface resources.
 ### Inline annotations
 
 Qt character-format user properties are the live source of truth for emphasis,
-tate-chu-yoko, character spacing, and Ruby/furigana. Native
+tate-chu-yoko, character spacing, font-variant ligatures, and Ruby/furigana. Native
 `QTextBlockFormat` line height is the live source of truth for paragraph line
 spacing.
 `TextBlock.rich_text` remains an HTML string. `annotations.py` extends Qt's
 ordinary HTML with semantic inline `span` markup. Standard CSS carries
-emphasis, tate-chu-yoko, and approximate external character spacing;
+emphasis, tate-chu-yoko, font-variant ligatures, and approximate external
+character spacing;
 application-owned `data-*` attributes carry only the exact spacing multiplier
 and tate group identity that CSS cannot represent. Extended output uses the
 HTML5 doctype so those attributes remain standard HTML. HTML written before
@@ -174,6 +175,33 @@ the pre-feature compatibility signal; there is no separate rich-text version.
 Effect-document clones and internal clipboard insertion load the same inline
 representation. Writing-mode behavior is specified in
 [Text layout](text_layout.md).
+
+Font-variant ligatures are range-bound rich-text formats authored in the
+Advanced Text Format panel's Ligature group. Common is available under Qt 5
+and Qt 6; Discretionary and Contextual appear only when Qt 6.11's rich-text
+font-feature API is available. Each exposed axis has Default, On, and Off
+states, and independent states combine in the standard CSS
+`font-variant-ligatures` declaration. The parser also preserves historical
+ligature tokens and treats `normal` and `none` as the CSS aggregate values;
+`none` disables common, discretionary, historical, and contextual features.
+There is deliberately no `FontFormat` or project-JSON field. Qt 5 keeps Qt 6
+feature tokens through load/save even though it cannot apply or edit those
+axes.
+
+Native shaping is derived from that semantic CSS. Qt disables optional
+ligatures whenever native letter spacing is set, including identity 100%
+spacing. Identity spacing is therefore left unset on horizontal runs that
+allow common ligatures, while `no-common-ligatures`, non-identity tracking, and
+ordinary vertical cells retain an explicit spacing property for Qt 5. Under Qt
+6.11, feature tags express independent axes that native spacing does not
+already suppress. Non-identity semantic tracking overrides common,
+discretionary, and historical ligatures. Contextual alternates remain active
+unless explicitly disabled.
+Ordinary vertical flow continues to suppress common ligatures, but explicit
+discretionary ligatures and contextual alternates apply there: a joined glyph
+keeps one cursor interval and UTF-16 range per source grapheme within its
+shaped occupied extent. Tate-chu-yoko remains a horizontal run and may use
+every enabled feature at identity spacing.
 
 Line spacing is paragraph-bound because visual rows and columns can change
 after wrapping or resize. A non-empty selection formats every logical paragraph
@@ -273,6 +301,15 @@ One logical formatting action may emit several Qt signals. Wrap the internal
 document work in one edit boundary, publish one user-visible command, and guard
 undo/redo from recursively creating another command. IME preedit text remains
 transient; only Qt's normal commit lifecycle should make it persistent.
+
+Paired-editor text changes carry Qt's `(position, charsRemoved, insertedText)`
+contract in UTF-16 document coordinates. Replay that removal count directly;
+never infer it from Python `len()` or glyph counts. Qt can include the terminal
+paragraph separator in a full-document replacement, so replay clamps only that
+unselectable endpoint. IME commits use their explicit selection/replacement
+range because some Qt bindings report preedit settlement as a full-document
+change. Ligatures remain glyph clusters only and do not alter this logical
+editing range.
 
 `Shift+F3` applies sentence capitalization to the selected text items. It
 replaces only changed character ranges, keeps the paired translation editors

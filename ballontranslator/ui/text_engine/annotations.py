@@ -2,7 +2,8 @@
 
 Qt remains the live editing model. Character and block formats carry live
 meaning; one semantic HTML boundary stores paragraph line spacing, emphasis,
-tate-chu-yoko, letter spacing, and their exact application-owned values.
+tate-chu-yoko, letter spacing, font variants, and their exact
+application-owned values.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from html import escape, unescape
 from html.parser import HTMLParser
 import math
 import re
-from typing import AbstractSet, Optional
+from typing import AbstractSet, Callable, Optional
 from uuid import uuid4
 
 from qtpy import QT6
@@ -51,6 +52,7 @@ TEXT_COMBINE_ID_ATTRIBUTE = 'data-btrans-text-combine-id'
 _RICH_TEXT_EXTENSION_MARKERS = (
     'text-emphasis-style',
     'text-combine-upright',
+    'font-variant-ligatures',
     LETTER_SPACING_ATTRIBUTE,
     LINE_DISTANCE_ATTRIBUTE,
     '<ruby',
@@ -92,6 +94,12 @@ class AnnotationProperty(IntEnum):
 
     # Qt does not round-trip QFont letter spacing through QTextDocument HTML.
     LETTER_SPACING = _enum_value(QTextFormat.Property.UserProperty) + 1380
+
+    # Font-variant intent is semantic state. Native shaping is derived from it
+    # together with tracking and writing mode for Qt 5/6 parity.
+    FONT_VARIANT_LIGATURES = (
+        _enum_value(QTextFormat.Property.UserProperty) + 1400
+    )
 
     # Ruby IDs are runtime-only. Semantic HTML stores only the relationship;
     # loading and in-app paste allocate fresh container and unit identities.
@@ -136,6 +144,45 @@ EMPHASIS_POSITIONS = (
 DEFAULT_EMPHASIS_POSITION = 'over right'
 TEXT_COMBINE_NONE = 'none'
 TEXT_COMBINE_ALL = 'all'
+FONT_VARIANT_LIGATURES_NORMAL = 'normal'
+FONT_VARIANT_LIGATURES_NONE = 'none'
+LIGATURE_COMMON = 'common'
+LIGATURE_DISCRETIONARY = 'discretionary'
+LIGATURE_HISTORICAL = 'historical'
+LIGATURE_CONTEXTUAL = 'contextual'
+LIGATURE_DEFAULT = 'default'
+LIGATURE_ENABLED = 'enabled'
+LIGATURE_DISABLED = 'disabled'
+LIGATURE_AXIS_VALUES = (
+    LIGATURE_DEFAULT,
+    LIGATURE_ENABLED,
+    LIGATURE_DISABLED,
+)
+_LIGATURE_AXIS_TOKENS = {
+    LIGATURE_COMMON: ('common-ligatures', 'no-common-ligatures'),
+    LIGATURE_DISCRETIONARY: (
+        'discretionary-ligatures',
+        'no-discretionary-ligatures',
+    ),
+    LIGATURE_HISTORICAL: (
+        'historical-ligatures',
+        'no-historical-ligatures',
+    ),
+    LIGATURE_CONTEXTUAL: (
+        'contextual',
+        'no-contextual',
+    ),
+}
+_LIGATURE_FEATURE_TAGS = {
+    LIGATURE_COMMON: ('liga', 'clig'),
+    LIGATURE_DISCRETIONARY: ('dlig',),
+    LIGATURE_HISTORICAL: ('hlig',),
+    LIGATURE_CONTEXTUAL: ('calt',),
+}
+# QTextCharFormat's feature-map API is the Qt 6.11 support boundary.
+FONT_FEATURES_AVAILABLE = bool(
+    QT6 and hasattr(QTextCharFormat, 'setFontFeatures')
+)
 MAX_ANNOTATION_ID_LENGTH = 128
 MAX_LETTER_SPACING = 10.0
 MAX_LINE_SPACING = 100.0
@@ -200,6 +247,7 @@ class _InlineExtension:
     emphasis_position: str = DEFAULT_EMPHASIS_POSITION
     text_combine_id: str = ''
     letter_spacing: Optional[float] = None
+    font_variant_ligatures: str = FONT_VARIANT_LIGATURES_NORMAL
     ruby_id: str = ''
     ruby_unit_id: str = ''
     ruby_type: str = ''
@@ -211,6 +259,8 @@ class _InlineExtension:
             self.emphasis_style == 'none'
             and not self.text_combine_id
             and self.letter_spacing is None
+            and self.font_variant_ligatures
+            == FONT_VARIANT_LIGATURES_NORMAL
             and not self.ruby_id
         )
 
@@ -224,6 +274,93 @@ def canonical_letter_spacing(value: object) -> Optional[float]:
     True
     """
     return _canonical_spacing(value, MAX_LETTER_SPACING)
+
+
+def canonical_font_variant_ligatures(value: object) -> Optional[str]:
+    """Return one canonical CSS ``font-variant-ligatures`` value.
+
+    The four CSS axes are independent, while ``normal`` and ``none`` are
+    exclusive aggregate values.
+
+    >>> canonical_font_variant_ligatures('contextual discretionary-ligatures')
+    'discretionary-ligatures contextual'
+    >>> canonical_font_variant_ligatures('none')
+    'none'
+    >>> canonical_font_variant_ligatures('contextual no-contextual') is None
+    True
+    """
+    if not isinstance(value, str):
+        return None
+    tokens = value.strip().lower().split()
+    if len(tokens) == 1 and tokens[0] in {
+        FONT_VARIANT_LIGATURES_NORMAL,
+        FONT_VARIANT_LIGATURES_NONE,
+    }:
+        return tokens[0]
+    if not tokens or any(
+        token in {
+            FONT_VARIANT_LIGATURES_NORMAL,
+            FONT_VARIANT_LIGATURES_NONE,
+        }
+        for token in tokens
+    ):
+        return None
+
+    selected = {}
+    for token in tokens:
+        axis = next(
+            (
+                candidate
+                for candidate, values in _LIGATURE_AXIS_TOKENS.items()
+                if token in values
+            ),
+            None,
+        )
+        if axis is None or axis in selected:
+            return None
+        selected[axis] = token
+    return ' '.join(
+        selected[axis]
+        for axis in _LIGATURE_AXIS_TOKENS
+        if axis in selected
+    )
+
+
+def _ligature_axis_states(value: str) -> dict[str, str]:
+    states = {
+        axis: LIGATURE_DEFAULT for axis in _LIGATURE_AXIS_TOKENS
+    }
+    if value == FONT_VARIANT_LIGATURES_NONE:
+        return {axis: LIGATURE_DISABLED for axis in states}
+    if value == FONT_VARIANT_LIGATURES_NORMAL:
+        return states
+    tokens = value.split()
+    for axis, (enabled, disabled) in _LIGATURE_AXIS_TOKENS.items():
+        if enabled in tokens:
+            states[axis] = LIGATURE_ENABLED
+        elif disabled in tokens:
+            states[axis] = LIGATURE_DISABLED
+    return states
+
+
+def _font_variant_ligatures_with_axis(
+    value: str,
+    axis: str,
+    state: str,
+) -> str:
+    states = _ligature_axis_states(value)
+    states[axis] = state
+    if all(value == LIGATURE_DEFAULT for value in states.values()):
+        return FONT_VARIANT_LIGATURES_NORMAL
+    if all(value == LIGATURE_DISABLED for value in states.values()):
+        return FONT_VARIANT_LIGATURES_NONE
+    return ' '.join(
+        _LIGATURE_AXIS_TOKENS[current_axis][
+            0 if current_state == LIGATURE_ENABLED else 1
+        ]
+        for current_axis, current_state in states.items()
+        if current_state != LIGATURE_DEFAULT
+    )
 
 
 def _parse_letter_spacing_attribute(value: object) -> Optional[float]:
@@ -291,6 +428,21 @@ def _span_extension(
             LOGGER.warning('Ignoring invalid text-combine-upright: %r', value)
             extension = replace(extension, text_combine_id='')
 
+    if 'font-variant-ligatures' in styles:
+        value = canonical_font_variant_ligatures(
+            styles['font-variant-ligatures']
+        )
+        if value is None:
+            LOGGER.warning(
+                'Ignoring unsupported font-variant-ligatures: %r',
+                styles['font-variant-ligatures'],
+            )
+        else:
+            extension = replace(
+                extension,
+                font_variant_ligatures=value,
+            )
+
     if LETTER_SPACING_ATTRIBUTE in attributes:
         spacing = _parse_letter_spacing_attribute(
             attributes[LETTER_SPACING_ATTRIBUTE]
@@ -328,15 +480,214 @@ def _span_extension(
     return extension
 
 
-def _letter_spacing_modifier(
+def font_variant_ligatures_value(char_format: QTextCharFormat) -> str:
+    """Return the canonical ligature property from a character format."""
+    value = canonical_font_variant_ligatures(
+        char_format.property(AnnotationProperty.FONT_VARIANT_LIGATURES)
+    )
+    return FONT_VARIANT_LIGATURES_NORMAL if value is None else value
+
+
+def ligature_axis_value(
+    char_format: QTextCharFormat,
+    axis: str,
+) -> str:
+    """Return one axis as ``default``, ``enabled``, or ``disabled``."""
+    if axis not in _LIGATURE_AXIS_TOKENS:
+        raise ValueError(f'unsupported ligature axis: {axis!r}')
+    return _ligature_axis_states(
+        font_variant_ligatures_value(char_format)
+    )[axis]
+
+
+def _sync_native_font_features(
+    char_format: QTextCharFormat,
+    feature_values: dict[str, Optional[int]],
+) -> None:
+    current = dict(char_format.fontFeatures())
+    updated = dict(current)
+    for name, value in feature_values.items():
+        tag = QFont.Tag.fromString(name)
+        if value is None:
+            updated.pop(tag, None)
+        else:
+            updated[tag] = value
+    if updated != current:
+        char_format.setFontFeatures(updated)
+
+
+def sync_native_ligature_shaping(
+    char_format: QTextCharFormat,
+    *,
+    vertical: bool,
+    letter_spacing_fallback: float = 1.0,
+) -> None:
+    """Derive Qt 5/6 shaping properties from semantic inline state.
+
+    Qt disables optional ligatures whenever native letter spacing is present,
+    even at 100%. Identity spacing stays unset for horizontal runs that allow
+    common ligatures; explicit spacing implements tracking and the Qt 5
+    ``no-common-ligatures`` fallback. Qt 6.11 feature tags then restore the
+    requested independent axes, including discretionary ligatures in ordinary
+    vertical cells.
+
+    >>> fmt = QTextCharFormat()
+    >>> sync_native_ligature_shaping(fmt, vertical=False)
+    >>> fmt.hasProperty(QTextFormat.Property.FontLetterSpacing)
+    False
+    """
+    semantic_spacing = canonical_letter_spacing(
+        char_format.property(AnnotationProperty.LETTER_SPACING)
+    )
+    fallback_spacing = canonical_letter_spacing(letter_spacing_fallback)
+    spacing = semantic_spacing
+    if spacing is None:
+        spacing = 1.0 if fallback_spacing is None else fallback_spacing
+    states = _ligature_axis_states(
+        font_variant_ligatures_value(char_format)
+    )
+    combine_value, _combine_id = text_combine_upright_values(char_format)
+    horizontal_run = not vertical or combine_value == TEXT_COMBINE_ALL
+    preserve_native_spacing = (
+        semantic_spacing is None
+        and char_format.hasProperty(
+            QTextFormat.Property.FontLetterSpacing
+        )
+    )
+    if preserve_native_spacing:
+        native_spacing = char_format.fontLetterSpacing()
+        percentage_spacing = (
+            char_format.fontLetterSpacingType()
+            == QFont.SpacingType.PercentageSpacing
+        )
+        identity_spacing = math.isclose(
+            native_spacing,
+            100.0 if percentage_spacing else 0.0,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        )
+    else:
+        identity_spacing = math.isclose(
+            spacing, 1.0, rel_tol=0.0, abs_tol=1e-12
+        )
+    needs_explicit_spacing = (
+        not horizontal_run
+        or not identity_spacing
+        or states[LIGATURE_COMMON] == LIGATURE_DISABLED
+    )
+    if needs_explicit_spacing and not preserve_native_spacing:
+        char_format.setFontLetterSpacingType(
+            QFont.SpacingType.PercentageSpacing
+        )
+        char_format.setFontLetterSpacing(
+            100.0 if vertical else spacing * 100.0
+        )
+    elif not needs_explicit_spacing:
+        char_format.clearProperty(QTextFormat.Property.FontLetterSpacing)
+        char_format.clearProperty(QTextFormat.Property.FontLetterSpacingType)
+
+    if not FONT_FEATURES_AVAILABLE:
+        return
+
+    feature_values = {}
+    for axis, tags in _LIGATURE_FEATURE_TAGS.items():
+        state = states[axis]
+        if (
+            axis == LIGATURE_COMMON and not horizontal_run
+        ) or (
+            axis in {
+                LIGATURE_COMMON,
+                LIGATURE_DISCRETIONARY,
+                LIGATURE_HISTORICAL,
+            }
+            and not identity_spacing
+        ):
+            # Native spacing already suppresses these optional features.
+            native_value = None
+        elif state == LIGATURE_DEFAULT:
+            native_value = None
+        else:
+            native_value = 1 if state == LIGATURE_ENABLED else 0
+        feature_values.update({tag: native_value for tag in tags})
+    _sync_native_font_features(char_format, feature_values)
+
+
+def _rewrite_cursor_char_formats(
+    cursor: QTextCursor,
+    rewrite: Callable[[QTextCharFormat], None],
+) -> None:
+    """Rewrite selected fragment and paragraph-boundary formats exactly.
+
+    >>> callable(_rewrite_cursor_char_formats)
+    True
+    """
+    def changed_format(
+        source: QTextCharFormat,
+    ) -> Optional[QTextCharFormat]:
+        updated = QTextCharFormat(source)
+        rewrite(updated)
+        return None if updated == source else updated
+
+    if not cursor.hasSelection():
+        char_format = changed_format(cursor.charFormat())
+        if char_format is not None:
+            cursor.setCharFormat(char_format)
+        return
+
+    document = cursor.document()
+    start = cursor.selectionStart()
+    end = cursor.selectionEnd()
+    whole_document = (
+        start == 0 and end == max(0, document.characterCount() - 1)
+    )
+    ranges = []
+    block_formats = []
+    block = document.findBlock(start)
+    while block.isValid() and block.position() <= end:
+        # Qt's document selection omits an empty first paragraph's insertion
+        # format; an item-wide change must still apply to future text there.
+        if start < block.position() or (
+            whole_document and block.position() == 0
+        ):
+            char_format = changed_format(block.charFormat())
+            if char_format is not None:
+                block_formats.append((block.position(), char_format))
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                fragment_start = fragment.position()
+                fragment_end = fragment_start + fragment.length()
+                range_start = max(start, fragment_start)
+                range_end = min(end, fragment_end)
+                if range_start < range_end:
+                    char_format = changed_format(fragment.charFormat())
+                    if char_format is not None:
+                        ranges.append((
+                            range_start,
+                            range_end,
+                            char_format,
+                        ))
+            iterator += 1
+        block = block.next()
+
+    target = QTextCursor(document)
+    for range_start, range_end, char_format in ranges:
+        target.setPosition(range_start)
+        target.setPosition(range_end, QTextCursor.MoveMode.KeepAnchor)
+        target.setCharFormat(char_format)
+    for position, char_format in block_formats:
+        block = document.findBlock(position)
+        QTextCursor(block).setBlockCharFormat(char_format)
+
+
+def _set_semantic_letter_spacing(
+    char_format: QTextCharFormat,
     value: float,
     vertical: bool,
-) -> QTextCharFormat:
-    modifier = QTextCharFormat()
-    modifier.setProperty(AnnotationProperty.LETTER_SPACING, value)
-    modifier.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-    modifier.setFontLetterSpacing(100.0 if vertical else value * 100.0)
-    return modifier
+) -> None:
+    char_format.setProperty(AnnotationProperty.LETTER_SPACING, value)
+    sync_native_ligature_shaping(char_format, vertical=vertical)
 
 
 def _apply_document_letter_spacing(
@@ -345,10 +696,13 @@ def _apply_document_letter_spacing(
     vertical: bool,
 ) -> None:
     cursor = QTextCursor(document)
+    if document.isEmpty():
+        char_format = QTextCharFormat(cursor.blockCharFormat())
+        _set_semantic_letter_spacing(char_format, value, vertical)
+        cursor.setBlockCharFormat(char_format)
+        return
     cursor.select(QTextCursor.SelectionType.Document)
-    modifier = _letter_spacing_modifier(value, vertical)
-    cursor.mergeCharFormat(modifier)
-    cursor.mergeBlockCharFormat(modifier)
+    apply_letter_spacing(cursor, value, vertical=vertical)
 
 
 def _native_line_spacing_values(
@@ -971,9 +1325,13 @@ def _apply_inline_extension_ranges(
                 AnnotationProperty.LETTER_SPACING,
                 extension.letter_spacing,
             )
-            modifier.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            modifier.setFontLetterSpacing(
-                100.0 if vertical else extension.letter_spacing * 100.0
+        if (
+            extension.font_variant_ligatures
+            != FONT_VARIANT_LIGATURES_NORMAL
+        ):
+            modifier.setProperty(
+                AnnotationProperty.FONT_VARIANT_LIGATURES,
+                extension.font_variant_ligatures,
             )
         if extension.ruby_id:
             modifier.setProperty(AnnotationProperty.RUBY_ID, extension.ruby_id)
@@ -992,6 +1350,19 @@ def _apply_inline_extension_ranges(
         cursor.setPosition(start)
         cursor.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
         cursor.mergeCharFormat(modifier)
+        if (
+            extension.letter_spacing is not None
+            or extension.text_combine_id
+            or extension.font_variant_ligatures
+            != FONT_VARIANT_LIGATURES_NORMAL
+        ):
+            _rewrite_cursor_char_formats(
+                cursor,
+                lambda char_format: sync_native_ligature_shaping(
+                    char_format,
+                    vertical=vertical,
+                ),
+            )
 
 
 def _apply_paragraph_line_distances(
@@ -1299,6 +1670,9 @@ def _inline_extension_ranges(
             letter_spacing=(
                 1.0 if has_explicit_spacing and spacing is None else spacing
             ),
+            font_variant_ligatures=font_variant_ligatures_value(
+                char_format
+            ),
         )
         if extension.is_empty():
             continue
@@ -1384,6 +1758,14 @@ def _inline_extension_span(text: str, extension: _InlineExtension) -> str:
         )
         styles.append(f'letter-spacing: {css_spacing}em')
         attributes.append(f'{LETTER_SPACING_ATTRIBUTE}="{multiplier}"')
+    if (
+        extension.font_variant_ligatures
+        != FONT_VARIANT_LIGATURES_NORMAL
+    ):
+        styles.append(
+            'font-variant-ligatures: '
+            f'{extension.font_variant_ligatures}'
+        )
     style_attribute = f'style="{"; ".join(styles)};"'
     suffix = ' '.join((style_attribute, *attributes))
     return f'<span {suffix}>{text}</span>'
@@ -1818,9 +2200,47 @@ def apply_letter_spacing(
     canonical_value = canonical_letter_spacing(value)
     if canonical_value is None:
         raise ValueError(f'unsupported letter spacing: {value!r}')
-    cursor.mergeCharFormat(
-        _letter_spacing_modifier(canonical_value, vertical)
+    _rewrite_cursor_char_formats(
+        cursor,
+        lambda char_format: _set_semantic_letter_spacing(
+            char_format,
+            canonical_value,
+            vertical,
+        ),
     )
+
+
+def apply_ligature_axis(
+    cursor: QTextCursor,
+    axis: str,
+    state: str,
+    *,
+    vertical: bool,
+) -> None:
+    """Apply one CSS ligature axis to a selection or insertion format."""
+    if axis not in _LIGATURE_AXIS_TOKENS:
+        raise ValueError(f'unsupported ligature axis: {axis!r}')
+    if state not in LIGATURE_AXIS_VALUES:
+        raise ValueError(f'unsupported ligature axis value: {state!r}')
+
+    def rewrite(char_format: QTextCharFormat) -> None:
+        value = _font_variant_ligatures_with_axis(
+            font_variant_ligatures_value(char_format),
+            axis,
+            state,
+        )
+        if value == FONT_VARIANT_LIGATURES_NORMAL:
+            char_format.clearProperty(
+                AnnotationProperty.FONT_VARIANT_LIGATURES
+            )
+        else:
+            char_format.setProperty(
+                AnnotationProperty.FONT_VARIANT_LIGATURES,
+                value,
+            )
+        sync_native_ligature_shaping(char_format, vertical=vertical)
+
+    _rewrite_cursor_char_formats(cursor, rewrite)
 
 
 def set_document_letter_spacing_writing_mode(
@@ -1832,36 +2252,20 @@ def set_document_letter_spacing_writing_mode(
     """Preserve semantic spacing while changing its Qt shaping value."""
     fallback_value = canonical_letter_spacing(fallback)
     fallback = 1.0 if fallback_value is None else fallback_value
-    ranges = []
-    block = document.firstBlock()
-    while block.isValid():
-        iterator = block.begin()
-        while not iterator.atEnd():
-            fragment = iterator.fragment()
-            if fragment.isValid() and fragment.length() > 0:
-                ranges.append(
-                    (
-                        fragment.position(),
-                        fragment.length(),
-                        letter_spacing_value(fragment.charFormat(), fallback),
-                    )
-                )
-            iterator += 1
-        block = block.next()
-
     cursor = QTextCursor(document)
+    cursor.select(QTextCursor.SelectionType.Document)
     cursor.beginEditBlock()
     try:
-        if not ranges:
+        if document.isEmpty():
             _apply_document_letter_spacing(document, fallback, vertical)
-        for start, length, value in ranges:
-            cursor.setPosition(start)
-            cursor.setPosition(
-                start + length,
-                QTextCursor.MoveMode.KeepAnchor,
-            )
-            cursor.mergeCharFormat(
-                _letter_spacing_modifier(value, vertical)
+        else:
+            _rewrite_cursor_char_formats(
+                cursor,
+                lambda char_format: _set_semantic_letter_spacing(
+                    char_format,
+                    letter_spacing_value(char_format, fallback),
+                    vertical,
+                ),
             )
     finally:
         cursor.endEditBlock()
@@ -1883,6 +2287,8 @@ def _text_combine_modifier(enabled: bool) -> QTextCharFormat:
 def apply_text_combine_upright(
     cursor: QTextCursor,
     enabled: bool,
+    *,
+    vertical: bool = True,
 ) -> None:
     """Apply one combined-run ID to a selection or insertion format."""
     if enabled:
@@ -1897,6 +2303,13 @@ def apply_text_combine_upright(
             raise RubyValidationError('Tate-chu-yoko cannot overlap Ruby')
     modifier = _text_combine_modifier(enabled)
     cursor.mergeCharFormat(modifier)
+    _rewrite_cursor_char_formats(
+        cursor,
+        lambda char_format: sync_native_ligature_shaping(
+            char_format,
+            vertical=vertical,
+        ),
+    )
 
 
 def apply_auto_text_combine_upright(
@@ -1993,6 +2406,19 @@ def apply_auto_text_combine_upright(
                 QTextCursor.MoveMode.KeepAnchor,
             )
             cursor.mergeCharFormat(_text_combine_modifier(True))
+        for start, length in sorted({*old_ranges, *new_ranges}):
+            cursor.setPosition(start)
+            cursor.setPosition(
+                start + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            _rewrite_cursor_char_formats(
+                cursor,
+                lambda char_format: sync_native_ligature_shaping(
+                    char_format,
+                    vertical=True,
+                ),
+            )
     finally:
         cursor.endEditBlock()
     return True
