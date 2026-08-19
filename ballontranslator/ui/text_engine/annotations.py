@@ -527,9 +527,9 @@ def sync_native_ligature_shaping(
     Qt disables optional ligatures whenever native letter spacing is present,
     even at 100%. Identity spacing stays unset for horizontal runs that allow
     common ligatures; explicit spacing implements tracking and the Qt 5
-    ``no-common-ligatures`` fallback. Qt 6.11 feature tags then restore the
-    requested independent axes, including discretionary ligatures in ordinary
-    vertical cells.
+    ``no-common-ligatures`` fallback. Qt 6.11 feature tags then restore
+    explicitly enabled common and discretionary ligatures, including
+    discretionary ligatures in ordinary vertical cells.
 
     >>> fmt = QTextCharFormat()
     >>> sync_native_ligature_shaping(fmt, vertical=False)
@@ -592,6 +592,10 @@ def sync_native_ligature_shaping(
     feature_values = {}
     for axis, tags in _LIGATURE_FEATURE_TAGS.items():
         state = states[axis]
+        override_tracking = (
+            state == LIGATURE_ENABLED
+            and axis in {LIGATURE_COMMON, LIGATURE_DISCRETIONARY}
+        )
         if (
             axis == LIGATURE_COMMON and not horizontal_run
         ) or (
@@ -601,6 +605,7 @@ def sync_native_ligature_shaping(
                 LIGATURE_HISTORICAL,
             }
             and not identity_spacing
+            and not override_tracking
         ):
             # Native spacing already suppresses these optional features.
             native_value = None

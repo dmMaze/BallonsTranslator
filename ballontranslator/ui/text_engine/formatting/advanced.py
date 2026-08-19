@@ -458,8 +458,7 @@ class TextAdvancedFormatPanel(PanelArea):
             LIGATURE_COMMON,
             self.tr('Common'),
             self.tr(
-                'Set common ligatures for the selected text; '
-                'non-identity letter spacing disables them'
+                'Set common ligatures for the selected text'
             ),
         )]
         if FONT_FEATURES_AVAILABLE:
@@ -469,8 +468,7 @@ class TextAdvancedFormatPanel(PanelArea):
                     self.tr('Discretionary'),
                     self.tr(
                         'Set font-specific optional ligatures for the '
-                        'selected text; non-identity letter spacing '
-                        'disables them'
+                        'selected text'
                     ),
                 ),
                 (

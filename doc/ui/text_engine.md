@@ -193,10 +193,13 @@ ligatures whenever native letter spacing is set, including identity 100%
 spacing. Identity spacing is therefore left unset on horizontal runs that
 allow common ligatures, while `no-common-ligatures`, non-identity tracking, and
 ordinary vertical cells retain an explicit spacing property for Qt 5. Under Qt
-6.11, feature tags express independent axes that native spacing does not
-already suppress. Non-identity semantic tracking overrides common,
-discretionary, and historical ligatures. Contextual alternates remain active
-unless explicitly disabled.
+6.11, explicit Common and Discretionary On states use feature tags to override
+Qt's tracking-based suppression; their Default states still follow the native
+behavior. Qt 5 cannot make that override, and non-identity tracking continues
+to suppress Common there. Historical ligatures remain suppressed by tracking,
+while contextual alternates remain active unless explicitly disabled.
+External CSS renderers may still apply the standard tracking-based suppression
+because the forced feature-tag behavior is an application rendering extension.
 Ordinary vertical flow continues to suppress common ligatures, but explicit
 discretionary ligatures and contextual alternates apply there: a joined glyph
 keeps one cursor interval and UTF-16 range per source grapheme within its

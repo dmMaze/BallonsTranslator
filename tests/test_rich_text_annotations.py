@@ -445,7 +445,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             exported,
         )
 
-    def test_common_ligature_shaping_and_tracking_precedence(self):
+    def test_explicit_ligatures_override_tracking_on_qt6(self):
         if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
             self.skipTest('DejaVu Serif is unavailable')
 
@@ -472,14 +472,21 @@ class RichTextAnnotationTest(unittest.TestCase):
             _glyph_count(shaped_document(LIGATURE_DISABLED, 1.0)),
             2,
         )
+        self.assertEqual(
+            _glyph_count(shaped_document(LIGATURE_DEFAULT, 1.15)),
+            2,
+        )
         tracked = shaped_document(LIGATURE_ENABLED, 1.15)
-        self.assertEqual(_glyph_count(tracked), 2)
+        self.assertEqual(
+            _glyph_count(tracked),
+            1 if FONT_FEATURES_AVAILABLE else 2,
+        )
         if FONT_FEATURES_AVAILABLE:
             font = _format_at(tracked, 0, 2).font()
-            for name in ('liga', 'clig', 'dlig', 'hlig'):
-                self.assertFalse(
-                    font.isFeatureSet(QFont.Tag.fromString(name))
-                )
+            for name in ('liga', 'clig'):
+                tag = QFont.Tag.fromString(name)
+                self.assertTrue(font.isFeatureSet(tag))
+                self.assertEqual(font.featureValue(tag), 1)
 
     def test_ligature_import_preserves_standard_css_letter_spacing(self):
         document = QTextDocument()
@@ -554,7 +561,7 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertEqual(_glyph_count(item.document()), 2)
 
-    def test_qt6_discretionary_shaping_and_tracking(self):
+    def test_qt6_discretionary_shaping_overrides_tracking(self):
         if not FONT_FEATURES_AVAILABLE:
             self.skipTest('Qt 6.11 font features are unavailable')
         if QFontInfo(QFont('DejaVu Serif')).family() != 'DejaVu Serif':
@@ -573,7 +580,11 @@ class RichTextAnnotationTest(unittest.TestCase):
         )
         self.assertEqual(_glyph_count(document), 1)
         apply_letter_spacing(cursor, 1.15, vertical=False)
-        self.assertEqual(_glyph_count(document), 2)
+        self.assertEqual(_glyph_count(document), 1)
+        dlig = QFont.Tag.fromString('dlig')
+        font = _format_at(document, 0, 2).font()
+        self.assertTrue(font.isFeatureSet(dlig))
+        self.assertEqual(font.featureValue(dlig), 1)
         apply_letter_spacing(cursor, 1.0, vertical=False)
         self.assertEqual(_glyph_count(document), 1)
 
@@ -692,7 +703,8 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         item = self._make_item(True, text='st')
         item.setFontFamily('DejaVu Serif')
-        item.setLetterSpacing(1.0)
+        tracking = 1.15
+        item.setLetterSpacing(tracking)
         item.setLigatureAxis(
             LIGATURE_DISCRETIONARY, LIGATURE_ENABLED
         )
@@ -712,9 +724,12 @@ class RichTextAnnotationTest(unittest.TestCase):
             [(0, 1), (1, 2)],
         )
         cell_height = item.layout.get_char_fontfmt(0, 0).tbr.height()
-        self.assertAlmostEqual(cells[-1][3] - cells[0][2], cell_height)
+        tracked_extent = cell_height * tracking
+        self.assertAlmostEqual(
+            cells[-1][3] - cells[0][2], tracked_extent
+        )
         for _start, _end, top, bottom, _is_space in cells:
-            self.assertAlmostEqual(bottom - top, cell_height / 2)
+            self.assertAlmostEqual(bottom - top, tracked_extent / 2)
         self.assertEqual(
             [
                 item.layout.source_cursor_rect(position).top()
