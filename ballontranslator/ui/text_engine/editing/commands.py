@@ -483,7 +483,7 @@ class TextItemEditCommand(QUndoCommand):
             multi_size = not self.blkitem.isEditing() and self.blkitem.isMultiFontSize()
             self.formatpanel.set_active_format(self.blkitem.get_fontformat(), multi_size)
 
-        if self.edit is not None:
+        if self.edit is not None and not self.is_formatting:
             self.edit.undo()
 
 
