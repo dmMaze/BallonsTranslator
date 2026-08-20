@@ -585,7 +585,7 @@ class FontFormat(Config):
     line_spacing: float = 1.2
     letter_spacing: float = 1.15
     ligature_common: str = 'default'
-    ligature_discretionary: str = 'default'
+    ligature_discretionary: str = 'enabled'
     ligature_contextual: str = 'default'
     oldstyle_nums: str = 'default'
     opacity: float = 1.
