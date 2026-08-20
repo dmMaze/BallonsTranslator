@@ -6,6 +6,9 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -23,6 +26,14 @@ from ...custom_widget import (
 )
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ballontranslator.utils.fontformat import FontFormat
+from ..annotations import (
+    FONT_FEATURES_AVAILABLE,
+    LIGATURE_AXIS_VALUES,
+    LIGATURE_COMMON,
+    LIGATURE_CONTEXTUAL,
+    LIGATURE_DISCRETIONARY,
+    OLDSTYLE_NUMS,
+)
 
 def _word_wrap_label(label: QLabel):
     label.setWordWrap(True)
@@ -270,9 +281,114 @@ class TextGradientGroup(QGroupBox):
         self.adaptive_layout.addWidget(self.geometry_row)
 
 
+class RubyFuriganaGroup(QGroupBox):
+    """Selection-owned group/mono Ruby editor."""
+
+    apply_requested = Signal(str, str, str)
+    remove_requested = Signal()
+
+    def __init__(self, parent: QWidget = None) -> None:
+        super().__init__(parent)
+        self.setObjectName('RubyFuriganaGroup')
+        self.setTitle(self.tr('Ruby / Furigana'))
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.type_combobox = SmallComboBox(parent=self)
+        self.type_combobox.addItem(self.tr('Group'), 'group')
+        self.type_combobox.addItem(self.tr('Mono'), 'mono')
+        self.type_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Type'), parent=self)
+        )
+
+        self.text_edit = QLineEdit(self)
+        self.text_edit.setPlaceholderText(self.tr('Ruby text'))
+        self.text_edit.setToolTip(
+            self.tr('For Mono Ruby, separate readings with whitespace')
+        )
+        self.text_edit.returnPressed.connect(self._emit_apply)
+        self.text_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Reading'), parent=self)
+        )
+
+        self.position_combobox = SmallComboBox(parent=self)
+        self.position_combobox.addItem(self.tr('Over / Right'), 'over')
+        self.position_combobox.addItem(self.tr('Under / Left'), 'under')
+        self.position_label = _word_wrap_label(
+            SmallParamLabel(self.tr('Position'), parent=self)
+        )
+
+        self.apply_button = QPushButton(self.tr('Apply'), self)
+        self.apply_button.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+        )
+        self.apply_button.clicked.connect(self._emit_apply)
+        self.remove_button = QPushButton(self.tr('Remove'), self)
+        self.remove_button.setSizePolicy(
+            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+        )
+        self.remove_button.clicked.connect(self.remove_requested.emit)
+        self.remove_button.setEnabled(False)
+
+        type_unit = _atomic_unit(
+            self, self.type_label, self.type_combobox
+        )
+        position_unit = _atomic_unit(
+            self, self.position_label, self.position_combobox
+        )
+        selector_row, _ = _adaptive_row(
+            self, type_unit, position_unit
+        )
+        text_unit = _atomic_unit(
+            self,
+            self.text_label,
+            self.text_edit,
+            self.apply_button,
+            self.remove_button,
+        )
+        self.adaptive_layout = QVBoxLayout(self)
+        self.adaptive_layout.addWidget(selector_row)
+        self.adaptive_layout.addWidget(text_unit)
+
+    def _emit_apply(self) -> None:
+        self.apply_requested.emit(
+            str(self.type_combobox.currentData()),
+            self.text_edit.text(),
+            str(self.position_combobox.currentData()),
+        )
+
+    def set_state(
+        self,
+        ruby_type: str,
+        text: str,
+        position: str,
+        editable: bool,
+    ) -> None:
+        for combobox, value in (
+            (self.type_combobox, ruby_type),
+            (self.position_combobox, position),
+        ):
+            index = combobox.findData(value)
+            if index >= 0:
+                combobox.setCurrentIndex(index)
+        if self.text_edit.text() != text:
+            self.text_edit.setText(text)
+        self.remove_button.setEnabled(editable)
+
+    def set_error(self, message: str) -> None:
+        QMessageBox.warning(
+            self,
+            self.tr('Ruby / Furigana'),
+            message,
+        )
+
+
 class TextAdvancedFormatPanel(PanelArea):
 
     param_changed = Signal(str, object)
+    ligature_axis_changed = Signal(str, str)
+    ruby_apply_requested = Signal(str, str, str)
+    ruby_remove_requested = Signal()
 
     def __init__(
         self,
@@ -333,6 +449,83 @@ class TextAdvancedFormatPanel(PanelArea):
             self.linespacing_type_combobox,
         )
 
+        self.ligature_group = QGroupBox(
+            self.tr('Ligature'), self.scrollContent
+        )
+        self.ligature_group.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        ligature_specs = [(
+            LIGATURE_COMMON,
+            self.tr('Common'),
+            self.tr(
+                'Set common ligatures for the selected text'
+            ),
+        )]
+        if FONT_FEATURES_AVAILABLE:
+            ligature_specs.extend((
+                (
+                    LIGATURE_DISCRETIONARY,
+                    self.tr('Discretionary'),
+                    self.tr(
+                        'Set font-specific optional ligatures for the '
+                        'selected text'
+                    ),
+                ),
+                (
+                    OLDSTYLE_NUMS,
+                    self.tr('Oldstyle'),
+                    self.tr(
+                        'Set oldstyle numerals for the selected text'
+                    ),
+                ),
+                (
+                    LIGATURE_CONTEXTUAL,
+                    self.tr('Contextual'),
+                    self.tr(
+                        'Set contextual alternate glyphs for the '
+                        'selected text'
+                    ),
+                ),
+            ))
+        self.ligature_comboboxes = {}
+        ligature_units = []
+        for axis, label, tooltip in ligature_specs:
+            combo = SmallComboBox(parent=self.ligature_group)
+            for option, value in zip(
+                (self.tr('Default'), self.tr('On'), self.tr('Off')),
+                LIGATURE_AXIS_VALUES,
+            ):
+                combo.addItem(option, value)
+            combo.setProperty('ligature-axis', axis)
+            combo.setToolTip(tooltip)
+            combo.activated.connect(self.on_ligature_axis_changed)
+            self.ligature_comboboxes[axis] = combo
+            ligature_units.append(_atomic_unit(
+                self.ligature_group,
+                _word_wrap_label(
+                    SmallParamLabel(label, parent=self.ligature_group)
+                ),
+                combo,
+            ))
+        unit_rows = (
+            (ligature_units[:2], ligature_units[2:])
+            if FONT_FEATURES_AVAILABLE
+            else (ligature_units,)
+        )
+        rows_and_layouts = [
+            _adaptive_row(
+                self.ligature_group,
+                *units,
+            )
+            for units in unit_rows
+        ]
+        self.ligature_rows = [row for row, _layout in rows_and_layouts]
+        self.ligature_layouts = [layout for _row, layout in rows_and_layouts]
+        self.ligature_group_layout = QVBoxLayout(self.ligature_group)
+        for row in self.ligature_rows:
+            self.ligature_group_layout.addWidget(row)
+
         self.opacity_box = SmallSizeComboBox(
             [0, 1], 'opacity', self.top_section, init_value=1.
         )
@@ -364,12 +557,21 @@ class TextAdvancedFormatPanel(PanelArea):
             self.on_format_changed, title=self.tr('Shadow')
         )
 
+        self.ruby_group = RubyFuriganaGroup(self.scrollContent)
+        self.ruby_group.apply_requested.connect(
+            self.ruby_apply_requested.emit
+        )
+        self.ruby_group.remove_requested.connect(
+            self.ruby_remove_requested.emit
+        )
         self.gradient_group = TextGradientGroup(self.on_format_changed)
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
+        vlayout.addWidget(self.ligature_group)
         vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
+        vlayout.addWidget(self.ruby_group)
 
         self.setContentLayout(vlayout)
         self.vlayout = vlayout
@@ -476,6 +678,8 @@ class TextAdvancedFormatPanel(PanelArea):
             layout.minimumSize().width()
             for layout in (
                 self.top_layout,
+                *self.ligature_layouts,
+                self.ruby_group.adaptive_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
             )
@@ -582,10 +786,15 @@ class TextAdvancedFormatPanel(PanelArea):
             self.updateGeometry()
             self.view_widget.updateGeometry()
 
-    def on_linespacing_type_changed(self):
+    def on_linespacing_type_changed(self) -> None:
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
-    def set_active_format(self, font_format: FontFormat):
+    def on_ligature_axis_changed(self, _index: int) -> None:
+        combo = self.sender()
+        axis = str(combo.property('ligature-axis'))
+        self.ligature_axis_changed.emit(axis, str(combo.currentData()))
+
+    def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
 
         self.shadow_group.color_label.setPickerColor(font_format.shadow_color)
@@ -599,4 +808,25 @@ class TextAdvancedFormatPanel(PanelArea):
         self.gradient_group.enable_checker.setCheckState(font_format.gradient_enabled)
         self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
         self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
-        # self.tate_chu_yoko_checker.setChecked(font_format.font)
+
+    def set_line_spacing_type(self, spacing_type: int) -> None:
+        if not self.linespacing_type_combobox.hasFocus():
+            self.linespacing_type_combobox.setCurrentIndex(int(spacing_type))
+
+    def set_ligature_axis(self, axis: str, value: str) -> None:
+        combo = self.ligature_comboboxes.get(axis)
+        if combo is None:
+            return
+        index = combo.findData(value)
+        if index < 0 or combo.hasFocus():
+            return
+        combo.setCurrentIndex(index)
+
+    def set_ruby_state(
+        self,
+        ruby_type: str,
+        text: str,
+        position: str,
+        editable: bool,
+    ) -> None:
+        self.ruby_group.set_state(ruby_type, text, position, editable)

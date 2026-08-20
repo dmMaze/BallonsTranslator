@@ -1,8 +1,8 @@
 # Core dependencies required to launch the UI and shared image/project logic.
 # Concrete module backends are installed on demand by the in-app package manager.
 
-PyQt6-Qt6>=6.6.2 ; python_version > "3.8"
-PyQt6>=6.6.1 ; python_version > "3.8"
+PyQt6-Qt6>=6.11.1 ; python_version > "3.8"
+PyQt6>=6.11.0 ; python_version > "3.8"
 PyQt5-Qt5>=5.15.2 ; python_version <= "3.8"
 PyQt5>=5.15.10 ; python_version <= "3.8"
 qtpy

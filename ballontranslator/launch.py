@@ -328,10 +328,23 @@ def main():
                 fnt_idx = QFontDatabase.addApplicationFont(fp)
 
     if shared.FLAG_QT6:
-        shared.FONT_FAMILIES = set(f for f in QFontDatabase.families())
+        font_database = QFontDatabase
     else:
-        fdb = QFontDatabase()
-        shared.FONT_FAMILIES = set(fdb.families())
+        font_database = QFontDatabase()
+    shared.FONT_FAMILIES = set(font_database.families())
+
+    from ballontranslator.ui.text_engine.font_family import (
+        register_qt_font_family_aliases,
+    )
+    font_aliases = register_qt_font_family_aliases(
+        shared.FONT_FAMILIES,
+        font_database.styles,
+    )
+    if font_aliases:
+        LOGGER.info(
+            'Registered Qt-safe aliases for %d font families.',
+            len(font_aliases),
+        )
 
     app_font = QFont('Microsoft YaHei UI')
     if not app_font.exactMatch() or sys.platform == 'darwin':

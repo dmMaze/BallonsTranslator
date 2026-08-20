@@ -25,6 +25,7 @@ from ballontranslator.ui.module_manager import TranslateThread
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
     LLMTranslateContext,
+    OCRTextPostprocess,
     RunStatus,
     pcfg,
 )
@@ -889,8 +890,8 @@ class LLMTranslationContextTest(unittest.TestCase):
             result_substitutions,
         ), mock.patch.object(
             pcfg,
-            'let_uppercase_flag',
-            False,
+            'let_letter_case',
+            OCRTextPostprocess.NONE,
         ), mock.patch.object(
             type(self.translator),
             'profile',

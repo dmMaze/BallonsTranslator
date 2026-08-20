@@ -7,7 +7,7 @@ from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.registry import Registry
 from ballontranslator.utils.config import OCRTextPostprocess, pcfg
 from ballontranslator.utils.text_processing import (
-    capitalize_sentences,
+    apply_letter_case,
     substitute_keywords,
 )
 
@@ -40,11 +40,7 @@ def postprocess_ocr_text(
     """
 
     text = substitute_keywords(text, substitutions)
-    if mode == OCRTextPostprocess.CAPITALIZE:
-        return capitalize_sentences(text)
-    if mode == OCRTextPostprocess.UPPERCASE:
-        return text.upper()
-    return text
+    return apply_letter_case(text, mode)
 
 
 class OCRBase(BaseModule):

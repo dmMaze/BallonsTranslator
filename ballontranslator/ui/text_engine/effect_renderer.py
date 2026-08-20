@@ -9,14 +9,12 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
-    QFont,
     QLinearGradient,
     QPainter,
     QPen,
     QPixmap,
     QTextCharFormat,
     QTextCursor,
-    QTextDocument,
     QTextLayout,
 )
 from qtpy.QtWidgets import QStyle, QWidget
@@ -24,8 +22,12 @@ from qtpy.QtWidgets import QStyle, QWidget
 from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ..misc import ndarray2pixmap, pixmap2ndarray
-from .layout import HorizontalTextDocumentLayout, VerticalTextDocumentLayout
-from .rendering.glyph import GLYPH_STROKE_FORMAT_PROPERTY
+from .horizontal_layout import HorizontalTextDocumentLayout
+from .vertical_layout import VerticalTextDocumentLayout
+from .rendering.glyph import (
+    GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
+    GLYPH_STROKE_FORMAT_PROPERTY,
+)
 from .rendering.shadow import apply_shadow_effect
 from .rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
@@ -39,10 +41,13 @@ from .rendering.raster import (
     EffectRasterAllocationError,
     EffectRasterPlan,
     plan_effect_raster,
+    quality_raster_request,
 )
 
 
 GRADIENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1238
+STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1241
+_STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 # Glyph Slant writes vector paths into effect pixmaps, not native text.
 _VECTOR_EFFECT_RENDER_HINTS = (
     QPainter.RenderHint.Antialiasing
@@ -50,10 +55,10 @@ _VECTOR_EFFECT_RENDER_HINTS = (
 )
 
 
-class _TransformedEffectState:
-    """Allocate raster/cache state only after a transform needs it.
+class _EffectRasterState:
+    """Allocate raster/cache state only after an effect needs it.
 
-    >>> _TransformedEffectState().cache_generation
+    >>> _EffectRasterState().cache_generation
     0
     """
 
@@ -72,8 +77,8 @@ class _TransformedEffectState:
         self.direct_stroke = False
 
 
-class _TransformedEffectField:
-    """Descriptor keeping transformed-only fields lazy at existing call sites."""
+class _EffectRasterField:
+    """Descriptor keeping raster-only fields lazy at existing call sites."""
 
     def __set_name__(self, owner, name):
         self.name = name
@@ -81,10 +86,10 @@ class _TransformedEffectField:
     def __get__(self, instance, owner):
         if instance is None:
             return self
-        return getattr(instance._transformed_state(), self.name)
+        return getattr(instance._raster_state(), self.name)
 
     def __set__(self, instance, value):
-        setattr(instance._transformed_state(), self.name, value)
+        setattr(instance._raster_state(), self.name, value)
 
 
 class TextEffectRenderer:
@@ -94,38 +99,38 @@ class TextEffectRenderer:
     True
     """
 
-    cache_generation = _TransformedEffectField()
-    cache_rendered_generation = _TransformedEffectField()
-    cache_dirty = _TransformedEffectField()
-    tile_cache = _TransformedEffectField()
-    allocation_warning_generation = _TransformedEffectField()
-    export_render = _TransformedEffectField()
-    export_error = _TransformedEffectField()
-    in_graphics_paint = _TransformedEffectField()
-    capturing_surface = _TransformedEffectField()
-    surface_raster_error = _TransformedEffectField()
-    force_tiles = _TransformedEffectField()
-    direct_stroke = _TransformedEffectField()
+    cache_generation = _EffectRasterField()
+    cache_rendered_generation = _EffectRasterField()
+    cache_dirty = _EffectRasterField()
+    tile_cache = _EffectRasterField()
+    allocation_warning_generation = _EffectRasterField()
+    export_render = _EffectRasterField()
+    export_error = _EffectRasterField()
+    in_graphics_paint = _EffectRasterField()
+    capturing_surface = _EffectRasterField()
+    surface_raster_error = _EffectRasterField()
+    force_tiles = _EffectRasterField()
+    direct_stroke = _EffectRasterField()
 
     def __init__(self, item) -> None:
         self.item = item
         self.background_pixmap = None
         self.background_pixmap_scale = None
-        self._transformed_effect_state = None
+        self._effect_raster_state = None
         self.refreshing_gradient_geometry = False
         self.refreshing_effect_padding = False
         self.has_transient_gradient_ranges = False
 
-    def _transformed_state(self) -> _TransformedEffectState:
-        state = self._transformed_effect_state
+    def _raster_state(self) -> _EffectRasterState:
+        state = self._effect_raster_state
         if state is None:
-            state = _TransformedEffectState()
-            self._transformed_effect_state = state
+            state = _EffectRasterState()
+            self._effect_raster_state = state
         return state
 
     def surface_cache_state(self) -> Tuple[int, bool]:
         """Return final-warp cache inputs without allocating effect state."""
-        state = self._transformed_effect_state
+        state = self._effect_raster_state
         if state is None:
             return 0, False
         return state.cache_generation, state.export_render
@@ -172,7 +177,7 @@ class TextEffectRenderer:
 
     def boundingRect(self):
         if self.geometry_controller.uses_surface_warp():
-            return self.geometry_controller.source_rect()
+            return self.geometry_controller.source_paint_rect()
         return self.item.boundingRect()
 
     def logical_unpadded_rect(self):
@@ -205,43 +210,23 @@ class TextEffectRenderer:
         self.background_pixmap = None
         self.background_pixmap_scale = None
 
+    def requires_no_item_cache(self) -> bool:
+        """Let the effect raster cache see the actual paint-device scale."""
+        return any(self._effect_flags())
+
     def release_caches(self) -> None:
         """Release every item-owned raster cache before page removal."""
         self.clear_cached_surface()
-        state = self._transformed_effect_state
+        state = self._effect_raster_state
         if state is not None:
             state.tile_cache.clear()
-        self._transformed_effect_state = None
+        self._effect_raster_state = None
 
     def paint_item(self, painter: QPainter, option, widget: QWidget, base_paint) -> None:
         """Paint effects around the host item's normal text pass."""
-        if self._text_transform_is_neutral():
-            editing = self.item.isEditing()
-            if editing and self.background_pixmap is not None:
-                painter.save()
-                painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform
-                )
-                painter.drawPixmap(
-                    self.boundingRect().toRect(), self.background_pixmap
-                )
-                painter.restore()
-
+        if not any(self._effect_flags()):
             option.state = QStyle.State_None
             base_paint(painter, option, widget)
-
-            if not editing and self.background_pixmap is not None:
-                painter.save()
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOver
-                )
-                painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform
-                )
-                painter.drawPixmap(
-                    self.boundingRect().toRect(), self.background_pixmap
-                )
-                painter.restore()
             return
 
         # Effects must be composited before the normal fill. DestinationOver
@@ -256,19 +241,19 @@ class TextEffectRenderer:
             self.in_graphics_paint = was_in_graphics_paint
 
     def finalize_neutral_cache(self) -> None:
-        """Drop active-transform raster state after neutral restoration."""
+        """Invalidate transformed pixels after neutral restoration."""
         self._refresh_gradient_geometry()
-        self.tile_cache.clear()
-        self.force_tiles = False
-        self.direct_stroke = False
-        self.cache_dirty = False
-        self.cache_rendered_generation = -1
-        if any(self._effect_flags()):
-            self.repaint_background()
-        else:
-            self.clear_cached_surface()
+        state = self._effect_raster_state
+        if state is not None:
+            state.tile_cache.clear()
+            state.force_tiles = False
+            state.direct_stroke = False
+            state.cache_dirty = True
+            state.cache_rendered_generation = -1
+        self.clear_cached_surface()
         self.item.update()
-        self._transformed_effect_state = None
+        if not any(self._effect_flags()):
+            self._effect_raster_state = None
 
     def _effect_paint_context(self):
         context = QAbstractTextDocumentLayout.PaintContext()
@@ -338,6 +323,62 @@ class TextEffectRenderer:
             / 2
         )
 
+    def _sync_native_stroke_alignment(self) -> None:
+        """Keep fill and stroke on Qt's same native glyph raster path."""
+        if self.layout is None:
+            return
+        enabled = self.fontformat.stroke_width > 0
+        changed = False
+        alignment_format = None
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            formats = list(layout.formats())
+            tagged = [
+                entry
+                for entry in formats
+                if bool(entry.format.property(
+                    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY
+                ))
+            ]
+            if enabled == bool(tagged):
+                block = block.next()
+                continue
+            formats = [
+                entry
+                for entry in formats
+                if not bool(entry.format.property(
+                    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY
+                ))
+            ]
+            if enabled:
+                if alignment_format is None:
+                    alignment_format = QTextCharFormat()
+                    alignment_format.setProperty(
+                        STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True
+                    )
+                    # A styled outline selects Qt's path-backed glyph
+                    # rasterizer; transparent zero width paints no pixels.
+                    alignment_format.setTextOutline(QPen(
+                        QColor(0, 0, 0, 0),
+                        0.0,
+                        Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap,
+                        Qt.PenJoinStyle.RoundJoin,
+                    ))
+                entry = QTextLayout.FormatRange()
+                entry.start = 0
+                entry.length = _STROKE_ALIGNMENT_RANGE_LENGTH
+                entry.format = alignment_format
+                formats.append(entry)
+            layout.setFormats(formats)
+            changed = True
+            block = block.next()
+        if changed:
+            # setFormats invalidates QTextLine objects but changes no document
+            # content or geometry; rebuild once after all blocks are updated.
+            self.layout.reLayout()
+
     def _new_effect_pixmap(
         self,
         render_scale: float = 1.0,
@@ -376,14 +417,13 @@ class TextEffectRenderer:
             ) from error
         return pixmap
 
-    def _paint_cloned_document_stroke(self, painter: QPainter):
+    def _paint_cloned_document_stroke(self, painter: QPainter) -> None:
         """Paint stroke through the BASE cloned-document path."""
-        doc = QTextDocument()
+        # Qt's native clone preserves UserProperty values and avoids a full
+        # HTML serialization/parse cycle on every effect refresh.
+        doc = self.document().clone()
         doc.setUndoRedoEnabled(False)
         doc.setDocumentMargin(self.layout.effectPadding())
-        doc.setDefaultFont(self.document().defaultFont())
-        doc.setHtml(self.document().toHtml())
-        doc.setDefaultTextOption(self.document().defaultTextOption())
         cursor = QTextCursor(doc)
         block = doc.firstBlock()
         stroke_pen = QPen(
@@ -393,7 +433,6 @@ class TextEffectRenderer:
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
         )
-        letter_spacing = self.fontformat.letter_spacing * 100
         while block.isValid():
             it = block.begin()
             while not it.atEnd():
@@ -409,11 +448,11 @@ class TextEffectRenderer:
                     QTextCursor.MoveMode.KeepAnchor,
                 )
                 char_format.setTextOutline(stroke_pen)
-                if letter_spacing != 100 and not self.fontformat.vertical:
-                    char_format.setFontLetterSpacingType(
-                        QFont.SpacingType.PercentageSpacing
-                    )
-                    char_format.setFontLetterSpacing(letter_spacing)
+                # Path-painted glyph extensions consume this flag. Ruby and
+                # emphasis derive half-width native outlines in temporary docs.
+                char_format.setProperty(
+                    GLYPH_DILATED_STROKE_FORMAT_PROPERTY, True
+                )
                 cursor.mergeCharFormat(char_format)
                 it += 1
             block = block.next()
@@ -459,7 +498,9 @@ class TextEffectRenderer:
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
                 self.geometry_controller.draw_layout_selection_mask(
-                    source_painter, fragment_context
+                    source_painter,
+                    fragment_context,
+                    include_annotations=False,
                 )
             finally:
                 source_painter.end()
@@ -506,6 +547,11 @@ class TextEffectRenderer:
             )
         stroke_pixmap.setDevicePixelRatio(render_scale)
         painter.drawPixmap(rect.topLeft(), stroke_pixmap)
+        # Half-font annotations own native outlines, not the base mask's
+        # full-font morphology radius.
+        self.geometry_controller.draw_layout_annotations(
+            painter, stroke_context
+        )
 
     def paint_stroke(
         self,
@@ -824,75 +870,32 @@ class TextEffectRenderer:
                 self.surface_raster_error = previous_raster_error
         return target_map
 
-    def _repaint_neutral_background(self):
-        """Rebuild effects with the BASE pixmap and composition path."""
-        empty = self.document().isEmpty()
-        if self.repainting or self.reshaping:
-            return
-
-        paint_stroke, paint_shadow = self._effect_flags()
-        if (not paint_shadow and not paint_stroke) or empty:
-            self.background_pixmap = None
-            self.background_pixmap_scale = None
-            return
-
-        self.repainting = True
-        try:
-            font_size = self.layout.max_font_size(to_px=True)
-            target_map = QPixmap(self.boundingRect().size().toSize())
-            target_map.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(target_map)
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-            if paint_stroke:
-                self._paint_cloned_document_stroke(painter)
-            else:
-                self.document().drawContents(painter)
-
-            if paint_shadow:
-                radius = int(round(self.fontformat.shadow_radius * font_size))
-                xoffset = int(self.fontformat.shadow_offset[0] * font_size)
-                yoffset = int(self.fontformat.shadow_offset[1] * font_size)
-                shadow_map, _ = apply_shadow_effect(
-                    target_map,
-                    self.fontformat.shadow_color,
-                    self.fontformat.shadow_strength,
-                    radius,
-                )
-                composition = painter.compositionMode()
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOver
-                )
-                painter.drawPixmap(xoffset, yoffset, shadow_map)
-                painter.setCompositionMode(composition)
-
-            painter.end()
-            self.background_pixmap = target_map
-            self.background_pixmap_scale = 1.0
-        finally:
-            self.repainting = False
-
     def repaint_background(self, render_scale: float = 1.0):
-        if self._text_transform_is_neutral():
-            self._repaint_neutral_background()
-            return
+        self.item.refresh_cache_policy()
         empty = self.document().isEmpty()
         if self.repainting or self.reshaping or self.pre_editing:
             # Avoid reshape/reentrant work. During IME, reuse the preedit-free
             # cache because PaintContext cannot exclude active preedit glyphs.
             return
 
+        self.repainting = True
+        try:
+            self._sync_native_stroke_alignment()
+        finally:
+            self.repainting = False
         self._update_effect_padding()
 
         paint_stroke, paint_shadow = self._effect_flags()
         if not paint_shadow and not paint_stroke or empty:
+            changed = self.background_pixmap is not None
             self.background_pixmap = None
             self.background_pixmap_scale = None
-            self.tile_cache.clear()
-            self.direct_stroke = False
-            self.force_tiles = False
-            self.cache_dirty = False
-            self.cache_rendered_generation = self.cache_generation
+            state = self._effect_raster_state
+            if state is not None:
+                state.tile_cache.clear()
+            self._effect_raster_state = None
+            if changed:
+                self.item.update()
             return
 
         self.tile_cache.clear()
@@ -900,7 +903,9 @@ class TextEffectRenderer:
         try:
             br = self.boundingRect()
             plan = plan_effect_raster(
-                br.width(), br.height(), render_scale
+                br.width(),
+                br.height(),
+                quality_raster_request(render_scale),
             )
             if plan.mode == 'tiles':
                 self.background_pixmap = None
@@ -946,6 +951,7 @@ class TextEffectRenderer:
             self.cache_rendered_generation = self.cache_generation
         finally:
             self.repainting = False
+        self.item.update()
 
 
     def _mark_effect_cache_dirty(self):
@@ -1207,7 +1213,9 @@ class TextEffectRenderer:
             br = self.boundingRect()
             requested_scale = self._paint_device_scale(painter)
             plan = plan_effect_raster(
-                br.width(), br.height(), requested_scale
+                br.width(),
+                br.height(),
+                quality_raster_request(requested_scale),
             )
             if self.force_tiles:
                 plan = EffectRasterPlan(

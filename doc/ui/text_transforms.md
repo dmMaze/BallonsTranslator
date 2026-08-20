@@ -9,7 +9,7 @@ controls and algorithms.
 
 ```text
 QTextDocument + SceneTextLayout
-  -> Glyph Slant around each shaped glyph baseline
+  -> Glyph Slant around each shaped glyph's visible-space anchor
   -> fill, stroke, shadow, gradient
   -> ordered global stack: Projective / Bend / Sine Wave / Grid
   -> QGraphicsItem position and rotation
@@ -18,6 +18,13 @@ QTextDocument + SceneTextLayout
 Glyph Slant is a typography effect applied before the global stack. It is not
 reorderable. The global stack transforms the completed text-and-effects box;
 its order is significant and duplicate transform types are allowed.
+
+Upright glyphs slant around their mapped baseline. A quarter-turned glyph has
+no horizontal visible baseline, so its original ink-to-baseline distance is
+re-established on the visible y axis. This keeps the intended slant direction
+without translating rotated punctuation away from the Roman-glyph column.
+The final ink box is centered on that anchor so mirrored outlines do not drift
+in opposite directions.
 
 `compile_text_transform_stack()` is the transform-stack compiler. It receives
 the committed stack plus the current logical bounds, padded source
@@ -181,6 +188,12 @@ padded source surface, inverse-map it once, and draw editing UI over the mapped
 destination where necessary. Matrix-only stacks stay on Qt's native path.
 Effect padding changes the source rectangle, not the persistent logical text
 rectangle.
+
+Stroke and shadow use the same bounded, device-scale-aware effect raster
+policy for neutral, Glyph Slant, matrix, and nonlinear paths. Effects and
+delegated Glyph Slant painting disable Qt's redundant outer item cache; the
+effect renderer remains the sole raster-cache owner and can therefore rebuild
+at the current view or export scale.
 
 ### Cache boundaries
 

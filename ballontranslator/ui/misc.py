@@ -72,19 +72,6 @@ def ndarray2pixmap(img, return_qimg=False):
     return QPixmap(qImg)
 
 
-class LruIgnoreArg:
-
-    def __init__(self, **kwargs) -> None:
-        for key in kwargs:
-            setattr(self, key, kwargs[key])
-
-    def __hash__(self) -> int:
-        return hash(type(self))
-
-    def __eq__(self, other):
-        return isinstance(other, type(self))
-
-
 span_pattern = re.compile(r'<span style=\"(.*?)\">', re.DOTALL)
 p_pattern = re.compile(r'<p style=\"(.*?)\">', re.DOTALL)
 fragment_pattern = re.compile(r'<!--(.*?)Fragment-->', re.DOTALL)

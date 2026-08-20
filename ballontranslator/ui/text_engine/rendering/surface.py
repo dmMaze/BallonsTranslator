@@ -12,7 +12,11 @@ from qtpy.QtGui import QPainter, QPixmap
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QWidget
 
 from ...misc import ndarray2pixmap, pixmap2ndarray
-from .raster import EffectRasterAllocationError, plan_effect_raster
+from .raster import (
+    EffectRasterAllocationError,
+    plan_effect_raster,
+    quality_raster_request,
+)
 
 
 PaintSource = Callable[
@@ -210,14 +214,7 @@ class NonlinearTextSurfaceRenderer:
             requested_scale = min(requested_scale, float(maximum_scale))
         raster_request = requested_scale
         if high_quality:
-            raster_request = next(
-                (
-                    tier
-                    for tier in (1.0, 2.0, 4.0, 8.0)
-                    if requested_scale <= tier * (1.0 + 1e-6)
-                ),
-                requested_scale,
-            )
+            raster_request = quality_raster_request(requested_scale)
         source_plan = plan_effect_raster(
             source_rect.width(), source_rect.height(), raster_request
         )

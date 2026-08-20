@@ -16,7 +16,22 @@ from ..item import TextBlkItem, TextBlock
 from ...canvas import Canvas
 from .widgets import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
 from ballontranslator.utils.fontformat import FontFormat
-from .commands import propagate_user_edit, TextEditCommand, ReshapeItemCommand, MoveBlkItemsCommand, AutoLayoutCommand, ApplyFontformatCommand, RotateItemCommand, TextItemEditCommand, PageReplaceOneCommand, PageReplaceAllCommand, MultiPasteCommand, ResetAngleCommand, SqueezeCommand
+from .commands import (
+    ApplyFontformatCommand,
+    AutoLayoutCommand,
+    CapitalizeTextItemsCommand,
+    MoveBlkItemsCommand,
+    MultiPasteCommand,
+    PageReplaceAllCommand,
+    PageReplaceOneCommand,
+    ReshapeItemCommand,
+    ResetAngleCommand,
+    RotateItemCommand,
+    SqueezeCommand,
+    TextEditCommand,
+    TextItemEditCommand,
+    propagate_user_edit,
+)
 from ..formatting.panel import FontFormatPanel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
@@ -366,6 +381,11 @@ class SceneTextManager(QObject):
 
         self._text_move_snapshot = {}
 
+    def refresh_vertical_layouts(self, _enabled: bool) -> None:
+        """Refresh current vertical items after a global layout change."""
+        for item in self.textblk_item_list:
+            item.refreshVerticalLayout()
+
     def on_switch_textitem(self, switch_delta: int, key_event: QKeyEvent = None, current_editing_widget: Union[SourceTextEdit, TransTextEdit] = None):
         n_blk = len(self.textblk_item_list)
         if n_blk < 1:
@@ -535,6 +555,9 @@ class SceneTextManager(QObject):
         textblk_item.undo_signal.connect(self.on_textedit_undo)
         textblk_item.redo_signal.connect(self.on_textedit_redo)
         textblk_item.propagate_user_edited.connect(self.on_propagate_textitem_edit)
+        textblk_item.inline_format_changed.connect(
+            self.on_inline_format_changed
+        )
         textblk_item.pasted.connect(self.onBlkitemPaste)
         return textblk_item
 
@@ -572,9 +595,15 @@ class SceneTextManager(QObject):
 
     def onBlkitemPaste(self, idx: int):
         blk_item = self.textblk_item_list[idx]
+        if blk_item.insert_from_mime_data(self.app_clipborad.mimeData()):
+            return
         text = self.app_clipborad.text()
-        cursor = blk_item.textCursor()
-        cursor.insertText(text)
+        blk_item.insert_plain_text_at_cursor(text)
+
+    def on_inline_format_changed(self) -> None:
+        item = self.sender()
+        if item is self.formatpanel.textblk_item:
+            self.formatpanel.sync_inline_format(item.get_fontformat())
 
     def onTextBlkItemBeginEdit(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
@@ -1021,6 +1050,16 @@ class SceneTextManager(QObject):
         etrans = [self.pairwidget_list[blkitem.idx].e_trans for blkitem in blkitems]
         self.canvas.push_undo_command(MultiPasteCommand(text, blkitems, etrans))
 
+    def capitalize_selected_textitems(self) -> None:
+        """Capitalize selected translations as one synchronized undo action."""
+        if not self.canvas.textEditMode():
+            return
+        items = self.canvas.selected_text_items()
+        edits = [self.pairwidget_list[item.idx].e_trans for item in items]
+        command = CapitalizeTextItemsCommand.create(items, edits)
+        if command is not None:
+            self.canvas.push_undo_command(command)
+
     def on_transwidget_focus_in(self, idx: int):
         if self.is_editting():
             textitm = self.editingTextItem()
@@ -1056,18 +1095,34 @@ class SceneTextManager(QObject):
         blkitem = self.textblk_item_list[edit.idx] if is_trans else None
         self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem), update_pushed_step=not is_trans)
 
-    def on_propagate_textitem_edit(self, pos: int, added_text: str, joint_previous: bool):
+    def on_propagate_textitem_edit(
+        self,
+        pos: int,
+        removed: int,
+        added_text: str,
+        joint_previous: bool,
+    ) -> None:
         blk_item: TextBlkItem = self.sender()
         edit = self.pairwidget_list[blk_item.idx].e_trans
-        propagate_user_edit(blk_item, edit, pos, added_text, joint_previous)
+        propagate_user_edit(
+            edit, pos, removed, added_text, joint_previous
+        )
         self.canvas.push_text_command(command=None, update_pushed_step=True)
 
-    def on_propagate_transwidget_edit(self, pos: int, added_text: str, joint_previous: bool):
+    def on_propagate_transwidget_edit(
+        self,
+        pos: int,
+        removed: int,
+        added_text: str,
+        joint_previous: bool,
+    ) -> None:
         edit: TransTextEdit = self.sender()
         blk_item = self.textblk_item_list[edit.idx]
         if blk_item.isEditing():
             blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        propagate_user_edit(edit, blk_item, pos, added_text, joint_previous)
+        propagate_user_edit(
+            blk_item, pos, removed, added_text, joint_previous
+        )
         self.canvas.push_text_command(command=None, update_pushed_step=True)
 
     def apply_fontformat(self, fontformat: FontFormat):

@@ -1,23 +1,77 @@
 import numpy as np
-from typing import List, Optional, Tuple, Union
+from typing import Callable, List, Optional, Tuple, Union
 
-from qtpy.QtWidgets import QGraphicsItem, QWidget, QGraphicsSceneHoverEvent, QGraphicsTextItem, QStyleOptionGraphicsItem, QGraphicsSceneMouseEvent
-from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, Signal
+from qtpy import QT6
+from qtpy.QtWidgets import (
+    QApplication,
+    QGraphicsItem,
+    QWidget,
+    QGraphicsSceneContextMenuEvent,
+    QGraphicsSceneHoverEvent,
+    QGraphicsTextItem,
+    QStyleOptionGraphicsItem,
+    QGraphicsSceneMouseEvent,
+)
+from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QBrush, QPen)
+                       QBrush, QPen, QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
+    FontWeight,
+    LineSpacingType,
     TextTransformStack,
+    font_weight_from_qt,
+    font_weight_to_qt,
     pt2px,
 )
+from .font_family import (
+    font_family_for_project,
+    qfont_with_family,
+)
+from .editing.context_menu import create_text_edit_context_menu
 from ..misc import td_pattern, table_pattern
-from .layout import VerticalTextDocumentLayout, HorizontalTextDocumentLayout
+from .horizontal_layout import HorizontalTextDocumentLayout
+from .vertical_layout import VerticalTextDocumentLayout
 from .effect_renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
+from .annotations import (
+    AnnotationProperty,
+    LIGATURE_COMMON,
+    LIGATURE_CONTEXTUAL,
+    LIGATURE_DISCRETIONARY,
+    TEXT_COMBINE_ALL,
+    apply_emphasis,
+    apply_ligature_axis,
+    apply_oldstyle_nums,
+    apply_line_spacing,
+    apply_letter_spacing,
+    apply_ruby,
+    apply_text_combine_upright,
+    canonical_letter_spacing,
+    create_rich_text_mime,
+    emphasis_values,
+    insert_rich_text_mime,
+    ligature_axis_value,
+    letter_spacing_value,
+    line_spacing_values,
+    load_rich_text_html,
+    oldstyle_nums_value,
+    prepare_ruby_insertion,
+    remove_ruby,
+    ruby_container_for_cursor,
+    ruby_containers_intersecting_cursor,
+    set_document_letter_spacing_writing_mode,
+    set_ligature_axes,
+    set_oldstyle_nums,
+    sync_native_ligature_shaping,
+    text_combine_upright_values,
+    to_rich_text_html,
+    validated_line_spacing,
+)
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
@@ -37,8 +91,9 @@ class TextBlkItem(QGraphicsTextItem):
     redo_signal = Signal()
     undo_signal = Signal()
     push_undo_stack = Signal(int, bool)
-    propagate_user_edited = Signal(int, str, bool)
+    propagate_user_edited = Signal(int, int, str, bool)
     visual_geometry_changed = Signal()
+    inline_format_changed = Signal()
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -65,10 +120,13 @@ class TextBlkItem(QGraphicsTextItem):
         self.old_undo_steps = 0
         self.in_redo_undo = False
         self.change_from: int = 0
+        self.change_removed: int = 0
         self.change_added: int = 0
         self.input_method_from = -1
+        self.input_method_removed = 0
         self.input_method_text = ''
         self.block_change_signal = False
+        self._vertical_navigation_y: Optional[float] = None
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
@@ -80,16 +138,64 @@ class TextBlkItem(QGraphicsTextItem):
         )
         self.geometry_controller.finish_initialization()
 
-    def inputMethodEvent(self, e: QInputMethodEvent):
-        if self.pre_editing == False:
+    def inputMethodEvent(self, e: QInputMethodEvent) -> None:
+        self._vertical_navigation_y = None
+        if not self.pre_editing:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
+            self.input_method_removed = (
+                cursor.selectionEnd() - cursor.selectionStart()
+            )
         if e.preeditString() == '':
             self.pre_editing = False
             self.input_method_text = e.commitString()
         else:
             self.pre_editing = True
-        super().inputMethodEvent(e)
+        replacement_length = e.replacementLength()
+        replacement_start = None
+        replacement_end = None
+        if replacement_length > 0:
+            cursor = self.textCursor()
+            document_end = max(0, self.document().characterCount() - 1)
+            replacement_start = max(
+                0,
+                min(
+                    document_end,
+                    cursor.position() + e.replacementStart(),
+                ),
+            )
+            replacement_end = min(
+                document_end, replacement_start + replacement_length
+            )
+            self.input_method_from = replacement_start
+            self.input_method_removed = replacement_end - replacement_start
+        if e.commitString():
+            cursor = self.textCursor()
+            cursor.beginEditBlock()
+            prepare_cursor = QTextCursor(cursor)
+            if replacement_start is not None:
+                prepare_cursor.setPosition(replacement_start)
+                prepare_cursor.setPosition(
+                    replacement_end, QTextCursor.MoveMode.KeepAnchor
+                )
+            prepare_ruby_insertion(prepare_cursor, e.commitString())
+            if replacement_length == 0:
+                cursor = prepare_cursor
+            super().setTextCursor(cursor)
+            try:
+                super().inputMethodEvent(e)
+            finally:
+                cursor.endEditBlock()
+        else:
+            super().inputMethodEvent(e)
+        if (
+            e.preeditString() == ''
+            and not e.commitString()
+            and replacement_length == 0
+        ):
+            self.input_method_from = -1
+            self.input_method_removed = 0
+            self.input_method_text = ''
         # Preedit text and attributes live in QTextLayout, so they need an
         # explicit surface invalidation even when the document revision does
         # not change. The next paint is cached until another IME event.
@@ -97,8 +203,48 @@ class TextBlkItem(QGraphicsTextItem):
         self._update_nonlinear_editing_ui()
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
+        self._vertical_navigation_y = None
         super().setTextCursor(cursor)
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
+
+    def _move_cursor_across_vertical_column(
+        self,
+        horizontal_direction: int,
+        keep_anchor: bool,
+    ) -> None:
+        """Move the active caret to the adjacent vertical text column.
+
+        >>> callable(TextBlkItem._move_cursor_across_vertical_column)
+        True
+        """
+        cursor = self.textCursor()
+        if self._vertical_navigation_y is None:
+            caret = self.layout.source_cursor_rect(cursor.position())
+            if caret.isEmpty():
+                return
+            self._vertical_navigation_y = caret.center().y()
+        target = self.layout.adjacent_column_cursor_position(
+            cursor.position(),
+            horizontal_direction,
+            self._vertical_navigation_y,
+        )
+        if target is None:
+            return
+        move_mode = (
+            QTextCursor.MoveMode.KeepAnchor
+            if keep_anchor
+            else QTextCursor.MoveMode.MoveAnchor
+        )
+        cursor.setPosition(target, move_mode)
+        # This is a cursor-only operation; bypass the public setter so the
+        # preferred row survives consecutive Left/Right key presses.
+        super().setTextCursor(cursor)
+        self._emit_inline_format_changed()
+        self._update_nonlinear_editing_ui()
+
+    def _emit_inline_format_changed(self) -> None:
+        self.inline_format_changed.emit()
 
     def _update_nonlinear_editing_ui(self) -> None:
         controller = getattr(self, 'geometry_controller', None)
@@ -121,11 +267,14 @@ class TextBlkItem(QGraphicsTextItem):
 
                 if not self.is_formatting:
                     change_from = self.change_from
+                    removed = self.change_removed
                     added_text = ''
                     if self.input_method_from != -1:
                         added_text = self.input_method_text
                         change_from = self.input_method_from
+                        removed = self.input_method_removed
                         self.input_method_from = -1
+                        self.input_method_removed = 0
 
                     elif self.change_added > 0:
                         cursor = QTextCursor(self.document())
@@ -143,8 +292,15 @@ class TextBlkItem(QGraphicsTextItem):
                         )
                         added_text = cursor.selectedText()
 
-                    self.propagate_user_edited.emit(change_from, added_text, joint_previous)
-                    self.change_added = 0
+                    if removed > 0 or added_text:
+                        self.propagate_user_edited.emit(
+                            change_from,
+                            removed,
+                            added_text,
+                            joint_previous,
+                        )
+                self.change_added = 0
+                self.change_removed = 0
 
                 if new_steps > 0:
                     self.old_undo_steps = undo_steps
@@ -220,8 +376,7 @@ class TextBlkItem(QGraphicsTextItem):
             if blk.translation:
                 self.setPlainText(blk.translation)
         else:
-            self.setHtml(blk.rich_text)
-            self.setLetterSpacing(font_fmt.letter_spacing, repaint_background=False)
+            self.load_rich_text_html(blk.rich_text)
             cursor = self.textCursor()
             cursor.clearSelection()
             cursor.movePosition(QTextCursor.MoveOperation.Start)
@@ -252,6 +407,8 @@ class TextBlkItem(QGraphicsTextItem):
         use_no_cache = (
             self.isEditing()
             or self.geometry_controller.requires_no_cache()
+            or self.geometry_controller.has_layout_distortion()
+            or self.effect_renderer.requires_no_item_cache()
         )
         cache_mode = (
             QGraphicsItem.CacheMode.NoCache
@@ -386,6 +543,15 @@ class TextBlkItem(QGraphicsTextItem):
 
     def inputMethodQuery(self, query):
         value = super().inputMethodQuery(query)
+        if (
+            query == Qt.InputMethodQuery.ImCursorRectangle
+            and self.layout is not None
+        ):
+            cursor_rect = self.layout.source_cursor_rect(
+                self.textCursor().position()
+            )
+            if cursor_rect is not None:
+                value = cursor_rect
         mapper = self.geometry_controller.visual_mapper
         if mapper is None:
             return value
@@ -427,13 +593,18 @@ class TextBlkItem(QGraphicsTextItem):
                 self.setRotation(angle)
             self.blk.angle = angle
 
-    def setVertical(self, vertical: bool):
+    def setVertical(self, vertical: bool) -> None:
 
         is_editing = self.isEditing()
         preserve_selection_direction = not self._text_transform_is_neutral()
         if is_editing:
             cursor = self.textCursor()
             cursor_pos = (cursor.position(), cursor.anchor().__pos__())
+            insertion_format = (
+                None
+                if cursor.hasSelection()
+                else QTextCharFormat(cursor.charFormat())
+            )
 
         valid_layout = True
         doc = self.document()
@@ -457,19 +628,30 @@ class TextBlkItem(QGraphicsTextItem):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         doc.documentLayout().blockSignals(True)
 
-        # Preserve BASE writing-mode letter-spacing semantics. Glyph slant is
-        # layout-only and must not rewrite the document's spacing behavior.
-        reset_spacing_val = 1 if vertical else self.fontformat.letter_spacing
-        cursor = QTextCursor(doc)
-        cursor.joinPreviousEditBlock()
-        char_fmt = QTextCharFormat()
-        char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-        char_fmt.setFontLetterSpacing(reset_spacing_val * 100)
-        cursor.select(QTextCursor.SelectionType.Document)
         controller = self.geometry_controller
         with controller.defer_compilation():
-            self.set_cursor_cfmt(cursor, char_fmt, True)
-            cursor.endEditBlock()
+            block_change_signal = self.block_change_signal
+            was_repainting = self.repainting
+            was_relayout_on_changed = (
+                self.layout.relayout_on_changed if valid_layout else None
+            )
+            self.block_change_signal = True
+            self.repainting = True
+            if valid_layout:
+                # This layout is about to be replaced; formatting it again is
+                # pure transition overhead.
+                self.layout.relayout_on_changed = False
+            try:
+                set_document_letter_spacing_writing_mode(
+                    doc,
+                    vertical=vertical,
+                    fallback=self.fontformat.letter_spacing,
+                )
+            finally:
+                self.block_change_signal = block_change_signal
+                self.repainting = was_repainting
+                if valid_layout:
+                    self.layout.relayout_on_changed = was_relayout_on_changed
 
             # QTextCursor formatting emits contentsChanged synchronously while
             # the old layout is still attached. Keep the writing-mode flag
@@ -479,10 +661,39 @@ class TextBlkItem(QGraphicsTextItem):
             if self.fontformat is not None:
                 self.fontformat.vertical = vertical
 
+            # Vertical alignment moves settled columns without touching the
+            # document. Synchronize Qt's paragraph option only when a writing
+            # mode switch is already rebuilding the layout.
+            option = doc.defaultTextOption()
+            option.setAlignment((
+                Qt.AlignmentFlag.AlignLeft,
+                Qt.AlignmentFlag.AlignCenter,
+                Qt.AlignmentFlag.AlignRight,
+            )[int(self.fontformat.alignment)])
+            if self.layout is None:
+                doc.setDefaultTextOption(option)
+            else:
+                relayout_on_changed = self.layout.relayout_on_changed
+                self.layout.relayout_on_changed = False
+                try:
+                    doc.setDefaultTextOption(option)
+                finally:
+                    self.layout.relayout_on_changed = relayout_on_changed
+
+            # QTextDocument owns its document layout and can delete the old
+            # QObject synchronously in setDocumentLayout(). The glyph renderer
+            # is bound to that exact layout, so release it before crossing the
+            # ownership boundary; initialize_layout() attaches a fresh one.
+            controller.detach_layout_renderer()
             if vertical:
                 layout = VerticalTextDocumentLayout(doc, self.fontformat)
             else:
                 layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+            if valid_layout:
+                # setDocumentLayout() immediately announces the existing
+                # document. Defer that provisional zero-size layout and run
+                # one settled pass after the final size and renderer are set.
+                layout.relayout_on_changed = False
             self.layout = layout
             doc.setDocumentLayout(layout)
             layout.setEffectPadding(effect_padding)
@@ -493,7 +704,11 @@ class TextBlkItem(QGraphicsTextItem):
             layout.documentSizeChanged.connect(self.docSizeChanged)
 
             if valid_layout:
-                layout.setMaxSize(rect.width(), rect.height())
+                layout.setMaxSize(
+                    rect.width(), rect.height(), relayout=False
+                )
+                layout.relayout_on_changed = True
+                layout.reLayoutEverything()
                 controller.refresh_compiled_geometry()
                 self.repaint_background()
         if is_editing:
@@ -509,11 +724,69 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor.setPosition(
                     max(position, anchor), QTextCursor.MoveMode.KeepAnchor
                 )
+            if insertion_format is not None:
+                spacing = letter_spacing_value(
+                    insertion_format,
+                    self.fontformat.letter_spacing,
+                )
+                insertion_format.setProperty(
+                    AnnotationProperty.LETTER_SPACING,
+                    spacing,
+                )
+                sync_native_ligature_shaping(
+                    insertion_format,
+                    vertical=vertical,
+                    letter_spacing_fallback=spacing,
+                )
+                cursor.setCharFormat(insertion_format)
             self.setTextCursor(cursor)
         if self.fontformat.gradient_enabled:
             self._refresh_gradient_geometry()
         if valid_layout:
             self.visual_geometry_changed.emit()
+
+    def setStandardVerticalRomanAlignment(
+        self,
+        enabled: bool,
+        repaint_background: bool = True,
+    ) -> None:
+        """Set the item-wide Roman orientation used by vertical layout."""
+        enabled = bool(enabled)
+        if self.fontformat.standard_vertical_roman_alignment == enabled:
+            return
+        vertical_layout = isinstance(
+            self.layout, VerticalTextDocumentLayout
+        )
+        if vertical_layout:
+            # Orientation changes can expose ink outside the logical box.
+            self.prepareGeometryChange()
+        self.fontformat.standard_vertical_roman_alignment = enabled
+        if not vertical_layout:
+            return
+
+        self.layout.reLayout()
+        self.geometry_controller.flush_deferred_compilation()
+        if repaint_background:
+            self.repaint_background()
+        self.update()
+        self.visual_geometry_changed.emit()
+
+    def refreshVerticalLayout(
+        self,
+        repaint_background: bool = True,
+    ) -> None:
+        """Refresh derived vertical geometry after a global setting change."""
+        if not isinstance(self.layout, VerticalTextDocumentLayout):
+            return
+
+        # Punctuation and orientation changes can expose ink outside the box.
+        self.prepareGeometryChange()
+        self.layout.reLayout()
+        self.geometry_controller.flush_deferred_compilation()
+        if repaint_background:
+            self.repaint_background()
+        self.update()
+        self.visual_geometry_changed.emit()
 
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
@@ -522,9 +795,28 @@ class TextBlkItem(QGraphicsTextItem):
         if not self.pre_editing:
             if self.hasFocus():
                 self.change_from = from_
+                self.change_removed = removed
                 self.change_added = added
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
+
+        vertical_column_navigation = (
+            self.isEditing()
+            and isinstance(self.layout, VerticalTextDocumentLayout)
+            and e.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)
+            and e.modifiers() in (
+                Qt.KeyboardModifier.NoModifier,
+                Qt.KeyboardModifier.ShiftModifier,
+            )
+        )
+        if vertical_column_navigation:
+            self._move_cursor_across_vertical_column(
+                -1 if e.key() == Qt.Key.Key_Left else 1,
+                e.modifiers() == Qt.KeyboardModifier.ShiftModifier,
+            )
+            e.accept()
+            return
+        self._vertical_navigation_y = None
 
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
@@ -540,16 +832,44 @@ class TextBlkItem(QGraphicsTextItem):
                     e.accept()
                     self.pasted.emit(self.idx)
                     return
+            elif e.key() in (Qt.Key.Key_C, Qt.Key.Key_X):
+                cursor = self.textCursor()
+                if cursor.hasSelection():
+                    self._copy_selected_text()
+                    if e.key() == Qt.Key.Key_X:
+                        cursor.removeSelectedText()
+                        self.setTextCursor(cursor)
+                e.accept()
+                return
         elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
                 self.redo_signal.emit()
                 return
-        elif e.key() == Qt.Key.Key_Return:
+        elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             e.accept()
-            self.textCursor().insertText('\n')
+            cursor = self.textCursor()
+            cursor.beginEditBlock()
+            try:
+                prepare_ruby_insertion(cursor, '\n')
+                cursor.insertText('\n')
+            finally:
+                cursor.endEditBlock()
+            self.setTextCursor(cursor)
+            return
+        elif e.text() and e.text().isprintable():
+            e.accept()
+            cursor = self.textCursor()
+            cursor.beginEditBlock()
+            try:
+                prepare_ruby_insertion(cursor, e.text())
+                cursor.insertText(e.text())
+            finally:
+                cursor.endEditBlock()
+            self.setTextCursor(cursor)
             return
         super().keyPressEvent(e)
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
 
     def undo(self) -> None:
@@ -682,30 +1002,83 @@ class TextBlkItem(QGraphicsTextItem):
         return min_font_size
 
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self._vertical_navigation_y = None
         if not self.isEditing():
             self.startEdit(pos=event.pos())
         else:
             super().mouseDoubleClickEvent(event)
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
         
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         super().mouseMoveEvent(event)  
         if self.textInteractionFlags() == Qt.TextInteractionFlag.TextEditorInteraction:
+            self._emit_inline_format_changed()
             self._update_nonlinear_editing_ui()
         else:
             self.moving.emit(self)
 
-    # QT 5.15.x causing segmentation fault 
-    def contextMenuEvent(self, event):
-        return super().contextMenuEvent(event)
+    def _copy_selected_text(self) -> None:
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            return
+        QApplication.clipboard().setMimeData(
+            create_rich_text_mime(
+                cursor,
+                line_spacing_fallback=self.fontformat.line_spacing,
+                line_spacing_type_fallback=self.fontformat.line_spacing_type,
+            )
+        )
+
+    def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent) -> None:
+        if not self.isEditing():
+            return super().contextMenuEvent(event)
+        event.accept()
+        self.show_editing_context_menu(event.screenPos())
+
+    def show_editing_context_menu(
+        self,
+        screen_pos: QPoint,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        cursor = self.textCursor()
+        has_selection = cursor.hasSelection()
+        menu, quick_insert_actions = create_text_edit_context_menu(
+            parent,
+            has_selection=has_selection,
+            can_undo=self.document().isUndoAvailable(),
+            can_redo=self.document().isRedoAvailable(),
+        )
+
+        action = menu.exec(screen_pos)
+        operation = action.data() if action is not None else None
+        if action in quick_insert_actions:
+            self.insert_plain_text_at_cursor(operation)
+        elif operation == 'undo':
+            self.undo_signal.emit()
+        elif operation == 'redo':
+            self.redo_signal.emit()
+        elif operation == 'cut':
+            self._copy_selected_text()
+            cursor.removeSelectedText()
+            self.setTextCursor(cursor)
+        elif operation == 'copy':
+            self._copy_selected_text()
+        elif operation == 'paste':
+            self.pasted.emit(self.idx)
+        elif operation == 'delete':
+            cursor.removeSelectedText()
+            self.setTextCursor(cursor)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self._vertical_navigation_y = None
         if event.button() == Qt.MouseButton.LeftButton:
             if self.isEditing():
                 self.geometry_controller.begin_input_mapping()
             self._old_pos = self.pos()
             self.leftbutton_pressed.emit(self.idx)
         result = super().mousePressEvent(event)
+        self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
         return result
 
@@ -718,6 +1091,7 @@ class TextBlkItem(QGraphicsTextItem):
         super().mouseReleaseEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self.geometry_controller.end_input_mapping()
+            self._emit_inline_format_changed()
             self._update_nonlinear_editing_ui()
 
     def dragEnterEvent(self, event) -> None:
@@ -747,55 +1121,111 @@ class TextBlkItem(QGraphicsTextItem):
             _, td = td_pattern.findall(html)[0]
             html = tables[0] + td + '</body></html>'
 
-        return html.replace('>\n<', '><')
+        html = html.replace('>\n<', '><')
+        return to_rich_text_html(
+            self.document(),
+            html,
+            line_spacing_fallback=self.fontformat.line_spacing,
+            line_spacing_type_fallback=self.fontformat.line_spacing_type,
+        )
+
+    def load_rich_text_html(self, html: str) -> None:
+        """Restore ordinary Qt HTML plus application-owned annotations."""
+        block_change_signal = self.block_change_signal
+        self.block_change_signal = True
+        try:
+            load_rich_text_html(
+                self.document(),
+                html,
+                letter_spacing_fallback=self.fontformat.letter_spacing,
+                vertical=self.fontformat.vertical,
+            )
+        finally:
+            self.block_change_signal = block_change_signal
+
+    def insert_from_mime_data(self, mime: QMimeData) -> bool:
+        cursor = self.textCursor()
+        inserted = insert_rich_text_mime(
+            cursor,
+            mime,
+            vertical=self.fontformat.vertical,
+        )
+        if inserted:
+            self.setTextCursor(cursor)
+        return inserted
+
+    def insert_plain_text_at_cursor(self, text: str) -> None:
+        """Insert clipboard text with Ruby's boundary inheritance rules."""
+        cursor = self.textCursor()
+        cursor.beginEditBlock()
+        try:
+            prepare_ruby_insertion(cursor, text)
+            cursor.insertText(text)
+        finally:
+            cursor.endEditBlock()
+        self.setTextCursor(cursor)
 
     def get_fontformat(self) -> FontFormat:
-        fmt = self.textCursor().charFormat()
+        fmt = self._active_char_format()
         font = fmt.font()
         color = fmt.foreground().color()
         fontformat = self.fontformat.deepcopy()
         fontformat.frgb = [color.red(), color.green(), color.blue()]
-        fontformat.font_weight = font.weight()
-        fontformat.font_family = font.family()
+        fontformat.font_weight = font_weight_from_qt(font.weight())
+        fontformat.font_family = font_family_for_project(font.family())
         if self.isEditing():
             fontformat.font_size = pt2px(font.pointSizeF())
         else:
             fontformat.font_size = self.minFontSize()
-        fontformat.bold = font.bold()
         fontformat.underline = font.underline()
         fontformat.italic = font.italic()
-        # Preserve gradient settings
-        fontformat.gradient_enabled = self.fontformat.gradient_enabled
-        fontformat.gradient_start_color = self.fontformat.gradient_start_color
-        fontformat.gradient_end_color = self.fontformat.gradient_end_color
-        fontformat.gradient_angle = self.fontformat.gradient_angle
-        fontformat.gradient_size = self.fontformat.gradient_size
-        # Selection changes can detach the render/UI format cache from the
-        # persistent TextBlock owner. Canonical transform state must win when
-        # producing a save/undo format snapshot.
-        fontformat.text_transform = self.blk.fontformat.text_transform
+        fontformat.letter_spacing = self.letter_spacing_value()
+        if self.document().isEmpty():
+            for axis in (
+                LIGATURE_COMMON,
+                LIGATURE_DISCRETIONARY,
+                LIGATURE_CONTEXTUAL,
+            ):
+                setattr(
+                    fontformat,
+                    f'ligature_{axis}',
+                    self.ligature_axis_value(axis),
+                )
+            fontformat.oldstyle_nums = self.oldstyle_nums_value()
+        (
+            fontformat.line_spacing,
+            fontformat.line_spacing_type,
+        ) = self.line_spacing_values()
         return fontformat
 
     def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):
         self.repainting = True
         if self.fontformat.vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
+        if (
+            self.fontformat.standard_vertical_roman_alignment
+            != ffmat.standard_vertical_roman_alignment
+        ):
+            self.setStandardVerticalRomanAlignment(
+                ffmat.standard_vertical_roman_alignment,
+                repaint_background=False,
+            )
 
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         format = cursor.charFormat()
-        font = self.document().defaultFont()
-
-        font.setFamily(ffmat.font_family)
+        font = qfont_with_family(
+            self.document().defaultFont(),
+            ffmat.font_family,
+        )
         font.setPointSizeF(ffmat.size_pt)
         font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
         font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias | QFont.StyleStrategy.NoSubpixelAntialias)
 
-        fweight = ffmat.font_weight
-        if fweight is  None:
-            fweight = font.weight()
-            ffmat.font_weight = fweight
-        font.setBold(ffmat.bold)
+        fweight = QFont.Weight(
+            font_weight_to_qt(ffmat.font_weight, qt6=QT6)
+        )
+        font.setWeight(fweight)
 
         self.document().setDefaultFont(font)
         format.setFont(font)
@@ -804,13 +1234,26 @@ class TextBlkItem(QGraphicsTextItem):
             format.setForeground(gradient)
         else:
             format.setForeground(QColor(*ffmat.foreground_color()))
-        if not ffmat.bold:
-            format.setFontWeight(fweight)
+        format.setFontWeight(fweight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
-        if not ffmat.vertical:
-            format.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            format.setFontLetterSpacing(ffmat.letter_spacing * 100)
+        format.setProperty(
+            AnnotationProperty.LETTER_SPACING,
+            ffmat.letter_spacing,
+        )
+        set_ligature_axes(
+            format,
+            {
+                axis: getattr(ffmat, f'ligature_{axis}')
+                for axis in (
+                    LIGATURE_COMMON,
+                    LIGATURE_DISCRETIONARY,
+                    LIGATURE_CONTEXTUAL,
+                )
+            },
+            vertical=ffmat.vertical,
+        )
+        set_oldstyle_nums(format, ffmat.oldstyle_nums)
         cursor.setCharFormat(format)
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.setBlockCharFormat(format)
@@ -828,15 +1271,25 @@ class TextBlkItem(QGraphicsTextItem):
             self.setStrokeWidth(ffmat.stroke_width, repaint_background=False)
         self.setOpacity(ffmat.opacity)
         
-        alignment_qt_flag = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][ffmat.alignment]
-        doc = self.document()
-        op = doc.defaultTextOption()
-        op.setAlignment(alignment_qt_flag)
-        doc.setDefaultTextOption(op)
+        self.setAlignment(ffmat.alignment, repaint_background=False)
         
-        if ffmat.vertical:
-            self.setLetterSpacing(ffmat.letter_spacing)
-        self.setLineSpacing(ffmat.line_spacing)
+        if set_char_format:
+            self._set_line_spacing_pair(
+                ffmat.line_spacing,
+                ffmat.line_spacing_type,
+                whole_item=True,
+            )
+        else:
+            # Rich HTML may already own different paragraph pairs. Update only
+            # the compatibility default unless this is a whole-style apply.
+            fallback_changed = (
+                self.layout.line_spacing != ffmat.line_spacing
+                or self.layout.linespacing_type != ffmat.line_spacing_type
+            )
+            self.layout.line_spacing = ffmat.line_spacing
+            self.layout.linespacing_type = ffmat.line_spacing_type
+            if fallback_changed:
+                self.layout.reLayout()
         
         # Preserve gradient properties
         self.fontformat.gradient_enabled = ffmat.gradient_enabled
@@ -901,8 +1354,12 @@ class TextBlkItem(QGraphicsTextItem):
                 if has_set_all:
                     cursor.setPosition(pos1)
                 else:
-                    cursor.setPosition(min(pos1, pos2))
-                    cursor.setPosition(max(pos1, pos2), QTextCursor.MoveMode.KeepAnchor)
+                    # Restore the original active end as well as the range.
+                    # Selection direction controls Qt's insertion format.
+                    cursor.setPosition(pos2)
+                    cursor.setPosition(
+                        pos1, QTextCursor.MoveMode.KeepAnchor
+                    )
                 self.setTextCursor(cursor)
 
         cursor.endEditBlock()
@@ -925,9 +1382,7 @@ class TextBlkItem(QGraphicsTextItem):
         lastpos = doc.rootFrame().lastPosition()
         if cursor.selectionStart() == 0 and \
             cursor.selectionEnd() == lastpos:
-            font = doc.defaultFont()
-            font.setFamily(value)
-            doc.setDefaultFont(font)
+            doc.setDefaultFont(qfont_with_family(doc.defaultFont(), value))
 
         sel_start = cursor.selectionStart()
         sel_end = cursor.selectionEnd()
@@ -944,13 +1399,7 @@ class TextBlkItem(QGraphicsTextItem):
                 if pos1 < pos2:
                     cfmt = fragment.charFormat()
                     under_line = cfmt.fontUnderline()
-                    cfont = cfmt.font()
-                    font = QFont(value, cfont.pointSize(), cfont.weight(), cfont.italic())
-                    font.setPointSizeF(cfont.pointSizeF())
-                    font.setBold(font.bold())
-                    font.setWordSpacing(cfont.wordSpacing())
-                    font.setLetterSpacing(cfont.letterSpacingType(), cfont.letterSpacing())
-                    cfmt.setFont(font)
+                    cfmt.setFont(qfont_with_family(cfmt.font(), value))
                     cfmt.setFontUnderline(under_line)
                     cursor.setPosition(pos1)
                     cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
@@ -959,13 +1408,21 @@ class TextBlkItem(QGraphicsTextItem):
             block = block.next()
 
         cfmt = cursor.charFormat()
-        cfmt.setFontFamily(value)
+        cfmt.setFont(qfont_with_family(cfmt.font(), value))
         self.set_cursor_cfmt(cursor, cfmt)
 
-    def setFontWeight(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
+    def setFontWeight(
+        self,
+        value: FontWeight,
+        repaint_background: bool = True,
+        set_selected: bool = False,
+        restore_cursor: bool = False,
+    ) -> None:
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
         cfmt = QTextCharFormat()
-        cfmt.setFontWeight(value)
+        cfmt.setFontWeight(
+            QFont.Weight(font_weight_to_qt(value, qt6=QT6))
+        )
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
@@ -983,6 +1440,171 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_cursor_cfmt(cursor, cfmt, True)
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
+    def _active_char_format(self) -> QTextCharFormat:
+        """Return a direction-independent format for panel synchronization."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            # charFormat() samples immediately before the active cursor end.
+            # Use the selection end so forward and backward selections agree.
+            cursor.setPosition(cursor.selectionEnd())
+        return cursor.charFormat()
+
+    def emphasis_values(self) -> tuple[str, str]:
+        return emphasis_values(self._active_char_format())
+
+    def letter_spacing_value(self) -> float:
+        return letter_spacing_value(
+            self._active_char_format(),
+            self.fontformat.letter_spacing,
+        )
+
+    def ligature_axis_value(self, axis: str) -> str:
+        return ligature_axis_value(self._active_char_format(), axis)
+
+    def oldstyle_nums_value(self) -> str:
+        return oldstyle_nums_value(self._active_char_format())
+
+    def _active_block_format(self) -> QTextBlockFormat:
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            block = self.document().findBlock(cursor.selectionEnd() - 1)
+        else:
+            block = cursor.block()
+        return block.blockFormat()
+
+    def line_spacing_values(self) -> tuple[float, LineSpacingType]:
+        """Return the item default or active paragraph spacing pair."""
+        if not self.isEditing():
+            return (
+                self.fontformat.line_spacing,
+                LineSpacingType(self.fontformat.line_spacing_type),
+            )
+        return line_spacing_values(
+            self._active_block_format(),
+            self.fontformat.line_spacing,
+            self.fontformat.line_spacing_type,
+        )
+
+    def _apply_text_format(
+        self,
+        apply_format: Callable[[QTextCursor], None],
+        *,
+        select_document: bool = False,
+    ) -> None:
+        """Run one selection/caret formatting transaction."""
+        cursor = self.textCursor()
+        restore_cursor = not self.isEditing() or select_document
+        cursor_position = cursor.position()
+        cursor_anchor = cursor.anchor()
+        if not self.isEditing() or select_document:
+            cursor.select(QTextCursor.SelectionType.Document)
+        self.is_formatting = True
+        try:
+            cursor.beginEditBlock()
+            try:
+                apply_format(cursor)
+            finally:
+                cursor.endEditBlock()
+                if restore_cursor:
+                    cursor.setPosition(cursor_anchor)
+                    if cursor_position != cursor_anchor:
+                        cursor.setPosition(
+                            cursor_position,
+                            QTextCursor.MoveMode.KeepAnchor,
+                        )
+                self.setTextCursor(cursor)
+            self.geometry_controller.flush_deferred_compilation()
+        finally:
+            self.is_formatting = False
+
+    def setEmphasis(self, style: str, position: str) -> None:
+        """Apply emphasis to a selection or the active insertion format."""
+        self._apply_text_format(
+            lambda cursor: apply_emphasis(cursor, style, position)
+        )
+
+    def setLigatureAxis(self, axis: str, state: str) -> None:
+        """Apply one ligature axis to the active text range."""
+        self._apply_text_format(
+            lambda cursor: apply_ligature_axis(
+                cursor,
+                axis,
+                state,
+                vertical=self.fontformat.vertical,
+            )
+        )
+
+    def setOldstyleNums(self, state: str) -> None:
+        """Apply oldstyle figures to the active text range."""
+        self._apply_text_format(
+            lambda cursor: apply_oldstyle_nums(cursor, state)
+        )
+
+    def tate_chu_yoko_enabled(self) -> bool:
+        value, _group_id = text_combine_upright_values(
+            self._active_char_format()
+        )
+        return value == TEXT_COMBINE_ALL
+
+    def setTateChuYoko(self, enabled: bool) -> None:
+        """Combine one selected run, or change the insertion format."""
+        self._apply_text_format(
+            lambda cursor: apply_text_combine_upright(
+                cursor,
+                enabled,
+                vertical=self.fontformat.vertical,
+            )
+        )
+
+    def ruby_editor_values(
+        self,
+    ) -> tuple[str, str, str, bool]:
+        """Return the current Ruby editor values for the Advanced panel."""
+        cursor = self.textCursor()
+        container = ruby_container_for_cursor(cursor)
+        if container is None:
+            return (
+                'group',
+                '',
+                'over',
+                bool(ruby_containers_intersecting_cursor(cursor)),
+            )
+        text = (
+            container.units[0].text
+            if container.ruby_type == 'group'
+            else ' '.join(unit.text for unit in container.units)
+        )
+        return (
+            container.ruby_type,
+            text,
+            container.position,
+            True,
+        )
+
+    def setRuby(self, ruby_type: str, text: str, position: str) -> None:
+        """Apply or update Ruby at the current text selection/caret."""
+        cursor = self.textCursor()
+        self.is_formatting = True
+        try:
+            apply_ruby(cursor, ruby_type, text, position)
+            self.setTextCursor(cursor)
+            self.geometry_controller.flush_deferred_compilation()
+        finally:
+            self.is_formatting = False
+
+    def removeRuby(self) -> bool:
+        """Remove Ruby containers intersecting the active cursor."""
+        cursor = self.textCursor()
+        self.is_formatting = True
+        try:
+            removed = remove_ruby(cursor)
+            if removed:
+                self.setTextCursor(cursor)
+                self.geometry_controller.flush_deferred_compilation()
+            return removed
+        finally:
+            self.is_formatting = False
+
     def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
         self.fontformat.gradient_enabled = value
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
@@ -998,45 +1620,96 @@ class TextBlkItem(QGraphicsTextItem):
         self._refresh_gradient_geometry()
 
 
-    def setLineSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
-        self.is_formatting = True
-        self.fontformat.line_spacing = value
-        self.layout.setLineSpacing(value)
-        self.geometry_controller.flush_deferred_compilation()
-        if repaint_background:
-            self.repaint_background()
-            self.update()
-        self.is_formatting = False
+    def _set_line_spacing_pair(
+        self,
+        value: float,
+        spacing_type: int,
+        *,
+        whole_item: bool = False,
+    ) -> None:
+        canonical_value, canonical_type = validated_line_spacing(
+            value, spacing_type
+        )
+        update_item_default = whole_item or not self.isEditing()
+        if update_item_default:
+            self.old_ffmt_values = {
+                'line_spacing': self.fontformat.line_spacing,
+                'line_spacing_type': self.fontformat.line_spacing_type,
+            }
+            self.fontformat.line_spacing = canonical_value
+            self.fontformat.line_spacing_type = int(canonical_type)
+            # Paragraph formats drive settled layout; these remain the
+            # compatibility defaults for unformatted legacy paragraphs.
+            self.layout.line_spacing = canonical_value
+            self.layout.linespacing_type = canonical_type
+        previous_block_change = self.block_change_signal
+        if whole_item:
+            # ApplyFontformatCommand already owns this whole-item transaction.
+            self.block_change_signal = True
+        try:
+            self._apply_text_format(
+                lambda cursor: apply_line_spacing(
+                    cursor, canonical_value, canonical_type
+                ),
+                select_document=whole_item,
+            )
+        finally:
+            self.block_change_signal = previous_block_change
+            self.old_ffmt_values = None
 
-    def setLineSpacingType(self, value: int, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
-        self.is_formatting = True
-        self.fontformat.line_spacing_type = value
-        self.layout.setLineSpacingType(value)
-        self.geometry_controller.flush_deferred_compilation()
-        if repaint_background:
-            self.repaint_background()
-            self.update()
-        self.is_formatting = False
+    def setLineSpacing(self, value: float) -> None:
+        _current_value, spacing_type = self.line_spacing_values()
+        self._set_line_spacing_pair(value, spacing_type)
 
-    def setLetterSpacing(self, value: float, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False, force=False):
-        self.is_formatting = True
-        self.fontformat.letter_spacing = value
-        if self.fontformat.vertical:
-            self.layout.setLetterSpacing(value)
-        else:
-            cursor = QTextCursor(self.document())
-            char_fmt = QTextCharFormat()
-            char_fmt.setFontLetterSpacingType(QFont.SpacingType.PercentageSpacing)
-            char_fmt.setFontLetterSpacing(value * 100)
-            cursor.select(QTextCursor.SelectionType.Document)
-            self.set_cursor_cfmt(cursor, char_fmt, True)
+    def setLineSpacingType(self, value: int) -> None:
+        line_spacing, _current_type = self.line_spacing_values()
+        self._set_line_spacing_pair(line_spacing, value)
 
-        self.geometry_controller.flush_deferred_compilation()
-        if repaint_background:
-            self.repaint_background()
-            self.update()
-
-        self.is_formatting = False
+    def setLetterSpacing(self, value: float) -> None:
+        canonical_value = canonical_letter_spacing(value)
+        if canonical_value is None:
+            raise ValueError(f'unsupported letter spacing: {value!r}')
+        value = canonical_value
+        update_item_default = not self.isEditing()
+        height_growth = 0.0
+        if isinstance(self.layout, VerticalTextDocumentLayout):
+            cursor = self.textCursor()
+            if update_item_default:
+                selection_start = 0
+                selection_end = self.document().characterCount() - 1
+            elif cursor.hasSelection():
+                selection_start = cursor.selectionStart()
+                selection_end = cursor.selectionEnd()
+            else:
+                selection_start = selection_end = cursor.position()
+            height_growth = self.layout.spacing_change_height_growth(
+                selection_start,
+                selection_end,
+                value,
+            )
+        if height_growth > 1e-6:
+            source_rect = self.geometry_controller.source_rect()
+            self.set_size(
+                source_rect.width(),
+                source_rect.height() + height_growth,
+                set_layout_maxsize=True,
+            )
+        if update_item_default:
+            self.old_ffmt_values = {
+                'letter_spacing': self.fontformat.letter_spacing
+            }
+            self.fontformat.letter_spacing = value
+            self.layout.letter_spacing = value
+        try:
+            self._apply_text_format(
+                lambda cursor: apply_letter_spacing(
+                    cursor,
+                    value,
+                    vertical=self.fontformat.vertical,
+                )
+            )
+        finally:
+            self.old_ffmt_values = None
 
     def setFontColor(self, value: Tuple, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, force=False):
         cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
@@ -1124,19 +1797,49 @@ class TextBlkItem(QGraphicsTextItem):
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
 
-    def setAlignment(self, value, restore_cursor=False, repaint_background=True, *args, **kwargs):
-        cursor, after_kwargs = self._before_set_ffmt(set_selected=False, restore_cursor=restore_cursor)
-        if isinstance(value, int):
-            qt_align_flag = [Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignCenter, Qt.AlignmentFlag.AlignRight][value]
+    def _set_alignment_state(self, value: int) -> bool:
+        value = int(value)
+        state_changed = self.fontformat.alignment != value
+        vertical_layout = isinstance(self.layout, VerticalTextDocumentLayout)
+        if vertical_layout:
+            if not state_changed:
+                return False
+            self.prepareGeometryChange()
+            self.fontformat.alignment = value
+            self.layout.apply_alignment()
+            return True
+
+        qt_align_flag = (
+            Qt.AlignmentFlag.AlignLeft,
+            Qt.AlignmentFlag.AlignCenter,
+            Qt.AlignmentFlag.AlignRight,
+        )[value]
         doc = self.document()
-        op = doc.defaultTextOption()
-        op.setAlignment(qt_align_flag)
-        doc.setDefaultTextOption(op)
+        option = doc.defaultTextOption()
+        option_changed = option.alignment() != qt_align_flag
+        if not option_changed and not state_changed:
+            return False
+
+        # Alignment can move slanted-glyph ink beyond the logical rectangle in
+        # either writing mode, so notify the scene before changing the layout.
+        self.prepareGeometryChange()
+        self.fontformat.alignment = value
+        option.setAlignment(qt_align_flag)
+        doc.setDefaultTextOption(option)
+        return True
+
+    def setAlignment(self, value, restore_cursor=False, repaint_background=True, *args, **kwargs):
+        if not self._set_alignment_state(value):
+            return
+
+        self.geometry_controller.invalidate_surface_cache()
         if repaint_background:
             self.repaint_background()
-            self.update()
-        self.fontformat.alignment = value
-        self._after_set_ffmt(cursor, repaint_background=False, restore_cursor=restore_cursor, **after_kwargs)
+        else:
+            # A caller may defer the expensive effect redraw, but visible ink
+            # still needs correct bounds after slanted glyphs move.
+            self._update_effect_padding()
+        self.update()
 
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()
@@ -1211,7 +1914,7 @@ class TextBlkItem(QGraphicsTextItem):
         h: float,
         set_layout_maxsize=False,
         set_blk_size=True,
-    ):
+    ) -> None:
         self.geometry_controller.resize(
             w,
             h,

@@ -2,6 +2,7 @@ import gc
 import json
 import os
 import tempfile
+import threading
 import unittest
 import weakref
 from types import SimpleNamespace
@@ -10,7 +11,8 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QObject, QEvent, QPoint, Qt
-from qtpy.QtTest import QTest
+from qtpy.QtGui import QColor, QTextCursor, QTextDocument
+from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -40,7 +42,18 @@ from ballontranslator.ui.page_range_progress import PageRangeProgressWidget
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.module_manager import ModuleManager
+from ballontranslator.ui.text_engine.annotations import (
+    apply_text_combine_upright,
+    load_rich_text_html,
+    text_combine_upright_ranges,
+    to_rich_text_html,
+)
+from ballontranslator.ui.text_engine.pipeline_formatting import (
+    AutoTateChuYokoThread,
+    apply_auto_tate_chu_yoko,
+)
 from ballontranslator.utils.config import (
+    AutoTateChuYokoConfig,
     LLMGlossaryMode,
     LLMTranslateContext,
     OCRTextPostprocess,
@@ -167,7 +180,7 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         self.assertEqual(
             [button.text() for button in buttons],
-            ['None', 'Captialize', 'To Upper Case'],
+            ['None', 'Capitalize', 'Uppercase'],
         )
         self.assertTrue(
             dialog.ocr_text_postprocess_buttons[
@@ -179,17 +192,192 @@ class RunPipelineDialogTests(unittest.TestCase):
             for label in dialog.findChildren(QLabel, 'RunPipelineSettingLabel')
             if label.text() == 'Letter Case'
         )
-        ocr_layout = dialog.module_settings_bodies[1].layout()
-        self.assertLess(
-            ocr_layout.indexOf(postprocess_label),
-            ocr_layout.indexOf(buttons[0].parentWidget()),
-        )
+        self.assertTrue(postprocess_label.toolTip())
+        self.assertTrue(all(button.toolTip() for button in buttons))
         dialog.ocr_text_postprocess_buttons[OCRTextPostprocess.UPPERCASE].click()
         self.assertEqual(
             pcfg.module.ocr_text_postprocess,
             OCRTextPostprocess.UPPERCASE,
         )
         dialog.close()
+
+    def test_typesetting_letter_case_defaults_without_uppercase_migration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'config.json')
+            with open(path, 'w', encoding='utf8') as config_file:
+                json.dump({'let_uppercase_flag': True}, config_file)
+            config = ProgramConfig.load(path)
+
+        self.assertEqual(config.let_letter_case, OCRTextPostprocess.NONE)
+        self.assertFalse(hasattr(config, 'let_uppercase_flag'))
+
+    def test_typesetting_letter_case_buttons_update_config(self):
+        original = pcfg.let_letter_case
+        pcfg.let_letter_case = OCRTextPostprocess.CAPITALIZE
+        panel = ConfigPanel()
+        try:
+            buttons = panel.let_letter_case_buttons
+            self.assertEqual(
+                [button.text() for button in buttons.values()],
+                ['None', 'Capitalize', 'Uppercase'],
+            )
+            self.assertTrue(buttons[OCRTextPostprocess.CAPITALIZE].isChecked())
+            self.assertTrue(all(button.toolTip() for button in buttons.values()))
+
+            buttons[OCRTextPostprocess.UPPERCASE].click()
+
+            self.assertEqual(
+                pcfg.let_letter_case,
+                OCRTextPostprocess.UPPERCASE,
+            )
+        finally:
+            panel.close()
+            pcfg.let_letter_case = original
+
+    def test_quick_insert_characters_config_defaults_and_round_trip(self):
+        default_characters = '『』「」♥♡★☆※♩♬'
+        self.assertEqual(
+            ProgramConfig().quick_insert_characters,
+            default_characters,
+        )
+
+        config = ProgramConfig(quick_insert_characters='♥☆')
+        restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
+        self.assertEqual(restored.quick_insert_characters, '♥☆')
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'config.json')
+            with open(path, 'w', encoding='utf8') as config_file:
+                json.dump(
+                    {'darkmode': True, 'quick_insert_characters': []},
+                    config_file,
+                )
+            invalid = ProgramConfig.load(path)
+        self.assertTrue(invalid.darkmode)
+        self.assertEqual(invalid.quick_insert_characters, default_characters)
+
+    def test_quick_insert_characters_control_updates_config(self):
+        original = pcfg.quick_insert_characters
+        pcfg.quick_insert_characters = '♥☆'
+        panel = ConfigPanel()
+        try:
+            self.assertEqual(panel.quick_insert_characters_edit.text(), '♥☆')
+
+            panel.quick_insert_characters_edit.setText('!?')
+
+            self.assertEqual(pcfg.quick_insert_characters, '!?')
+        finally:
+            panel.close()
+            pcfg.quick_insert_characters = original
+
+    def test_auto_tate_chu_yoko_config_defaults_and_round_trip(self):
+        defaults = ProgramConfig().auto_tate_chu_yoko
+        self.assertFalse(defaults.enabled)
+        self.assertEqual(defaults.max_length, 4)
+        self.assertTrue(defaults.include_numbers)
+        self.assertFalse(defaults.include_letters)
+        self.assertEqual(defaults.additional_chars, '')
+        self.assertEqual(defaults.allowed_characters(), frozenset('0123456789'))
+
+        categories = AutoTateChuYokoConfig(
+            include_numbers=False,
+            include_letters=True,
+            additional_chars='!?A',
+        )
+        self.assertEqual(
+            categories.allowed_characters(),
+            frozenset('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!?'),
+        )
+
+        config = ProgramConfig(auto_tate_chu_yoko={
+            'enabled': True,
+            'max_length': 6,
+            'include_numbers': False,
+            'include_letters': True,
+            'additional_chars': '!?',
+        })
+        restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
+        self.assertEqual(restored.auto_tate_chu_yoko, config.auto_tate_chu_yoko)
+
+        invalid = ProgramConfig(auto_tate_chu_yoko={
+            'enabled': 'yes',
+            'max_length': 0,
+            'include_numbers': 1,
+            'include_letters': True,
+            'additional_chars': [],
+        })
+        self.assertEqual(
+            invalid.auto_tate_chu_yoko,
+            AutoTateChuYokoConfig(include_letters=True),
+        )
+
+    def test_compact_vertical_punctuation_config_is_enabled_by_default(self):
+        self.assertTrue(ProgramConfig().compact_vertical_punctuation_spacing)
+
+        config = ProgramConfig(
+            compact_vertical_punctuation_spacing=False,
+        )
+        restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
+        self.assertFalse(restored.compact_vertical_punctuation_spacing)
+
+        invalid = ProgramConfig(
+            compact_vertical_punctuation_spacing='yes',
+        )
+        self.assertTrue(invalid.compact_vertical_punctuation_spacing)
+
+    def test_compact_vertical_punctuation_control_updates_config(self):
+        original = pcfg.compact_vertical_punctuation_spacing
+        pcfg.compact_vertical_punctuation_spacing = False
+        panel = ConfigPanel()
+        changes = []
+        panel.compact_vertical_punctuation_changed.connect(changes.append)
+        try:
+            checker = panel.compact_vertical_punctuation_checker
+            self.assertFalse(checker.isChecked())
+            self.assertTrue(checker.toolTip())
+
+            checker.click()
+
+            self.assertTrue(pcfg.compact_vertical_punctuation_spacing)
+            self.assertEqual(changes, [True])
+        finally:
+            panel.close()
+            pcfg.compact_vertical_punctuation_spacing = original
+
+    def test_auto_tate_chu_yoko_controls_update_config(self):
+        original = pcfg.auto_tate_chu_yoko.copy()
+        pcfg.auto_tate_chu_yoko = AutoTateChuYokoConfig()
+        panel = ConfigPanel()
+        apply_requested = Mock()
+        panel.apply_auto_tate_chu_yoko_requested.connect(apply_requested)
+        try:
+            self.assertFalse(panel.auto_tate_chu_yoko_checker.isChecked())
+            self.assertTrue(panel.auto_tate_chu_yoko_options.isHidden())
+            self.assertTrue(panel.auto_tate_chu_yoko_apply_btn.isHidden())
+
+            panel.auto_tate_chu_yoko_checker.click()
+            panel.auto_tate_chu_yoko_max_length.setValue(6)
+            panel.auto_tate_chu_yoko_numbers.click()
+            panel.auto_tate_chu_yoko_letters.click()
+            panel.auto_tate_chu_yoko_additional_chars.setText('!?')
+
+            self.assertFalse(panel.auto_tate_chu_yoko_options.isHidden())
+            self.assertFalse(panel.auto_tate_chu_yoko_apply_btn.isHidden())
+            panel.auto_tate_chu_yoko_apply_btn.click()
+            apply_requested.assert_called_once_with()
+            self.assertEqual(
+                pcfg.auto_tate_chu_yoko,
+                AutoTateChuYokoConfig(
+                    enabled=True,
+                    max_length=6,
+                    include_numbers=False,
+                    include_letters=True,
+                    additional_chars='!?',
+                ),
+            )
+        finally:
+            panel.close()
+            pcfg.auto_tate_chu_yoko = original
 
     def test_dialog_initializes_pipeline_controls(self):
         project = SimpleNamespace(
@@ -585,6 +773,35 @@ class RunPipelineDialogTests(unittest.TestCase):
                 full_page=True,
             )
         self.assertEqual(result, '後臺')
+
+    def test_translation_letter_case_runs_after_substitution(self):
+        substitutions = ({
+            'keyword': 'HERO',
+            'sub': 'CHAMPION',
+            'use_reg': False,
+            'case_sens': True,
+        },)
+
+        result = postprocess_translation_text(
+            'hELLO HERO. nEXT!',
+            'English',
+            'English',
+            substitutions,
+            letter_case=OCRTextPostprocess.CAPITALIZE,
+            full_page=True,
+        )
+
+        self.assertEqual(result, 'Hello champion. Next!')
+
+        leading_number = postprocess_translation_text(
+            '123 hELLO. 45 nEXT!',
+            'English',
+            'English',
+            (),
+            letter_case=OCRTextPostprocess.CAPITALIZE,
+            full_page=True,
+        )
+        self.assertEqual(leading_number, '123 Hello. 45 Next!')
 
     def test_pipeline_keeps_global_keyword_substitution_actions(self):
         panel = ConfigPanel()
@@ -1225,6 +1442,366 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(block.fontformat.shadow_strength, 0.4)
             self.assertEqual(block.fontformat.shadow_color, [7, 8, 9])
             self.assertEqual(block.fontformat.shadow_offset, [2, 1])
+
+    def test_pipeline_auto_tate_chu_yoko_preserves_plain_text_format(self):
+        settings = AutoTateChuYokoConfig(
+            enabled=True,
+            max_length=3,
+            include_numbers=True,
+            include_letters=True,
+            additional_chars='!?',
+        )
+        block = TextBlock(translation='12 ABC 1234 ?!')
+        block.fontformat = FontFormat(
+            font_family='DejaVu Sans',
+            font_size=36,
+            frgb=[10, 20, 30],
+            italic=True,
+            underline=True,
+            vertical=True,
+        )
+        self.assertEqual(apply_auto_tate_chu_yoko([block], settings), 1)
+
+        document = QTextDocument()
+        load_rich_text_html(document, block.rich_text, vertical=True)
+        ranges = text_combine_upright_ranges(document.firstBlock())
+        self.assertEqual(
+            [(start, length) for start, length, _group_id in ranges],
+            [(0, 2), (3, 3), (12, 2)],
+        )
+        cursor = QTextCursor(document)
+        cursor.setPosition(0)
+        cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        char_format = cursor.charFormat()
+        self.assertEqual(char_format.font().family(), 'DejaVu Sans')
+        self.assertAlmostEqual(
+            char_format.fontPointSize(),
+            block.fontformat.size_pt,
+        )
+        self.assertEqual(char_format.foreground().color(), QColor(10, 20, 30))
+        self.assertTrue(char_format.fontItalic())
+        self.assertTrue(char_format.fontUnderline())
+
+        unchanged = TextBlock(translation='plain text')
+        unchanged.vertical = True
+        self.assertEqual(apply_auto_tate_chu_yoko([unchanged], settings), 0)
+        self.assertEqual(unchanged.rich_text, '')
+
+    def test_pipeline_auto_tate_chu_yoko_strips_horizontal_runs(self):
+        document = QTextDocument('12')
+        cursor = QTextCursor(document)
+        cursor.select(QTextCursor.SelectionType.Document)
+        apply_text_combine_upright(cursor, True)
+
+        block = TextBlock(translation='12')
+        block.vertical = False
+        block.rich_text = to_rich_text_html(document)
+        settings = AutoTateChuYokoConfig(enabled=True, max_length=2)
+
+        original_html = block.rich_text
+        self.assertEqual(
+            apply_auto_tate_chu_yoko(
+                [block],
+                AutoTateChuYokoConfig(enabled=False, max_length=2),
+            ),
+            0,
+        )
+        self.assertEqual(block.rich_text, original_html)
+
+        self.assertEqual(apply_auto_tate_chu_yoko([block], settings), 1)
+        restored = QTextDocument()
+        load_rich_text_html(restored, block.rich_text, vertical=False)
+        self.assertEqual(text_combine_upright_ranges(restored.firstBlock()), ())
+
+    def test_auto_tate_chu_yoko_thread_processes_all_pages(self):
+        number_block = TextBlock(translation='12')
+        number_block.vertical = True
+        letter_block = TextBlock(translation='AB')
+        letter_block.vertical = True
+        thread = AutoTateChuYokoThread()
+        progress = QSignalSpy(thread.progress_changed)
+        finished = QSignalSpy(thread.processing_finished)
+
+        self.assertTrue(thread.start_processing(
+            {
+                '001.png': [number_block],
+                '002.png': [letter_block],
+            },
+            AutoTateChuYokoConfig(
+                enabled=True,
+                max_length=2,
+                include_letters=True,
+            ),
+        ))
+        self.assertTrue(thread.wait(5000))
+        self.app.processEvents()
+
+        self.assertEqual(len(finished), 1)
+        self.assertEqual(finished[0][0], 2)
+        self.assertEqual(len(progress), 2)
+        self.assertEqual(list(progress[-1]), [100, '002.png'])
+        for block in (number_block, letter_block):
+            document = QTextDocument()
+            load_rich_text_html(document, block.rich_text, vertical=True)
+            self.assertEqual(
+                [(start, length) for start, length, _ in
+                 text_combine_upright_ranges(document.firstBlock())],
+                [(0, 2)],
+            )
+
+    def test_auto_tate_chu_yoko_thread_honors_stop_request(self):
+        entered_formatter = threading.Event()
+        release_formatter = threading.Event()
+
+        def slow_formatter(*_args):
+            entered_formatter.set()
+            release_formatter.wait(5)
+            return 0
+
+        thread = AutoTateChuYokoThread()
+        with patch(
+            'ballontranslator.ui.text_engine.pipeline_formatting.apply_auto_tate_chu_yoko',
+            side_effect=slow_formatter,
+        ) as formatter:
+            self.assertTrue(thread.start_processing(
+                {
+                    '001.png': [TextBlock(), TextBlock()],
+                    '002.png': [TextBlock()],
+                },
+                AutoTateChuYokoConfig(enabled=True),
+            ))
+            self.assertTrue(entered_formatter.wait(5))
+            thread.request_stop()
+            release_formatter.set()
+            self.assertTrue(thread.wait(5000))
+
+        self.assertEqual(formatter.call_count, 1)
+
+    def test_manual_auto_tate_chu_yoko_starts_document_worker_only(self):
+        worker = Mock()
+        worker.isRunning.return_value = False
+        worker.start_processing.return_value = True
+        progress = Mock()
+        text_manager = Mock()
+        pages = {'001.png': [TextBlock(translation='12')]}
+        owner = SimpleNamespace(
+            imgtrans_proj=SimpleNamespace(is_empty=False, pages=pages),
+            auto_tate_chu_yoko_thread=worker,
+            auto_tate_chu_yoko_progress=progress,
+            st_manager=text_manager,
+        )
+
+        MainWindow.apply_auto_tate_chu_yoko_to_project(owner)
+
+        text_manager.updateTextBlkList.assert_called_once_with()
+        worker.start_processing.assert_called_once_with(
+            pages,
+            pcfg.auto_tate_chu_yoko,
+        )
+        progress.zero_progress.assert_called_once_with()
+        progress.show_fitted.assert_called_once_with()
+
+    def test_manual_auto_tate_chu_yoko_syncs_only_changed_live_documents(self):
+        changed = TextBlock(translation='12')
+        changed.rich_text = '<html>changed</html>'
+        unchanged = TextBlock(translation='plain')
+        changed_item = SimpleNamespace(
+            blk=changed,
+            load_rich_text_html=Mock(),
+        )
+        unchanged_item = SimpleNamespace(
+            blk=unchanged,
+            load_rich_text_html=Mock(),
+        )
+        owner = SimpleNamespace(
+            auto_tate_chu_yoko_progress=Mock(),
+            st_manager=SimpleNamespace(
+                textblk_item_list=[changed_item, unchanged_item]
+            ),
+            canvas=Mock(),
+        )
+
+        MainWindow.on_auto_tate_chu_yoko_processing_finished(
+            owner,
+            1,
+            (changed,),
+        )
+
+        owner.auto_tate_chu_yoko_progress.hide.assert_called_once_with()
+        changed_item.load_rich_text_html.assert_called_once_with(
+            changed.rich_text
+        )
+        unchanged_item.load_rich_text_html.assert_not_called()
+        owner.canvas.setProjSaveState.assert_called_once_with(True)
+
+    def test_auto_tate_chu_yoko_runs_only_at_pipeline_format_boundaries(self):
+        blocks = [TextBlock()]
+        calls = []
+        project = SimpleNamespace(
+            num_pages=1,
+            get_blklist_byidx=lambda _: blocks,
+            set_current_img_byidx=lambda _: None,
+            save=lambda: None,
+        )
+        owner = SimpleNamespace(
+            imgtrans_proj=project,
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=FontFormat(),
+            postprocess_translations=lambda _: None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=FontFormat())
+            ),
+            st_manager=SimpleNamespace(
+                auto_textlayout_flag=False,
+                updateSceneTextitems=lambda: None,
+                textblk_item_list=[],
+            ),
+            pageList=SimpleNamespace(
+                currentIndex=lambda: SimpleNamespace(row=lambda: 0)
+            ),
+            canvas=SimpleNamespace(updateCanvas=lambda: None),
+            saveCurrentPage=lambda *args: None,
+        )
+        flag_names = (
+            'let_fntsize_flag',
+            'let_fntstroke_flag',
+            'let_fntcolor_flag',
+            'let_fnt_scolor_flag',
+            'let_alignment_flag',
+            'let_fnteffect_flag',
+            'let_writing_mode_flag',
+            'let_family_flag',
+        )
+        old_flags = {name: getattr(pcfg, name) for name in flag_names}
+        original_settings = pcfg.auto_tate_chu_yoko.copy()
+        old_stages = {
+            name: getattr(pcfg.module, name)
+            for name in (
+                'enable_detect',
+                'enable_ocr',
+                'enable_translate',
+                'enable_inpaint',
+            )
+        }
+        formatter_patch = patch(
+            'ballontranslator.ui.mainwindow.apply_auto_tate_chu_yoko',
+        )
+        formatter = formatter_patch.start()
+        formatter.side_effect = lambda *_args: calls.append(True)
+        try:
+            for name in flag_names:
+                setattr(pcfg, name, 0)
+            pcfg.auto_tate_chu_yoko.enabled = True
+            pcfg.module.enable_detect = False
+            pcfg.module.enable_ocr = False
+            pcfg.module.enable_inpaint = False
+
+            pcfg.module.enable_translate = True
+            MainWindow.on_pagtrans_finished(owner, 0)
+            self.assertEqual(calls, [True])
+
+            calls.clear()
+            pcfg.module.enable_translate = False
+            owner._render_only = True
+            MainWindow.on_pagtrans_finished(owner, 0)
+            self.assertEqual(calls, [True])
+
+            calls.clear()
+            owner._run_imgtrans_wo_textstyle_update = True
+            MainWindow.on_pagtrans_finished(owner, 0)
+            self.assertEqual(calls, [])
+
+            owner._render_only = False
+            owner._run_imgtrans_wo_textstyle_update = False
+            pcfg.module.enable_ocr = True
+            MainWindow.on_pagtrans_finished(owner, 0)
+            self.assertEqual(calls, [])
+        finally:
+            formatter_patch.stop()
+            for name, value in old_flags.items():
+                setattr(pcfg, name, value)
+            for name, value in old_stages.items():
+                setattr(pcfg.module, name, value)
+            pcfg.auto_tate_chu_yoko = original_settings
+
+    def test_detected_vertical_alignment_defaults_to_center(self):
+        global_format = FontFormat(alignment=0, vertical=True)
+        blocks = []
+        project = SimpleNamespace(
+            num_pages=1,
+            get_blklist_byidx=lambda _: blocks,
+            set_current_img_byidx=lambda _: None,
+            save=lambda: None,
+        )
+        owner = SimpleNamespace(
+            imgtrans_proj=project,
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=global_format,
+            postprocess_translations=lambda _: None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=global_format)
+            ),
+            st_manager=SimpleNamespace(
+                auto_textlayout_flag=False,
+                updateSceneTextitems=lambda: None,
+                textblk_item_list=[],
+            ),
+            pageList=SimpleNamespace(
+                currentIndex=lambda: SimpleNamespace(row=lambda: 0)
+            ),
+            canvas=SimpleNamespace(updateCanvas=lambda: None),
+            saveCurrentPage=lambda *args: None,
+        )
+
+        def run(block):
+            blocks[:] = [block]
+            MainWindow.on_pagtrans_finished(owner, 0)
+
+        with patch.multiple(
+            pcfg,
+            let_alignment_flag=0,
+            let_writing_mode_flag=0,
+            let_fntsize_flag=0,
+            let_fntstroke_flag=0,
+            let_fntcolor_flag=0,
+            let_fnt_scolor_flag=0,
+            let_fnteffect_flag=0,
+            let_family_flag=0,
+        ), patch.multiple(
+            pcfg.module,
+            enable_detect=True,
+            enable_ocr=False,
+            enable_translate=False,
+            enable_inpaint=False,
+        ):
+            detected_vertical = TextBlock(text_layout_version=1)
+            detected_vertical.vertical = True
+            detected_vertical.src_is_vertical = True
+            detected_vertical.alignment = 2
+            run(detected_vertical)
+            self.assertEqual(detected_vertical.alignment, 1)
+
+            pcfg.let_alignment_flag = 1
+            global_alignment = TextBlock(text_layout_version=1)
+            global_alignment.vertical = True
+            global_alignment.src_is_vertical = True
+            global_alignment.alignment = 2
+            run(global_alignment)
+            self.assertEqual(global_alignment.alignment, 0)
+
+            pcfg.let_alignment_flag = 0
+            pcfg.let_writing_mode_flag = 1
+            forced_vertical = TextBlock(text_layout_version=1)
+            forced_vertical.vertical = False
+            forced_vertical.src_is_vertical = False
+            forced_vertical.alignment = 2
+            run(forced_vertical)
+            self.assertTrue(forced_vertical.vertical)
+            self.assertEqual(forced_vertical.alignment, 1)
 
     def test_render_only_skips_module_preparation_and_finishes_every_page(self):
         pages = []

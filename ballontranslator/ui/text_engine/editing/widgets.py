@@ -5,11 +5,12 @@ from typing import List
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
+from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
 import numpy as np
 
 from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
+from .context_menu import create_text_edit_context_menu
 from ballontranslator.utils.config import pcfg
 from ...spellcheck import SpellCheckManager, SpellCheckHighlighter
 
@@ -200,7 +201,7 @@ class SourceTextEdit(QTextEdit):
     hover_enter = Signal(int)
     hover_leave = Signal(int)
     focus_in = Signal(int)
-    propagate_user_edited = Signal(int, str, bool)
+    propagate_user_edited = Signal(int, int, str, bool)
     ensure_scene_visible = Signal()
     redo_signal = Signal()
     undo_signal = Signal()
@@ -222,8 +223,10 @@ class SourceTextEdit(QTextEdit):
         self.old_undo_steps = self.document().availableUndoSteps()
         self.in_redo_undo = False
         self.change_from: int = 0
+        self.change_removed: int = 0
         self.change_added: int = 0
         self.input_method_from = -1
+        self.input_method_removed = 0
         self.input_method_text = ''
         self.text_content_changed = False
         self.highlighting = False
@@ -359,6 +362,7 @@ class SourceTextEdit(QTextEdit):
             self.text_content_changed = True
             if self.hasFocus():
                 self.change_from = from_
+                self.change_removed = removed
                 self.change_added = added
 
     def adjustSize(self):
@@ -378,6 +382,7 @@ class SourceTextEdit(QTextEdit):
         if not self.in_redo_undo:
             
             change_from = self.change_from
+            removed = self.change_removed
             added_text = ''
             
             if self.paste_flag:
@@ -391,7 +396,9 @@ class SourceTextEdit(QTextEdit):
                 if self.input_method_from != -1:
                     added_text = self.input_method_text
                     change_from = self.input_method_from
+                    removed = self.input_method_removed
                     self.input_method_from = -1
+                    self.input_method_removed = 0
                 elif self.change_added > 0:
                     cursor = self.textCursor()
                     cursor.setPosition(change_from)
@@ -401,8 +408,15 @@ class SourceTextEdit(QTextEdit):
             undo_steps = self.document().availableUndoSteps()
             new_steps = undo_steps - self.old_undo_steps
             joint_previous = new_steps == 0
-            self.propagate_user_edited.emit(change_from, added_text, joint_previous)
+            if removed > 0 or added_text:
+                self.propagate_user_edited.emit(
+                    change_from,
+                    removed,
+                    added_text,
+                    joint_previous,
+                )
             self.change_added = 0
+            self.change_removed = 0
 
             if new_steps > 0:
                 self.old_undo_steps = undo_steps
@@ -450,15 +464,42 @@ class SourceTextEdit(QTextEdit):
         return super().wheelEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
-        if self.pre_editing is False:
+        if not self.pre_editing:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
+            self.input_method_removed = (
+                cursor.selectionEnd() - cursor.selectionStart()
+            )
+        if e.replacementLength() > 0:
+            cursor = self.textCursor()
+            document_end = max(0, self.document().characterCount() - 1)
+            replacement_start = max(
+                0,
+                min(
+                    document_end,
+                    cursor.position() + e.replacementStart(),
+                ),
+            )
+            replacement_end = min(
+                document_end,
+                replacement_start + e.replacementLength(),
+            )
+            self.input_method_from = replacement_start
+            self.input_method_removed = replacement_end - replacement_start
         if e.preeditString() == '':
             self.pre_editing = False
             self.input_method_text = e.commitString()
         else:
             self.pre_editing = True
         super().inputMethodEvent(e)
+        if (
+            e.preeditString() == ''
+            and not e.commitString()
+            and e.replacementLength() == 0
+        ):
+            self.input_method_from = -1
+            self.input_method_removed = 0
+            self.input_method_text = ''
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
@@ -503,7 +544,46 @@ class SourceTextEdit(QTextEdit):
 
         
 class TransTextEdit(SourceTextEdit):
-    pass
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        cursor = self.textCursor()
+        menu, quick_insert_actions = create_text_edit_context_menu(
+            self,
+            has_selection=cursor.hasSelection(),
+            can_undo=self.document().isUndoAvailable(),
+            can_redo=self.document().isRedoAvailable(),
+        )
+
+        self.in_acts = True
+        changed = False
+        try:
+            action = menu.exec(event.globalPos())
+            operation = action.data() if action is not None else None
+            if action in quick_insert_actions:
+                self.insertPlainText(operation)
+                changed = True
+            elif operation == 'undo':
+                self.undo_signal.emit()
+            elif operation == 'redo':
+                self.redo_signal.emit()
+            elif operation == 'cut':
+                self.cut()
+                changed = True
+            elif operation == 'copy':
+                self.copy()
+            elif operation == 'paste':
+                self.paste_flag = True
+                self.paste()
+                changed = True
+            elif operation == 'delete':
+                cursor.removeSelectedText()
+                self.setTextCursor(cursor)
+                changed = True
+
+            if changed:
+                self.handle_content_change()
+        finally:
+            self.in_acts = False
+        event.accept()
 
 
 class RowIndexEditor(QLineEdit):

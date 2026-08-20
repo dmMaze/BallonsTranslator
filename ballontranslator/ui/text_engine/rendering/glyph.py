@@ -8,6 +8,7 @@ through the glyph-local shear and the placement/orientation supplied by
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import OrderedDict
 import math
 from typing import (
@@ -49,6 +50,7 @@ from ballontranslator.ui.misc import ndarray2pixmap, pixmap2ndarray
 
 
 GLYPH_STROKE_FORMAT_PROPERTY = 0x100000 + 1239
+GLYPH_DILATED_STROKE_FORMAT_PROPERTY = 0x100000 + 1240
 FALLBACK_RASTER_MAX_SCALE = 8.0
 FALLBACK_RASTER_MAX_PIXELS = 4_194_304
 FALLBACK_RASTER_MAX_DIMENSION = 8192
@@ -74,6 +76,31 @@ class PaintSpan(NamedTuple):
     start: int
     length: int
     char_format: QTextCharFormat
+
+
+def _split_paint_spans(
+    spans: Sequence[PaintSpan],
+    boundaries: Sequence[int],
+) -> Tuple[PaintSpan, ...]:
+    """Split paint only; the attached QTextLayout keeps its shaped runs."""
+    if not boundaries:
+        return tuple(spans)
+    result = []
+    for span in spans:
+        span_end = span.start + span.length
+        position = span.start
+        index = bisect_right(boundaries, position)
+        while index < len(boundaries) and boundaries[index] < span_end:
+            boundary = boundaries[index]
+            result.append(PaintSpan(
+                position, boundary - position, span.char_format
+            ))
+            position = boundary
+            index += 1
+        result.append(PaintSpan(
+            position, span_end - position, span.char_format
+        ))
+    return tuple(result)
 
 
 class FallbackGlyph(NamedTuple):
@@ -198,6 +225,34 @@ def glyph_slant_transform(angle: float, baseline_y: float) -> QTransform:
     return QTransform(1.0, 0.0, -tangent, 1.0, tangent * baseline_y, 0.0)
 
 
+def _visible_slant_pivot_y(
+    orientation: QTransform,
+    baseline_y: float,
+    source_bounds: QRectF,
+    neutral_bounds: QRectF,
+) -> float:
+    """Return the visible-space anchor for a glyph-local horizontal shear.
+
+    A translated upright glyph still has a horizontal baseline, so its mapped
+    baseline remains the natural pivot. After a quarter turn that baseline is
+    vertical; anchoring a horizontal shear to its old y coordinate translates
+    the whole glyph. Rotated glyphs instead retain their original
+    ink-to-baseline distance along the visible y axis.
+
+    >>> _visible_slant_pivot_y(
+    ...     QTransform(), 12.0, QRectF(0, -6, 4, 6), QRectF(0, 2, 4, 6)
+    ... )
+    12.0
+    """
+    if math.isclose(orientation.m12(), 0.0, abs_tol=1e-9):
+        return orientation.map(QPointF(0.0, baseline_y)).y()
+    source_y_scale = math.hypot(orientation.m21(), orientation.m22())
+    return (
+        neutral_bounds.center().y()
+        - source_bounds.center().y() * source_y_scale
+    )
+
+
 def _mapped_rect(rect: QRectF, transform: QTransform) -> QRectF:
     if rect.isEmpty():
         return QRectF()
@@ -229,6 +284,14 @@ def _composed_transform(*transforms: QTransform) -> QTransform:
 
 
 def _format_at(block: QTextBlock, local_position: int) -> QTextCharFormat:
+    layout = block.document().documentLayout()
+    indexed_ranges = getattr(layout, 'fragment_format_ranges', None)
+    if indexed_ranges is not None:
+        ranges = indexed_ranges(
+            block.blockNumber(), local_position, local_position + 1
+        )
+        if ranges:
+            return QTextCharFormat(ranges[0][2])
     absolute = block.position() + local_position
     iterator = block.begin()
     while not iterator.atEnd():
@@ -294,21 +357,41 @@ def resolve_paint_spans(
         return ()
     boundaries = {line_start, line_end}
 
-    iterator = block.begin()
-    while not iterator.atEnd():
-        fragment = iterator.fragment()
-        if fragment.isValid():
-            start = fragment.position() - block.position()
-            end = start + fragment.length()
-            if start < line_end and end > line_start:
-                boundaries.update((max(start, line_start), min(end, line_end)))
-        iterator += 1
+    layout = block.document().documentLayout()
+    indexed_ranges = getattr(layout, 'fragment_format_ranges', None)
+    fragment_ranges = (
+        indexed_ranges(block.blockNumber(), line_start, line_end)
+        if indexed_ranges is not None else ()
+    )
+    if fragment_ranges:
+        for start, end, _char_format in fragment_ranges:
+            boundaries.update((start, end))
+    else:
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid():
+                start = fragment.position() - block.position()
+                end = start + fragment.length()
+                if start < line_end and end > line_start:
+                    boundaries.update((
+                        max(start, line_start), min(end, line_end)
+                    ))
+            iterator += 1
 
-    for format_range in additional_formats:
+    additional_starts = {}
+    additional_ends = {}
+    for order, format_range in enumerate(additional_formats):
         start = int(format_range.start)
         end = start + int(format_range.length)
         if start < line_end and end > line_start:
-            boundaries.update((max(start, line_start), min(end, line_end)))
+            clipped_start = max(start, line_start)
+            clipped_end = min(end, line_end)
+            boundaries.update((clipped_start, clipped_end))
+            additional_starts.setdefault(clipped_start, []).append(
+                (order, format_range.format)
+            )
+            additional_ends.setdefault(clipped_end, []).append(order)
 
     selection_bounds = None
     if selection is not None:
@@ -320,15 +403,31 @@ def resolve_paint_spans(
 
     ordered = sorted(boundaries)
     spans: List[PaintSpan] = []
+    fragment_index = 0
+    active_formats = {}
     for start, end in zip(ordered, ordered[1:]):
         if end <= start:
             continue
-        char_format = _format_at(block, start)
-        for format_range in additional_formats:
-            range_start = int(format_range.start)
-            range_end = range_start + int(format_range.length)
+        for order in additional_ends.get(start, ()):
+            active_formats.pop(order, None)
+        for order, char_format_override in additional_starts.get(start, ()):
+            active_formats[order] = char_format_override
+        while (
+            fragment_index < len(fragment_ranges)
+            and fragment_ranges[fragment_index][1] <= start
+        ):
+            fragment_index += 1
+        indexed = None
+        if fragment_index < len(fragment_ranges):
+            range_start, range_end, candidate = fragment_ranges[fragment_index]
             if range_start <= start < range_end:
-                char_format.merge(format_range.format)
+                indexed = candidate
+        char_format = (
+            QTextCharFormat(indexed)
+            if indexed is not None else _format_at(block, start)
+        )
+        for order in sorted(active_formats):
+            char_format.merge(active_formats[order])
         if (
             selection is not None
             and selection_bounds is not None
@@ -455,7 +554,6 @@ def glyph_geometry(
     fallbacks = []
     bounds = QRectF()
     baseline = line.y() + line.ascent() + offset.y()
-    shear = glyph_slant_transform(angle, baseline)
 
     for run in line.glyphRuns(start, length):
         raw_font = run.rawFont()
@@ -466,26 +564,51 @@ def glyph_geometry(
             translation = QTransform.fromTranslate(
                 position.x() + offset.x(), position.y() + offset.y()
             )
-            # Vertical orientation establishes the glyph's visible axes;
-            # slant in item space afterward so rotated glyphs lean correctly.
-            glyph_to_item = _composed_transform(translation, orientation, shear)
+            neutral_transform = _composed_transform(translation, orientation)
             glyph_path = _raw_glyph_path(raw_font, glyph_index)
             if not native_color_glyphs and not glyph_path.isEmpty():
+                source_bounds = glyph_path.boundingRect()
+            else:
+                source_bounds = raw_font.boundingRect(glyph_index)
+            neutral_bounds = _mapped_rect(source_bounds, neutral_transform)
+
+            # Slant follows the visible axes, but its pivot must follow them
+            # too. This keeps rotated punctuation in its established column.
+            shear = glyph_slant_transform(
+                angle,
+                _visible_slant_pivot_y(
+                    orientation,
+                    baseline,
+                    source_bounds,
+                    neutral_bounds,
+                ),
+            )
+            glyph_to_item = _composed_transform(neutral_transform, shear)
+            if not native_color_glyphs and not glyph_path.isEmpty():
                 mapped_path = glyph_to_item.map(glyph_path)
+                glyph_bounds = mapped_path.boundingRect()
+                if not math.isclose(
+                    orientation.m12(), 0.0, abs_tol=1e-9
+                ):
+                    # Mirrored outlines have different shear extrema. Keep
+                    # their visible center tied to the transformed ink box,
+                    # not whichever contour happens to reach farthest.
+                    target_x = shear.map(neutral_bounds.center()).x()
+                    correction = target_x - glyph_bounds.center().x()
+                    mapped_path.translate(correction, 0.0)
+                    glyph_bounds.translate(correction, 0.0)
                 # Preserve the raw font's per-glyph fill rule. Drawing glyphs
                 # separately prevents overlap cancellation without turning a
                 # legitimate OddEven counter into solid ink.
                 paths.append(mapped_path)
-                glyph_bounds = mapped_path.boundingRect()
             else:
-                raw_bounds = raw_font.boundingRect(glyph_index)
-                glyph_bounds = _mapped_rect(raw_bounds, glyph_to_item)
+                glyph_bounds = _mapped_rect(source_bounds, glyph_to_item)
                 fallbacks.append(
                     FallbackGlyph(
                         _fallback_run(raw_font, glyph_index),
                         glyph_to_item,
                         glyph_bounds,
-                        raw_bounds,
+                        source_bounds,
                         native_color_glyphs,
                     )
                 )
@@ -821,6 +944,105 @@ def _draw_fallbacks(
             )
 
 
+def _draw_dilated_path_stroke(
+    painter: QPainter,
+    paths: Sequence[QPainterPath],
+    outline: QPen,
+    failure_handler: Optional[Callable[[Exception, bool], None]] = None,
+) -> bool:
+    """Paint an app-effect outline as a filled-glyph dilation.
+
+    Qt's pen stroker can leave a cavity when its radius exceeds a small glyph
+    component. Rasterizing at the active device scale and dilating the filled
+    silhouette matches image-editor layer strokes without changing layout.
+
+    >>> callable(_draw_dilated_path_stroke)
+    True
+    """
+    if (
+        not paths
+        or outline.widthF() <= 0.0
+        or outline.brush().style() != Qt.BrushStyle.SolidPattern
+    ):
+        return False
+
+    bounds = QRectF()
+    for path in paths:
+        path_bounds = path.boundingRect()
+        if path_bounds.isEmpty():
+            continue
+        bounds = (
+            QRectF(path_bounds)
+            if bounds.isNull()
+            else bounds.united(path_bounds)
+        )
+    if bounds.isEmpty():
+        return False
+
+    try:
+        outline_radius = outline.widthF() / 2.0
+        raster_rect, scale, pixel_width, pixel_height = (
+            _fallback_raster_plan(painter, bounds, outline_radius)
+        )
+        source = QImage(
+            pixel_width,
+            pixel_height,
+            QImage.Format.Format_ARGB32,
+        )
+        if source.isNull():
+            raise MemoryError('unable to allocate glyph stroke mask')
+        source.setDevicePixelRatio(scale)
+        source.fill(Qt.GlobalColor.transparent)
+        source_painter = QPainter(source)
+        if not source_painter.isActive():
+            raise MemoryError('unable to begin glyph stroke mask painter')
+        try:
+            source_painter.setRenderHint(
+                QPainter.RenderHint.Antialiasing, True
+            )
+            source_painter.translate(-raster_rect.topLeft())
+            source_painter.setPen(Qt.PenStyle.NoPen)
+            source_painter.setBrush(Qt.GlobalColor.white)
+            for path in paths:
+                source_painter.drawPath(path)
+        finally:
+            source_painter.end()
+
+        rgba = pixmap2ndarray(source, keep_alpha=True)
+        if rgba is None:
+            raise MemoryError('unable to access glyph stroke mask pixels')
+        radius = max(1, math.ceil(outline_radius * scale))
+        diameter = radius * 2 + 1
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (diameter, diameter)
+        )
+        alpha = cv2.dilate(rgba[..., 3], kernel)
+        color = outline.color()
+        stroke = np.empty_like(rgba)
+        stroke[..., 0] = color.red()
+        stroke[..., 1] = color.green()
+        stroke[..., 2] = color.blue()
+        stroke[..., 3] = alpha
+        stroke_pixmap = ndarray2pixmap(stroke)
+        if stroke_pixmap is None or stroke_pixmap.isNull():
+            raise MemoryError('unable to allocate dilated glyph stroke')
+        stroke_pixmap.setDevicePixelRatio(scale)
+        painter.drawPixmap(raster_rect.topLeft(), stroke_pixmap)
+        return True
+    except (
+        MemoryError,
+        OverflowError,
+        RuntimeError,
+        ValueError,
+        TypeError,
+        BufferError,
+        cv2.error,
+    ) as error:
+        if failure_handler is not None:
+            failure_handler(GlyphRasterAllocationError(str(error)), True)
+        return False
+
+
 def draw_glyph_geometry(
     painter: QPainter,
     geometry: GlyphGeometry,
@@ -833,11 +1055,23 @@ def draw_glyph_geometry(
     if geometry.paths:
         painter.save()
         try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             if outline.style() != Qt.PenStyle.NoPen:
-                painter.setBrush(Qt.BrushStyle.NoBrush)
-                painter.setPen(outline)
-                for glyph_path in geometry.paths:
-                    painter.drawPath(glyph_path)
+                dilated = bool(
+                    char_format.property(
+                        GLYPH_DILATED_STROKE_FORMAT_PROPERTY
+                    )
+                ) and _draw_dilated_path_stroke(
+                    painter,
+                    geometry.paths,
+                    outline,
+                    failure_handler,
+                )
+                if not dilated:
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
+                    painter.setPen(outline)
+                    for glyph_path in geometry.paths:
+                        painter.drawPath(glyph_path)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(brush)
             for glyph_path in geometry.paths:
@@ -878,6 +1112,7 @@ def draw_uniform_glyph_geometries(
         return
     painter.save()
     try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(brush)
         for geometry in geometries:
@@ -1021,23 +1256,53 @@ def draw_slanted_line(
     failure_handler: Optional[Callable[[Exception, bool], None]] = None,
     persistent_geometry_cache: Optional[Any] = None,
     cache_namespace: Optional[Hashable] = None,
+    background_overlays: Sequence[Tuple[QRectF, QBrush]] = (),
+    horizontal_shifts: Sequence[Tuple[int, int, float]] = (),
 ) -> None:
     """Paint one already-laid-out line without changing logical geometry."""
     layout = block.layout()
     additional_formats = tuple(layout.formats())
-    normal_spans = resolve_paint_spans(block, line, additional_formats)
+    shift_boundaries = tuple(
+        sorted({
+            boundary
+            for start, end, _shift in horizontal_shifts
+            for boundary in (start, end)
+        })
+    )
+
+    def paint_spans(
+        selection: Optional[QAbstractTextDocumentLayout.Selection] = None,
+    ) -> Tuple[PaintSpan, ...]:
+        return _split_paint_spans(
+            resolve_paint_spans(
+                block, line, additional_formats, selection
+            ),
+            shift_boundaries,
+        )
+
+    normal_spans = paint_spans()
     baseline_y = line.y() + line.ascent() + offset.y()
     geometry_cache = {}
+    shift_starts = tuple(start for start, _end, _shift in horizontal_shifts)
+
+    def span_offset(span: PaintSpan) -> QPointF:
+        if not shift_starts:
+            return offset
+        index = bisect_right(shift_starts, span.start) - 1
+        if index < 0 or span.start >= horizontal_shifts[index][1]:
+            return offset
+        return QPointF(offset.x() + horizontal_shifts[index][2], offset.y())
 
     def span_geometry(span: PaintSpan) -> GlyphGeometry:
         key = (span.start, span.length)
         geometry = geometry_cache.get(key)
         if geometry is None:
+            span_draw_offset = span_offset(span)
             persistent_key = _geometry_cache_key(
                 cache_namespace,
                 span.start,
                 span.length,
-                offset,
+                span_draw_offset,
                 orientation,
                 angle,
             )
@@ -1048,7 +1313,7 @@ def draw_slanted_line(
                     line,
                     span.start,
                     span.length,
-                    offset,
+                    span_draw_offset,
                     orientation,
                     angle,
                 )
@@ -1074,9 +1339,7 @@ def draw_slanted_line(
             selection_range = _selection_range(block, selection, line)
             if selection_range is None:
                 continue
-            for span in resolve_paint_spans(
-                block, line, additional_formats, selection
-            ):
+            for span in paint_spans(selection):
                 if not (
                     selection_range[0] <= span.start
                     and span.start < selection_range[1]
@@ -1091,12 +1354,14 @@ def draw_slanted_line(
         return
 
     for span in normal_spans:
-        rect = logical_span_rect(line, span.start, span.length, offset, orientation)
+        rect = logical_span_rect(
+            line, span.start, span.length, span_offset(span), orientation
+        )
         _draw_background(painter, rect, span.char_format)
 
     selection_spans = []
     for selection in context.selections:
-        spans = resolve_paint_spans(block, line, additional_formats, selection)
+        spans = paint_spans(selection)
         selection_range = _selection_range(block, selection, line)
         if selection_range is None:
             continue
@@ -1121,11 +1386,16 @@ def draw_slanted_line(
             ):
                 continue
             rect = logical_span_rect(
-                line, span.start, span.length, offset, orientation
+                line, span.start, span.length, span_offset(span), orientation
             )
             if not full_width:
                 _draw_background(painter, rect, span.char_format)
             selection_spans.append((span, rect))
+
+    # Layout-owned selection cells must cover document backgrounds but remain
+    # below glyph ink. This hook keeps that paint order inside the glyph pass.
+    for rect, brush in background_overlays:
+        painter.fillRect(rect, brush)
 
     # Paint normal ink once. Selection foreground is a second, logically
     # clipped pass so ligature overhang outside the selection remains normal.
@@ -1139,7 +1409,7 @@ def draw_slanted_line(
         _draw_decorations(
             painter,
             _logical_span_base_rect(
-                line, span.start, span.length, offset
+                line, span.start, span.length, span_offset(span)
             ),
             span.char_format,
             orientation,
@@ -1159,7 +1429,7 @@ def draw_slanted_line(
             _draw_decorations(
                 painter,
                 _logical_span_base_rect(
-                    line, span.start, span.length, offset
+                    line, span.start, span.length, span_offset(span)
                 ),
                 span.char_format,
                 orientation,

@@ -9,6 +9,7 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QPainter,
+    QPen,
     QTextBlock,
     QTextCharFormat,
     QTextDocument,
@@ -18,6 +19,7 @@ from qtpy.QtGui import (
 
 from ballontranslator.utils import shared as C
 from .glyph import (
+    GLYPH_STROKE_FORMAT_PROPERTY,
     GLOBAL_GLYPH_GEOMETRY_CACHE,
     GLOBAL_GLYPH_PREVIEW_GEOMETRY_CACHE,
     draw_slanted_glyph_mask,
@@ -26,6 +28,8 @@ from .glyph import (
     slanted_line_geometry,
     GlyphGeometry,
 )
+from .emphasis import draw_emphasis_marks, emphasis_ink_bounds
+from .ruby import draw_ruby_placement, ruby_side_margins
 from .indexing import _utf16_char_at, _utf16_length
 
 if TYPE_CHECKING:
@@ -105,17 +109,6 @@ class GlyphSlantLayoutRenderer:
         self.geometry_plan_bounds = QRectF()
         self.geometry_cache = LayoutGlyphGeometryCache(self)
 
-    def bind_layout(self, layout: SceneTextLayout) -> None:
-        """Attach a replacement writing-mode layout without leaking caches."""
-        if self.layout is layout:
-            return
-        self.geometry_cache.invalidate_generation()
-        self.layout = layout
-        self.generation = getattr(layout, 'layout_generation', 0)
-        self.bounds_cache.clear()
-        self.geometry_plan = None
-        self.geometry_plan_bounds = QRectF()
-
     def ensure_layout_generation(self) -> None:
         generation = getattr(self.layout, 'layout_generation', self.generation)
         if generation == self.generation:
@@ -150,36 +143,7 @@ class GlyphSlantLayoutRenderer:
     def _vertical_line_placement(
         self, block: QTextBlock, line_number: int
     ) -> Optional[Tuple[QTextLine, QPointF, QTransform]]:
-        layout = block.layout()
-        line = layout.lineAt(line_number)
-        if not line.isValid() or line.textLength() <= 0:
-            return None
-        block_number = block.blockNumber()
-        block_text = block.text()
-        block_text_length = _utf16_length(block_text)
-        _, leading_spaces, _, line_position = self.line_spaces_lst[block_number][
-            line_number
-        ]
-        char_offset = min(line_position + leading_spaces, block_text_length - 1)
-        if char_offset < 0:
-            return line, QPointF(), QTransform()
-        char = _utf16_char_at(block_text, char_offset)
-        x_offset, y_offset = self._draw_offset[block_number][line_number]
-        orientation = QTransform()
-        if char in self.layout.vertical_rotation_chars:
-            line_x, line_y = line.x(), line.y()
-            orientation = QTransform(
-                0,
-                1,
-                0,
-                -1,
-                0,
-                0,
-                line_y + line_x,
-                line_y - line_x,
-                1,
-            )
-        return line, QPointF(x_offset, y_offset), orientation
+        return self.layout.vertical_line_placement(block, line_number)
 
     def _iter_glyph_line_placements(
         self,
@@ -197,6 +161,8 @@ class GlyphSlantLayoutRenderer:
         self,
         painter: QPainter,
         context: QAbstractTextDocumentLayout.PaintContext,
+        *,
+        include_annotations: bool = True,
     ) -> None:
         """Draw only glyphs named by temporary document-layout selections.
 
@@ -218,8 +184,88 @@ class GlyphSlantLayoutRenderer:
                 self._draw_glyph_range(
                     painter, selection_start, selection_end
                 )
+            if include_annotations:
+                self._draw_annotation_selection(painter, context)
         finally:
             painter.restore()
+
+    def draw_native_annotation_selection(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        """Paint only native annotation ink named by effect selections."""
+        painter.save()
+        try:
+            if context.clip.isValid():
+                painter.setClipRect(context.clip)
+            self._draw_annotation_selection(painter, context, native=True)
+        finally:
+            painter.restore()
+
+    def _draw_annotation_selection(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        *,
+        native: bool = False,
+    ) -> None:
+        """Draw selected annotation ink with mask or native paint formats."""
+        if not context.selections:
+            return
+        paint_context = context
+        if not native:
+            paint_context = QAbstractTextDocumentLayout.PaintContext()
+            paint_context.cursorPosition = -1
+            paint_context.selections = []
+            for selection in context.selections:
+                mask_selection = QAbstractTextDocumentLayout.Selection()
+                mask_selection.cursor = selection.cursor
+                mask_format = QTextCharFormat()
+                mask_format.setProperty(GLYPH_STROKE_FORMAT_PROPERTY, True)
+                mask_format.setForeground(Qt.GlobalColor.white)
+                mask_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
+                mask_selection.format = mask_format
+                paint_context.selections.append(mask_selection)
+
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for line_number in range(layout.lineCount()):
+                placement = self._vertical_line_placement(block, line_number)
+                if placement is None:
+                    continue
+                line, offset, orientation = placement
+                draw_emphasis_marks(
+                    painter,
+                    block,
+                    line,
+                    paint_context,
+                    vertical=True,
+                    offset=offset,
+                    orientation=orientation,
+                    side_offsets=ruby_side_margins(
+                        block,
+                        line,
+                        self.layout._ruby_metrics[block.blockNumber()],
+                        vertical=True,
+                    ),
+                )
+            ruby_placements = getattr(
+                self.layout, '_vertical_ruby_placements', None
+            )
+            if ruby_placements is not None:
+                for placement in ruby_placements(
+                    block, paint_context
+                ):
+                    if any(
+                        selection.cursor.selectionStart() < placement.unit.end
+                        and placement.unit.start
+                        < selection.cursor.selectionEnd()
+                        for selection in context.selections
+                    ):
+                        draw_ruby_placement(painter, placement)
+            block = block.next()
 
     def _draw_glyph_range(
         self, painter: QPainter, selection_start: int, selection_end: int
@@ -363,6 +409,32 @@ class GlyphSlantLayoutRenderer:
                     self.geometry_cache,
                     (block.blockNumber(), line_number),
                 )
+
+    def draw_horizontal_line(
+        self,
+        painter: QPainter,
+        block: QTextBlock,
+        line_number: int,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        horizontal_shifts=(),
+    ) -> None:
+        """Draw one horizontal line for layout-owned Ruby translations."""
+        line = block.layout().lineAt(line_number)
+        if not line.isValid() or line.textLength() <= 0:
+            return
+        draw_slanted_line(
+            painter,
+            block,
+            line,
+            QPointF(),
+            QTransform(),
+            self.glyph_slant_angle,
+            context,
+            self._report_glyph_raster_failure,
+            self.geometry_cache,
+            (block.blockNumber(), line_number),
+            horizontal_shifts=horizontal_shifts,
+        )
 
     def clear_caches(self) -> None:
         self.bounds_cache.clear()
@@ -509,6 +581,11 @@ class GlyphSlantLayoutRenderer:
         return bounds
 
     def ink_bounds(self) -> QRectF:
+        if getattr(self.layout, 'publishing_size_enlargement', False):
+            settled = next(
+                iter(self.bounds_cache.values()), self.geometry_plan_bounds
+            )
+            return QRectF(settled)
         self.ensure_layout_generation()
         document = self.layout.document()
         if document.isEmpty():
@@ -522,6 +599,51 @@ class GlyphSlantLayoutRenderer:
         cached = self.bounds_cache.get(key)
         if cached is not None:
             return QRectF(cached)
-        bounds = self._ensure_geometry_plan()
+        bounds = QRectF(self._ensure_geometry_plan())
+        vertical_placement = getattr(
+            self.layout, 'vertical_line_placement', None
+        )
+        block = document.firstBlock()
+        while block.isValid():
+            text_layout = block.layout()
+            for line_number in range(text_layout.lineCount()):
+                if vertical_placement is None:
+                    line = text_layout.lineAt(line_number)
+                    offset = QPointF()
+                    orientation = QTransform()
+                    vertical = False
+                else:
+                    placement = vertical_placement(block, line_number)
+                    if placement is None:
+                        continue
+                    line, offset, orientation = placement
+                    vertical = True
+                mark_bounds = emphasis_ink_bounds(
+                    block,
+                    line,
+                    vertical=vertical,
+                    offset=offset,
+                    orientation=orientation,
+                    side_offsets=ruby_side_margins(
+                        block,
+                        line,
+                        self.layout._ruby_metrics[block.blockNumber()],
+                        vertical=vertical,
+                    ),
+                )
+                if not mark_bounds.isEmpty():
+                    bounds = (
+                        QRectF(mark_bounds)
+                        if bounds.isNull()
+                        else bounds.united(mark_bounds)
+                    )
+            block = block.next()
+        annotation_bounds = self.layout.annotation_ink_bounds()
+        if not annotation_bounds.isEmpty():
+            bounds = (
+                QRectF(annotation_bounds)
+                if bounds.isNull()
+                else bounds.united(annotation_bounds)
+            )
         self.bounds_cache = {key: QRectF(bounds)}
         return bounds

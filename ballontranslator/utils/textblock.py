@@ -9,7 +9,13 @@ import re
 from .imgproc_utils import union_area, xywh2xyxypoly, rotate_polygons, color_difference
 from .structures import Union, List, Dict, field, nested_dataclass
 from .split_text_region import split_textblock as split_text_region
-from .fontformat import FontFormat, LineSpacingType, TextAlignment, fix_fontweight_qt
+from .fontformat import (
+    FontFormat,
+    LineSpacingType,
+    TextAlignment,
+    coerce_font_weight,
+)
+from .logger import logger as LOGGER
 from .textblock_mask import canny_flood
 from .textlines_merge import sort_pnts, Quadrilateral, merge_bboxes_text_region
 
@@ -20,6 +26,7 @@ LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 # https://ayaka.shn.hk/hanregex/
 # https://medium.com/the-artificial-impostor/detecting-chinese-characters-in-unicode-strings-4ac839ba313a
 CJKPATTERN = re.compile(r'[\uac00-\ud7a3\u3040-\u30ff\u4e00-\u9FFF]')
+TEXT_LAYOUT_VERSION = 1
 
 
 @nested_dataclass
@@ -52,6 +59,7 @@ class TextBlock:
     _detected_font_confidence: float = 0.0  # 识别置信度
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
+    text_layout_version: int = 0
 
     @property
     def vertical(self):
@@ -98,16 +106,8 @@ class TextBlock:
         return self.fontformat.font_weight
 
     @font_weight.setter
-    def font_weight(self, value: int):
-        self.fontformat.font_weight = value
-
-    @property
-    def bold(self):
-        return self.fontformat.bold
-
-    @bold.setter
-    def bold(self, value: bool):
-        self.fontformat.bold = value
+    def font_weight(self, value: int) -> None:
+        self.fontformat.font_weight = coerce_font_weight(value)
 
     @property
     def italic(self):
@@ -204,12 +204,6 @@ class TextBlock:
             self.distance = np.array(self.distance, np.float32)
         if self.vec is not None:
             self.vec = np.array(self.vec, np.float32)
-        if self.src_is_vertical is None:
-            self.src_is_vertical = self.vertical
-        
-        if self.rich_text:
-            self.rich_text = fix_fontweight_qt(self.rich_text)
-
         da = self.deprecated_attributes
         if len(da) > 0:
             if 'accumulate_color' in da:
@@ -220,9 +214,9 @@ class TextBlock:
                     self.fg_colors /= nlines
                     self.bg_colors /= nlines
 
-            deprecated_blk_fmt_keys = {'vertical': None, 'line_spacing': None, 'letter_spacing': None, 'bold': None, 'underline': None, 'italic': None,
+            deprecated_blk_fmt_keys = {'vertical': None, 'line_spacing': None, 'letter_spacing': None, 'underline': None, 'italic': None,
                 'opacity': None, 'shadow_radius': None, 'shadow_strength': None, 'shadow_color': None, 'shadow_offset': None,
-                 'font_size': 'size', 'font_family': None, '_alignment': 'alignment', 'default_stroke_width': 'stroke_width', 'font_weight': None,
+                 'font_size': 'size', 'font_family': None, '_alignment': 'alignment', 'default_stroke_width': 'stroke_width',
                  'fg_colors': 'frgb', 'bg_colors': 'srgb'
             }
             for src_k, v in da.items():
@@ -232,7 +226,38 @@ class TextBlock:
                     else:
                         tgt_k = deprecated_blk_fmt_keys[src_k]
                     setattr(self.fontformat, tgt_k, v)
-            self.font_weight = fix_fontweight_qt(self.font_weight)
+            if 'font_weight' in da:
+                self.fontformat.font_weight = coerce_font_weight(
+                    da['font_weight']
+                )
+
+        version = self.text_layout_version
+        if (
+            isinstance(version, bool)
+            or not isinstance(version, int)
+            or version < 0
+        ):
+            LOGGER.warning(
+                'Ignoring invalid text layout version %r; treating the '
+                'text block as legacy.',
+                version,
+            )
+            version = 0
+        if version == 0:
+            # Before vertical alignment was implemented, every vertical item
+            # was physically right-aligned regardless of its stored value.
+            if self.vertical:
+                self.alignment = TextAlignment.Right
+            self.text_layout_version = TEXT_LAYOUT_VERSION
+        elif version > TEXT_LAYOUT_VERSION:
+            LOGGER.warning(
+                'Text block uses newer text layout version %s; preserving '
+                'its stored layout values.',
+                version,
+            )
+
+        if self.src_is_vertical is None:
+            self.src_is_vertical = self.vertical
 
         del self.deprecated_attributes
 

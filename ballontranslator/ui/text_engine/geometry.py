@@ -7,7 +7,13 @@ from typing import Iterator, Optional, TYPE_CHECKING
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRect, QRectF, QSizeF, Qt
-from qtpy.QtGui import QPainter, QPainterPath, QPolygonF, QTransform
+from qtpy.QtGui import (
+    QAbstractTextDocumentLayout,
+    QPainter,
+    QPainterPath,
+    QPolygonF,
+    QTransform,
+)
 from qtpy.QtWidgets import (
     QGraphicsItem,
     QGraphicsTextItem,
@@ -209,15 +215,45 @@ class TextItemGeometryController:
         """Return the Qt paint bounds with the managed display size."""
         rect = QRectF(base_rect)
         rect.setSize(self.display_rect.size())
+        source_paint_rect = self.source_paint_rect()
+        rect = rect.united(source_paint_rect)
         if self.visual_mapper is not None:
             rect = rect.united(
-                self.visual_mapper.visual_bounds(self.source_rect())
+                self.visual_mapper.visual_bounds(source_paint_rect)
             )
         return rect
 
     def source_rect(self) -> QRectF:
         """Return the unwarped local paint surface, including effect padding."""
         return QRectF(QPointF(), self.display_rect.size())
+
+    def _source_ink_bounds(self) -> QRectF:
+        """Return the one layout-owned source-ink union."""
+        bounds = self.layout_ink_bounds()
+        layout = getattr(self.item, 'layout', None)
+        if layout is None:
+            return bounds
+        annotation_bounds = layout.annotation_ink_bounds()
+        if annotation_bounds.isEmpty():
+            return bounds
+        return (
+            QRectF(annotation_bounds)
+            if bounds.isEmpty()
+            else bounds.united(annotation_bounds)
+        )
+
+    def source_paint_rect(self) -> QRectF:
+        """Include derived ink overhang without changing logical geometry."""
+        rect = self.source_rect()
+        ink_bounds = self._source_ink_bounds()
+        if not ink_bounds.isEmpty():
+            padding = self.item.padding()
+            rect = rect.united(
+                ink_bounds.adjusted(
+                    -padding, -padding, padding, padding
+                )
+            )
+        return rect
 
     def logical_rect(self) -> QRectF:
         """Return the untransformed, effect-free local rectangle."""
@@ -232,12 +268,22 @@ class TextItemGeometryController:
         return rect.adjusted(padding, padding, -padding, -padding)
 
     def shape(self) -> QPainterPath:
+        ink_bounds = self._source_ink_bounds()
         if self.visual_mapper is not None:
-            return self.visual_mapper.map_rect_path(self.logical_rect())
+            path = self.visual_mapper.map_rect_path(self.logical_rect())
+            if not ink_bounds.isEmpty():
+                path = path.united(
+                    self.visual_mapper.map_rect_path(ink_bounds)
+                )
+            return path
         path = QPainterPath()
         path.addRect(
             self.source_rect() if self.is_neutral() else self.logical_rect()
         )
+        if not ink_bounds.isEmpty():
+            ink_path = QPainterPath()
+            ink_path.addRect(ink_bounds)
+            path = path.united(ink_path)
         return path
 
     def contains(self, point: QPointF) -> bool:
@@ -620,18 +666,18 @@ class TextItemGeometryController:
 
     def _size_alignment_anchor(self, rect: QRectF) -> QPointF:
         item = self.item
-        if (
-            item.fontformat.vertical
-            or item.fontformat.alignment == TextAlignment.Right
-        ):
+        alignment = item.fontformat.alignment
+        if item.fontformat.vertical:
+            if alignment == TextAlignment.Left:
+                return rect.topLeft()
+            if alignment == TextAlignment.Center:
+                return QPointF(rect.center().x(), rect.top())
             return rect.topRight()
-        if item.fontformat.alignment == TextAlignment.Left:
+        if alignment == TextAlignment.Right:
+            return rect.topRight()
+        if alignment == TextAlignment.Left:
             return rect.topLeft()
         return rect.center()
-
-    def _scene_scale_factor(self):
-        scene = self.item.scene()
-        return scene.scale_factor if hasattr(scene, 'scale_factor') else 1
 
     def resize(
         self,
@@ -642,7 +688,7 @@ class TextItemGeometryController:
         set_blk_size: bool = True,
     ) -> None:
         """Resize through the current transform strategy's geometry policy."""
-        if self.requires_custom_resize():
+        if self.requires_custom_resize() or self.has_layout_distortion():
             self._resize_transformed(
                 width,
                 height,
@@ -669,39 +715,17 @@ class TextItemGeometryController:
         if set_layout_maxsize:
             item.layout.setMaxSize(width, height)
 
-        old_width = self.display_rect.width()
-        old_height = self.display_rect.height()
-        old_center = item.sceneBoundingRect().center()
+        old_rect = self.logical_rect()
+        old_anchor_parent = item.mapToParent(
+            self._size_alignment_anchor(old_rect)
+        )
         self.display_rect.setWidth(width)
         self.display_rect.setHeight(height)
         self.sync_origin()
-        pos_shift = (
-            old_center - item.sceneBoundingRect().center()
-        ) / self._scene_scale_factor()
-
-        align_center = align_top_right = False
-        if item.fontformat.vertical:
-            align_top_right = True
-        else:
-            alignment = item.fontformat.alignment
-            if alignment == TextAlignment.Right:
-                align_top_right = True
-            elif alignment != TextAlignment.Left:
-                align_center = True
-
-        if not align_center:
-            delta_width = (width - old_width) / 2
-            delta_height = (height - old_height) / 2
-            if align_top_right:
-                delta_width = -delta_width
-            radians = -np.deg2rad(item.rotation())
-            cosine, sine = np.cos(radians), np.sin(radians)
-            pos_shift += QPointF(
-                cosine * delta_width + sine * delta_height,
-                -sine * delta_width + cosine * delta_height,
-            )
-
-        item.setPos(item.pos() + pos_shift)
+        new_anchor_parent = item.mapToParent(
+            self._size_alignment_anchor(self.logical_rect())
+        )
+        item.setPos(item.pos() + old_anchor_parent - new_anchor_parent)
         if item.blk is not None and set_blk_size:
             item.blk._bounding_rect = self.absolute_rect()
 
@@ -1019,7 +1043,7 @@ class TextItemGeometryController:
                 painter,
                 option,
                 mapper,
-                self.source_rect(),
+                self.source_paint_rect(),
                 cache_key,
                 cache_allowed=(
                     not export_render
@@ -1055,8 +1079,10 @@ class TextItemGeometryController:
         if renderer is None:
             renderer = GlyphSlantLayoutRenderer(self.item.layout)
             self.layout_renderer = renderer
-        else:
-            renderer.bind_layout(self.item.layout)
+        elif renderer.layout is not self.item.layout:
+            raise RuntimeError(
+                'glyph renderer must be detached before layout replacement'
+            )
         self.item.layout.render_delegate = renderer
         self.item.layout.render_failure_handler = (
             self.item.effect_renderer._on_glyph_raster_failure
@@ -1077,20 +1103,44 @@ class TextItemGeometryController:
         self.layout_renderer = None
         return True
 
-    def layout_ink_bounds(self):
+    def layout_ink_bounds(self) -> QRectF:
         renderer = self.layout_renderer
-        return QRectF() if renderer is None else renderer.ink_bounds()
+        if renderer is not None:
+            return renderer.ink_bounds()
+        layout = getattr(self.item, 'layout', None)
+        return QRectF() if layout is None else layout.base_ink_bounds()
 
     def has_layout_distortion(self) -> bool:
         """Return whether glyph painting is delegated to a transform renderer."""
         return self.layout_renderer is not None
 
-    def draw_layout_selection_mask(self, painter, context) -> None:
+    def draw_layout_selection_mask(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+        *,
+        include_annotations: bool = True,
+    ) -> None:
         """Draw an effect mask through the active transform renderer."""
         renderer = self.layout_renderer
         if renderer is None:
             raise RuntimeError('no custom text layout renderer is active')
-        renderer.draw_glyph_selection_mask(painter, context)
+        renderer.draw_glyph_selection_mask(
+            painter,
+            context,
+            include_annotations=include_annotations,
+        )
+
+    def draw_layout_annotations(
+        self,
+        painter: QPainter,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        """Draw selected Ruby/emphasis through native annotation renderers."""
+        renderer = self.layout_renderer
+        if renderer is None:
+            raise RuntimeError('no custom text layout renderer is active')
+        renderer.draw_native_annotation_selection(painter, context)
 
     def initialize_layout(self, *, persistent_cache: bool = True) -> bool:
         state = self.effective()
@@ -1306,11 +1356,7 @@ class TextItemGeometryController:
         duplicate the same matrix calculation.
         """
         item = self.item
-        center = (
-            self.logical_rect().center()
-            if self.requires_custom_resize()
-            else item.boundingRect().center()
-        )
+        center = self.logical_rect().center()
         if item.transformOriginPoint() == center:
             return False
         with self.update_transaction():

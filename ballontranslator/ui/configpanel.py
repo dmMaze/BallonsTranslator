@@ -6,7 +6,7 @@ from qtpy.QtWidgets import (
     QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
     QSplitter, QScrollArea, QLineEdit, QStackedWidget, QMessageBox,
     QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem,
-    QDialog, QAbstractItemView,
+    QDialog, QAbstractItemView, QButtonGroup, QRadioButton,
     QFrame,
 )
 from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
@@ -14,7 +14,7 @@ from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QI
 
 from .custom_widget import ConfigComboBox, NoBorderPushBtn, ScrollBar, Widget
 from ballontranslator.utils import shared
-from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.config import OCRTextPostprocess, pcfg
 from ballontranslator.utils.version import APP_VERSION
 from ballontranslator.utils.network_mirrors import (
     HUGGINGFACE_MIRROR_OPTIONS,
@@ -451,23 +451,29 @@ def combobox_with_label(sel: List[str], name: str, discription: str = None, vert
         layout.addWidget(combox)
         return combox, target_block
     
-def checkbox_with_label(name: str, discription: str = None, target_block: QWidget = None):
+def checkbox_with_label(
+    name: str,
+    discription: Optional[str] = None,
+    target_block: Optional[ConfigSubBlock] = None,
+) -> Tuple[QCheckBox, ConfigSubBlock]:
     checkbox = QCheckBox()
     checkbox.setObjectName('ConfigCheckBox')
     if discription is not None:
-        font = checkbox.font()
-        font.setPointSizeF(CONFIG_FONTSIZE_CONTENT * 0.8)
-        checkbox.setFont(font)
-        checkbox.setText(discription)
         checkbox.setToolTip(discription)
-        vertical_layout = True
-    else:
-        vertical_layout = False
 
     if target_block is None:
-        sublock = ConfigSubBlock(checkbox, name, vertical_layout=vertical_layout, tooltip=discription)
-        if vertical_layout is False:
-            sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
+        sublock = ConfigSubBlock(
+            checkbox,
+            name,
+            vertical_layout=False,
+            tooltip=discription,
+        )
+        font = sublock.name_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        sublock.name_label.setFont(font)
+        sublock.layout().removeWidget(checkbox)
+        sublock.layout().insertWidget(0, checkbox)
+        sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         target_block = sublock
     return checkbox, target_block
     
@@ -508,7 +514,12 @@ class ConfigBlock(Widget):
         self.addSublock(sublock)
         return sublock
 
-    def addCheckBox(self, name: str, discription: str = None, target_block: ConfigSubBlock = None) -> QCheckBox:
+    def addCheckBox(
+        self,
+        name: str,
+        discription: Optional[str] = None,
+        target_block: Optional[ConfigSubBlock] = None,
+    ) -> Tuple[QCheckBox, ConfigSubBlock]:
         checkbox, sublock = checkbox_with_label(name, discription, target_block)
         if target_block is None:
             self.addSublock(sublock)
@@ -673,6 +684,8 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     check_update = Signal()
     reload_textstyle = Signal(bool)
     font_list_changed = Signal(bool)
+    compact_vertical_punctuation_changed = Signal(bool)
+    apply_auto_tate_chu_yoko_requested = Signal()
     show_pre_MT_keyword_window = Signal()
     show_MT_keyword_window = Signal()
     show_OCR_keyword_window = Signal()
@@ -950,9 +963,15 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         global_fntfmt_layout.setVerticalSpacing(CONFIG_CONTENT_MARGIN)
         global_fntfmt_widget.setContentsMargins(0, 0, 0, 0)
 
-        b = typesettingConfigPanel.addBlockWidget(global_fntfmt_widget)
-        b.layout().setContentsMargins(0, 0, 0, 0)
-        b.setContentsMargins(0, 0, 0, 0)
+        global_fntfmt_group = QVBoxLayout()
+        global_fntfmt_group.setContentsMargins(0, 0, 0, 0)
+        global_fntfmt_group.setSpacing(CONFIG_CONTENT_MARGIN)
+        global_fntfmt_group.addWidget(ConfigTextLabel(
+            self.tr('Pipeline Font Formatting'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        ))
+        global_fntfmt_group.addWidget(global_fntfmt_widget)
         self.let_fntsize_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Font Size'), parent=self, insert_stretch=True)
         global_fntfmt_layout.addWidget(sublock, 0, 0)
 
@@ -984,12 +1003,89 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
 
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
-        self.let_autolayout_checker, sublock = typesettingConfigPanel.addCheckBox(self.tr('Auto layout'),
-                discription=self.tr('Split translation into multi-lines according to the extracted balloon region.'))
+        self.quick_insert_characters_edit, _ = typesettingConfigPanel.addLineEdit(
+            self.tr('Quick insert characters')
+        )
+        self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
+        self.quick_insert_characters_edit.textChanged.connect(
+            self.on_quick_insert_characters_changed
+        )
 
+        self.exclude_fonts_btn = QPushButton(self.tr('Hide Unused Fonts'), parent=self)
+        self.exclude_fonts_btn.clicked.connect(self.show_font_exclusion_dialog)
+        font_exclusion_block = typesettingConfigPanel.addBlockWidget(
+            self.exclude_fonts_btn, self.tr('Font Exclusion'),
+        )
+        font = font_exclusion_block.name_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        font_exclusion_block.name_label.setFont(font)
+        font_exclusion_block.layout().setAlignment(Qt.AlignmentFlag.AlignLeft)
+        font_exclusion_block.layout().setSpacing(12)
+
+        letter_case_row = Widget()
+        letter_case_row.setObjectName('ConfigInlineRow')
+        letter_case_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        letter_case_layout = QHBoxLayout(letter_case_row)
+        letter_case_layout.setContentsMargins(0, 0, 0, 0)
+        letter_case_layout.setSpacing(12)
+        letter_case_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        letter_case_label = ConfigTextLabel(
+            self.tr('Letter Case'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        font = letter_case_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        letter_case_label.setFont(font)
+        letter_case_label.setToolTip(self.tr(
+            'Choose how translated text letter case is adjusted after keyword substitution.'
+        ))
+        letter_case_layout.addWidget(letter_case_label)
+
+        self.let_letter_case_group = QButtonGroup(letter_case_row)
+        self.let_letter_case_buttons = {}
+        letter_case_options = (
+            (
+                self.tr('None'),
+                OCRTextPostprocess.NONE,
+                self.tr('Keep translated text letter case unchanged.'),
+            ),
+            (
+                self.tr('Capitalize'),
+                OCRTextPostprocess.CAPITALIZE,
+                self.tr(
+                    'Lowercase translated text, then capitalize the first letter of each sentence.'
+                ),
+            ),
+            (
+                self.tr('Uppercase'),
+                OCRTextPostprocess.UPPERCASE,
+                self.tr('Convert translated text to uppercase.'),
+            ),
+        )
+        for text, mode, tooltip in letter_case_options:
+            button = QRadioButton(text, letter_case_row)
+            button.setObjectName('ConfigLetterCaseOption')
+            button.setProperty('letterCaseMode', mode)
+            button.setToolTip(tooltip)
+            font = button.font()
+            font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+            button.setFont(font)
+            button.setChecked(pcfg.let_letter_case == mode)
+            button.toggled.connect(self.on_letter_case_changed)
+            self.let_letter_case_group.addButton(button)
+            self.let_letter_case_buttons[mode] = button
+            letter_case_layout.addWidget(button)
+        letter_case_layout.addStretch()
+        typesettingConfigPanel.addBlockWidget(letter_case_row)
+
+        self.let_autolayout_checker, sublock = typesettingConfigPanel.addCheckBox(
+            self.tr('Auto layout'),
+            discription=self.tr(
+                'Split translation into multi-lines according to the extracted balloon region.'
+            ),
+        )
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
-        self.let_uppercase_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('To uppercase'))
-        self.let_uppercase_checker.stateChanged.connect(self.on_uppercase_changed)
 
         self.let_textstyle_indep_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
         self.let_textstyle_indep_checker.stateChanged.connect(self.on_textstyle_indep_changed)
@@ -997,11 +1093,237 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_show_only_custom_fonts, sublock = typesettingConfigPanel.addCheckBox(self.tr("Show only custom fonts"))
         self.let_show_only_custom_fonts.stateChanged.connect(self.on_show_only_custom_fonts)
 
-        self.exclude_fonts_btn = QPushButton(self.tr('Hide Unused Fonts'), parent=self)
-        self.exclude_fonts_btn.clicked.connect(self.show_font_exclusion_dialog)
-        typesettingConfigPanel.addBlockWidget(
-            self.exclude_fonts_btn, self.tr('Font Exclusion'),
+        font_format_block = typesettingConfigPanel.addBlockWidget(global_fntfmt_group)
+        font_format_block.layout().setContentsMargins(0, 0, 0, 0)
+        font_format_block.setContentsMargins(0, 0, 0, 0)
+
+        vertical_layout_group = QVBoxLayout()
+        vertical_layout_group.setContentsMargins(0, 0, 0, 0)
+        vertical_layout_group.setSpacing(CONFIG_CONTENT_MARGIN)
+        vertical_layout_group.addWidget(ConfigTextLabel(
+            self.tr('Vertical Text Layout'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        ))
+
+        (
+            self.compact_vertical_punctuation_checker,
+            compact_vertical_punctuation_row,
+        ) = checkbox_with_label(
+            self.tr('Compact punctuation spacing'),
+            discription=self.tr(
+                'Remove extra spacing around punctuation in vertical text.'
+            ),
         )
+        self.compact_vertical_punctuation_checker.setChecked(
+            pcfg.compact_vertical_punctuation_spacing
+        )
+        self.compact_vertical_punctuation_checker.toggled.connect(
+            self.on_compact_vertical_punctuation_changed
+        )
+        vertical_layout_group.addWidget(compact_vertical_punctuation_row)
+
+        auto_tcy_group = Widget()
+        auto_tcy_group.setObjectName('ConfigInlineRow')
+        auto_tcy_group.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        auto_tcy_layout = QVBoxLayout(auto_tcy_group)
+        auto_tcy_layout.setContentsMargins(0, 0, 0, 0)
+        auto_tcy_layout.setSpacing(12)
+
+        auto_tcy_header = Widget()
+        auto_tcy_header.setObjectName('ConfigInlineRow')
+        auto_tcy_header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        auto_tcy_header_layout = QHBoxLayout(auto_tcy_header)
+        auto_tcy_header_layout.setContentsMargins(0, 0, 0, 0)
+        auto_tcy_header_layout.setSpacing(8)
+        auto_tcy_header_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.auto_tate_chu_yoko_checker = QCheckBox(auto_tcy_header)
+        self.auto_tate_chu_yoko_checker.setObjectName('ConfigCheckBox')
+        auto_tcy_title = ConfigTextLabel(
+            self.tr('Automatic Tate-chu-yoko'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+            parent=auto_tcy_header,
+        )
+        font = auto_tcy_title.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        auto_tcy_title.setFont(font)
+        auto_tcy_tooltip = self.tr(
+            'Automatically combine matching character runs into one upright horizontal unit in vertical text.'
+        )
+        self.auto_tate_chu_yoko_checker.setToolTip(auto_tcy_tooltip)
+        auto_tcy_title.setToolTip(auto_tcy_tooltip)
+        auto_tcy_header_layout.addWidget(self.auto_tate_chu_yoko_checker)
+        auto_tcy_header_layout.addWidget(auto_tcy_title)
+        self.auto_tate_chu_yoko_apply_btn = QPushButton(
+            self.tr('Apply'),
+            auto_tcy_header,
+        )
+        auto_tcy_header_layout.addWidget(self.auto_tate_chu_yoko_apply_btn)
+        auto_tcy_header_layout.addStretch()
+        auto_tcy_layout.addWidget(auto_tcy_header)
+
+        self.auto_tate_chu_yoko_options = Widget()
+        self.auto_tate_chu_yoko_options.setObjectName('ConfigInlineRow')
+        self.auto_tate_chu_yoko_options.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        auto_tcy_options_layout = QVBoxLayout(self.auto_tate_chu_yoko_options)
+        auto_tcy_options_layout.setContentsMargins(24, 0, 0, 0)
+        auto_tcy_options_layout.setSpacing(12)
+
+        max_length_row = Widget()
+        max_length_row.setObjectName('ConfigInlineRow')
+        max_length_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        max_length_layout = QHBoxLayout(max_length_row)
+        max_length_layout.setContentsMargins(0, 0, 0, 0)
+        max_length_layout.setSpacing(12)
+        max_length_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        max_length_label = ConfigTextLabel(
+            self.tr('Maximum Run Length'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        font = max_length_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        max_length_label.setFont(font)
+        max_length_tooltip = self.tr(
+            'Maximum number of consecutive matching characters to combine.'
+        )
+        max_length_label.setToolTip(max_length_tooltip)
+        self.auto_tate_chu_yoko_max_length = QSpinBox(max_length_row)
+        self.auto_tate_chu_yoko_max_length.setObjectName(
+            'AutoTateChuYokoMaxLength'
+        )
+        self.auto_tate_chu_yoko_max_length.setRange(1, 99)
+        self.auto_tate_chu_yoko_max_length.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.auto_tate_chu_yoko_max_length.setToolTip(max_length_tooltip)
+        max_length_layout.addWidget(max_length_label)
+        max_length_layout.addWidget(self.auto_tate_chu_yoko_max_length)
+        max_length_layout.addStretch()
+
+        category_row = Widget()
+        category_row.setObjectName('ConfigInlineRow')
+        category_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        category_layout = QHBoxLayout(category_row)
+        category_layout.setContentsMargins(0, 0, 0, 0)
+        category_layout.setSpacing(8)
+        category_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.auto_tate_chu_yoko_numbers = QCheckBox(category_row)
+        self.auto_tate_chu_yoko_numbers.setObjectName('ConfigCheckBox')
+        numbers_label = ConfigTextLabel(
+            self.tr('Numbers'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        font = numbers_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        numbers_label.setFont(font)
+        numbers_tooltip = self.tr(
+            'Include consecutive digits from 0 to 9 in automatic runs.'
+        )
+        self.auto_tate_chu_yoko_numbers.setToolTip(numbers_tooltip)
+        numbers_label.setToolTip(numbers_tooltip)
+        category_layout.addWidget(self.auto_tate_chu_yoko_numbers)
+        category_layout.addWidget(numbers_label)
+        category_layout.addSpacing(16)
+        self.auto_tate_chu_yoko_letters = QCheckBox(category_row)
+        self.auto_tate_chu_yoko_letters.setObjectName('ConfigCheckBox')
+        letters_label = ConfigTextLabel(
+            self.tr('Letters'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        font = letters_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        letters_label.setFont(font)
+        letters_tooltip = self.tr(
+            'Include consecutive Latin letters from A to Z and a to z in automatic runs.'
+        )
+        self.auto_tate_chu_yoko_letters.setToolTip(letters_tooltip)
+        letters_label.setToolTip(letters_tooltip)
+        category_layout.addWidget(self.auto_tate_chu_yoko_letters)
+        category_layout.addWidget(letters_label)
+        category_layout.addStretch()
+
+        additional_chars_row = Widget()
+        additional_chars_row.setObjectName('ConfigInlineRow')
+        additional_chars_row.setAttribute(
+            Qt.WidgetAttribute.WA_StyledBackground,
+            True,
+        )
+        additional_chars_layout = QHBoxLayout(additional_chars_row)
+        additional_chars_layout.setContentsMargins(0, 0, 0, 0)
+        additional_chars_layout.setSpacing(12)
+        additional_chars_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        additional_chars_label = ConfigTextLabel(
+            self.tr('Additional Characters'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        font = additional_chars_label.font()
+        font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        additional_chars_label.setFont(font)
+        additional_chars_tooltip = self.tr(
+            'Other characters that can participate in an automatic run.'
+        )
+        additional_chars_label.setToolTip(additional_chars_tooltip)
+        self.auto_tate_chu_yoko_additional_chars = QLineEdit(
+            additional_chars_row
+        )
+        self.auto_tate_chu_yoko_additional_chars.setFixedWidth(
+            CONFIG_COMBOBOX_SHORT
+        )
+        self.auto_tate_chu_yoko_additional_chars.setToolTip(
+            additional_chars_tooltip
+        )
+        additional_chars_layout.addWidget(additional_chars_label)
+        additional_chars_layout.addWidget(
+            self.auto_tate_chu_yoko_additional_chars
+        )
+        additional_chars_layout.addStretch()
+        auto_tcy_options_layout.addWidget(category_row)
+        auto_tcy_options_layout.addWidget(additional_chars_row)
+        auto_tcy_options_layout.addWidget(max_length_row)
+        auto_tcy_layout.addWidget(self.auto_tate_chu_yoko_options)
+        vertical_layout_group.addWidget(auto_tcy_group)
+
+        auto_tcy = pcfg.auto_tate_chu_yoko
+        self.auto_tate_chu_yoko_checker.setChecked(auto_tcy.enabled)
+        self.auto_tate_chu_yoko_max_length.setValue(auto_tcy.max_length)
+        self.auto_tate_chu_yoko_numbers.setChecked(auto_tcy.include_numbers)
+        self.auto_tate_chu_yoko_letters.setChecked(auto_tcy.include_letters)
+        self.auto_tate_chu_yoko_additional_chars.setText(
+            auto_tcy.additional_chars
+        )
+        self.auto_tate_chu_yoko_options.setVisible(auto_tcy.enabled)
+        self.auto_tate_chu_yoko_apply_btn.setVisible(auto_tcy.enabled)
+
+        self.auto_tate_chu_yoko_checker.toggled.connect(
+            self.on_auto_tate_chu_yoko_changed
+        )
+        self.auto_tate_chu_yoko_apply_btn.clicked.connect(
+            self.on_apply_auto_tate_chu_yoko_clicked
+        )
+        self.auto_tate_chu_yoko_max_length.valueChanged.connect(
+            self.on_auto_tate_chu_yoko_max_length_changed
+        )
+        self.auto_tate_chu_yoko_numbers.toggled.connect(
+            self.on_auto_tate_chu_yoko_numbers_changed
+        )
+        self.auto_tate_chu_yoko_letters.toggled.connect(
+            self.on_auto_tate_chu_yoko_letters_changed
+        )
+        self.auto_tate_chu_yoko_additional_chars.textChanged.connect(
+            self.on_auto_tate_chu_yoko_additional_chars_changed
+        )
+
+        vertical_layout_block = typesettingConfigPanel.addBlockWidget(
+            vertical_layout_group
+        )
+        vertical_layout_block.layout().setContentsMargins(0, 0, 0, 0)
+        vertical_layout_block.setContentsMargins(0, 0, 0, 0)
 
         self.rst_imgformat_combobox, imsave_sublock = applicationConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP', 'JXL'], self.tr('Result image format'))
         self.rst_imgformat_combobox.activated.connect(self.on_rst_imgformat_changed)
@@ -1292,8 +1614,43 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_autolayout_changed(self):
         pcfg.let_autolayout_flag = self.let_autolayout_checker.isChecked()
 
-    def on_uppercase_changed(self):
-        pcfg.let_uppercase_flag = self.let_uppercase_checker.isChecked()
+    def on_quick_insert_characters_changed(self, text: str) -> None:
+        pcfg.quick_insert_characters = text
+
+    def on_letter_case_changed(self, checked: bool) -> None:
+        button = self.sender()
+        if checked and isinstance(button, QRadioButton):
+            pcfg.let_letter_case = button.property('letterCaseMode')
+
+    def on_auto_tate_chu_yoko_changed(self, enabled: bool) -> None:
+        pcfg.auto_tate_chu_yoko.enabled = enabled
+        self.auto_tate_chu_yoko_options.setVisible(enabled)
+        self.auto_tate_chu_yoko_apply_btn.setVisible(enabled)
+
+    def on_apply_auto_tate_chu_yoko_clicked(self) -> None:
+        self.apply_auto_tate_chu_yoko_requested.emit()
+
+    def on_compact_vertical_punctuation_changed(
+        self,
+        enabled: bool,
+    ) -> None:
+        pcfg.compact_vertical_punctuation_spacing = enabled
+        self.compact_vertical_punctuation_changed.emit(enabled)
+
+    def on_auto_tate_chu_yoko_max_length_changed(self, value: int) -> None:
+        pcfg.auto_tate_chu_yoko.max_length = value
+
+    def on_auto_tate_chu_yoko_numbers_changed(self, checked: bool) -> None:
+        pcfg.auto_tate_chu_yoko.include_numbers = checked
+
+    def on_auto_tate_chu_yoko_letters_changed(self, checked: bool) -> None:
+        pcfg.auto_tate_chu_yoko.include_letters = checked
+
+    def on_auto_tate_chu_yoko_additional_chars_changed(
+        self,
+        text: str,
+    ) -> None:
+        pcfg.auto_tate_chu_yoko.additional_chars = text
 
     def on_textstyle_indep_changed(self):
         pcfg.let_textstyle_indep_flag = self.let_textstyle_indep_checker.isChecked()
@@ -1481,7 +1838,21 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_family_combox.setCurrentIndex(pcfg.let_family_flag)
         self.let_writing_mode_combox.setCurrentIndex(pcfg.let_writing_mode_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
-        self.let_uppercase_checker.setChecked(pcfg.let_uppercase_flag)
+        self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
+        self.let_letter_case_buttons[pcfg.let_letter_case].setChecked(True)
+        self.compact_vertical_punctuation_checker.setChecked(
+            pcfg.compact_vertical_punctuation_spacing
+        )
+        auto_tcy = pcfg.auto_tate_chu_yoko
+        self.auto_tate_chu_yoko_checker.setChecked(auto_tcy.enabled)
+        self.auto_tate_chu_yoko_max_length.setValue(auto_tcy.max_length)
+        self.auto_tate_chu_yoko_numbers.setChecked(auto_tcy.include_numbers)
+        self.auto_tate_chu_yoko_letters.setChecked(auto_tcy.include_letters)
+        self.auto_tate_chu_yoko_additional_chars.setText(
+            auto_tcy.additional_chars
+        )
+        self.auto_tate_chu_yoko_options.setVisible(auto_tcy.enabled)
+        self.auto_tate_chu_yoko_apply_btn.setVisible(auto_tcy.enabled)
         self.let_textstyle_indep_checker.setChecked(pcfg.let_textstyle_indep_flag)
         self.rst_imgformat_combobox.setCurrentText(pcfg.imgsave_ext.replace('.', '').upper())
         self.intermediate_imgformat_combobox.setCurrentText(pcfg.intermediate_imgsave_ext.replace('.', '').upper())

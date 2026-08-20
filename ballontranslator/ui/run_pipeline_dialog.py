@@ -777,10 +777,6 @@ class RunPipelineDialog(QDialog):
             'ocr_font_detect',
         )
 
-        postprocess_label = QLabel(self.tr('Letter Case'), section)
-        postprocess_label.setObjectName('RunPipelineSettingLabel')
-        layout.addWidget(postprocess_label)
-
         postprocess_options_row = QWidget(section)
         postprocess_options_row.setObjectName('RunPipelineGeneralSettingRow')
         postprocess_options_row.setAttribute(
@@ -788,27 +784,48 @@ class RunPipelineDialog(QDialog):
             True,
         )
         postprocess_layout = QHBoxLayout(postprocess_options_row)
-        postprocess_layout.setContentsMargins(24, 0, 24, 0)
-        postprocess_layout.setSpacing(8)
+        postprocess_layout.setContentsMargins(0, 0, 0, 0)
+        postprocess_layout.setSpacing(12)
+
+        postprocess_label = QLabel(self.tr('Letter Case'), postprocess_options_row)
+        postprocess_label.setObjectName('RunPipelineSettingLabel')
+        postprocess_label.setToolTip(self.tr(
+            'Choose how OCR text letter case is adjusted after keyword substitution.'
+        ))
+        postprocess_layout.addWidget(postprocess_label)
 
         self.ocr_text_postprocess_group = QButtonGroup(postprocess_options_row)
         self.ocr_text_postprocess_buttons = {}
         postprocess_options = (
-            (self.tr('None'), OCRTextPostprocess.NONE),
-            (self.tr('Captialize'), OCRTextPostprocess.CAPITALIZE),
-            (self.tr('To Upper Case'), OCRTextPostprocess.UPPERCASE),
+            (
+                self.tr('None'),
+                OCRTextPostprocess.NONE,
+                self.tr('Keep OCR text letter case unchanged.'),
+            ),
+            (
+                self.tr('Capitalize'),
+                OCRTextPostprocess.CAPITALIZE,
+                self.tr(
+                    'Lowercase OCR text, then capitalize the first letter of each sentence.'
+                ),
+            ),
+            (
+                self.tr('Uppercase'),
+                OCRTextPostprocess.UPPERCASE,
+                self.tr('Convert OCR text to uppercase.'),
+            ),
         )
-        for text, mode in postprocess_options:
+        for text, mode, tooltip in postprocess_options:
             button = QRadioButton(text, postprocess_options_row)
             button.setObjectName('RunPipelineOCRTextPostprocessOption')
             button.setChecked(pcfg.module.ocr_text_postprocess == mode)
             button.setProperty('textPostprocessMode', mode)
+            button.setToolTip(tooltip)
             button.toggled.connect(self._on_ocr_text_postprocess_toggled)
             self.ocr_text_postprocess_group.addButton(button)
             self.ocr_text_postprocess_buttons[mode] = button
             postprocess_layout.addWidget(button)
-            if mode != postprocess_options[-1][1]:
-                postprocess_layout.addStretch()
+        postprocess_layout.addStretch()
         layout.addWidget(postprocess_options_row)
 
     def _on_ocr_text_postprocess_toggled(self, checked: bool) -> None:

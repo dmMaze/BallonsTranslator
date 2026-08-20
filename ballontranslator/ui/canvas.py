@@ -1026,8 +1026,22 @@ class Canvas(QGraphicsScene):
     def setTextBlockMode(self, mode: bool):
         self.textblock_mode = mode
 
-    def on_create_contextmenu(self, pos: QPoint, is_textpanel: bool):
+    def on_create_contextmenu(
+        self,
+        pos: QPoint,
+        is_textpanel: bool,
+    ) -> None:
         if self.textEditMode() and not self.creating_textblock:
+            editing_item = self.editing_textblkitem
+            # The view disables native context menus and routes right releases here.
+            if (
+                not is_textpanel
+                and editing_item is not None
+                and editing_item.isEditing()
+            ):
+                editing_item.show_editing_context_menu(pos, self.gv)
+                return
+
             menu = QMenu(self.gv)
             copy_act = menu.addAction(self.tr("Copy"))
             copy_act.setShortcut(QKeySequence.StandardKey.Copy)
