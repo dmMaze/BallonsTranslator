@@ -242,7 +242,7 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="497" />
         <source>Stroke Size</source>
-        <translation>Размер контура</translation>
+        <translation>Толщина обводки</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="501" />
@@ -377,7 +377,7 @@
     </message>
     <message>
         <source>stroke size</source>
-        <translation type="vanished">размер хода</translation>
+        <translation type="vanished">Толщина обводки</translation>
     </message>
     <message>
         <source>font color</source>
@@ -2093,4 +2093,39 @@
         <translation type="vanished">Цель: </translation>
     </message>
 </context>
+    <context>
+        <name>MainWindowBars</name>
+        <message><source>Show Text Detection</source><translation>Показывать обнаружение текста</translation></message>
+        <message><source>Show OCR</source><translation>Показывать OCR</translation></message>
+        <message><source>Show Translation</source><translation>Показывать перевод</translation></message>
+        <message><source>Show Inpainting</source><translation>Показывать удаление текста</translation></message>
+        <message><source>Path Reorder</source><translation>Изменение порядка областей</translation></message>
+        <message><source>Font Exclusion</source><translation>Исключение шрифтов</translation></message>
+    </context>
+    <context>
+        <name>ConfigPanel</name>
+        <message><source>Modules</source><translation>Модули</translation></message>
+        <message><source>Pipeline</source><translation>Конвейер</translation></message>
+        <message><source>LLM Profile</source><translation>Профиль LLM</translation></message>
+        <message><source>Quick insert characters</source><translation>Быстрая вставка символов</translation></message>
+        <message><source>Compact punctuation spacing</source><translation>Компактный интервал у знаков препинания</translation></message>
+        <message><source>Automatic Tate-chu-yoko</source><translation>Автоматический Tate-chu-yoko</translation></message>
+        <message><source>Pipeline Font Formatting</source><translation>Форматирование шрифта в конвейере</translation></message>
+        <message><source>Hide Unused Fonts</source><translation>Скрыть неиспользуемые шрифты</translation></message>
+        <message><source>Letter Case</source><translation>Регистр букв</translation></message>
+    </context>
+    <context>
+        <name>ModuleParamDialog</name>
+        <message><source>Detect Size</source><translation>Размер обнаружения</translation></message>
+        <message><source>Max split batch size</source><translation>Максимальный размер пакета разбиения</translation></message>
+        <message><source>font size multiplier</source><translation>Множитель размера шрифта</translation></message>
+        <message><source>font size max</source><translation>Максимальный размер шрифта</translation></message>
+        <message><source>font size min</source><translation>Минимальный размер шрифта</translation></message>
+        <message><source>mask dilate size</source><translation>Размер расширения маски</translation></message>
+        <message><source>Chunk Size</source><translation>Размер блока</translation></message>
+        <message><source>Inpaint Size</source><translation>Размер удаления</translation></message>
+        <message><source>device</source><translation>Устройство</translation></message>
+        <message><source>precision</source><translation>Точность</translation></message>
+        <message><source>delay</source><translation>Задержка</translation></message>
+    </context>
 </TS>
