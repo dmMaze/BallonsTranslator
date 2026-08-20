@@ -15,7 +15,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QBrush, QPen, QTextBlockFormat)
+                       QBrush, QFontMetrics, QPen, QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
@@ -908,6 +908,56 @@ class TextBlkItem(QGraphicsTextItem):
             super().paint,
         )
         self._paint_ui_guide(painter)
+        self._paint_order_badge(painter)
+
+    def _paint_order_badge(self, painter: QPainter) -> None:
+        """Paint the block's one-based reading order as a canvas-only guide."""
+        if self._ui_guide_suppressed or self.isEditing() or not self.draw_rect:
+            return
+        outline = self.geometry_controller.visual_outline_in_item()
+        if outline.isEmpty():
+            return
+
+        painter.save()
+        try:
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            anchor = outline.boundingRect().topLeft()
+            painter.translate(anchor)
+            # Keep the badge legible without making it grow with canvas zoom.
+            detail = QStyleOptionGraphicsItem.levelOfDetailFromTransform(
+                painter.worldTransform()
+            )
+            painter.scale(1.0 / max(detail, 0.01), 1.0 / max(detail, 0.01))
+
+            font = QFont()
+            font.setBold(True)
+            font.setPixelSize(11)
+            text = str(self.idx + 1)
+            metrics = QFontMetrics(font)
+            badge_rect = QRectF(
+                0,
+                0,
+                metrics.horizontalAdvance(text) + 8,
+                metrics.height() + 4,
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(
+                TEXTRECT_SELECTED_COLOR
+                if self.isSelected()
+                else TEXTRECT_SHOW_COLOR
+            )
+            painter.drawRoundedRect(badge_rect, 3, 3)
+            painter.setPen(Qt.GlobalColor.white)
+            painter.setFont(font)
+            painter.drawText(
+                badge_rect,
+                Qt.AlignmentFlag.AlignCenter,
+                text,
+            )
+        finally:
+            painter.restore()
 
     def _paint_ui_guide(self, painter: QPainter) -> None:
         """Paint selection/block guides outside cached effect surfaces."""

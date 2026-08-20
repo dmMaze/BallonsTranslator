@@ -1184,7 +1184,9 @@ class SceneTextManager(QObject):
         for ii, blk_item in enumerate(self.textblk_item_list):
             if sel_ids is not None and ii not in sel_ids:
                 continue
-            blk_item.idx = ii
+            if blk_item.idx != ii:
+                blk_item.idx = ii
+                blk_item.update()
             self.pairwidget_list[ii].updateIndex(ii)
         cl = self.textEditList.checked_list
         if len(cl) != 0:
