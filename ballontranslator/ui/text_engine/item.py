@@ -15,7 +15,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QBrush, QFontMetrics, QPainterPath, QPen,
+                       QBrush, QFontMetrics, QPen,
                        QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
@@ -78,6 +78,79 @@ TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
 
 
+class _OrderBadgeItem(QGraphicsItem):
+    """Paint a fixed-size badge outside its parent's text geometry.
+
+    >>> _OrderBadgeItem.HORIZONTAL_PADDING
+    4
+    """
+
+    HORIZONTAL_PADDING = 4
+    VERTICAL_PADDING = 2
+
+    def __init__(self, parent: QGraphicsItem) -> None:
+        super().__init__(parent)
+        self._font = QFont()
+        self._font.setBold(True)
+        self._font.setPixelSize(11)
+        self._text = ''
+        self._bounds = QRectF()
+        self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.setFlag(
+            QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations,
+            True,
+        )
+        # Keep the badge out of the parent's cached paint surface.
+        self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
+        self.setZValue(100.0)
+        self.hide()
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(self._bounds)
+
+    def set_number(self, number: int) -> None:
+        text = str(max(1, int(number)))
+        if self._text == text:
+            return
+        metrics = QFontMetrics(self._font)
+        width = metrics.horizontalAdvance(text) + 2 * self.HORIZONTAL_PADDING
+        height = metrics.height() + 2 * self.VERTICAL_PADDING
+        self.prepareGeometryChange()
+        self._text = text
+        # The bottom-left corner remains attached to the block's top-left.
+        self._bounds = QRectF(0, -height, width, height)
+        self.update()
+
+    def paint(
+        self,
+        painter: QPainter,
+        _option: QStyleOptionGraphicsItem,
+        _widget: Optional[QWidget] = None,
+    ) -> None:
+        parent = self.parentItem()
+        painter.save()
+        try:
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(
+                TEXTRECT_SELECTED_COLOR
+                if parent is not None and parent.isSelected()
+                else TEXTRECT_SHOW_COLOR
+            )
+            painter.drawRoundedRect(self._bounds, 3, 3)
+            painter.setPen(Qt.GlobalColor.white)
+            painter.setFont(self._font)
+            painter.drawText(
+                self._bounds,
+                Qt.AlignmentFlag.AlignCenter,
+                self._text,
+            )
+        finally:
+            painter.restore()
+
+
 class TextBlkItem(QGraphicsTextItem):
 
     begin_edit = Signal(int)
@@ -108,7 +181,9 @@ class TextBlkItem(QGraphicsTextItem):
         self.under_ctrl = False
         self.draw_rect = show_rect
         self._ui_guide_suppressed = False
+        self._order_badge_visible = False
         self._order_number_override: Optional[int] = None
+        self._order_badge_item: Optional[_OrderBadgeItem] = None
         self.old_ffmt_values = None
         
         self.idx = idx
@@ -139,6 +214,9 @@ class TextBlkItem(QGraphicsTextItem):
             | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
         )
         self.geometry_controller.finish_initialization()
+        self._order_badge_item = _OrderBadgeItem(self)
+        self.visual_geometry_changed.connect(self._sync_order_badge)
+        self._sync_order_badge()
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
         self._vertical_navigation_y = None
@@ -402,7 +480,14 @@ class TextBlkItem(QGraphicsTextItem):
         controller = getattr(self, 'geometry_controller', None)
         if controller is None:
             return super().itemChange(change, value)
-        return controller.item_change(change, value, super().itemChange)
+        result = controller.item_change(change, value, super().itemChange)
+        if (
+            change
+            == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged
+            and self._order_badge_item is not None
+        ):
+            self._order_badge_item.update()
+        return result
 
     def refresh_cache_policy(self) -> bool:
         """Apply the sole QGraphicsItem cache policy for live text items."""
@@ -911,58 +996,46 @@ class TextBlkItem(QGraphicsTextItem):
         )
         self._paint_ui_guide(painter)
 
-    def _paint_order_badge(
-        self,
-        painter: QPainter,
-        outline: QPainterPath,
-    ) -> None:
-        """Paint the block's one-based reading order as a canvas-only guide."""
-        painter.save()
-        try:
-            painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_SourceOver
-            )
-            anchor = outline.boundingRect().topLeft()
-            painter.translate(anchor)
-            # Keep the badge legible without making it grow with canvas zoom.
-            detail = QStyleOptionGraphicsItem.levelOfDetailFromTransform(
-                painter.worldTransform()
-            )
-            painter.scale(1.0 / max(detail, 0.01), 1.0 / max(detail, 0.01))
-
-            font = QFont()
-            font.setBold(True)
-            font.setPixelSize(11)
-            text = str(self.order_number())
-            metrics = QFontMetrics(font)
-            badge_rect = QRectF(
-                0,
-                0,
-                metrics.horizontalAdvance(text) + 8,
-                metrics.height() + 4,
-            )
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(
-                TEXTRECT_SELECTED_COLOR
-                if self.isSelected()
-                else TEXTRECT_SHOW_COLOR
-            )
-            painter.drawRoundedRect(badge_rect, 3, 3)
-            painter.setPen(Qt.GlobalColor.white)
-            painter.setFont(font)
-            painter.drawText(
-                badge_rect,
-                Qt.AlignmentFlag.AlignCenter,
-                text,
-            )
-        finally:
-            painter.restore()
-
     def order_number(self) -> int:
         """Return the one-based order currently shown by the canvas guide."""
         if self._order_number_override is not None:
             return self._order_number_override
         return self.idx + 1
+
+    @property
+    def order_badge_visible(self) -> bool:
+        return self._order_badge_visible
+
+    def set_order_badge_visible(self, visible: bool) -> None:
+        visible = bool(visible)
+        if self._order_badge_visible == visible:
+            return
+        self._order_badge_visible = visible
+        self._sync_order_badge()
+
+    def refresh_order_badge(self) -> None:
+        """Refresh the badge after the item's persistent index changes."""
+        self._sync_order_badge()
+
+    def _sync_order_badge(self) -> None:
+        badge = self._order_badge_item
+        if badge is None:
+            return
+        visible = (
+            not self._ui_guide_suppressed
+            and not self.isEditing()
+            and (
+                self._order_badge_visible
+                or self._order_number_override is not None
+            )
+        )
+        if visible:
+            badge.set_number(self.order_number())
+            outline = self.geometry_controller.visual_outline_in_item()
+            visible = not outline.isEmpty()
+            if visible:
+                badge.setPos(outline.boundingRect().topLeft())
+        badge.setVisible(visible)
 
     def set_order_number_override(self, order_number: Optional[int]) -> None:
         """Set a transient order preview without changing project state."""
@@ -971,10 +1044,10 @@ class TextBlkItem(QGraphicsTextItem):
         if self._order_number_override == order_number:
             return
         self._order_number_override = order_number
-        self.update()
+        self._sync_order_badge()
 
     def _paint_ui_guide(self, painter: QPainter) -> None:
-        """Paint selection, block, and order guides outside cached surfaces."""
+        """Paint selection and block guides outside cached effect surfaces."""
         if (
             self._ui_guide_suppressed
             or self.isEditing()
@@ -982,40 +1055,34 @@ class TextBlkItem(QGraphicsTextItem):
             return
         selected = self.isSelected()
         draw_rect = self.draw_rect and not self.under_ctrl
-        draw_badge = (
-            self.draw_rect
-            or self._order_number_override is not None
-        )
-        if not selected and not draw_rect and not draw_badge:
+        if not selected and not draw_rect:
             return
         outline = self.geometry_controller.visual_outline_in_item()
         if outline.isEmpty():
             return
-        if selected or draw_rect:
-            painter.save()
-            try:
-                pen = QPen(
-                    TEXTRECT_SELECTED_COLOR if selected else TEXTRECT_SHOW_COLOR,
-                    3.5 if selected else 3.0,
-                    Qt.PenStyle.DashLine if selected else Qt.PenStyle.SolidLine,
-                )
-                pen.setCosmetic(True)
-                painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_SourceOver
-                )
-                painter.setPen(pen)
-                painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-                painter.drawPath(outline)
-            finally:
-                painter.restore()
-        if draw_badge:
-            self._paint_order_badge(painter, outline)
+        painter.save()
+        try:
+            pen = QPen(
+                TEXTRECT_SELECTED_COLOR if selected else TEXTRECT_SHOW_COLOR,
+                3.5 if selected else 3.0,
+                Qt.PenStyle.DashLine if selected else Qt.PenStyle.SolidLine,
+            )
+            pen.setCosmetic(True)
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            painter.setPen(pen)
+            painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            painter.drawPath(outline)
+        finally:
+            painter.restore()
 
     def set_ui_guide_suppressed(self, suppressed: bool) -> None:
         suppressed = bool(suppressed)
         if self._ui_guide_suppressed == suppressed:
             return
         self._ui_guide_suppressed = suppressed
+        self._sync_order_badge()
         self.update()
 
 
@@ -1023,6 +1090,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.pre_editing = False
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.refresh_cache_policy()
+        self._sync_order_badge()
         self.setFocus()
         self.begin_edit.emit(self.idx)
         if pos is not None:
@@ -1038,6 +1106,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.refresh_cache_policy()
+        self._sync_order_badge()
         if keep_focus:
             self.setFocus()
 

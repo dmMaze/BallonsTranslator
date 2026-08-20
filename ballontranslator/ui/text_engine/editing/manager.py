@@ -573,6 +573,9 @@ class SceneTextManager(QObject):
     def addTextBlkItem(self, textblk_item: TextBlkItem) -> TextBlkItem:
         self.textblk_item_list.append(textblk_item)
         textblk_item.setParentItem(self.canvas.textLayer)
+        textblk_item.set_order_badge_visible(
+            self.canvas.order_badges_visible
+        )
         textblk_item.begin_edit.connect(self.onTextBlkItemBeginEdit)
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
@@ -1226,6 +1229,7 @@ class SceneTextManager(QObject):
                 continue
             if blk_item.idx != ii:
                 blk_item.idx = ii
+                blk_item.refresh_order_badge()
                 blk_item.update()
             self.pairwidget_list[ii].updateIndex(ii)
         cl = self.textEditList.checked_list

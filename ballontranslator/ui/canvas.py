@@ -214,6 +214,7 @@ class Canvas(QGraphicsScene):
         self.scale_factor = 1.
         self.text_transparency = 0
         self.textblock_mode = False
+        self.order_badges_visible = False
         self.creating_textblock = False
         self._text_creation_cursor_active = False
         self.create_block_origin: QPointF = None
@@ -713,6 +714,14 @@ class Canvas(QGraphicsScene):
 
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
+        # Single-letter canvas shortcuts must remain below live text editing.
+        elif (
+            modifiers == Qt.KeyboardModifier.NoModifier
+            and key == QKEY.Key_N
+        ):
+            self.set_order_badges_visible(not self.order_badges_visible)
+            event.accept()
+            return
         elif key in ARROWKEY2DIRECTION:
             sel_blkitems = self.selected_text_items()
             if len(sel_blkitems) > 0:
@@ -802,6 +811,16 @@ class Canvas(QGraphicsScene):
     def path_reorder_active(self) -> bool:
         return self._path_reorder_active
 
+    def set_order_badges_visible(self, visible: bool) -> None:
+        """Set the canvas-only reading-order badge visibility."""
+        visible = bool(visible)
+        if self.order_badges_visible == visible:
+            return
+        self.order_badges_visible = visible
+        for item in self.textLayer.childItems():
+            if isinstance(item, TextBlkItem):
+                item.set_order_badge_visible(visible)
+
     def start_path_reorder(self) -> bool:
         """Start one path gesture that defines a new page reading order."""
         if self._path_reorder_active:
@@ -880,7 +899,8 @@ class Canvas(QGraphicsScene):
         for order_number, item in enumerate(order, 1):
             override = (
                 order_number
-                if not item.draw_rect or order_number != item.idx + 1
+                if not item.order_badge_visible
+                or order_number != item.idx + 1
                 else None
             )
             item.set_order_number_override(override)

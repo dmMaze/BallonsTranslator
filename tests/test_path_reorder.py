@@ -21,6 +21,9 @@ class _Item:
     def __init__(self, idx: int) -> None:
         self.idx = idx
 
+    def refresh_order_badge(self) -> None:
+        pass
+
     def update(self) -> None:
         pass
 
@@ -129,6 +132,9 @@ class PathReorderTest(unittest.TestCase):
             [item.order_number() for item in items],
             [3, 2, 1],
         )
+        self.assertTrue(
+            all(item._order_badge_item.isVisible() for item in items)
+        )
         QTest.mouseRelease(
             canvas.gv.viewport(),
             Qt.MouseButton.LeftButton,
@@ -137,6 +143,9 @@ class PathReorderTest(unittest.TestCase):
         )
         self.app.processEvents()
         self.assertEqual(finished, [[2, 1, 0]])
+        self.assertTrue(
+            all(not item._order_badge_item.isVisible() for item in items)
+        )
 
     def test_overlapping_blocks_are_ordered_by_first_contact(self) -> None:
         canvas, _items = self._make_canvas(
@@ -208,6 +217,68 @@ class PathReorderTest(unittest.TestCase):
             canvas.gv.viewport().cursor().shape(),
             Qt.CursorShape.OpenHandCursor,
         )
+
+    def test_n_toggles_badges_without_intercepting_text_editing(self) -> None:
+        canvas, items = self._make_canvas(
+            [(40, 40, 80, 60), (160, 40, 80, 60)]
+        )
+        canvas.setSceneRect(QRectF(0, 0, 280, 140))
+        canvas.gv.resize(360, 220)
+        canvas.gv.show()
+        canvas.gv.setFocus()
+        self.app.processEvents()
+
+        QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_N)
+        self.app.processEvents()
+        self.assertTrue(canvas.order_badges_visible)
+        self.assertTrue(
+            all(item._order_badge_item.isVisible() for item in items)
+        )
+
+        editing_item = items[0]
+        before = editing_item.toPlainText()
+        editing_item.startEdit()
+        canvas.editing_textblkitem = editing_item
+        QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_N)
+        self.app.processEvents()
+        self.assertEqual(editing_item.toPlainText(), 'n' + before)
+        self.assertTrue(canvas.order_badges_visible)
+        self.assertFalse(editing_item._order_badge_item.isVisible())
+
+        editing_item.endEdit(keep_focus=False)
+        canvas.editing_textblkitem = None
+        self.assertTrue(editing_item._order_badge_item.isVisible())
+        QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_N)
+        self.app.processEvents()
+        self.assertFalse(canvas.order_badges_visible)
+        self.assertTrue(
+            all(not item._order_badge_item.isVisible() for item in items)
+        )
+
+    def test_badge_has_its_own_bounds_above_the_text_item(self) -> None:
+        canvas, items = self._make_canvas(
+            [(40, 40, 80, 60), (160, 40, 80, 60)]
+        )
+        item = items[0]
+        canvas.set_order_badges_visible(True)
+        badge = item._order_badge_item
+        outline = item.geometry_controller.visual_outline_in_item()
+
+        self.assertEqual(badge.pos(), outline.boundingRect().topLeft())
+        self.assertEqual(badge.boundingRect().bottom(), 0)
+        self.assertLess(badge.boundingRect().top(), 0)
+        badge_center = badge.mapToScene(badge.boundingRect().center())
+        self.assertFalse(outline.contains(item.mapFromScene(badge_center)))
+        self.assertIn(badge, canvas.items(badge_center))
+
+        item.idx = 11
+        item.refresh_order_badge()
+        self.assertEqual(badge._text, '12')
+
+        item.set_ui_guide_suppressed(True)
+        self.assertFalse(badge.isVisible())
+        item.set_ui_guide_suppressed(False)
+        self.assertTrue(badge.isVisible())
 
     def test_reorder_uses_existing_canvas_undo_command(self) -> None:
         items = [_Item(idx) for idx in range(4)]
