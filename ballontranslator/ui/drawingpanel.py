@@ -476,6 +476,7 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(False)
         self.currentTool = self.handTool
         pcfg.drawpanel.current_tool = ImageEditMode.HandTool
+        self.canvas.clear_canvas_cursor()
         self.canvas.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.canvas.image_edit_mode = ImageEditMode.HandTool
 
@@ -751,11 +752,13 @@ class DrawingPanel(Widget):
         pen_size = 2 * pen_radius
         self.scale_circle.setRect(0, 0, pen_size, pen_size)
         self.scale_tool_pos = pos - QPointF(pen_size, pen_size)
+        self.scale_circle.setCursor(self.get_pen_cursor(draw_shape=False))
         self.canvas.addItem(self.scale_circle)
-        self.setCrossCursor()
         
-    def setCrossCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(draw_shape=False))
+    def setCrossCursor(self) -> None:
+        if not self.isVisible() or self.currentTool != self.rectTool:
+            return
+        self.canvas.set_canvas_cursor(self.get_pen_cursor(draw_shape=False))
 
     def on_scale_tool(self, pos: QPointF):
         if self.scale_tool_pos is None:
@@ -788,11 +791,23 @@ class DrawingPanel(Widget):
         elif self.currentTool == self.inpaintTool:
             self.setInpaintCursor()
 
-    def setPenCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(shape=self.penConfigPanel.shape))
+    def setPenCursor(self) -> None:
+        if not self.isVisible() or self.currentTool != self.penTool:
+            return
+        self.canvas.set_canvas_cursor(
+            self.get_pen_cursor(shape=self.penConfigPanel.shape)
+        )
 
-    def setInpaintCursor(self):
-        self.canvas.gv.setCursor(self.get_pen_cursor(INPAINT_BRUSH_COLOR, self.inpaint_pen.width(), shape=self.inpaintConfigPanel.shape))
+    def setInpaintCursor(self) -> None:
+        if not self.isVisible() or self.currentTool != self.inpaintTool:
+            return
+        self.canvas.set_canvas_cursor(
+            self.get_pen_cursor(
+                INPAINT_BRUSH_COLOR,
+                self.inpaint_pen.width(),
+                shape=self.inpaintConfigPanel.shape,
+            )
+        )
 
     def on_handchecker_changed(self):
         if self.handTool.isChecked():

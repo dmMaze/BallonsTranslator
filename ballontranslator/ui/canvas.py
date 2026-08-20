@@ -168,6 +168,7 @@ class Canvas(QGraphicsScene):
         self.text_transparency = 0
         self.textblock_mode = False
         self.creating_textblock = False
+        self._text_creation_cursor_active = False
         self.create_block_origin: QPointF = None
         self.editing_textblkitem: TextBlkItem = None
 
@@ -321,6 +322,25 @@ class Canvas(QGraphicsScene):
 
     def drawMode(self) -> bool:
         return self.editor_index == 0
+
+    def set_canvas_cursor(
+        self,
+        cursor: Union[QCursor, Qt.CursorShape],
+    ) -> None:
+        # Keep tool cursors in the scene hierarchy so child text and control
+        # items can temporarily override them through Qt's native cursor rules.
+        self.baseLayer.setCursor(cursor)
+
+    def clear_canvas_cursor(self) -> None:
+        if self.baseLayer.hasCursor():
+            self.baseLayer.unsetCursor()
+
+    def _clear_text_creation_cursor(self) -> None:
+        self._text_creation_cursor_active = False
+        if self.gv.dragMode() == QGraphicsView.DragMode.ScrollHandDrag:
+            self.gv.viewport().setCursor(Qt.CursorShape.OpenHandCursor)
+        else:
+            self.gv.viewport().unsetCursor()
 
     def scaleUp(self) -> None:
         self.scaleImage(1 + CANVAS_SCALE_SPEED)
@@ -677,11 +697,17 @@ class Canvas(QGraphicsScene):
                 compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
                 self.drawingLayer.addQImage(0, 0, self.stroke_img_item._img, compose_mode, self.erase_img_key)
 
-    def startCreateTextblock(self, pos: QPointF, hide_control: bool = False):
+    def startCreateTextblock(
+        self,
+        pos: QPointF,
+        hide_control: bool = False,
+    ) -> None:
         pos = pos / self.scale_factor
         self.creating_textblock = True
+        self._text_creation_cursor_active = self.textEditMode()
         self.create_block_origin = pos
-        self.gv.setCursor(Qt.CursorShape.CrossCursor)
+        if self._text_creation_cursor_active:
+            self.gv.viewport().setCursor(Qt.CursorShape.CrossCursor)
         self.txtblkShapeControl.setBlkItem(None)
         self.txtblkShapeControl.setPos(0, 0)
         self.txtblkShapeControl.setRotation(0)
@@ -690,9 +716,10 @@ class Canvas(QGraphicsScene):
             self.txtblkShapeControl.hideControls()
         self.txtblkShapeControl.show()
 
-    def endCreateTextblock(self, btn=0):
+    def endCreateTextblock(self, btn: int = 0) -> bool:
         self.creating_textblock = False
-        self.gv.setCursor(Qt.CursorShape.ArrowCursor)
+        if self._text_creation_cursor_active:
+            self._clear_text_creation_cursor()
         self.txtblkShapeControl.hide()
         textblk_created = False
         rect = self.txtblkShapeControl.rect()
@@ -736,7 +763,11 @@ class Canvas(QGraphicsScene):
         elif self.scale_tool_mode:
             self.scale_tool.emit(event.scenePos())
         
-        return super().mouseMoveEvent(event)
+        result = super().mouseMoveEvent(event)
+        if self._text_creation_cursor_active:
+            # Creation is a modal drag, so it overrides child text cursors.
+            self.gv.viewport().setCursor(Qt.CursorShape.CrossCursor)
+        return result
     
     @property
     def scale_tool_mode(self):
@@ -1001,12 +1032,14 @@ class Canvas(QGraphicsScene):
             drawing_map = img
         self.drawingLayer.setPixmap(drawing_map)
 
-    def setPaintMode(self, painting: bool):
+    def setPaintMode(self, painting: bool) -> None:
+        if self.creating_textblock:
+            self.clear_states()
         if painting:
             self.editing_textblkitem = None
             self.textblock_mode = False
         else:
-            # self.gv.setCursor(self.default_cursor)
+            self.clear_canvas_cursor()
             self.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
             self.image_edit_mode = ImageEditMode.NONE
 
@@ -1132,14 +1165,20 @@ class Canvas(QGraphicsScene):
     def on_hide_canvas(self):
         self.clear_states()
 
-    def on_activation_changed(self):
+    def on_activation_changed(self) -> None:
+        self.clearToolStates()
         self.clear_states()
         for textitem in self.selected_text_items():
             if textitem.isEditing():
                 self.editing_textblkitem = textitem
 
-    def clear_states(self):
+    def clear_states(self) -> None:
         self.hide_rubber_band()
+        if self._text_creation_cursor_active:
+            self._clear_text_creation_cursor()
+        if self.creating_textblock:
+            self.txtblkShapeControl.hide()
+            self.txtblkShapeControl.showControls()
         self.creating_textblock = False
         self.create_block_origin = None
         self.editing_textblkitem = None
