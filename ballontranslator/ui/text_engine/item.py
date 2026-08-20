@@ -15,7 +15,8 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
-                       QBrush, QFontMetrics, QPen, QTextBlockFormat)
+                       QBrush, QFontMetrics, QPainterPath, QPen,
+                       QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
@@ -909,23 +910,13 @@ class TextBlkItem(QGraphicsTextItem):
             super().paint,
         )
         self._paint_ui_guide(painter)
-        self._paint_order_badge(painter)
 
-    def _paint_order_badge(self, painter: QPainter) -> None:
+    def _paint_order_badge(
+        self,
+        painter: QPainter,
+        outline: QPainterPath,
+    ) -> None:
         """Paint the block's one-based reading order as a canvas-only guide."""
-        if (
-            self._ui_guide_suppressed
-            or self.isEditing()
-            or (
-                not self.draw_rect
-                and self._order_number_override is None
-            )
-        ):
-            return
-        outline = self.geometry_controller.visual_outline_in_item()
-        if outline.isEmpty():
-            return
-
         painter.save()
         try:
             painter.setCompositionMode(
@@ -983,7 +974,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
 
     def _paint_ui_guide(self, painter: QPainter) -> None:
-        """Paint selection/block guides outside cached effect surfaces."""
+        """Paint selection, block, and order guides outside cached surfaces."""
         if (
             self._ui_guide_suppressed
             or self.isEditing()
@@ -991,27 +982,34 @@ class TextBlkItem(QGraphicsTextItem):
             return
         selected = self.isSelected()
         draw_rect = self.draw_rect and not self.under_ctrl
-        if not selected and not draw_rect:
+        draw_badge = (
+            self.draw_rect
+            or self._order_number_override is not None
+        )
+        if not selected and not draw_rect and not draw_badge:
             return
         outline = self.geometry_controller.visual_outline_in_item()
         if outline.isEmpty():
             return
-        painter.save()
-        try:
-            pen = QPen(
-                TEXTRECT_SELECTED_COLOR if selected else TEXTRECT_SHOW_COLOR,
-                3.5 if selected else 3.0,
-                Qt.PenStyle.DashLine if selected else Qt.PenStyle.SolidLine,
-            )
-            pen.setCosmetic(True)
-            painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_SourceOver
-            )
-            painter.setPen(pen)
-            painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
-            painter.drawPath(outline)
-        finally:
-            painter.restore()
+        if selected or draw_rect:
+            painter.save()
+            try:
+                pen = QPen(
+                    TEXTRECT_SELECTED_COLOR if selected else TEXTRECT_SHOW_COLOR,
+                    3.5 if selected else 3.0,
+                    Qt.PenStyle.DashLine if selected else Qt.PenStyle.SolidLine,
+                )
+                pen.setCosmetic(True)
+                painter.setCompositionMode(
+                    QPainter.CompositionMode.CompositionMode_SourceOver
+                )
+                painter.setPen(pen)
+                painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+                painter.drawPath(outline)
+            finally:
+                painter.restore()
+        if draw_badge:
+            self._paint_order_badge(painter, outline)
 
     def set_ui_guide_suppressed(self, suppressed: bool) -> None:
         suppressed = bool(suppressed)

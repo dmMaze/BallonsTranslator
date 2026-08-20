@@ -1033,8 +1033,9 @@ class MainWindow(mainwindow_cls):
         self.st_manager.formatpanel.resolve_text_transform_edits_for_history_change()
         self.canvas.undo()
 
-    def on_page_search(self):
+    def on_page_search(self) -> None:
         if self.canvas.gv.isVisible():
+            self.canvas.cancel_path_reorder()
             fo = self.app.focusObject()
             sel_text = ''
             tgt_edit = None
@@ -1122,7 +1123,7 @@ class MainWindow(mainwindow_cls):
             self.bottomBar.texteditChecker.click()
         editing_item = self.canvas.editing_textblkitem
         if editing_item is not None and editing_item.isEditing():
-            editing_item.endEdit()
+            editing_item.endEdit(keep_focus=False)
         if not self.canvas.start_path_reorder():
             self.titleBar.path_reorder_action.setChecked(False)
 

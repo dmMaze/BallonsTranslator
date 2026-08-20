@@ -1,11 +1,14 @@
 import os
 import unittest
 from types import MethodType, SimpleNamespace
+from typing import List, Tuple
 
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QPointF
+from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
+from qtpy.QtGui import QMouseEvent
+from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui.canvas import Canvas
@@ -54,41 +57,157 @@ class PathReorderTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_fast_reverse_stroke_collects_blocks_in_travel_order(self) -> None:
+    def _make_canvas(self, rects) -> Tuple[Canvas, List[TextBlkItem]]:
         canvas = Canvas()
         canvas.editor_index = 1
         items = []
-        try:
-            for idx, x in enumerate((0, 120, 240)):
-                block = TextBlock(
-                    [x, 20, x + 80, 80],
-                    _bounding_rect=[x, 20, 80, 60],
-                    translation=str(idx),
-                )
-                item = TextBlkItem(block, idx)
-                item.setParentItem(canvas.textLayer)
-                items.append(item)
-
-            self.assertTrue(canvas.start_path_reorder())
-            canvas._start_path_reorder_stroke(QPointF(340, 50))
-            canvas._extend_path_reorder_stroke(QPointF(-20, 50))
-
-            self.assertEqual(
-                [item.idx for item in canvas._path_reorder_touched],
-                [2, 1, 0],
+        for idx, (x, y, width, height) in enumerate(rects):
+            block = TextBlock(
+                [x, y, x + width, y + height],
+                _bounding_rect=[x, y, width, height],
+                translation=str(idx),
             )
-            self.assertEqual(
-                [item.order_number() for item in items],
-                [3, 2, 1],
-            )
-        finally:
-            canvas.cancel_path_reorder()
-            for item in items:
-                item.geometry_controller.release_render_resources()
-                if item.scene() is canvas:
-                    canvas.removeItem(item)
-            canvas.gv.close()
-            self.app.processEvents()
+            item = TextBlkItem(block, idx)
+            item.setParentItem(canvas.textLayer)
+            items.append(item)
+        self.addCleanup(self._dispose_canvas, canvas, items)
+        return canvas, items
+
+    def _dispose_canvas(
+        self,
+        canvas: Canvas,
+        items: List[TextBlkItem],
+    ) -> None:
+        canvas.cancel_path_reorder()
+        for item in items:
+            item.geometry_controller.release_render_resources()
+            if item.scene() is canvas:
+                canvas.removeItem(item)
+        canvas.gv.close()
+        self.app.processEvents()
+
+    def test_fast_reverse_stroke_collects_blocks_in_travel_order(self) -> None:
+        canvas, items = self._make_canvas(
+            [(0, 20, 80, 60), (120, 20, 80, 60), (240, 20, 80, 60)]
+        )
+        canvas.setSceneRect(QRectF(-20, 0, 380, 120))
+        canvas.gv.resize(420, 180)
+        canvas.gv.show()
+        canvas.gv.fitInView(
+            canvas.sceneRect(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+        )
+        self.app.processEvents()
+        finished = []
+        canvas.path_reorder_finished.connect(finished.append)
+
+        self.assertTrue(canvas.start_path_reorder())
+        start = canvas.gv.mapFromScene(QPointF(340, 50))
+        end = canvas.gv.mapFromScene(QPointF(-20, 50))
+        QTest.mousePress(
+            canvas.gv.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            start,
+        )
+        move = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(end),
+            QPointF(end),
+            QPointF(canvas.gv.viewport().mapToGlobal(end)),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(canvas.gv.viewport(), move)
+
+        self.assertEqual(
+            [item.idx for item in canvas._path_reorder_touched],
+            [2, 1, 0],
+        )
+        self.assertEqual(
+            [item.order_number() for item in items],
+            [3, 2, 1],
+        )
+        QTest.mouseRelease(
+            canvas.gv.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            end,
+        )
+        self.app.processEvents()
+        self.assertEqual(finished, [[2, 1, 0]])
+
+    def test_overlapping_blocks_are_ordered_by_first_contact(self) -> None:
+        canvas, _items = self._make_canvas(
+            [(0, 20, 300, 60), (100, 20, 20, 60)]
+        )
+        self.assertTrue(canvas.start_path_reorder())
+        canvas._start_path_reorder_stroke(QPointF(-40, 50))
+        canvas._extend_path_reorder_stroke(QPointF(340, 50))
+        self.assertEqual(
+            [item.idx for item in canvas._path_reorder_touched],
+            [0, 1],
+        )
+
+    def test_history_mutation_cancels_path_preview(self) -> None:
+        canvas, items = self._make_canvas(
+            [(0, 20, 80, 60), (120, 20, 80, 60)]
+        )
+        self.assertTrue(canvas.start_path_reorder())
+        canvas.push_text_command(None, update_pushed_step=False)
+        self.assertFalse(canvas.path_reorder_active)
+        self.assertTrue(
+            all(item._order_number_override is None for item in items)
+        )
+
+    def test_other_canvas_modes_cancel_path_preview(self) -> None:
+        canvas, _items = self._make_canvas(
+            [(0, 20, 80, 60), (120, 20, 80, 60)]
+        )
+        self.assertTrue(canvas.start_path_reorder())
+        canvas.setTextBlockMode(True)
+        self.assertFalse(canvas.path_reorder_active)
+
+        self.assertTrue(canvas.start_path_reorder())
+        canvas.setPaintMode(True)
+        self.assertFalse(canvas.path_reorder_active)
+
+        canvas.imgtrans_proj = SimpleNamespace(img_valid=True)
+        canvas.gv.show()
+        self.app.processEvents()
+        self.assertTrue(canvas.start_path_reorder())
+        canvas.scaleImage(1.1)
+        self.assertFalse(canvas.path_reorder_active)
+
+    def test_active_text_editor_blocks_direct_path_start(self) -> None:
+        canvas, items = self._make_canvas(
+            [(0, 20, 80, 60), (120, 20, 80, 60)]
+        )
+        editing_item = items[0]
+        editing_item.startEdit()
+        canvas.editing_textblkitem = editing_item
+
+        self.assertFalse(canvas.start_path_reorder())
+        self.assertTrue(editing_item.isEditing())
+        self.assertFalse(canvas.path_reorder_active)
+        editing_item.endEdit(keep_focus=False)
+
+    def test_cancel_restores_hand_cursor(self) -> None:
+        canvas, _items = self._make_canvas(
+            [(0, 20, 80, 60), (120, 20, 80, 60)]
+        )
+        self.assertTrue(canvas.start_path_reorder())
+        self.assertEqual(
+            canvas.gv.viewport().cursor().shape(),
+            Qt.CursorShape.CrossCursor,
+        )
+
+        canvas.cancel_path_reorder()
+        self.assertEqual(
+            canvas.gv.viewport().cursor().shape(),
+            Qt.CursorShape.OpenHandCursor,
+        )
 
     def test_reorder_uses_existing_canvas_undo_command(self) -> None:
         items = [_Item(idx) for idx in range(4)]
@@ -131,6 +250,16 @@ class PathReorderTest(unittest.TestCase):
         pushed[0].undo()
         self.assertEqual(manager.textblk_item_list, items)
         self.assertEqual([item.idx for item in items], [0, 1, 2, 3])
+
+        pushed[0].redo()
+        self.assertEqual(
+            manager.textblk_item_list,
+            [items[2], items[0], items[1], items[3]],
+        )
+        self.assertEqual(
+            [item.idx for item in manager.textblk_item_list],
+            [0, 1, 2, 3],
+        )
 
 
 if __name__ == "__main__":

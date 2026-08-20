@@ -1091,7 +1091,8 @@ class SceneTextManager(QObject):
         if command is not None:
             self.canvas.push_undo_command(command)
 
-    def on_transwidget_focus_in(self, idx: int):
+    def on_transwidget_focus_in(self, idx: int) -> None:
+        self.canvas.cancel_path_reorder()
         if self.is_editting():
             textitm = self.editingTextItem()
             textitm.endEdit()
