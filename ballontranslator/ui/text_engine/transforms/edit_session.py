@@ -17,6 +17,7 @@ from ..editing.commands import SetTextTransformCommand
 
 if TYPE_CHECKING:
     from ..formatting.panel import FontFormatPanel
+    from ..item import TextBlkItem
     from .panel import TextTransformPanel
 
 
@@ -282,6 +283,16 @@ class TextTransformEditSession:
             self.controls.clear_transform_selection(emit=False)
         else:
             self.controls.select_transform(new_index, emit=False)
+
+    def activate_last_projective(self, item: "TextBlkItem") -> None:
+        if len(self.items) != 1 or self.items[0] is not item:
+            return
+        state = self._state_for_item(item)
+        for index in range(len(state) - 1, -1, -1):
+            if isinstance(state[index], ProjectiveTextTransform):
+                self.select_transform(index)
+                return
+        self.add_transform('projective')
 
     def remove_transform(self, index: int) -> None:
         self._prepare_structure_change()

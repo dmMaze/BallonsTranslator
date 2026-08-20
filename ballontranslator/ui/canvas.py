@@ -208,6 +208,7 @@ class Canvas(QGraphicsScene):
     switch_text_item = Signal(int, QKeyEvent)
     path_reorder_finished = Signal(object)
     path_reorder_mode_changed = Signal(bool)
+    projective_scale_requested = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -720,6 +721,13 @@ class Canvas(QGraphicsScene):
         # Single-letter canvas shortcuts must remain below live text editing.
         elif (
             modifiers == Qt.KeyboardModifier.NoModifier
+            and key == QKEY.Key_S
+            and self.start_projective_scale()
+        ):
+            event.accept()
+            return
+        elif (
+            modifiers == Qt.KeyboardModifier.NoModifier
             and key == QKEY.Key_N
         ):
             self.set_order_badges_visible(not self.order_badges_visible)
@@ -751,7 +759,25 @@ class Canvas(QGraphicsScene):
         control = self.active_text_transform_control()
         return (
             control is not None
+            and not control.item.isEditing()
             and control.handle_shortcut(key, modifiers)
+        )
+
+    def start_projective_scale(self) -> bool:
+        if (
+            not self.textEditMode()
+            or self.editing_textblkitem is not None
+        ):
+            return False
+        selected = self.selected_text_items()
+        if len(selected) != 1 or selected[0].isEditing():
+            return False
+        item = selected[0]
+        self.projective_scale_requested.emit(item)
+        control = self.txtblkProjectiveControl
+        return (
+            control.item is item
+            and control.handle_shortcut(QKEY.Key_S)
         )
     
     def set_active_layer_transparency(self, value: int):

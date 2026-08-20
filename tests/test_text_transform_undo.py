@@ -1332,6 +1332,131 @@ class TextTransformPanelTest(TextTransformTestBase):
         self.assertEqual(bindings[-1], (item, 1))
         self.assertEqual(stack.count(), 1)
 
+    def test_canvas_scale_shortcut_adds_or_selects_last_projective(self):
+        previous_canvas = getattr(SW, 'canvas', None)
+        previous_active_format = C.active_format
+        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
+        self.addCleanup(setattr, C, 'active_format', previous_active_format)
+        C.active_format = None
+        cases = (
+            (
+                transform_state(BendTextTransform()),
+                ('bend', 'projective'),
+                1,
+                1,
+            ),
+            (
+                transform_state(
+                    ProjectiveTextTransform(1.1, 1.0),
+                    BendTextTransform(),
+                    ProjectiveTextTransform(0.9, 1.0),
+                ),
+                ('projective', 'bend', 'projective'),
+                2,
+                0,
+            ),
+        )
+        for initial, expected_types, expected_index, undo_count in cases:
+            with self.subTest(initial=initial):
+                canvas = Canvas()
+                canvas.editor_index = 1
+                SW.canvas = canvas
+                item, pair = self._make_pair(0, TEST_LINES[0], False)
+                item.setParentItem(canvas.textLayer)
+                item.set_text_transform(initial)
+                item.setSelected(True)
+                panel = self._make_panel()
+                session = TextTransformEditSession(SimpleNamespace(), panel)
+                panel.set_transform_items([item])
+                manager = type('ManagerStub', (), {})()
+                manager.formatpanel = SimpleNamespace(
+                    text_transform_session=session
+                )
+
+                def update_selection(items):
+                    session.replace_targets(items)
+                    panel.set_transform_items(items)
+
+                manager._update_selection_panels = update_selection
+                manager.on_projective_scale_requested = MethodType(
+                    SceneTextManager.on_projective_scale_requested,
+                    manager,
+                )
+                canvas.projective_scale_requested.connect(
+                    manager.on_projective_scale_requested
+                )
+
+                canvas.gv.resize(800, 500)
+                canvas.gv.show()
+                canvas.gv.setFocus()
+                self.app.processEvents()
+                controller = canvas.txtblkProjectiveControl
+                controller._cursor_scene_position = lambda: (
+                    canvas.gv,
+                    controller.scenePos()
+                    + QPointF(PROJECTIVE_CONTROL_RADIUS, 0.0),
+                )
+
+                QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_S)
+                self.app.processEvents()
+
+                self.assertEqual(
+                    tuple(
+                        transform.transform_type
+                        for transform in item.blk.fontformat.text_transform
+                    ),
+                    expected_types,
+                )
+                self.assertEqual(session.selected_index, expected_index)
+                self.assertEqual(controller.stack_index, expected_index)
+                self.assertEqual(controller._modal_transform.mode, 'scale')
+                self.assertEqual(canvas.text_undo_stack.count(), undo_count)
+
+                controller._finish_modal(False)
+                controller.clear()
+                item.geometry_controller.release_render_resources()
+                canvas.removeItem(item)
+                pair.deleteLater()
+                canvas.gv.close()
+
+    def test_canvas_scale_shortcut_requires_one_nonediting_item(self):
+        canvas = Canvas()
+        requests = []
+        canvas.projective_scale_requested.connect(requests.append)
+        first, first_pair = self._make_pair(0, TEST_LINES[0], False)
+        second, second_pair = self._make_pair(1, TEST_LINES[1], False)
+        first.setParentItem(canvas.textLayer)
+        second.setParentItem(canvas.textLayer)
+
+        self.assertFalse(canvas.start_projective_scale())
+        canvas.editor_index = 1
+        first.setSelected(True)
+        first.set_text_transform(transform_state(ProjectiveTextTransform()))
+        canvas.bind_text_projective_control(
+            first,
+            0,
+            begin_edit=lambda _index: None,
+            preview_transform=lambda _index, _transform: None,
+            commit_transform=lambda _index, _transform: None,
+            cancel_edit=lambda _index: None,
+        )
+        first.startEdit()
+        self.assertFalse(canvas.handle_transform_modal_shortcut(Qt.Key.Key_S))
+        self.assertFalse(canvas.start_projective_scale())
+        first.endEdit()
+        canvas.clear_text_transform_controls()
+        second.setSelected(True)
+        self.assertFalse(canvas.start_projective_scale())
+        self.assertEqual(requests, [])
+
+        first.geometry_controller.release_render_resources()
+        second.geometry_controller.release_render_resources()
+        canvas.removeItem(first)
+        canvas.removeItem(second)
+        first_pair.deleteLater()
+        second_pair.deleteLater()
+        canvas.gv.close()
+
     def test_multi_selection_only_exposes_matching_stack_indices(self):
         panel = self._make_panel()
         matching = [

@@ -391,6 +391,9 @@ class SceneTextManager(QObject):
         self.canvas.incanvas_selection_changed.connect(
             self._on_canvas_selection_changed
         )
+        self.canvas.projective_scale_requested.connect(
+            self.on_projective_scale_requested
+        )
         self.txtblkShapeControl = canvas.txtblkShapeControl
         self.textpanel = textpanel
         self.textEditList = textpanel.textEditList
@@ -843,6 +846,12 @@ class SceneTextManager(QObject):
             self.formatpanel.set_textblk_item(textitems[-1])
         else:
             self.formatpanel.set_textblk_item(multi_select=bool(textitems))
+
+    def on_projective_scale_requested(self, item: TextBlkItem) -> None:
+        session = self.formatpanel.text_transform_session
+        if len(session.items) != 1 or session.items[0] is not item:
+            self._update_selection_panels([item])
+        session.activate_last_projective(item)
 
     def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
         
