@@ -489,11 +489,20 @@ class ConfigBlock(Widget):
         self.setContentsMargins(0, 0, 0, 0)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
-    def addLineEdit(self, name: str = None, discription: str = None, vertical_layout: bool = False):
+    def addLineEdit(
+        self,
+        name: Optional[str] = None,
+        discription: Optional[str] = None,
+        vertical_layout: bool = False,
+    ) -> Tuple[QLineEdit, ConfigSubBlock]:
         le = QLineEdit()
         le.setFixedWidth(CONFIG_COMBOBOX_MIDEAN)
         le.setFixedHeight(30)
         sublock = ConfigSubBlock(le, name, discription, vertical_layout)
+        if sublock.name_label is not None:
+            font = sublock.name_label.font()
+            font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+            sublock.name_label.setFont(font)
         if vertical_layout is False:
             sublock.layout().addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding))
         self.addSublock(sublock)
@@ -824,6 +833,38 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.llm_profiles_panel = LLMProfilesWidget(scrollWidget=self)
         llmProfileConfigPanel.addBlockWidget(self.llm_profiles_panel)
 
+        update_status_widget = QWidget()
+        update_status_widget.setObjectName('ConfigInlineRow')
+        update_status_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        update_status_layout = QHBoxLayout(update_status_widget)
+        update_status_layout.setContentsMargins(0, 0, 0, 0)
+        update_status_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.current_version_label = ConfigTextLabel(
+            self.tr('Current version: ') + APP_VERSION,
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        self.latest_version_label = ConfigTextLabel(
+            self.tr('Latest version: ') + self.tr('Not checked'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        for label in (self.current_version_label, self.latest_version_label):
+            font = label.font()
+            font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+            label.setFont(font)
+        self.check_update_btn = QPushButton(parent=self)
+        self.check_update_btn.setText(self.tr('Check update'))
+        self.check_update_btn.clicked.connect(self.check_update)
+        self.check_update_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
+
+        update_status_layout.addWidget(self.current_version_label)
+        update_status_layout.addSpacing(24)
+        update_status_layout.addWidget(self.latest_version_label)
+        update_status_layout.addSpacing(24)
+        update_status_layout.addWidget(self.check_update_btn)
+        applicationConfigPanel.addBlockWidget(update_status_widget)
+
         self.open_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Reopen last project on startup'))
         self.open_on_startup_checker.stateChanged.connect(self.on_open_onstartup_changed)
 
@@ -907,35 +948,6 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         ext_layout.addLayout(ext_btns_layout)
 
         self.spellcheck_subblock = spellcheckConfigPanel.addBlockWidget(ext_layout)
-
-        update_status_widget = QWidget()
-        update_status_widget.setObjectName('ConfigInlineRow')
-        update_status_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        update_status_layout = QHBoxLayout(update_status_widget)
-        update_status_layout.setContentsMargins(0, 0, 0, 0)
-        update_status_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.current_version_label = ConfigTextLabel(
-            self.tr('Current version: ') + APP_VERSION,
-            CONFIG_FONTSIZE_CONTENT,
-            QFont.Weight.Normal,
-        )
-        self.latest_version_label = ConfigTextLabel(
-            self.tr('Latest version: ') + self.tr('Not checked'),
-            CONFIG_FONTSIZE_CONTENT,
-            QFont.Weight.Normal,
-        )
-        self.check_update_btn = QPushButton(parent=self)
-        self.check_update_btn.setText(self.tr('Check update'))
-        self.check_update_btn.clicked.connect(self.check_update)
-        self.check_update_btn.setFixedHeight(PUSHBTN_FIXED_HEIGHT)
-
-        update_status_layout.addWidget(self.check_update_btn)
-        update_status_layout.addSpacing(24)
-        update_status_layout.addWidget(self.current_version_label)
-        update_status_layout.addSpacing(24)
-        update_status_layout.addWidget(self.latest_version_label)
-
-        applicationConfigPanel.addBlockWidget(update_status_widget)
 
         none_label = self.tr('None')
         self.huggingface_mirror_combobox, _ = applicationConfigPanel.addCombobox(
