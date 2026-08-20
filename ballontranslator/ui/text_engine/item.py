@@ -107,6 +107,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.under_ctrl = False
         self.draw_rect = show_rect
         self._ui_guide_suppressed = False
+        self._order_number_override: Optional[int] = None
         self.old_ffmt_values = None
         
         self.idx = idx
@@ -912,7 +913,14 @@ class TextBlkItem(QGraphicsTextItem):
 
     def _paint_order_badge(self, painter: QPainter) -> None:
         """Paint the block's one-based reading order as a canvas-only guide."""
-        if self._ui_guide_suppressed or self.isEditing() or not self.draw_rect:
+        if (
+            self._ui_guide_suppressed
+            or self.isEditing()
+            or (
+                not self.draw_rect
+                and self._order_number_override is None
+            )
+        ):
             return
         outline = self.geometry_controller.visual_outline_in_item()
         if outline.isEmpty():
@@ -934,7 +942,7 @@ class TextBlkItem(QGraphicsTextItem):
             font = QFont()
             font.setBold(True)
             font.setPixelSize(11)
-            text = str(self.idx + 1)
+            text = str(self.order_number())
             metrics = QFontMetrics(font)
             badge_rect = QRectF(
                 0,
@@ -958,6 +966,21 @@ class TextBlkItem(QGraphicsTextItem):
             )
         finally:
             painter.restore()
+
+    def order_number(self) -> int:
+        """Return the one-based order currently shown by the canvas guide."""
+        if self._order_number_override is not None:
+            return self._order_number_override
+        return self.idx + 1
+
+    def set_order_number_override(self, order_number: Optional[int]) -> None:
+        """Set a transient order preview without changing project state."""
+        if order_number is not None:
+            order_number = max(1, int(order_number))
+        if self._order_number_override == order_number:
+            return
+        self._order_number_override = order_number
+        self.update()
 
     def _paint_ui_guide(self, painter: QPainter) -> None:
         """Paint selection/block guides outside cached effect surfaces."""
