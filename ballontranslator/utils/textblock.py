@@ -406,7 +406,9 @@ class TextBlock:
     # equivalent to qt's boundingRect, ignore angle
     def bounding_rect(self) -> List[int]:
         if self._bounding_rect is None:
-        # if True:
+            if not len(self.lines) and self.xyxy is not None:
+                x1, y1, x2, y2 = self.xyxy
+                return [int(x1), int(y1), int(x2 - x1), int(y2 - y1)]
             min_bbox = self.min_rect(rotate_back=False)[0]
             x, y = min_bbox[0]
             w, h = min_bbox[2] - min_bbox[0]
