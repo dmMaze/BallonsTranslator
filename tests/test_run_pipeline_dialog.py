@@ -1276,7 +1276,12 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
 
     def test_selected_run_commits_only_selected_source_edits(self):
-        selected = TextBlock(xyxy=[0, 0, 10, 10], text=['selected old'])
+        selected = TextBlock(xyxy=[2, 3, 8, 10], text=['selected old'])
+        selected.lines = [
+            [[0, 0], [10, 0], [10, 5], [0, 5]],
+            [[0, 5], [10, 5], [10, 10], [0, 10]],
+        ]
+        original_lines = [list(map(list, line)) for line in selected.lines]
         unselected = TextBlock(text=['unselected old'])
         project = ProjImgTrans()
         project.pages = {'001.png': [selected, unselected]}
@@ -1311,12 +1316,13 @@ class RunPipelineDialogTests(unittest.TestCase):
         selected_item = SimpleNamespace(
             blk=selected,
             idx=0,
-            absBoundingRect=lambda: [0, 0, 10, 10],
         )
 
         self.assertTrue(MainWindow.translateBlkitemList(owner, [selected_item], 0))
 
         self.assertEqual(selected.get_text(), 'selected new')
+        self.assertEqual(selected.xyxy, [2, 3, 8, 10])
+        self.assertEqual(selected.lines, original_lines)
         self.assertEqual(unselected.get_text(), 'unselected old')
 
     def test_render_only_snapshots_complete_global_format(self):

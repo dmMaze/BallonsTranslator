@@ -1607,17 +1607,13 @@ class MainWindow(mainwindow_cls):
         
         self.global_search_widget.set_document_edited()
         
-        im_h, im_w = tgt_img.shape[:2]
-
         blk_list, blk_ids = [], []
         for blkitem in blkitem_list:
             blk: TextBlock = blkitem.blk
-            blk._bounding_rect = blkitem.absBoundingRect()
             blk.text = self.st_manager.pairwidget_list[
                 blkitem.idx
             ].e_source.toPlainText()
             blk_ids.append(blkitem.idx)
-            blk.set_lines_by_xywh(blk._bounding_rect, angle=-blk.angle, x_range=[0, im_w-1], y_range=[0, im_h-1], adjust_bbox=True)
             blk_list.append(blk)
 
         page_key = self.imgtrans_proj.current_img

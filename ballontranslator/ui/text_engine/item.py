@@ -458,9 +458,18 @@ class TextBlkItem(QGraphicsTextItem):
         """Return the persistent logical rectangle's absolute top-left."""
         return self.geometry_controller.logical_position()
 
+    def _sync_block_xyxy(self) -> None:
+        if self.blk is None:
+            return
+        self.blk._bounding_rect = self.absBoundingRect()
+        self.blk.sync_xyxy_from_bounding_rect()
+
     def set_logical_position(self, point: QPointF) -> bool:
         """Move the logical top-left independently of paint padding."""
         changed = self.geometry_controller.set_logical_position(point)
+        # A mouse drag reaches the undo command at its final position, so this
+        # must sync even when the setter itself observes a zero delta.
+        self._sync_block_xyxy()
         if changed:
             self.visual_geometry_changed.emit()
         return changed
@@ -491,6 +500,8 @@ class TextBlkItem(QGraphicsTextItem):
             repaint=repaint,
             update_blk_rect=update_blk_rect,
         )
+        if update_blk_rect:
+            self._sync_block_xyxy()
         if notify:
             self.visual_geometry_changed.emit()
 
@@ -592,6 +603,7 @@ class TextBlkItem(QGraphicsTextItem):
             if self.rotation() != angle:
                 self.setRotation(angle)
             self.blk.angle = angle
+            self._sync_block_xyxy()
 
     def setVertical(self, vertical: bool) -> None:
 

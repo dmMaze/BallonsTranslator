@@ -41,6 +41,7 @@ except ImportError:
 from ballontranslator.ui.text_engine.editing.widgets import TransPairWidget
 from ballontranslator.ui.text_engine.editing.commands import (
     CapitalizeTextItemsCommand,
+    MoveBlkItemsCommand,
     MultiPasteCommand,
     ReshapeItemCommand,
     SetTextTransformCommand,
@@ -3668,6 +3669,42 @@ class TextTransformGeometryTest(TextTransformTestBase):
                 self.assertEqual(item.absBoundingRect(qrect=True), after)
                 stack.redo()
                 self.assertEqual(item.absBoundingRect(qrect=True), after)
+
+    def test_manual_move_and_reshape_sync_xyxy_without_replacing_lines(self):
+        item, _ = self._make_pair(0, TEST_LINES[0], False)
+        item.blk.lines = [
+            [[0, 0], [600, 0], [600, 150], [0, 150]],
+            [[0, 150], [600, 150], [600, 300], [0, 300]],
+        ]
+        original_lines = copy.deepcopy(item.blk.lines)
+        stack = QUndoStack()
+
+        before_move = item.logical_position()
+        item.setPos(item.pos() + QPointF(20, 30))
+        after_move = item.logical_position()
+        stack.push(MoveBlkItemsCommand(
+            [item],
+            before_positions=[before_move],
+            after_positions=[after_move],
+        ))
+        self.assertEqual(item.blk.xyxy, [20, 30, 620, 330])
+        self.assertEqual(item.blk.lines, original_lines)
+        stack.undo()
+        self.assertEqual(item.blk.xyxy, [0, 0, 600, 300])
+        stack.redo()
+        self.assertEqual(item.blk.xyxy, [20, 30, 620, 330])
+
+        before_reshape = item.absBoundingRect(qrect=True)
+        after_reshape = QRectF(25, 35, 500, 200)
+        item._old_rect = QRectF(before_reshape)
+        item.setRect(after_reshape)
+        stack.push(ReshapeItemCommand(item))
+        self.assertEqual(item.blk.xyxy, [25, 35, 525, 235])
+        self.assertEqual(item.blk.lines, original_lines)
+        stack.undo()
+        self.assertEqual(item.blk.xyxy, [20, 30, 620, 330])
+        stack.redo()
+        self.assertEqual(item.blk.xyxy, [25, 35, 525, 235])
 
     def test_transformed_control_hitboxes_stay_outside_text_item(self):
         for vertical in (False, True):
