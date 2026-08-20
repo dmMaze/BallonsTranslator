@@ -878,6 +878,10 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.path_reorder_trigger.connect(self.on_path_reorder)
+        self.canvas.path_reorder_mode_changed.connect(
+            self.titleBar.path_reorder_action.setChecked
+        )
         self.titleBar.font_exclusion_trigger.connect(
             self.configPanel.show_font_exclusion_dialog
         )
@@ -1029,8 +1033,9 @@ class MainWindow(mainwindow_cls):
         self.st_manager.formatpanel.resolve_text_transform_edits_for_history_change()
         self.canvas.undo()
 
-    def on_page_search(self):
+    def on_page_search(self) -> None:
         if self.canvas.gv.isVisible():
+            self.canvas.cancel_path_reorder()
             fo = self.app.focusObject()
             sel_text = ''
             tgt_edit = None
@@ -1102,6 +1107,25 @@ class MainWindow(mainwindow_cls):
             self.merge_dialog.activateWindow()
         else:
             self.merge_dialog.show()
+
+    def on_path_reorder(self, checked: bool) -> None:
+        if not checked:
+            self.canvas.cancel_path_reorder()
+            return
+        if (
+            self.centralStackWidget.currentIndex() != 0
+            or len(self.st_manager.textblk_item_list) < 2
+        ):
+            self.titleBar.path_reorder_action.setChecked(False)
+            return
+
+        if not self.bottomBar.texteditChecker.isChecked():
+            self.bottomBar.texteditChecker.click()
+        editing_item = self.canvas.editing_textblkitem
+        if editing_item is not None and editing_item.isEditing():
+            editing_item.endEdit(keep_focus=False)
+        if not self.canvas.start_path_reorder():
+            self.titleBar.path_reorder_action.setChecked(False)
 
     def run_merge_task(self, on_current=False):
         """执行区域合并任务"""
@@ -1289,6 +1313,9 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self):
+        if self.canvas.path_reorder_active:
+            self.canvas.cancel_path_reorder()
+            return
         if self.canvas.handle_transform_modal_shortcut(QKEY.Key_Escape):
             return
         if self.canvas.search_widget.isVisible():

@@ -1,6 +1,6 @@
 
 from enum import Enum
-from typing import List, Union, Tuple
+from typing import List, Sequence, Union, Tuple
 import numpy as np
 import copy
 
@@ -38,6 +38,32 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.imgproc_utils import extract_ballon_region, get_block_mask
 from ballontranslator.utils.text_processing import seg_text, is_cjk
 from ballontranslator.utils.text_layout import layout_text
+
+
+def build_path_reorder_map(
+    touched_ids: Sequence[int],
+    item_count: int,
+) -> Tuple[List[int], List[int]]:
+    """Move touched items to the front in path order.
+
+    >>> build_path_reorder_map([2, 0], 4)
+    ([2, 0, 1], [0, 1, 2])
+    """
+    seen = set()
+    order = []
+    for item_id in touched_ids:
+        if 0 <= item_id < item_count and item_id not in seen:
+            seen.add(item_id)
+            order.append(item_id)
+    order.extend(item_id for item_id in range(item_count) if item_id not in seen)
+
+    source_ids = []
+    target_ids = []
+    for target_id, source_id in enumerate(order):
+        if source_id != target_id:
+            source_ids.append(source_id)
+            target_ids.append(target_id)
+    return source_ids, target_ids
 
 
 class SceneTextReplacementReason(Enum):
@@ -359,6 +385,9 @@ class SceneTextManager(QObject):
         self.canvas.layout_textblks.connect(self.onAutoLayoutTextblks)
         self.canvas.reset_angle.connect(self.onResetAngle)
         self.canvas.squeeze_blk.connect(self.onSqueezeBlk)
+        self.canvas.path_reorder_finished.connect(
+            self.on_path_reorder_finished
+        )
         self.canvas.incanvas_selection_changed.connect(
             self._on_canvas_selection_changed
         )
@@ -449,6 +478,7 @@ class SceneTextManager(QObject):
             self.textpanel.show()
             self.canvas.textLayer.show()
         else:
+            self.canvas.cancel_path_reorder()
             self.txtblkShapeControl.setBlkItem(None)
             self.textpanel.hide()
             self.textpanel.formatpanel.set_textblk_item()
@@ -458,6 +488,7 @@ class SceneTextManager(QObject):
         self,
         reason=SceneTextReplacementReason.CURRENT_PAGE_RELOAD,
     ):
+        self.canvas.cancel_path_reorder()
         if reason is not SceneTextReplacementReason.PAGE_CHANGE:
             self.formatpanel.cancel_text_transform_edits_for_scene_change()
         self._text_move_snapshot.clear()
@@ -541,7 +572,7 @@ class SceneTextManager(QObject):
 
     def addTextBlkItem(self, textblk_item: TextBlkItem) -> TextBlkItem:
         self.textblk_item_list.append(textblk_item)
-        textblk_item.setParentItem(self.canvas.textLayer)
+        self.canvas.attach_text_item(textblk_item)
         textblk_item.begin_edit.connect(self.onTextBlkItemBeginEdit)
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
@@ -580,7 +611,7 @@ class SceneTextManager(QObject):
         self.canvas.block_selection_signal = True
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
             self.textblk_item_list.insert(blkitem.idx, blkitem)
-            blkitem.setParentItem(self.canvas.textLayer)
+            self.canvas.attach_text_item(blkitem)
             self.pairwidget_list.insert(p_widget.idx, p_widget)
             self.textEditList.insertPairWidget(p_widget, p_widget.idx)
             if self.txtblkShapeControl.blk_item is not None and blkitem.isSelected():
@@ -1060,7 +1091,8 @@ class SceneTextManager(QObject):
         if command is not None:
             self.canvas.push_undo_command(command)
 
-    def on_transwidget_focus_in(self, idx: int):
+    def on_transwidget_focus_in(self, idx: int) -> None:
+        self.canvas.cancel_path_reorder()
         if self.is_editting():
             textitm = self.editingTextItem()
             textitm.endEdit()
@@ -1180,11 +1212,22 @@ class SceneTextManager(QObject):
     def on_rearrange_blks(self, mv_map: Tuple[np.ndarray]):
         self.canvas.push_undo_command(RearrangeBlksCommand(mv_map, self))
 
+    def on_path_reorder_finished(self, touched_ids: Sequence[int]) -> None:
+        source_ids, target_ids = build_path_reorder_map(
+            touched_ids,
+            len(self.textblk_item_list),
+        )
+        if source_ids:
+            self.on_rearrange_blks((source_ids, target_ids))
+
     def updateTextBlkItemIdx(self, sel_ids: set = None):
         for ii, blk_item in enumerate(self.textblk_item_list):
             if sel_ids is not None and ii not in sel_ids:
                 continue
-            blk_item.idx = ii
+            if blk_item.idx != ii:
+                blk_item.idx = ii
+                blk_item.refresh_order_badge()
+                blk_item.update()
             self.pairwidget_list[ii].updateIndex(ii)
         cl = self.textEditList.checked_list
         if len(cl) != 0:
