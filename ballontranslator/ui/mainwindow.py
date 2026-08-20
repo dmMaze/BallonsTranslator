@@ -914,7 +914,7 @@ class MainWindow(mainwindow_cls):
         shortcutItalic.activated.connect(self.shortcutItalic)
         shortcutUnderline = QShortcut(QKeySequence.StandardKey.Underline, self)
         shortcutUnderline.activated.connect(self.shortcutUnderline)
-        shortcutCapitalize = QShortcut(QKeySequence("Shift+F3"), self)
+        shortcutCapitalize = QShortcut(QKeySequence("Ctrl+Q"), self)
         shortcutCapitalize.activated.connect(
             self.st_manager.capitalize_selected_textitems
         )
