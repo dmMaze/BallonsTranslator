@@ -53,10 +53,12 @@ from ballontranslator.ui.text_engine.annotations import (
     LIGATURE_DISCRETIONARY,
     LIGATURE_ENABLED,
     LIGATURE_HISTORICAL,
+    OLDSTYLE_NUMS,
     TEXT_COMBINE_ID_ATTRIBUTE,
     apply_auto_text_combine_upright,
     apply_emphasis,
     apply_ligature_axis,
+    apply_oldstyle_nums,
     apply_letter_spacing,
     apply_line_spacing,
     apply_text_combine_upright,
@@ -70,6 +72,7 @@ from ballontranslator.ui.text_engine.annotations import (
     ligature_axis_value,
     line_spacing_values,
     load_rich_text_html,
+    oldstyle_nums_value,
     ruby_containers,
     text_combine_upright_ranges,
     text_combine_upright_values,
@@ -327,7 +330,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(letter_spacing_value(_format_at(document, 2)), 1.0)
         self.assertEqual(letter_spacing_value(_format_at(document, 3)), 0.8)
 
-    def test_font_variant_ligature_css_round_trip_and_normal_reset(self):
+    def test_font_variant_css_round_trip_and_normal_reset(self):
         source = QTextDocument('fiX')
         cursor = QTextCursor(source)
         cursor.setPosition(0)
@@ -347,6 +350,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             LIGATURE_DISABLED,
             vertical=False,
         )
+        apply_oldstyle_nums(cursor, LIGATURE_ENABLED)
 
         html = to_rich_text_html(source)
         restored = QTextDocument()
@@ -357,6 +361,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             'discretionary-ligatures no-contextual',
             html,
         )
+        self.assertIn('font-variant-numeric: oldstyle-nums', html)
         restored_format = _format_at(restored, 0, 2)
         self.assertEqual(
             ligature_axis_value(restored_format, LIGATURE_COMMON),
@@ -371,9 +376,31 @@ class RichTextAnnotationTest(unittest.TestCase):
             LIGATURE_DISABLED,
         )
         self.assertEqual(
+            oldstyle_nums_value(restored_format),
+            LIGATURE_ENABLED,
+        )
+        if FONT_FEATURES_AVAILABLE:
+            font = restored_format.font()
+            for name, value in (('onum', 1), ('lnum', 0)):
+                tag = QFont.Tag.fromString(name)
+                self.assertTrue(font.isFeatureSet(tag))
+                self.assertEqual(font.featureValue(tag), value)
+        self.assertEqual(
             font_variant_ligatures_value(_format_at(restored, 2)),
             FONT_VARIANT_LIGATURES_NORMAL,
         )
+
+        apply_oldstyle_nums(cursor, LIGATURE_DISABLED)
+        self.assertIn(
+            'font-variant-numeric: lining-nums',
+            to_rich_text_html(source),
+        )
+        if FONT_FEATURES_AVAILABLE:
+            font = _format_at(source, 0, 2).font()
+            for name, value in (('onum', 0), ('lnum', 1)):
+                tag = QFont.Tag.fromString(name)
+                self.assertTrue(font.isFeatureSet(tag))
+                self.assertEqual(font.featureValue(tag), value)
 
         for axis in (
             LIGATURE_COMMON,
@@ -383,8 +410,12 @@ class RichTextAnnotationTest(unittest.TestCase):
             apply_ligature_axis(
                 cursor, axis, LIGATURE_DEFAULT, vertical=False
             )
+        apply_oldstyle_nums(cursor, LIGATURE_DEFAULT)
         self.assertNotIn(
             'font-variant-ligatures', to_rich_text_html(source)
+        )
+        self.assertNotIn(
+            'font-variant-numeric', to_rich_text_html(source)
         )
 
     def test_ligature_css_none_and_qt5_safe_values_round_trip(self):
@@ -3250,7 +3281,7 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         self.assertTrue(panel.tateChuYokoChecker.isChecked())
 
-    def test_advanced_ligature_axis_edits_only_inline_format(self):
+    def test_advanced_font_feature_edits_only_inline_format(self):
         item = self._make_item(False, text='stX')
         item.startEdit()
         cursor = item.textCursor()
@@ -3287,6 +3318,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         if FONT_FEATURES_AVAILABLE:
             expected_axes.update((
                 LIGATURE_DISCRETIONARY,
+                OLDSTYLE_NUMS,
                 LIGATURE_CONTEXTUAL,
             ))
         self.assertEqual(
@@ -3294,7 +3326,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             expected_axes,
         )
         axis = (
-            LIGATURE_DISCRETIONARY
+            OLDSTYLE_NUMS
             if FONT_FEATURES_AVAILABLE
             else LIGATURE_COMMON
         )
@@ -3312,14 +3344,20 @@ class RichTextAnnotationTest(unittest.TestCase):
             combo.setCurrentIndex(index)
             combo.activated.emit(index)
 
+        value_at = (
+            oldstyle_nums_value
+            if axis == OLDSTYLE_NUMS
+            else lambda char_format: ligature_axis_value(
+                char_format, axis
+            )
+        )
+
         self.assertEqual(
-            ligature_axis_value(
-                _format_at(item.document(), 0, 2), axis
-            ),
+            value_at(_format_at(item.document(), 0, 2)),
             state,
         )
         self.assertEqual(
-            ligature_axis_value(_format_at(item.document(), 2), axis),
+            value_at(_format_at(item.document(), 2)),
             LIGATURE_DEFAULT,
         )
         self.assertEqual(len(pushed_steps), 1)
@@ -3327,12 +3365,12 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertTrue(pushed_steps[0][1])
         stack.undo()
         self.assertEqual(
-            ligature_axis_value(_format_at(item.document(), 0), axis),
+            value_at(_format_at(item.document(), 0)),
             LIGATURE_DEFAULT,
         )
         stack.redo()
         self.assertEqual(
-            ligature_axis_value(_format_at(item.document(), 0), axis),
+            value_at(_format_at(item.document(), 0)),
             state,
         )
         self.assertEqual(propagated, [])
@@ -3375,6 +3413,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             LIGATURE_DISABLED,
             vertical=False,
         )
+        apply_oldstyle_nums(modified, LIGATURE_ENABLED)
 
         caret = QTextCursor(item.document())
         caret.setPosition(1)
@@ -3436,6 +3475,12 @@ class RichTextAnnotationTest(unittest.TestCase):
             self.assertEqual(
                 panel.textadvancedfmt_panel.ligature_comboboxes[
                     LIGATURE_DISCRETIONARY
+                ].currentData(),
+                LIGATURE_ENABLED,
+            )
+            self.assertEqual(
+                panel.textadvancedfmt_panel.ligature_comboboxes[
+                    OLDSTYLE_NUMS
                 ].currentData(),
                 LIGATURE_ENABLED,
             )

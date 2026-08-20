@@ -53,6 +53,7 @@ _RICH_TEXT_EXTENSION_MARKERS = (
     'text-emphasis-style',
     'text-combine-upright',
     'font-variant-ligatures',
+    'font-variant-numeric',
     LETTER_SPACING_ATTRIBUTE,
     LINE_DISTANCE_ATTRIBUTE,
     '<ruby',
@@ -100,6 +101,9 @@ class AnnotationProperty(IntEnum):
     FONT_VARIANT_LIGATURES = (
         _enum_value(QTextFormat.Property.UserProperty) + 1400
     )
+    FONT_VARIANT_NUMERIC = (
+        _enum_value(QTextFormat.Property.UserProperty) + 1401
+    )
 
     # Ruby IDs are runtime-only. Semantic HTML stores only the relationship;
     # loading and in-app paste allocate fresh container and unit identities.
@@ -146,6 +150,10 @@ TEXT_COMBINE_NONE = 'none'
 TEXT_COMBINE_ALL = 'all'
 FONT_VARIANT_LIGATURES_NORMAL = 'normal'
 FONT_VARIANT_LIGATURES_NONE = 'none'
+FONT_VARIANT_NUMERIC_NORMAL = 'normal'
+FONT_VARIANT_NUMERIC_OLDSTYLE = 'oldstyle-nums'
+FONT_VARIANT_NUMERIC_LINING = 'lining-nums'
+OLDSTYLE_NUMS = 'oldstyle'
 LIGATURE_COMMON = 'common'
 LIGATURE_DISCRETIONARY = 'discretionary'
 LIGATURE_HISTORICAL = 'historical'
@@ -248,6 +256,7 @@ class _InlineExtension:
     text_combine_id: str = ''
     letter_spacing: Optional[float] = None
     font_variant_ligatures: str = FONT_VARIANT_LIGATURES_NORMAL
+    font_variant_numeric: str = FONT_VARIANT_NUMERIC_NORMAL
     ruby_id: str = ''
     ruby_unit_id: str = ''
     ruby_type: str = ''
@@ -261,6 +270,7 @@ class _InlineExtension:
             and self.letter_spacing is None
             and self.font_variant_ligatures
             == FONT_VARIANT_LIGATURES_NORMAL
+            and self.font_variant_numeric == FONT_VARIANT_NUMERIC_NORMAL
             and not self.ruby_id
         )
 
@@ -324,6 +334,24 @@ def canonical_font_variant_ligatures(value: object) -> Optional[str]:
         for axis in _LIGATURE_AXIS_TOKENS
         if axis in selected
     )
+
+
+def canonical_font_variant_numeric(value: object) -> Optional[str]:
+    """Return the supported CSS figure-style value.
+
+    >>> canonical_font_variant_numeric('OLDSTYLE-NUMS')
+    'oldstyle-nums'
+    """
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    if value in {
+        FONT_VARIANT_NUMERIC_NORMAL,
+        FONT_VARIANT_NUMERIC_OLDSTYLE,
+        FONT_VARIANT_NUMERIC_LINING,
+    }:
+        return value
+    return None
 
 
 def _ligature_axis_states(value: str) -> dict[str, str]:
@@ -443,6 +471,18 @@ def _span_extension(
                 font_variant_ligatures=value,
             )
 
+    if 'font-variant-numeric' in styles:
+        value = canonical_font_variant_numeric(
+            styles['font-variant-numeric']
+        )
+        if value is None:
+            LOGGER.warning(
+                'Ignoring unsupported font-variant-numeric: %r',
+                styles['font-variant-numeric'],
+            )
+        else:
+            extension = replace(extension, font_variant_numeric=value)
+
     if LETTER_SPACING_ATTRIBUTE in attributes:
         spacing = _parse_letter_spacing_attribute(
             attributes[LETTER_SPACING_ATTRIBUTE]
@@ -488,6 +528,24 @@ def font_variant_ligatures_value(char_format: QTextCharFormat) -> str:
     return FONT_VARIANT_LIGATURES_NORMAL if value is None else value
 
 
+def font_variant_numeric_value(char_format: QTextCharFormat) -> str:
+    """Return the canonical numeric figure style from a character format."""
+    value = canonical_font_variant_numeric(
+        char_format.property(AnnotationProperty.FONT_VARIANT_NUMERIC)
+    )
+    return FONT_VARIANT_NUMERIC_NORMAL if value is None else value
+
+
+def oldstyle_nums_value(char_format: QTextCharFormat) -> str:
+    """Return oldstyle figures as ``default``, ``enabled``, or ``disabled``."""
+    value = font_variant_numeric_value(char_format)
+    if value == FONT_VARIANT_NUMERIC_OLDSTYLE:
+        return LIGATURE_ENABLED
+    if value == FONT_VARIANT_NUMERIC_LINING:
+        return LIGATURE_DISABLED
+    return LIGATURE_DEFAULT
+
+
 def ligature_axis_value(
     char_format: QTextCharFormat,
     axis: str,
@@ -514,6 +572,20 @@ def _sync_native_font_features(
             updated[tag] = value
     if updated != current:
         char_format.setFontFeatures(updated)
+
+
+def sync_native_oldstyle_nums(char_format: QTextCharFormat) -> None:
+    """Apply the semantic figure style through Qt 6.11 font features."""
+    if not FONT_FEATURES_AVAILABLE:
+        return
+    state = oldstyle_nums_value(char_format)
+    if state == LIGATURE_ENABLED:
+        values = {'onum': 1, 'lnum': 0}
+    elif state == LIGATURE_DISABLED:
+        values = {'onum': 0, 'lnum': 1}
+    else:
+        values = {'onum': None, 'lnum': None}
+    _sync_native_font_features(char_format, values)
 
 
 def sync_native_ligature_shaping(
@@ -1301,6 +1373,10 @@ def _apply_inline_extension_ranges(
     ranges: tuple[tuple[int, int, _InlineExtension], ...],
     vertical: bool,
 ) -> None:
+    def sync_shaping(char_format: QTextCharFormat) -> None:
+        sync_native_ligature_shaping(char_format, vertical=vertical)
+        sync_native_oldstyle_nums(char_format)
+
     document_end = max(0, document.characterCount() - 1)
     cursor = QTextCursor(document)
     for start, length, extension in ranges:
@@ -1342,6 +1418,11 @@ def _apply_inline_extension_ranges(
                 AnnotationProperty.FONT_VARIANT_LIGATURES,
                 extension.font_variant_ligatures,
             )
+        if extension.font_variant_numeric != FONT_VARIANT_NUMERIC_NORMAL:
+            modifier.setProperty(
+                AnnotationProperty.FONT_VARIANT_NUMERIC,
+                extension.font_variant_numeric,
+            )
         if extension.ruby_id:
             modifier.setProperty(AnnotationProperty.RUBY_ID, extension.ruby_id)
             modifier.setProperty(
@@ -1364,13 +1445,12 @@ def _apply_inline_extension_ranges(
             or extension.text_combine_id
             or extension.font_variant_ligatures
             != FONT_VARIANT_LIGATURES_NORMAL
+            or extension.font_variant_numeric
+            != FONT_VARIANT_NUMERIC_NORMAL
         ):
             _rewrite_cursor_char_formats(
                 cursor,
-                lambda char_format: sync_native_ligature_shaping(
-                    char_format,
-                    vertical=vertical,
-                ),
+                sync_shaping,
             )
 
 
@@ -1682,6 +1762,7 @@ def _inline_extension_ranges(
             font_variant_ligatures=font_variant_ligatures_value(
                 char_format
             ),
+            font_variant_numeric=font_variant_numeric_value(char_format),
         )
         if extension.is_empty():
             continue
@@ -1774,6 +1855,11 @@ def _inline_extension_span(text: str, extension: _InlineExtension) -> str:
         styles.append(
             'font-variant-ligatures: '
             f'{extension.font_variant_ligatures}'
+        )
+    if extension.font_variant_numeric != FONT_VARIANT_NUMERIC_NORMAL:
+        styles.append(
+            'font-variant-numeric: '
+            f'{extension.font_variant_numeric}'
         )
     style_attribute = f'style="{"; ".join(styles)};"'
     suffix = ' '.join((style_attribute, *attributes))
@@ -2269,6 +2355,40 @@ def set_ligature_axes(
             value,
         )
     sync_native_ligature_shaping(char_format, vertical=vertical)
+
+
+def set_oldstyle_nums(char_format: QTextCharFormat, state: str) -> None:
+    """Set the semantic oldstyle-figure state on one character format.
+
+    >>> fmt = QTextCharFormat()
+    >>> set_oldstyle_nums(fmt, LIGATURE_ENABLED)
+    >>> oldstyle_nums_value(fmt)
+    'enabled'
+    """
+    if state not in LIGATURE_AXIS_VALUES:
+        raise ValueError(f'unsupported oldstyle figure value: {state!r}')
+    if state == LIGATURE_ENABLED:
+        value = FONT_VARIANT_NUMERIC_OLDSTYLE
+    elif state == LIGATURE_DISABLED:
+        value = FONT_VARIANT_NUMERIC_LINING
+    else:
+        value = FONT_VARIANT_NUMERIC_NORMAL
+    if value == FONT_VARIANT_NUMERIC_NORMAL:
+        char_format.clearProperty(AnnotationProperty.FONT_VARIANT_NUMERIC)
+    else:
+        char_format.setProperty(
+            AnnotationProperty.FONT_VARIANT_NUMERIC,
+            value,
+        )
+    sync_native_oldstyle_nums(char_format)
+
+
+def apply_oldstyle_nums(cursor: QTextCursor, state: str) -> None:
+    """Apply oldstyle figures to a selection or insertion format."""
+    _rewrite_cursor_char_formats(
+        cursor,
+        lambda char_format: set_oldstyle_nums(char_format, state),
+    )
 
 
 def set_document_letter_spacing_writing_mode(

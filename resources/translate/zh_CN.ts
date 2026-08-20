@@ -3978,6 +3978,66 @@ All existing translation results will be cleared!</source>
         <translation>行距类型</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="453"/>
+        <source>Ligature</source>
+        <translation>连字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="460"/>
+        <source>Common</source>
+        <translation>标准</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="461"/>
+        <source>Set common ligatures for the selected text</source>
+        <translation>为所选文本设置标准连字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="469"/>
+        <source>Discretionary</source>
+        <translation>自由</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="470"/>
+        <source>Set font-specific optional ligatures for the selected text</source>
+        <translation>为所选文本设置字体特有的自由连字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="477"/>
+        <source>Oldstyle</source>
+        <translation>旧式数字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="478"/>
+        <source>Set oldstyle numerals for the selected text</source>
+        <translation>为所选文本设置旧式数字</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="484"/>
+        <source>Contextual</source>
+        <translation>上下文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="485"/>
+        <source>Set contextual alternate glyphs for the selected text</source>
+        <translation>为所选文本设置上下文替代字形</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="496"/>
+        <source>Default</source>
+        <translation>默认</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="496"/>
+        <source>On</source>
+        <translation>开启</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="496"/>
+        <source>Off</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/advanced.py" line="339"/>
         <source>Set Text Opacity</source>
         <translation>文本不透明度</translation>

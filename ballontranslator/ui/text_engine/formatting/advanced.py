@@ -32,6 +32,7 @@ from ..annotations import (
     LIGATURE_COMMON,
     LIGATURE_CONTEXTUAL,
     LIGATURE_DISCRETIONARY,
+    OLDSTYLE_NUMS,
 )
 
 def _word_wrap_label(label: QLabel):
@@ -472,6 +473,13 @@ class TextAdvancedFormatPanel(PanelArea):
                     ),
                 ),
                 (
+                    OLDSTYLE_NUMS,
+                    self.tr('Oldstyle'),
+                    self.tr(
+                        'Set oldstyle numerals for the selected text'
+                    ),
+                ),
+                (
                     LIGATURE_CONTEXTUAL,
                     self.tr('Contextual'),
                     self.tr(
@@ -500,11 +508,23 @@ class TextAdvancedFormatPanel(PanelArea):
                 ),
                 combo,
             ))
-        self.ligature_row, self.ligature_layout = _adaptive_row(
-            self.ligature_group, *ligature_units
+        unit_rows = (
+            (ligature_units[:2], ligature_units[2:])
+            if FONT_FEATURES_AVAILABLE
+            else (ligature_units,)
         )
+        rows_and_layouts = [
+            _adaptive_row(
+                self.ligature_group,
+                *units,
+            )
+            for units in unit_rows
+        ]
+        self.ligature_rows = [row for row, _layout in rows_and_layouts]
+        self.ligature_layouts = [layout for _row, layout in rows_and_layouts]
         self.ligature_group_layout = QVBoxLayout(self.ligature_group)
-        self.ligature_group_layout.addWidget(self.ligature_row)
+        for row in self.ligature_rows:
+            self.ligature_group_layout.addWidget(row)
 
         self.opacity_box = SmallSizeComboBox(
             [0, 1], 'opacity', self.top_section, init_value=1.
@@ -658,7 +678,7 @@ class TextAdvancedFormatPanel(PanelArea):
             layout.minimumSize().width()
             for layout in (
                 self.top_layout,
-                self.ligature_layout,
+                *self.ligature_layouts,
                 self.ruby_group.adaptive_layout,
                 self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,

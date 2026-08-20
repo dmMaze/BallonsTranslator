@@ -53,6 +53,7 @@ from ..annotations import (
     EMPHASIS_GLYPHS,
     EMPHASIS_POSITIONS,
     EMPHASIS_STYLES,
+    OLDSTYLE_NUMS,
     RubyValidationError,
 )
 from .advanced import TextAdvancedFormatPanel
@@ -950,14 +951,22 @@ class FontFormatPanel(Widget):
 
     def on_ligature_axis_changed(self, axis: str, state: str) -> None:
         if self.global_mode():
-            setattr(self.global_format, f'ligature_{axis}', state)
+            attribute = (
+                'oldstyle_nums'
+                if axis == OLDSTYLE_NUMS
+                else f'ligature_{axis}'
+            )
+            setattr(self.global_format, attribute, state)
             self.update_text_style_label()
         if self.textblk_item is not None:
             items = [self.textblk_item]
         else:
             items = SW.canvas.selected_text_items()
         for item in items:
-            item.setLigatureAxis(axis, state)
+            if axis == OLDSTYLE_NUMS:
+                item.setOldstyleNums(state)
+            else:
+                item.setLigatureAxis(axis, state)
         if items:
             restore_canvas_view_focus()
 
@@ -1157,13 +1166,21 @@ class FontFormatPanel(Widget):
                 *self.textblk_item.ruby_editor_values()
             )
         for axis in self.textadvancedfmt_panel.ligature_comboboxes:
-            self.textadvancedfmt_panel.set_ligature_axis(
-                axis,
-                (
+            if axis == OLDSTYLE_NUMS:
+                value = (
+                    font_format.oldstyle_nums
+                    if self.textblk_item is None
+                    else self.textblk_item.oldstyle_nums_value()
+                )
+            else:
+                value = (
                     getattr(font_format, f'ligature_{axis}')
                     if self.textblk_item is None
                     else self.textblk_item.ligature_axis_value(axis)
-                ),
+                )
+            self.textadvancedfmt_panel.set_ligature_axis(
+                axis,
+                value,
             )
 
     def set_active_format(

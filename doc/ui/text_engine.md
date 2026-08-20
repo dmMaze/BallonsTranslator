@@ -179,11 +179,13 @@ representation. Writing-mode behavior is specified in
 Font-variant ligatures are range-bound rich-text formats authored in the
 Advanced Text Format panel's Ligature group. Common is available under Qt 5
 and Qt 6; Discretionary and Contextual appear only when Qt 6.11's rich-text
-font-feature API is available. Each exposed axis has Default, On, and Off
-states, and independent states combine in the standard CSS
-`font-variant-ligatures` declaration. The parser also preserves historical
-ligature tokens and treats `normal` and `none` as the CSS aggregate values;
-`none` disables common, discretionary, historical, and contextual features.
+font-feature API is available. Oldstyle shares that Qt 6-only group on the
+second row before Contextual. Each selector has Default, On, and Off states.
+The ligature axes combine in the standard CSS `font-variant-ligatures`
+declaration; Oldstyle On and Off use `font-variant-numeric: oldstyle-nums` and
+`lining-nums`, respectively. The parser also preserves historical ligature
+tokens and treats `normal` and `none` as the CSS aggregate values; `none`
+disables common, discretionary, historical, and contextual features.
 `FontFormat` keeps item/global fallback states so new and empty text items have
 a stable insertion format; non-empty ranges remain owned by rich text. Qt 5
 keeps Qt 6 feature tokens through load/save even though it cannot apply or edit
@@ -206,6 +208,8 @@ discretionary ligatures and contextual alternates apply there: a joined glyph
 keeps one cursor interval and UTF-16 range per source grapheme within its
 shaped occupied extent. Tate-chu-yoko remains a horizontal run and may use
 every enabled feature at identity spacing.
+Oldstyle figures use the Qt 6.11 `onum` feature and explicit Off uses `lnum`;
+they require no tracking or vertical-layout exception.
 
 Line spacing is paragraph-bound because visual rows and columns can change
 after wrapping or resize. A non-empty selection formats every logical paragraph

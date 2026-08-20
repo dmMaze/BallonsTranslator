@@ -587,6 +587,7 @@ class FontFormat(Config):
     ligature_common: str = 'default'
     ligature_discretionary: str = 'default'
     ligature_contextual: str = 'default'
+    oldstyle_nums: str = 'default'
     opacity: float = 1.
     shadow_radius: float = 0.
     shadow_strength: float = 1.
@@ -647,6 +648,7 @@ class FontFormat(Config):
             'ligature_common',
             'ligature_discretionary',
             'ligature_contextual',
+            'oldstyle_nums',
         ):
             if getattr(self, name) not in {'default', 'enabled', 'disabled'}:
                 LOGGER.warning(

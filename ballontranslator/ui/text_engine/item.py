@@ -46,6 +46,7 @@ from .annotations import (
     TEXT_COMBINE_ALL,
     apply_emphasis,
     apply_ligature_axis,
+    apply_oldstyle_nums,
     apply_line_spacing,
     apply_letter_spacing,
     apply_ruby,
@@ -58,12 +59,14 @@ from .annotations import (
     letter_spacing_value,
     line_spacing_values,
     load_rich_text_html,
+    oldstyle_nums_value,
     prepare_ruby_insertion,
     remove_ruby,
     ruby_container_for_cursor,
     ruby_containers_intersecting_cursor,
     set_document_letter_spacing_writing_mode,
     set_ligature_axes,
+    set_oldstyle_nums,
     sync_native_ligature_shaping,
     text_combine_upright_values,
     to_rich_text_html,
@@ -1188,6 +1191,7 @@ class TextBlkItem(QGraphicsTextItem):
                     f'ligature_{axis}',
                     self.ligature_axis_value(axis),
                 )
+            fontformat.oldstyle_nums = self.oldstyle_nums_value()
         (
             fontformat.line_spacing,
             fontformat.line_spacing_type,
@@ -1249,6 +1253,7 @@ class TextBlkItem(QGraphicsTextItem):
             },
             vertical=ffmat.vertical,
         )
+        set_oldstyle_nums(format, ffmat.oldstyle_nums)
         cursor.setCharFormat(format)
         cursor.select(QTextCursor.SelectionType.Document)
         cursor.setBlockCharFormat(format)
@@ -1456,6 +1461,9 @@ class TextBlkItem(QGraphicsTextItem):
     def ligature_axis_value(self, axis: str) -> str:
         return ligature_axis_value(self._active_char_format(), axis)
 
+    def oldstyle_nums_value(self) -> str:
+        return oldstyle_nums_value(self._active_char_format())
+
     def _active_block_format(self) -> QTextBlockFormat:
         cursor = self.textCursor()
         if cursor.hasSelection():
@@ -1524,6 +1532,12 @@ class TextBlkItem(QGraphicsTextItem):
                 state,
                 vertical=self.fontformat.vertical,
             )
+        )
+
+    def setOldstyleNums(self, state: str) -> None:
+        """Apply oldstyle figures to the active text range."""
+        self._apply_text_format(
+            lambda cursor: apply_oldstyle_nums(cursor, state)
         )
 
     def tate_chu_yoko_enabled(self) -> bool:
