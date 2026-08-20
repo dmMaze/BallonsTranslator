@@ -202,6 +202,8 @@ class ControlBlockItem(QGraphicsRectItem):
         return super().hoverEnterEvent(event)
 
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+        if self.ctrl.blk_item is None:
+            return super().hoverMoveEvent(event)
         if self.visible_rect.contains(event.pos()):
             angle_idx = scene_angle_to_cursor_index(
                 self.ctrl.resizeHandleSceneAngle(self.idx)
