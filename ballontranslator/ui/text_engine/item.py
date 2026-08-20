@@ -95,6 +95,7 @@ class _OrderBadgeItem(QGraphicsItem):
         self._font.setPixelSize(11)
         self._text = ''
         self._bounds = QRectF()
+        self._selected = False
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.setFlag(
             QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations,
@@ -127,7 +128,6 @@ class _OrderBadgeItem(QGraphicsItem):
         _option: QStyleOptionGraphicsItem,
         _widget: Optional[QWidget] = None,
     ) -> None:
-        parent = self.parentItem()
         painter.save()
         try:
             painter.setCompositionMode(
@@ -136,7 +136,7 @@ class _OrderBadgeItem(QGraphicsItem):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(
                 TEXTRECT_SELECTED_COLOR
-                if parent is not None and parent.isSelected()
+                if self._selected
                 else TEXTRECT_SHOW_COLOR
             )
             painter.drawRoundedRect(self._bounds, 3, 3)
@@ -149,6 +149,13 @@ class _OrderBadgeItem(QGraphicsItem):
             )
         finally:
             painter.restore()
+
+    def set_selected(self, selected: bool) -> None:
+        selected = bool(selected)
+        if self._selected == selected:
+            return
+        self._selected = selected
+        self.update()
 
 
 class TextBlkItem(QGraphicsTextItem):
@@ -486,7 +493,14 @@ class TextBlkItem(QGraphicsTextItem):
             == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged
             and self._order_badge_item is not None
         ):
-            self._order_badge_item.update()
+            self._order_badge_item.set_selected(bool(value))
+        elif (
+            change
+            == QGraphicsItem.GraphicsItemChange.ItemScenePositionHasChanged
+            and self._order_badge_item is not None
+            and self._order_badge_item.parentItem() is not self
+        ):
+            self._sync_order_badge()
         return result
 
     def refresh_cache_policy(self) -> bool:
@@ -1013,6 +1027,28 @@ class TextBlkItem(QGraphicsTextItem):
         self._order_badge_visible = visible
         self._sync_order_badge()
 
+    def set_order_badge_layer(
+        self,
+        layer: Optional[QGraphicsItem],
+    ) -> None:
+        """Place the badge in a shared overlay, or rejoin it to this item."""
+        badge = self._order_badge_item
+        if badge is None:
+            return
+        parent = self if layer is None else layer
+        if badge.parentItem() is parent:
+            if layer is not None:
+                self._sync_order_badge()
+            return
+        badge.hide()
+        badge.setParentItem(parent)
+        self.setFlag(
+            QGraphicsItem.GraphicsItemFlag.ItemSendsScenePositionChanges,
+            layer is not None,
+        )
+        if layer is not None:
+            self._sync_order_badge()
+
     def refresh_order_badge(self) -> None:
         """Refresh the badge after the item's persistent index changes."""
         self._sync_order_badge()
@@ -1034,7 +1070,13 @@ class TextBlkItem(QGraphicsTextItem):
             outline = self.geometry_controller.visual_outline_in_item()
             visible = not outline.isEmpty()
             if visible:
-                badge.setPos(outline.boundingRect().topLeft())
+                anchor = outline.boundingRect().topLeft()
+                parent = badge.parentItem()
+                badge.setPos(
+                    anchor
+                    if parent is self or parent is None
+                    else self.mapToItem(parent, anchor)
+                )
         badge.setVisible(visible)
 
     def set_order_number_override(self, order_number: Optional[int]) -> None:

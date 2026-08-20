@@ -214,7 +214,7 @@ class Canvas(QGraphicsScene):
         self.scale_factor = 1.
         self.text_transparency = 0
         self.textblock_mode = False
-        self.order_badges_visible = False
+        self.order_badges_visible = True
         self.creating_textblock = False
         self._text_creation_cursor_active = False
         self.create_block_origin: QPointF = None
@@ -289,6 +289,8 @@ class Canvas(QGraphicsScene):
         self.drawingLayer = DrawingLayer()
         self.drawingLayer.setTransformationMode(Qt.TransformationMode.FastTransformation)
         self.textLayer = QGraphicsPixmapItem()
+        self.orderBadgeLayer = QGraphicsRectItem()
+        self.orderBadgeLayer.setZValue(100.0)
 
         self.inpaintLayer.setAcceptDrops(True)
         self.drawingLayer.setAcceptDrops(True)
@@ -301,6 +303,7 @@ class Canvas(QGraphicsScene):
         self.inpaintLayer.setParentItem(self.baseLayer)
         self.drawingLayer.setParentItem(self.baseLayer)
         self.textLayer.setParentItem(self.baseLayer)
+        self.orderBadgeLayer.setParentItem(self.textLayer)
         self.txtblkShapeControl.setParentItem(self.baseLayer)
         self.txtblkGridControl.setParentItem(self.baseLayer)
         self.txtblkProjectiveControl.setParentItem(self.baseLayer)
@@ -820,6 +823,12 @@ class Canvas(QGraphicsScene):
         for item in self.textLayer.childItems():
             if isinstance(item, TextBlkItem):
                 item.set_order_badge_visible(visible)
+
+    def attach_text_item(self, item: TextBlkItem) -> None:
+        """Attach a text item and its badge to their canvas-owned layers."""
+        item.setParentItem(self.textLayer)
+        item.set_order_badge_layer(self.orderBadgeLayer)
+        item.set_order_badge_visible(self.order_badges_visible)
 
     def start_path_reorder(self) -> bool:
         """Start one path gesture that defines a new page reading order."""
@@ -1463,6 +1472,9 @@ class Canvas(QGraphicsScene):
 
     def removeItem(self, item: QGraphicsItem) -> None:
         self.block_selection_signal = True
+        if isinstance(item, TextBlkItem):
+            # Rejoin the badge to its owner before both leave the scene.
+            item.set_order_badge_layer(None)
         if isinstance(item, StrokeImgItem):
             # A stroke paints into its QImage until mouse release. Cleanup can
             # also happen first through activation, hiding, or a page change.

@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
 from qtpy.QtGui import QMouseEvent
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QGraphicsRectItem
 
 from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
@@ -71,7 +71,7 @@ class PathReorderTest(unittest.TestCase):
                 translation=str(idx),
             )
             item = TextBlkItem(block, idx)
-            item.setParentItem(canvas.textLayer)
+            canvas.attach_text_item(item)
             items.append(item)
         self.addCleanup(self._dispose_canvas, canvas, items)
         return canvas, items
@@ -103,6 +103,7 @@ class PathReorderTest(unittest.TestCase):
         self.app.processEvents()
         finished = []
         canvas.path_reorder_finished.connect(finished.append)
+        canvas.set_order_badges_visible(False)
 
         self.assertTrue(canvas.start_path_reorder())
         start = canvas.gv.mapFromScene(QPointF(340, 50))
@@ -228,6 +229,16 @@ class PathReorderTest(unittest.TestCase):
         canvas.gv.setFocus()
         self.app.processEvents()
 
+        self.assertTrue(canvas.order_badges_visible)
+        self.assertTrue(
+            all(item._order_badge_item.isVisible() for item in items)
+        )
+        QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_N)
+        self.app.processEvents()
+        self.assertFalse(canvas.order_badges_visible)
+        self.assertTrue(
+            all(not item._order_badge_item.isVisible() for item in items)
+        )
         QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_N)
         self.app.processEvents()
         self.assertTrue(canvas.order_badges_visible)
@@ -264,7 +275,10 @@ class PathReorderTest(unittest.TestCase):
         badge = item._order_badge_item
         outline = item.geometry_controller.visual_outline_in_item()
 
-        self.assertEqual(badge.pos(), outline.boundingRect().topLeft())
+        self.assertEqual(
+            badge.mapToScene(QPointF()),
+            item.mapToScene(outline.boundingRect().topLeft()),
+        )
         self.assertEqual(badge.boundingRect().bottom(), 0)
         self.assertLess(badge.boundingRect().top(), 0)
         badge_center = badge.mapToScene(badge.boundingRect().center())
@@ -278,6 +292,24 @@ class PathReorderTest(unittest.TestCase):
         item.set_ui_guide_suppressed(True)
         self.assertFalse(badge.isVisible())
         item.set_ui_guide_suppressed(False)
+        self.assertTrue(badge.isVisible())
+
+        item.setPos(item.pos() + QPointF(15, 10))
+        self.assertEqual(
+            badge.mapToScene(QPointF()),
+            item.mapToScene(outline.boundingRect().topLeft()),
+        )
+
+        cover = QGraphicsRectItem(badge.sceneBoundingRect())
+        cover.setParentItem(canvas.textLayer)
+        hits = canvas.items(badge.mapToScene(badge.boundingRect().center()))
+        self.assertLess(hits.index(badge), hits.index(cover))
+
+        canvas.removeItem(item)
+        self.assertIsNone(badge.scene())
+        self.assertIs(badge.parentItem(), item)
+        canvas.attach_text_item(item)
+        self.assertIs(badge.parentItem(), canvas.orderBadgeLayer)
         self.assertTrue(badge.isVisible())
 
     def test_reorder_uses_existing_canvas_undo_command(self) -> None:

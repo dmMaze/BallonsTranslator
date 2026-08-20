@@ -572,10 +572,7 @@ class SceneTextManager(QObject):
 
     def addTextBlkItem(self, textblk_item: TextBlkItem) -> TextBlkItem:
         self.textblk_item_list.append(textblk_item)
-        textblk_item.setParentItem(self.canvas.textLayer)
-        textblk_item.set_order_badge_visible(
-            self.canvas.order_badges_visible
-        )
+        self.canvas.attach_text_item(textblk_item)
         textblk_item.begin_edit.connect(self.onTextBlkItemBeginEdit)
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
@@ -614,7 +611,7 @@ class SceneTextManager(QObject):
         self.canvas.block_selection_signal = True
         for blkitem, p_widget in zip(blkitem_list, p_widget_list):
             self.textblk_item_list.insert(blkitem.idx, blkitem)
-            blkitem.setParentItem(self.canvas.textLayer)
+            self.canvas.attach_text_item(blkitem)
             self.pairwidget_list.insert(p_widget.idx, p_widget)
             self.textEditList.insertPairWidget(p_widget, p_widget.idx)
             if self.txtblkShapeControl.blk_item is not None and blkitem.isSelected():
