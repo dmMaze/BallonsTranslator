@@ -8,10 +8,31 @@ import numpy as np
 
 
 def get_annotations(obj):
-    if hasattr(obj, '__annotations__'):
-        return obj.__annotations__
-    else:
-        return inspect.get_annotations(obj)
+    """Return the type annotations for a class or one of its instances.
+
+    >>> import dataclasses
+    >>> @dataclasses.dataclass
+    ... class Demo:
+    ...     value: int = 0
+    >>> get_annotations(Demo())
+    {'value': <class 'int'>}
+    """
+    cls = obj if isinstance(obj, type) else type(obj)
+    # Walk the MRO like attribute lookup: dataclasses keep __annotations__ as
+    # a class attribute up to Python 3.13, and inspect.get_annotations does
+    # not exist before Python 3.10.
+    for base in cls.__mro__:
+        annotations = base.__dict__.get('__annotations__')
+        if annotations is not None:
+            return annotations
+    # Python 3.14+ dataclasses expose annotations through __annotate__ instead.
+    getter = getattr(inspect, 'get_annotations', None)
+    if getter is not None:
+        try:
+            return getter(cls)
+        except (TypeError, AttributeError):
+            pass
+    return {}
 
 
 # decorator to wrap original __init__
@@ -40,7 +61,7 @@ def nested_dataclass(*args, **dataclass_kwargs):
                     continue
                 value = kwargs[name]
                 # getting field type
-                ft = check_class.__annotations__.get(name, None)
+                ft = get_annotations(check_class).get(name, None)
                   
                 if is_dataclass(ft) and isinstance(value, dict):
                     obj = ft(**value)
@@ -66,7 +87,7 @@ class Config:
 
     @classmethod
     def annotations_set(cls):
-        return set(list(cls.__annotations__))
+        return set(list(get_annotations(cls)))
     
     def __getitem__(self, key: str):
         assert key in get_annotations(self), f'type object \'{self.__class__.__name__}\' has no attribute {key}'
@@ -77,7 +98,7 @@ class Config:
 
     @classmethod
     def params(cls):
-        return cls.__annotations__
+        return get_annotations(cls)
     
     def merge(self, target):
         tgt_keys = target.annotations_set()

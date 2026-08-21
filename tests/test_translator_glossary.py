@@ -91,7 +91,12 @@ class TranslatorGlossaryTest(unittest.TestCase):
 
         with mock.patch.dict(
             os.environ,
-            {"HOME": str(self.root), "TEST_GLOSSARY_FILE": str(path)},
+            {
+                # Windows expanduser reads USERPROFILE, not HOME.
+                "HOME": str(self.root),
+                "USERPROFILE": str(self.root),
+                "TEST_GLOSSARY_FILE": str(path),
+            },
         ):
             direct = load_glossary(path)
             from_home = load_glossary("~/terms.json")

@@ -211,6 +211,12 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'google_vision', 'proxy', 'display_name'): {
         "source": 'proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'proxy'),
     },
+    ('ocr', 'macos_ocr', 'confidence_level', 'display_name'): {
+        "source": 'Confidence Level', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Confidence Level'),
+    },
+    ('ocr', 'macos_ocr', 'language', 'display_name'): {
+        "source": 'language', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'language'),
+    },
     ('ocr', 'manga_ocr', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
     },
@@ -300,6 +306,9 @@ MODULE_PARAM_CATALOG = {
     },
     ('ocr', 'stariver_ocr', 'update_token_btn', 'display_name'): {
         "source": '更新 Token', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '更新 Token'),
+    },
+    ('ocr', 'windows_ocr', 'language', 'display_name'): {
+        "source": 'language', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'language'),
     },
     ('textdetector', 'ctbd', '', 'description'): {
         "source": 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.'),

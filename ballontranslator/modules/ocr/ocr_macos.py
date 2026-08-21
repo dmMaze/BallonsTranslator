@@ -97,10 +97,12 @@ if platform.system() == 'Darwin' and platform.mac_ver()[0] >= '10.15':
         class OCRApple(OCRBase):
             dependencies = ['pyobjc-framework-vision']
 
+            # Static placeholder that the lazy metadata scanner can read;
+            # language options are only known at runtime from the Vision framework.
             params = {
                 'language': {
                     'type':'selector',
-                    'options': list(get_supported_languages()[0]),
+                    'options': ['en-US'],
                     'value': 'en-US',
                 },
                 # While this does appear 
@@ -119,6 +121,9 @@ if platform.system() == 'Darwin' and platform.mac_ver()[0] >= '10.15':
                     'display_name': 'Confidence Level',
                 },
             }
+            # Refresh the runtime options; subscript targets are ignored by
+            # the lazy scanner, so its static metadata above stays intact.
+            params['language']['options'] = list(get_supported_languages()[0])
             language = 'en-US'
             recognition = 'accurate'
             confidence = '0.1'
