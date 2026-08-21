@@ -169,6 +169,11 @@ class PhotoshopBridgeDialog(QDialog):
         self.script_status_label.setWordWrap(True)
         status_layout.addRow(lbl_script, self.script_status_label)
 
+        self.check_update_btn = QPushButton(self.tr("Check Update"))
+        self.check_update_btn.setFixedHeight(28)
+        self.check_update_btn.clicked.connect(self.refresh_status)
+        status_layout.addRow("", self.check_update_btn)
+
         layout.addWidget(status_group)
 
         # 2. Quick Actions Group
@@ -208,19 +213,6 @@ class PhotoshopBridgeDialog(QDialog):
         info_label.setWordWrap(True)
         info_label.setStyleSheet("background: transparent; color: gray; font-size: 11px;")
         layout.addWidget(info_label)
-
-        # Close and Refresh buttons
-        btn_box = QHBoxLayout()
-        refresh_btn = QPushButton(self.tr("Refresh Status"))
-        refresh_btn.clicked.connect(self.refresh_status)
-        btn_box.addWidget(refresh_btn)
-        
-        btn_box.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
-        
-        close_btn = QPushButton(self.tr("Close"))
-        close_btn.clicked.connect(self.accept)
-        btn_box.addWidget(close_btn)
-        layout.addLayout(btn_box)
 
     def refresh_status(self):
         ps_dir, scripts_dir, exe_path = get_photoshop_paths()
