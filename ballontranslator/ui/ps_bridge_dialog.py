@@ -121,7 +121,7 @@ class PhotoshopBridgeDialog(QDialog):
         super().__init__(parent)
         self.project = project
         self.setObjectName("PhotoshopBridgeDialog")
-        self.setWindowTitle(self.tr("Photoshop Bridge & Typer Tools"))
+        self.setWindowTitle(self.tr("Photoshop Bridge"))
         self.setMinimumWidth(480)
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
 
@@ -143,6 +143,25 @@ class PhotoshopBridgeDialog(QDialog):
             QDialog#PhotoshopBridgeDialog QLabel,
             QDialog#PhotoshopBridgeDialog QGroupBox {
                 background-color: transparent;
+            }
+            QPushButton#OpenPSBtn {
+                background-color: rgb(30, 147, 229);
+                color: #ffffff;
+                font-weight: bold;
+                border: 1px solid rgb(25, 125, 195);
+                border-radius: 4px;
+                font-size: 13px;
+            }
+            QPushButton#OpenPSBtn:hover {
+                background-color: rgb(45, 160, 245);
+            }
+            QPushButton#OpenPSBtn:pressed {
+                background-color: rgb(20, 120, 190);
+            }
+            QPushButton#OpenPSBtn:disabled {
+                background-color: rgba(30, 147, 229, 60);
+                color: rgba(255, 255, 255, 120);
+                border: 1px solid transparent;
             }
         """)
 
@@ -184,8 +203,9 @@ class PhotoshopBridgeDialog(QDialog):
         actions_layout.setContentsMargins(12, 12, 12, 12)
 
         # Launch / Open in Photoshop button
-        self.open_ps_btn = QPushButton(self.tr("Open Project in Photoshop"))
-        self.open_ps_btn.setFixedHeight(34)
+        self.open_ps_btn = QPushButton(self.tr("Open This Project in Photoshop"))
+        self.open_ps_btn.setObjectName("OpenPSBtn")
+        self.open_ps_btn.setFixedHeight(36)
         self.open_ps_btn.clicked.connect(self.on_open_in_photoshop)
         actions_layout.addWidget(self.open_ps_btn)
 
@@ -221,19 +241,25 @@ class PhotoshopBridgeDialog(QDialog):
             "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
         )
 
-        source_ver = extract_jsx_version(source_jsx) or "2.5.0"
+        source_ver = extract_jsx_version(source_jsx) or "2.5.1"
         source_hash = get_file_md5(source_jsx)
+
+        installed_jsx = os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx") if scripts_dir else None
+        is_installed = bool(installed_jsx and os.path.isfile(installed_jsx))
 
         if ps_dir:
             ps_name = os.path.basename(ps_dir)
             self.ps_status_label.setText(f"<span style='color: #4CAF50; font-weight: bold;'>{ps_name}</span>")
+            self.install_btn.setEnabled(True)
             self.open_ps_btn.setEnabled(True)
+            self.open_ps_btn.setToolTip("")
         else:
             self.ps_status_label.setText(f"<span style='color: #F44336; font-weight: bold;'>{self.tr('Not detected')}</span>")
+            self.install_btn.setEnabled(False)
             self.open_ps_btn.setEnabled(False)
+            self.open_ps_btn.setToolTip(self.tr("Photoshop installation not detected"))
 
-        installed_jsx = os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx") if scripts_dir else None
-        if installed_jsx and os.path.isfile(installed_jsx):
+        if is_installed:
             installed_ver = extract_jsx_version(installed_jsx) or "1.0.0"
             installed_hash = get_file_md5(installed_jsx)
 
@@ -273,25 +299,44 @@ class PhotoshopBridgeDialog(QDialog):
             QMessageBox.warning(self, self.tr("Error"), self.tr("Installer script not found."))
 
     def on_open_in_photoshop(self):
-        _, _, exe_path = get_photoshop_paths()
-        source_jsx = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
-        )
+        _, scripts_dir, exe_path = get_photoshop_paths()
+        target_jsx = os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx") if scripts_dir else None
+        if not target_jsx or not os.path.isfile(target_jsx):
+            target_jsx = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
+            )
 
-        if not os.path.isfile(source_jsx):
+        if not os.path.isfile(target_jsx):
             QMessageBox.warning(self, self.tr("Error"), self.tr("Bridge JSX script not found."))
             return
 
+        # Write Bridge Context for seamless automatic project pickup in Photoshop
+        if self.project and getattr(self.project, 'proj_path', None) and os.path.isfile(self.project.proj_path):
+            try:
+                import json
+                import tempfile
+                import time
+                context_file = os.path.join(tempfile.gettempdir(), "bt_ps_bridge_context.json")
+                ctx_data = {
+                    "project_path": os.path.abspath(self.project.proj_path).replace("\\", "/"),
+                    "active_page": getattr(self.project, "curr_imgname", "") or "",
+                    "timestamp": time.time(),
+                }
+                with open(context_file, "w", encoding="utf-8") as f:
+                    json.dump(ctx_data, f, ensure_ascii=False, indent=2)
+            except Exception as ctx_err:
+                LOGGER.warning(f"Failed to write Photoshop Bridge context: {ctx_err}")
+
         if exe_path and os.path.isfile(exe_path):
             try:
-                subprocess.Popen([exe_path, "-r", source_jsx])
+                subprocess.Popen([exe_path, "-r", target_jsx])
             except Exception as e:
                 LOGGER.error(f"Failed to launch Photoshop with script: {e}")
-                os.startfile(source_jsx)
+                os.startfile(target_jsx)
         else:
             try:
-                os.startfile(source_jsx)
+                os.startfile(target_jsx)
             except Exception as e:
                 QMessageBox.warning(self, self.tr("Error"), f"{self.tr('Failed to open Photoshop')}: {e}")
 

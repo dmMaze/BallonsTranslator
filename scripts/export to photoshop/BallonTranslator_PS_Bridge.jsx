@@ -1,10 +1,10 @@
 // BallonTranslator_PS_Bridge.jsx
-// Version: 2.5.0
+// Version: 2.5.1
 // Multilingual Bidirectional Bridge between BallonsTranslator and Adobe Photoshop (CC 2019 - CC 2026+)
 
 #target photoshop
 
-var BT_BRIDGE_VERSION = "2.5.0";
+var BT_BRIDGE_VERSION = "2.5.1";
 
 
 
@@ -97,7 +97,11 @@ var BT_I18N = {
     detectLanguage: function() {
         var loc = "";
         try {
-            loc = (app.locale || "").toLowerCase();
+            if (typeof app !== "undefined" && app.locale) {
+                loc = String(app.locale).toLowerCase();
+            } else if (typeof $ !== "undefined" && $.locale) {
+                loc = String($.locale).toLowerCase();
+            }
         } catch (e) {}
         if (loc.indexOf("ru") !== -1) return "ru";
         if (loc.indexOf("zh") !== -1 || loc.indexOf("cn") !== -1) return "zh";
@@ -106,9 +110,9 @@ var BT_I18N = {
 
     strings: {
         dlgTitle: {
-            en: "BallonsTranslator - Photoshop Bridge v2.2",
-            ru: "\u041c\u043e\u0441\u0442 BallonsTranslator - Photoshop v2.2",
-            zh: "BallonsTranslator - Photoshop \u6865\u63a5 v2.2"
+            en: "BallonsTranslator - Photoshop Bridge",
+            ru: "\u041c\u043e\u0441\u0442 BallonsTranslator - Photoshop",
+            zh: "BallonsTranslator - Photoshop \u6865\u63a5"
         },
         projInfo: {
             en: "Project Information",
@@ -402,8 +406,42 @@ function findFile(baseDir, relativeName) {
 // Main Bridge Controller
 // ==========================================
 function runBallonTranslatorBridge() {
-    // 1. Open project JSON
-    var jsonFile = File.openDialog("Select BallonsTranslator Project JSON (*.json)", "JSON Files:*.json;All Files:*.*");
+    // 1. Open project JSON (Check for Bridge Context from BallonsTranslator first)
+    var jsonFile = null;
+    var initialActivePage = null;
+    try {
+        var tempFolder = Folder.temp;
+        var ctxFile = new File(tempFolder.fsName + "/bt_ps_bridge_context.json");
+        if (ctxFile.exists) {
+            ctxFile.encoding = "UTF-8";
+            ctxFile.open("r");
+            var ctxText = ctxFile.read();
+            ctxFile.close();
+            if (ctxText) {
+                var ctx = JSON.parse(ctxText);
+                if (ctx && ctx.project_path) {
+                    var candFile = new File(ctx.project_path);
+                    if (candFile.exists) {
+                        var ageSec = (new Date().getTime() / 1000) - (ctx.timestamp || 0);
+                        if (ageSec < 300) { // Valid within 5 minutes
+                            jsonFile = candFile;
+                            if (ctx.active_page) {
+                                initialActivePage = ctx.active_page;
+                            }
+                        }
+                    }
+                }
+            }
+            try { ctxFile.remove(); } catch (rmErr) {}
+        }
+    } catch (ctxErr) {}
+
+    if (!jsonFile || !jsonFile.exists) {
+        jsonFile = File.openDialog(
+            BT_I18N.t("selectJsonPrompt") || "Select BallonsTranslator Project JSON (*.json)",
+            "JSON Files:*.json;All Files:*.*"
+        );
+    }
     if (!jsonFile || !jsonFile.exists) return;
 
     var projectDir = jsonFile.parent;
@@ -474,14 +512,21 @@ function runBallonTranslatorBridge() {
 
     var listPages = pnlPages.add("listbox", undefined, [], { multiselect: true });
     listPages.preferredSize = [460, 160];
+    var matchedInitial = false;
     for (var i = 0; i < pageNames.length; i++) {
         var pName = pageNames[i];
         var blkCount = (projectData.pages[pName] && projectData.pages[pName].length) ? projectData.pages[pName].length : 0;
         var item = listPages.add("item", pName + " (" + blkCount + " blocks)");
         item.pageKey = pName;
+        if (initialActivePage && pName === initialActivePage) {
+            item.selected = true;
+            matchedInitial = true;
+        }
     }
-    for (var sInit = 0; sInit < listPages.items.length; sInit++) {
-        listPages.items[sInit].selected = true;
+    if (!matchedInitial) {
+        for (var sInit = 0; sInit < listPages.items.length; sInit++) {
+            listPages.items[sInit].selected = true;
+        }
     }
 
     var grpSelectBtns = pnlPages.add("group");
