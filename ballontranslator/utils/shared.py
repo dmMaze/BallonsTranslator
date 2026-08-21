@@ -155,6 +155,7 @@ cache_path: str = osp.join(PROGRAM_PATH, '.btrans_cache/cache.json')
 CACHE_UPDATED = False
 check_local_file_hash = True
 
+FONT_REGISTRY = None
 FONT_FAMILIES: set = None
 CUSTOM_FONTS = []
 # Windows 自带的老旧字体：渲染时可能触发 DirectWrite CreateFontFaceFromHDC 告警

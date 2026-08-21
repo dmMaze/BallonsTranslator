@@ -30,6 +30,7 @@ from ballontranslator.utils.fontformat import (
     font_weight_from_qt,
     font_weight_to_qt,
 )
+from ballontranslator.utils.font_registry import FontEntry
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -169,6 +170,25 @@ class FontWeightUiTest(unittest.TestCase):
             [int(weight) for weight in FontWeight],
         )
         self.assertIs(selector.weight(), FontWeight.Normal)
+
+    def test_nonstandard_face_weight_is_safe_in_separate_mode(self):
+        panel = self._make_panel()
+        active = FontFormat(font_family='Example', font_weight=FontWeight.Light)
+        panel.global_format = active
+        panel.set_active_format(active)
+        entry = FontEntry(
+            'Example Book',
+            'Example Book',
+            'Example Book',
+            'custom',
+            weights=[250],
+        )
+        panel.familybox.update_font_entries([entry])
+
+        panel.familybox.setCurrentIndex(0)
+
+        self.assertEqual(active.font_family, 'Example Book')
+        self.assertIs(active.font_weight, FontWeight.ExtraLight)
 
     def test_bold_shortcut_action_keeps_its_normal_bold_toggle(self):
         panel = self._make_panel()

@@ -472,6 +472,11 @@
         <translation>Csak egyedi betűtípusok mutatása</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
+        <source>Group font weights by family</source>
+        <translation>Betűvastagságok csoportosítása család szerint</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="906"/>
         <source>Hide Unused Fonts</source>
         <translation>Nem használt betűtípusok elrejtése</translation>

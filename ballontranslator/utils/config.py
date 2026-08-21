@@ -354,6 +354,7 @@ class ProgramConfig(Config):
     text_transform_panel: bool = True
     expand_ttransform_panel: bool = True
     excluded_fonts: List[str] = field(default_factory=list)
+    let_group_font_faces_flag: bool = True
 
     @staticmethod
     def load(cfg_path: str):

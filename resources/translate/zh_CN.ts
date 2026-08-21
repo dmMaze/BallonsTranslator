@@ -491,6 +491,11 @@
         <translation>只显示 fonts 文件夹下的字体</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
+        <source>Group font weights by family</source>
+        <translation>按字体族归组字重</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1014"/>
         <source>Hide Unused Fonts</source>
         <translation>隐藏不使用的字体</translation>

@@ -633,6 +633,12 @@ class FontFormat(Config):
                 self.font_size = pt2px(da['size'])
             if self.font_weight is None and 'weight' in da:
                 self.font_weight = da['weight']
+            if (
+                self.font_weight is None
+                and isinstance(da.get('bold'), bool)
+                and da['bold']
+            ):
+                self.font_weight = FontWeight.Bold
             if 'family' in da:
                 self.font_family = da['family']
 
@@ -690,6 +696,8 @@ class FontFormat(Config):
     def to_serializable_dict(self) -> dict:
         """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
+        serialized.pop('bold', None)
+        serialized.pop('deprecated_attributes', None)
         serialized['font_weight'] = int(FontWeight(self.font_weight))
         serialized['text_transform'] = [
             asdict(transform) for transform in self.text_transform

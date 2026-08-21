@@ -503,14 +503,16 @@ class MainWindow(mainwindow_cls):
         self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.font_list_changed.connect(self.on_show_only_custom_font)
+        self.configPanel.group_font_faces_changed.connect(
+            self.on_font_picker_mode_changed
+        )
         self.configPanel.compact_vertical_punctuation_changed.connect(
             self.st_manager.refresh_vertical_layouts
         )
         self.configPanel.apply_auto_tate_chu_yoko_requested.connect(
             self.apply_auto_tate_chu_yoko_to_project
         )
-        if pcfg.let_show_only_custom_fonts_flag or pcfg.excluded_fonts:
-            self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+        self.on_font_picker_mode_changed()
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -687,6 +689,33 @@ class MainWindow(mainwindow_cls):
             save_text_styles()
 
     def on_show_only_custom_font(self, only_custom: bool) -> None:
+        self.on_font_picker_mode_changed(only_custom)
+
+    def on_font_picker_mode_changed(
+        self, only_custom: bool | None = None
+    ) -> None:
+        if only_custom is None:
+            only_custom = pcfg.let_show_only_custom_fonts_flag
+        registry = shared.FONT_REGISTRY
+        if registry is not None:
+            if pcfg.let_group_font_faces_flag:
+                entries = registry.grouped_entries(only_custom)
+            else:
+                entries = registry.separate_face_entries(only_custom)
+            excluded = {name.casefold() for name in pcfg.excluded_fonts}
+            entries = [
+                entry
+                for entry in entries
+                if entry.qt_family.casefold() not in excluded
+                and entry.canonical_family.casefold() not in excluded
+            ]
+            format_panel = self.textPanel.formatpanel
+            format_panel.familybox.update_font_entries(entries)
+            format_panel.set_font_grouping_mode(
+                pcfg.let_group_font_faces_flag
+            )
+            return
+
         if only_custom:
             font_list = shared.CUSTOM_FONTS
         else:

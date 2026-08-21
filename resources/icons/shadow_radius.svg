@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24" fill="none">
+  <!-- 중심 (12, 12), 반지름 9.25, 반지름선 각도 -45°로 정규화한다. -->
+  <circle cx="12" cy="12" r="9.25"
+          stroke="#697187" stroke-width="1.47"/>
+  <circle cx="12" cy="12" r="1.5" fill="#697187"/>
+  <path d="M12 12L18.541 5.459"
+        stroke="#697187" stroke-width="1.15" stroke-linecap="round"/>
+</svg>

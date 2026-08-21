@@ -335,6 +335,11 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
+        <source>Group font weights by family</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="906"/>
         <source>Hide Unused Fonts</source>
         <translation type="unfinished"></translation>

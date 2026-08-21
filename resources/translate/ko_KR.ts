@@ -550,6 +550,11 @@
         <source>Show only custom fonts</source>
         <translation>커스텀 폰트만 표시</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
+        <source>Group font weights by family</source>
+        <translation>글꼴 계열별로 굵기 묶기</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>

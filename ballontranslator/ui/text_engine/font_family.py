@@ -6,6 +6,9 @@ from typing import Callable, Iterable, Sequence
 
 from qtpy.QtGui import QFont, QTextCursor, QTextDocument
 
+from ballontranslator.utils import shared
+from ballontranslator.utils.fontformat import font_weight_from_qt
+
 
 _QT_FAMILY_BY_PROJECT_NAME: dict[str, str] = {}
 _PROJECT_FAMILY_BY_QT_NAME: dict[str, str] = {}
@@ -65,36 +68,77 @@ def register_qt_font_family_aliases(
     return registered
 
 
-def font_family_for_qt(family: str) -> str:
+def _registry_resolution(family: str, weight: int | None = None):
+    registry = getattr(shared, 'FONT_REGISTRY', None)
+    if registry is None:
+        return None
+    return registry.resolve_family(family, weight)
+
+
+def font_family_for_qt(family: str, weight: int | None = None) -> str:
     """Return the internal family name Qt can resolve correctly."""
-    return _QT_FAMILY_BY_PROJECT_NAME.get(family.casefold(), family)
+    resolution = _registry_resolution(family, weight)
+    render_family = (
+        resolution.qt_family
+        if resolution is not None and resolution.qt_family
+        else family
+    )
+    return _QT_FAMILY_BY_PROJECT_NAME.get(
+        render_family.casefold(),
+        render_family,
+    )
 
 
-def font_family_for_project(family: str) -> str:
+def font_family_for_project(
+    family: str,
+    weight: int | None = None,
+) -> str:
     """Return the stable user/project-facing name for an internal family."""
-    return _PROJECT_FAMILY_BY_QT_NAME.get(family.casefold(), family)
+    project_family = _PROJECT_FAMILY_BY_QT_NAME.get(
+        family.casefold(),
+        family,
+    )
+    resolution = _registry_resolution(project_family, weight)
+    if resolution is not None and resolution.canonical_family:
+        return resolution.canonical_family
+    return project_family
 
 
 def qfont_with_family(font: QFont, family: str) -> QFont:
     """Copy ``font`` and safely set any project-facing family."""
-    resolved = font_family_for_qt(family)
     result = QFont(font)
+    weight = int(font_weight_from_qt(result.weight()))
+    resolution = _registry_resolution(family, weight)
+    resolved = font_family_for_qt(family, weight)
     # Qt 5 can retain an HTML font's old family list after setFamily(), while
     # family() can retain its old value after setFamilies(). Set both so the
     # renderer and the persisted/UI-facing accessor agree on one family.
     result.setFamilies([resolved])
     result.setFamily(resolved)
+    style_name = getattr(
+        getattr(resolution, 'face', None),
+        'style_name',
+        '',
+    )
+    if style_name and hasattr(result, 'setStyleName'):
+        result.setStyleName(style_name)
     return result
 
 
 def html_uses_project_font_family(html: str) -> bool:
     """Return whether HTML can require internal family normalization."""
-    if not _QT_FAMILY_BY_PROJECT_NAME:
-        return False
     folded_html = html.casefold()
-    return any(
+    if any(
         family in folded_html
         for family in _QT_FAMILY_BY_PROJECT_NAME
+    ):
+        return True
+    registry = getattr(shared, 'FONT_REGISTRY', None)
+    if registry is None:
+        return False
+    return any(
+        key in folded_html
+        for key in registry.entries_by_key
     )
 
 
@@ -102,7 +146,10 @@ def normalize_document_font_families(document: QTextDocument) -> int:
     """Replace project-facing aliases in a live document with Qt-safe names."""
     replacements = 0
     default_font = document.defaultFont()
-    resolved_default = font_family_for_qt(default_font.family())
+    resolved_default = font_family_for_qt(
+        default_font.family(),
+        int(font_weight_from_qt(default_font.weight())),
+    )
     if resolved_default != default_font.family():
         document.setDefaultFont(
             qfont_with_family(default_font, default_font.family())
@@ -117,7 +164,8 @@ def normalize_document_font_families(document: QTextDocument) -> int:
             fragment = iterator.fragment()
             char_format = fragment.charFormat()
             family = char_format.font().family()
-            if font_family_for_qt(family) != family:
+            weight = int(font_weight_from_qt(char_format.font().weight()))
+            if font_family_for_qt(family, weight) != family:
                 char_format.setFont(
                     qfont_with_family(char_format.font(), family)
                 )
@@ -135,16 +183,33 @@ def normalize_document_font_families(document: QTextDocument) -> int:
 
 def restore_project_font_families_in_html(html: str) -> str:
     """Hide internal aliases in serialized ``font-family`` declarations."""
-    aliases = _QT_FAMILY_BY_PROJECT_NAME.values()
-    if not any(alias in html for alias in aliases):
+    replacements = {
+        alias: _PROJECT_FAMILY_BY_QT_NAME[alias.casefold()]
+        for alias in _QT_FAMILY_BY_PROJECT_NAME.values()
+    }
+    registry = getattr(shared, 'FONT_REGISTRY', None)
+    if registry is not None:
+        for key, entry in registry.entries_by_key.items():
+            replacements.setdefault(key, entry.canonical_family)
+        for entry in registry.entries():
+            for name in {
+                entry.display_family,
+                entry.qt_family,
+                *entry.aliases,
+            }:
+                if name:
+                    replacements.setdefault(name, entry.canonical_family)
+    if not replacements:
         return html
 
     def restore_declaration(match: re.Match) -> str:
         declaration = match.group(0)
-        for alias in aliases:
-            declaration = declaration.replace(
-                alias,
-                _PROJECT_FAMILY_BY_QT_NAME[alias.casefold()],
+        for alias in sorted(replacements, key=len, reverse=True):
+            declaration = re.sub(
+                rf'(?<![\w]){re.escape(alias)}(?![\w])',
+                lambda _match, value=replacements[alias]: value,
+                declaration,
+                flags=re.IGNORECASE,
             )
         return declaration
 

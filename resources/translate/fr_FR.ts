@@ -279,6 +279,11 @@
         <translation>Afficher uniquement les polices personnalisées</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
+        <source>Group font weights by family</source>
+        <translation>Grouper les graisses par famille</translation>
+    </message>
+    <message>
         <location filename="../ui/configpanel.py" line="466" />
         <source>Result image format</source>
         <translation>Format de l'image du résultat</translation>

@@ -1,0 +1,88 @@
+{
+  "system_aliases": [
+    {
+      "canonical": "Batang",
+      "display": {"ko-KR": "바탕"},
+      "aliases": ["바탕"],
+      "note": "Windows Korean proportional serif alias."
+    },
+    {
+      "canonical": "BatangChe",
+      "display": {"ko-KR": "바탕체"},
+      "aliases": ["바탕체"],
+      "note": "Windows Korean fixed-pitch serif alias."
+    },
+    {
+      "canonical": "Dotum",
+      "display": {"ko-KR": "돋움"},
+      "aliases": ["돋움"],
+      "note": "Windows Korean proportional sans-serif alias."
+    },
+    {
+      "canonical": "DotumChe",
+      "display": {"ko-KR": "돋움체"},
+      "aliases": ["돋움체"],
+      "note": "Windows Korean fixed-pitch sans-serif alias."
+    },
+    {
+      "canonical": "Gulim",
+      "display": {"ko-KR": "굴림"},
+      "aliases": ["굴림"],
+      "note": "Windows Korean proportional rounded sans-serif alias."
+    },
+    {
+      "canonical": "GulimChe",
+      "display": {"ko-KR": "굴림체"},
+      "aliases": ["굴림체"],
+      "note": "Windows Korean fixed-pitch rounded sans-serif alias."
+    },
+    {
+      "canonical": "Gungsuh",
+      "display": {"ko-KR": "궁서"},
+      "aliases": ["궁서"],
+      "note": "Windows Korean proportional script alias."
+    },
+    {
+      "canonical": "GungsuhChe",
+      "display": {"ko-KR": "궁서체"},
+      "aliases": ["궁서체"],
+      "note": "Windows Korean fixed-pitch script alias."
+    },
+    {
+      "canonical": "Malgun Gothic",
+      "display": {"ko-KR": "맑은 고딕"},
+      "aliases": ["맑은 고딕"],
+      "note": "Windows Korean UI font alias."
+    }
+  ],
+  "custom_groups": [
+    {
+      "canonical": "Korail Round Gothic",
+      "display": {"ko-KR": "코레일 둥근고딕"},
+      "note": "The font files declare weight-specific family names, but they can be presented as one picker family with separate weights.",
+      "members": [
+        {
+          "canonical": "Korail Round Gothic Light",
+          "display": {"ko-KR": "코레일 둥근고딕 Light"},
+          "weight": 300,
+          "style": "Light",
+          "aliases": ["Korail Round Gothic L", "코레일 둥근고딕 Light"]
+        },
+        {
+          "canonical": "Korail Round Gothic Medium",
+          "display": {"ko-KR": "코레일 둥근고딕 Medium"},
+          "weight": 500,
+          "style": "Medium",
+          "aliases": ["Korail Round Gothic M", "코레일 둥근고딕 Medium"]
+        },
+        {
+          "canonical": "Korail Round Gothic Bold",
+          "display": {"ko-KR": "코레일 둥근고딕 Bold"},
+          "weight": 700,
+          "style": "Bold",
+          "aliases": ["Korail Round Gothic B", "코레일 둥근고딕 Bold"]
+        }
+      ]
+    }
+  ]
+}

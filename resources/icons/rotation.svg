@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24" fill="none">
+  <!-- 모든 위/아래 요소는 y=12를 기준으로 정확히 대칭이다. -->
+  <path d="M12.768 1.243L1.261 12L12.768 22.757"
+        stroke="#697187" stroke-width="1.267" stroke-linecap="square" stroke-linejoin="miter"/>
+  <path d="M14.105 4.688A5.86 8.767 0 0 1 14.105 19.312"
+        stroke="#697187" stroke-width="1.213"/>
+  <path d="M12.625 2.2L12.925 6.3L16.125 4.1ZM12.625 21.8L16.125 19.9L12.925 17.7Z"
+        fill="#697187"/>
+  <path d="M18 3.5H23M20.5 18V23M18 20.5H23"
+        stroke="#697187" stroke-width="1.125" stroke-linecap="square"/>
+  <circle cx="16.75" cy="12" r="2.4"
+          fill="#ffffff" stroke="#697187" stroke-width="1.125"/>
+</svg>

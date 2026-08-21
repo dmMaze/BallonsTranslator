@@ -1,7 +1,9 @@
+from pathlib import Path
 from typing import Callable
 
 from qtpy.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -13,7 +15,16 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qtpy.QtCore import QEvent, QPoint, QRect, QSize, QTimer, Signal, Qt
+from qtpy.QtCore import (
+    QEvent,
+    QPoint,
+    QRect,
+    QSignalBlocker,
+    QSize,
+    QTimer,
+    Signal,
+    Qt,
+)
 
 from ...custom_widget import (
     PanelArea,
@@ -22,9 +33,11 @@ from ...custom_widget import (
     SmallParamLabel,
     SmallSizeComboBox,
     SmallSizeControlLabel,
-    TextCheckerLabel,
 )
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
+from ...icon_rendering import render_svg_pixmap
+from ballontranslator.utils import shared
+from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import FontFormat
 from ..annotations import (
     FONT_FEATURES_AVAILABLE,
@@ -57,6 +70,15 @@ def _atomic_unit(parent: QWidget, *widgets: QWidget):
     return unit
 
 
+def _compact_unit(unit: QWidget, *boxes: QComboBox) -> None:
+    unit.setSizePolicy(
+        QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+    )
+    unit.layout().setSpacing(0)
+    for box in boxes:
+        box.setFixedWidth(38)
+
+
 def _adaptive_row(parent: QWidget, *units: QWidget):
     row = QWidget(parent)
     row.setObjectName('TextAdvancedFormatUnit')
@@ -68,10 +90,71 @@ def _adaptive_row(parent: QWidget, *units: QWidget):
     return row, layout
 
 
-class TextShadowGroup(QGroupBox):
+def _set_svg_label(
+    label: QLabel,
+    filename: str,
+    width: int = 22,
+    height: int = 22,
+) -> None:
+    path = str(Path(shared.PROGRAM_PATH) / 'resources' / 'icons' / filename)
+    label.setFixedSize(width, height)
+    label.setPixmap(
+        render_svg_pixmap(
+            path, width, height, label.devicePixelRatioF()
+        )
+    )
+
+
+def _gradient_angle_for_ui(clockwise_angle: float) -> float:
+    """Convert persisted clockwise degrees to signed CW UI degrees.
+
+    >>> _gradient_angle_for_ui(90)
+    90.0
+    >>> _gradient_angle_for_ui(330)
+    -30.0
+    """
+    signed = (float(clockwise_angle) + 180.0) % 360.0 - 180.0
+    return 180.0 if signed == -180.0 else signed
+
+
+def _gradient_angle_from_ui(signed_clockwise_angle: float) -> float:
+    """Convert signed CW UI degrees to persisted clockwise degrees.
+
+    >>> _gradient_angle_from_ui(30)
+    30.0
+    >>> _gradient_angle_from_ui(-90)
+    270.0
+    """
+    return float(signed_clockwise_angle) % 360.0
+
+
+class EffectGroupBox(QGroupBox):
+    """Group title with an independent effect toggle."""
+
+    def __init__(self, title: str, parent: QWidget = None) -> None:
+        super().__init__(title, parent)
+        self.setObjectName('EffectGroupBox')
+        self.enable_checker = QCheckBox(self)
+        self.enable_checker.setObjectName('EffectTitleChecker')
+        self.enable_checker.setToolTip(self.tr('Enable'))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        hint = self.enable_checker.sizeHint()
+        self.enable_checker.setGeometry(
+            8,
+            0,
+            hint.width(),
+            hint.height(),
+        )
+
+
+class TextShadowGroup(EffectGroupBox):
     def __init__(self, on_param_changed: Callable = None, title=None):
-        super().__init__(title=title)
+        super().__init__(title or '')
         self.on_param_changed = on_param_changed
+        self._enabled_strength = 1.0
+        self.enable_checker.toggled.connect(self._on_enabled_changed)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -80,45 +163,45 @@ class TextShadowGroup(QGroupBox):
         self.xoffset_box.setToolTip(self.tr("Set X offset"))
         self.xoffset_box.param_changed.connect(self.on_offset_changed)
         self.xoffset_label = SmallSizeControlLabel(
-            self,
-            direction=1,
-            text='X',
-            alignment=Qt.AlignmentFlag.AlignCenter,
+            self, direction=0, alignment=Qt.AlignmentFlag.AlignCenter
         )
-        self.xoffset_label.size_ctrl_changed.connect(self.xoffset_box.changeByDelta)
+        _set_svg_label(self.xoffset_label, 'offset_x.svg')
+        self.xoffset_label.size_ctrl_changed.connect(
+            self.xoffset_box.changeByDelta
+        )
         self.xoffset_label.btn_released.connect(self.on_offset_changed)
-
+        self.xoffset_label.reset_requested.connect(self._reset_xoffset)
         self.yoffset_box = SmallSizeComboBox([-2, 2], 'shadow_yoffset', self)
         self.yoffset_box.setToolTip(self.tr("Set Y offset"))
         self.yoffset_box.param_changed.connect(self.on_offset_changed)
         self.yoffset_label = SmallSizeControlLabel(
-            self,
-            direction=1,
-            text='Y',
-            alignment=Qt.AlignmentFlag.AlignCenter,
+            self, direction=1, alignment=Qt.AlignmentFlag.AlignCenter
         )
-        self.yoffset_label.size_ctrl_changed.connect(self.yoffset_box.changeByDelta)
+        _set_svg_label(self.yoffset_label, 'offset_y.svg')
+        self.yoffset_label.size_ctrl_changed.connect(self._change_yoffset)
         self.yoffset_label.btn_released.connect(self.on_offset_changed)
+        self.yoffset_label.reset_requested.connect(self._reset_yoffset)
 
         self.color_label = SmallColorPickerLabel(self, param_name='shadow_color')
         self.strength_box = SmallSizeComboBox([0, 3], 'shadow_strength', self)
         self.strength_box.setToolTip(self.tr("Set Shadow Strength"))
-        self.strength_box.param_changed.connect(self.on_param_changed)
+        self.strength_box.param_changed.connect(self._on_strength_changed)
         self.strength_label = SmallSizeControlLabel(
             self,
             direction=1,
-            text=self.tr('Strength'),
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            text='',
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
+        _set_svg_label(
+            self.strength_label, 'shadow_strength.svg', 18, 18
+        )
+        self.strength_label.setToolTip(self.tr('Strength'))
+        self.strength_label.reset_requested.connect(
+            self._reset_strength
         )
         _word_wrap_label(self.strength_label)
-        self.strength_label.size_ctrl_changed.connect(
-            lambda x: self.strength_box.changeByDelta(x, multiplier=0.03)
-        )
-        self.strength_label.btn_released.connect(
-            lambda: self.on_param_changed(
-                'shadow_strength', self.strength_box.value()
-            )
-        )
+        self.strength_label.size_ctrl_changed.connect(self._change_strength)
+        self.strength_label.btn_released.connect(self._apply_strength)
 
         self.radius_box = SmallSizeComboBox([0, 2], 'shadow_radius', self)
         self.radius_box.setToolTip(self.tr("Set Shadow Radius"))
@@ -126,24 +209,18 @@ class TextShadowGroup(QGroupBox):
         self.radius_label = SmallSizeControlLabel(
             self,
             direction=1,
-            text=self.tr('Radius'),
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            text='',
+            alignment=Qt.AlignmentFlag.AlignCenter,
         )
-        _word_wrap_label(self.radius_label)
+        self.radius_label.setObjectName('shadowRadiusLabel')
+        _set_svg_label(self.radius_label, 'shadow_radius.svg')
+        self.radius_label.setToolTip(self.tr('Radius'))
         self.radius_label.size_ctrl_changed.connect(self.radius_box.changeByDelta)
-        self.radius_label.btn_released.connect(
-            lambda: self.on_param_changed('shadow_radius', self.radius_box.value())
-        )
+        self.radius_label.btn_released.connect(self._apply_radius)
+        self.radius_label.reset_requested.connect(self._reset_radius)
 
-        self.offset_label = _word_wrap_label(
-            SmallParamLabel(self.tr('Offset'), parent=self)
-        )
-        self.offset_label.setSizePolicy(
-            QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
-        )
         self.offset_unit = _atomic_unit(
             self,
-            self.offset_label,
             self.xoffset_label,
             self.xoffset_box,
             self.yoffset_label,
@@ -156,25 +233,60 @@ class TextShadowGroup(QGroupBox):
         self.radius_unit = _atomic_unit(
             self, self.radius_label, self.radius_box
         )
+        _compact_unit(self.color_unit)
+        _compact_unit(
+            self.offset_unit, self.xoffset_box, self.yoffset_box
+        )
+        _compact_unit(self.strength_unit, self.strength_box)
+        _compact_unit(self.radius_unit, self.radius_box)
         self.atomic_units = (
-            self.offset_unit,
             self.color_unit,
+            self.offset_unit,
             self.strength_unit,
             self.radius_unit,
         )
 
-        self.offset_row, self.offset_layout = _adaptive_row(
-            self, self.offset_unit
-        )
         self.detail_row, self.detail_layout = _adaptive_row(
             self,
             self.color_unit,
+            self.offset_unit,
             self.strength_unit,
             self.radius_unit,
         )
+        self.detail_layout.setSpacing(3)
         self.adaptive_layout = QVBoxLayout(self)
-        self.adaptive_layout.addWidget(self.offset_row)
         self.adaptive_layout.addWidget(self.detail_row)
+
+    def _on_enabled_changed(self, enabled: bool) -> None:
+        strength = self.strength_box.value()
+        if enabled:
+            restored_strength = (
+                self._enabled_strength if self._enabled_strength > 0 else 1.0
+            )
+            with QSignalBlocker(self.strength_box):
+                self.strength_box.setValue(restored_strength)
+            self.on_param_changed(
+                'shadow_strength',
+                restored_strength,
+            )
+            if self.radius_box.value() <= 0:
+                with QSignalBlocker(self.radius_box):
+                    self.radius_box.setValue(0.1)
+                self.on_param_changed('shadow_radius', 0.1)
+        else:
+            if strength > 0:
+                self._enabled_strength = strength
+            self.on_param_changed('shadow_strength', 0.0)
+
+    def _on_strength_changed(self, param_name: str, value: float) -> None:
+        if self.enable_checker.isChecked():
+            self.on_param_changed(param_name, value)
+        elif value > 0:
+            self._enabled_strength = value
+
+    def set_effect_enabled(self, enabled: bool) -> None:
+        with QSignalBlocker(self.enable_checker):
+            self.enable_checker.setChecked(enabled)
 
     def on_offset_changed(self, *args, **kwargs):
         self.on_param_changed(
@@ -182,103 +294,161 @@ class TextShadowGroup(QGroupBox):
             [self.xoffset_box.value(), self.yoffset_box.value()],
         )
 
+    def _reset_offset_component(self, box: SmallSizeComboBox) -> None:
+        with QSignalBlocker(box):
+            box.setValue(0.0)
+        self.on_offset_changed()
 
-class TextGradientGroup(QGroupBox):
+    def _reset_xoffset(self) -> None:
+        self._reset_offset_component(self.xoffset_box)
+
+    def _change_yoffset(self, delta: int) -> None:
+        self.yoffset_box.changeByDelta(-delta)
+
+    def _reset_yoffset(self) -> None:
+        self._reset_offset_component(self.yoffset_box)
+
+    def _change_strength(self, delta: int) -> None:
+        self.strength_box.changeByDelta(delta, multiplier=0.03)
+
+    def _apply_strength(self) -> None:
+        self._on_strength_changed(
+            'shadow_strength', self.strength_box.value()
+        )
+
+    def _apply_radius(self) -> None:
+        self.on_param_changed('shadow_radius', self.radius_box.value())
+
+    def _reset_strength(self) -> None:
+        with QSignalBlocker(self.strength_box):
+            self.strength_box.setValue(0.0)
+        self._on_strength_changed('shadow_strength', 0.0)
+
+    def _reset_radius(self) -> None:
+        with QSignalBlocker(self.radius_box):
+            self.radius_box.setValue(0.0)
+        self.on_param_changed('shadow_radius', 0.0)
+
+
+class TextGradientGroup(EffectGroupBox):
     def __init__(self, on_param_changed: Callable = None):
-        super().__init__()
-        self.setTitle(self.tr('Gradient'))
+        super().__init__(self.tr('Gradient'))
         self.on_param_changed = on_param_changed
+        self.enable_checker.toggled.connect(self._on_enabled_changed)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
         self.start_picker = SmallColorPickerLabel(self, param_name='gradient_start_color')
-        self.start_picker_label = _word_wrap_label(
-            SmallParamLabel(
-                self.tr('Start Color'),
-                alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                parent=self,
-            )
-        )
-
         self.end_picker = SmallColorPickerLabel(self, param_name='gradient_end_color')
-        self.end_picker_label = _word_wrap_label(
-            SmallParamLabel(
-                self.tr('End Color'),
-                alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                parent=self,
-            )
+        self.start_picker.dialog_color_provider = self._start_color
+        self.end_picker.dialog_color_provider = self._end_color
+        self.color_arrow = QLabel('→', self)
+        self.color_arrow.setObjectName('GradientColorArrow')
+        self.color_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.color_arrow.setText('')
+        _set_svg_label(
+            self.color_arrow, 'gradient_transition.svg', 24, 14
         )
 
-        self.enable_checker = TextCheckerLabel(self.tr('Enable'), parent=self)
-        self.enable_checker.setWordWrap(True)
-        self.enable_checker.checkStateChanged.connect(
-            lambda checked: self.on_param_changed('gradient_enabled', checked)
-        )
-
-        self.angle_box = SmallSizeComboBox([0, 359], 'gradient_angle', self)
+        self.angle_box = SmallSizeComboBox([-180, 180], 'gradient_angle', self)
         self.angle_box.setToolTip(self.tr("Set Gradient Angle"))
-        self.angle_box.param_changed.connect(self.on_param_changed)
+        self.angle_box.param_changed.connect(self._on_angle_changed)
         self.angle_label = SmallSizeControlLabel(
             self,
             direction=1,
-            text=self.tr('Angle'),
+            text='',
             alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
         )
+        self.angle_label.setObjectName('fontAngleLabel')
+        self.angle_label.setToolTip(self.tr('Angle'))
+        _set_svg_label(self.angle_label, 'rotation.svg')
         _word_wrap_label(self.angle_label)
-        self.angle_label.size_ctrl_changed.connect(
-            lambda x: self.angle_box.changeByDelta(x, multiplier=1)
-        )
-        self.angle_label.btn_released.connect(
-            lambda: self.on_param_changed('gradient_angle', self.angle_box.value())
-        )
+        self.angle_label.size_ctrl_changed.connect(self._change_angle)
+        self.angle_label.btn_released.connect(self._apply_angle)
+        self.angle_label.reset_requested.connect(self._reset_angle)
 
         self.size_box = SmallSizeComboBox([0.5, 2], 'gradient_size', self)
-        self.size_box.setToolTip(self.tr("Set Gradient Size"))
+        self.size_box.setToolTip(
+            self.tr("Set Gradient Size")
+            + '\n'
+            + self.tr('0.5 spans the longest side of the text box.')
+        )
         self.size_box.param_changed.connect(self.on_param_changed)
         self.size_label = SmallSizeControlLabel(
             self,
             direction=1,
             text=self.tr('Size'),
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
         )
         _word_wrap_label(self.size_label)
-        self.size_label.size_ctrl_changed.connect(
-            lambda x: self.size_box.changeByDelta(x, multiplier=0.02)
-        )
-        self.size_label.btn_released.connect(
-            lambda: self.on_param_changed('gradient_size', self.size_box.value())
-        )
+        self.size_label.size_ctrl_changed.connect(self._change_size)
+        self.size_label.btn_released.connect(self._apply_size)
+        self.size_label.reset_requested.connect(self._reset_size)
 
-        self.start_color_unit = _atomic_unit(
-            self, self.start_picker_label, self.start_picker
+        self.color_unit = _atomic_unit(
+            self,
+            self.start_picker,
+            self.color_arrow,
+            self.end_picker,
         )
-        self.end_color_unit = _atomic_unit(
-            self, self.end_picker_label, self.end_picker
-        )
-        self.enable_unit = _atomic_unit(self, self.enable_checker)
+        self.color_unit.layout().setSpacing(1)
         self.angle_unit = _atomic_unit(self, self.angle_label, self.angle_box)
         self.size_unit = _atomic_unit(self, self.size_label, self.size_box)
         self.atomic_units = (
-            self.start_color_unit,
-            self.end_color_unit,
-            self.enable_unit,
+            self.color_unit,
             self.angle_unit,
             self.size_unit,
         )
 
         self.color_row, self.color_layout = _adaptive_row(
             self,
-            self.start_color_unit,
-            self.end_color_unit,
-            self.enable_unit,
-        )
-        self.geometry_row, self.geometry_layout = _adaptive_row(
-            self, self.angle_unit, self.size_unit
+            self.color_unit,
+            self.angle_unit,
+            self.size_unit,
         )
         self.adaptive_layout = QVBoxLayout(self)
         self.adaptive_layout.addWidget(self.color_row)
-        self.adaptive_layout.addWidget(self.geometry_row)
+
+    def _on_enabled_changed(self, enabled: bool) -> None:
+        self.on_param_changed('gradient_enabled', enabled)
+
+    @staticmethod
+    def _start_color():
+        return getattr(C.active_format, 'gradient_start_color', None)
+
+    @staticmethod
+    def _end_color():
+        return getattr(C.active_format, 'gradient_end_color', None)
+
+    def _change_angle(self, delta: int) -> None:
+        self.angle_box.changeByDelta(-delta, multiplier=1)
+
+    def _apply_angle(self) -> None:
+        self._on_angle_changed('gradient_angle', self.angle_box.value())
+
+    def _on_angle_changed(self, param_name: str, value: float) -> None:
+        self.on_param_changed(param_name, _gradient_angle_from_ui(value))
+
+    def _reset_angle(self) -> None:
+        with QSignalBlocker(self.angle_box):
+            self.angle_box.setValue(0.0)
+        self._on_angle_changed('gradient_angle', 0.0)
+
+    def _change_size(self, delta: int) -> None:
+        self.size_box.changeByDelta(delta, multiplier=0.02)
+
+    def _apply_size(self) -> None:
+        self.on_param_changed('gradient_size', self.size_box.value())
+
+    def _reset_size(self) -> None:
+        with QSignalBlocker(self.size_box):
+            self.size_box.setValue(1.0)
+        self.on_param_changed('gradient_size', 1.0)
+
+    def set_effect_enabled(self, enabled: bool) -> None:
+        with QSignalBlocker(self.enable_checker):
+            self.enable_checker.setChecked(enabled)
 
 
 class RubyFuriganaGroup(QGroupBox):
@@ -802,10 +972,16 @@ class TextAdvancedFormatPanel(PanelArea):
         self.shadow_group.radius_box.setValue(font_format.shadow_radius)
         self.shadow_group.xoffset_box.setValue(font_format.shadow_offset[0])
         self.shadow_group.yoffset_box.setValue(font_format.shadow_offset[1])
+        self.shadow_group.set_effect_enabled(
+            font_format.shadow_radius > 0
+            and font_format.shadow_strength > 0
+        )
 
         self.gradient_group.size_box.setValue(font_format.gradient_size)
-        self.gradient_group.angle_box.setValue(font_format.gradient_angle)
-        self.gradient_group.enable_checker.setCheckState(font_format.gradient_enabled)
+        self.gradient_group.angle_box.setValue(
+            _gradient_angle_for_ui(font_format.gradient_angle)
+        )
+        self.gradient_group.set_effect_enabled(font_format.gradient_enabled)
         self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
         self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
 

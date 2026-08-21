@@ -1428,6 +1428,42 @@ QFontChecker::indicator::checked {
     background-color: rgb(30, 147, 229);
 }
 
+QFontChecker#FontBoldChecker::indicator {
+    image: url(resources/icons/fontfmt_bold.svg);
+}
+
+QFontChecker#FontBoldChecker::indicator:checked {
+    image: url(resources/icons/fontfmt_bold_activate.svg);
+}
+
+#NestedStrokeColorPicker {
+    min-width: 26px;
+    max-width: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    border: 2px solid @borderColor;
+}
+
+#NestedStrokeColorPicker::hover {
+    border: 2px solid rgb(30, 147, 229);
+}
+
+#NestedStrokeColorPicker[innerHover="true"]::hover {
+    border: 2px solid @borderColor;
+}
+
+#NestedFillColorPicker {
+    min-width: 12px;
+    max-width: 12px;
+    min-height: 12px;
+    max-height: 12px;
+    border: 1px solid @borderColor;
+}
+
+#NestedFillColorPicker::hover {
+    border: 1px solid rgb(30, 147, 229);
+}
+
 QFontChecker#FontItalicChecker::indicator {
     image: url(resources/icons/fontfmt_italic.svg);
 }
@@ -2510,6 +2546,29 @@ QLabel#TextTransformMixedLabel {
 QWidget#TextAdvancedFormatTopSection,
 QWidget#TextAdvancedFormatUnit {
     background-color: transparent;
+}
+
+QLabel#fontAngleLabel {
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+}
+
+QLabel#shadowRadiusLabel {
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+}
+
+QLabel#GradientColorArrow {
+    background-color: transparent;
+}
+
+QGroupBox#EffectGroupBox::title {
+    subcontrol-position: top left;
+    padding-left: 24px;
 }
 
 /* Suggestion Popup (Spell Checker) */

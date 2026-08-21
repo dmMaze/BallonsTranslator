@@ -1366,7 +1366,10 @@ class TextBlkItem(QGraphicsTextItem):
         fontformat = self.fontformat.deepcopy()
         fontformat.frgb = [color.red(), color.green(), color.blue()]
         fontformat.font_weight = font_weight_from_qt(font.weight())
-        fontformat.font_family = font_family_for_project(font.family())
+        fontformat.font_family = font_family_for_project(
+            font.family(),
+            fontformat.font_weight,
+        )
         if self.isEditing():
             fontformat.font_size = pt2px(font.pointSizeF())
         else:

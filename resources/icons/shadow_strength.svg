@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24">
+  <!-- 막대 폭은 2.5px로 유지하고 간격을 2.5px로 넓힌 4단계 표시다. -->
+  <path d="M2 16H4.5V21H2ZM7 12H9.5V21H7ZM12 7H14.5V21H12ZM17 2H19.5V21H17Z"
+        fill="#697187"/>
+</svg>
