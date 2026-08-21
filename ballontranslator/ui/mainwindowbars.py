@@ -415,14 +415,19 @@ class TitleBar(Widget):
         self.prevpage_trigger = prevPageAction.triggered
         self.nextpage_trigger = nextPageAction.triggered
 
-        # 工具菜单
+        # Tools Menu
         self.toolsToolBtn = TitleBarToolBtn(self)
         self.toolsToolBtn.setText(self.tr('Tools'))
         
-        # 区域合并工具
+        # Merge Tool
         mergeToolAction = QAction('区域合并工具', self)
         mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
+
+        # Photoshop Bridge Tool
+        psBridgeAction = QAction(self.tr('Photoshop Bridge'), self)
+        psBridgeAction.setShortcut(QKeySequence('Ctrl+Shift+P'))
+        self.ps_bridge_trigger = psBridgeAction.triggered
 
         self.path_reorder_action = QAction(self.tr('Path Reorder'), self)
         self.path_reorder_action.setCheckable(True)
@@ -433,6 +438,7 @@ class TitleBar(Widget):
         
         toolsMenu = QMenu(self.toolsToolBtn)
         toolsMenu.addAction(mergeToolAction)
+        toolsMenu.addAction(psBridgeAction)
         toolsMenu.addAction(self.path_reorder_action)
         toolsMenu.addSeparator()
         toolsMenu.addAction(fontExclusionAction)

@@ -874,6 +874,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.ps_bridge_trigger.connect(self.on_open_photoshop_bridge)
         self.titleBar.path_reorder_trigger.connect(self.on_path_reorder)
         self.canvas.path_reorder_mode_changed.connect(
             self.titleBar.path_reorder_action.setChecked
@@ -1103,6 +1104,19 @@ class MainWindow(mainwindow_cls):
             self.merge_dialog.activateWindow()
         else:
             self.merge_dialog.show()
+
+    def on_open_photoshop_bridge(self):
+        """Open Photoshop Bridge & Tools dialog"""
+        if not hasattr(self, 'ps_bridge_dialog') or self.ps_bridge_dialog is None:
+            from .ps_bridge_dialog import PhotoshopBridgeDialog
+            self.ps_bridge_dialog = PhotoshopBridgeDialog(self, project=self.imgtrans_proj)
+        
+        self.ps_bridge_dialog.refresh_status()
+        if self.ps_bridge_dialog.isVisible():
+            self.ps_bridge_dialog.raise_()
+            self.ps_bridge_dialog.activateWindow()
+        else:
+            self.ps_bridge_dialog.show()
 
     def on_path_reorder(self, checked: bool) -> None:
         if not checked:

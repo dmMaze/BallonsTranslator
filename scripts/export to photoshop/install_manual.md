@@ -1,41 +1,58 @@
-# Export to photoshop script
+# BallonTranslator ↔ Photoshop Bridge
 
-## Installation
+Advanced bidirectional bridge between **BallonsTranslator** and **Adobe Photoshop** (CC 2019 – CC 2025+).
 
-There are 2 ways to install.
+---
 
-1. Simply open the jsx file via `File -> Scripts -> Open... ` and select the script manually. The downside is that doing this every time is stupid and not convenient.
-2. Place the jsx file in `Disk:\Program Files\Adobe\Adobe Photoshop [Version]]\Presets\Scripts`. The script will be displayed in the `File -> Scripts` interface
-3. Auto installer (coming soon). Since the script will be updated, I’ll add a small script a little later that will put everything inside Photoshop itself. In theory, I’ll even make it as a separate plugin, if I don’t break my computer from not understanding the Adobe documentation
+## ⚡ Features / Возможности
 
-## Usage
+1. **Automatic Multi-Layer PSD Assembly**:
+   - Opens the raw manga/comic scan as the base layer (`[BT] Original Scan`).
+   - Inserts clean inpainted plate (`inpainted/<page>`) as `[BT] Clean Inpaint`.
+   - Inserts binary text mask (`mask/<page>`) as `[BT] Text Mask` (hidden).
+   - Generates editable translated text layers in `[BT] Translations`.
+   - Generates original OCR reference text layers in `[BT] Original OCR` (hidden).
 
-1. Run the script (more details in the picture)</br>
-![1700864913586](https://github.com/bropines/BallonsTranslator/assets/57861007/94bbc2de-24da-41f8-8f4c-94982d57e987)
-2. Select your project's JSON file.
-3. From the proposed list, select your image (which is open in PS) (more details in the picture)
-![1700865117911](https://github.com/bropines/BallonsTranslator/assets/57861007/d9123072-72f0-48cf-84bf-b19a234bdf8b)
-4. In the window that opens, import options, select the desired settings. An explanation of the settings will be below.
-5. Done, he will think a little and arrange all the blocks almost like in BT
+2. **Typography & Styling (ActionManager Engine)**:
+   - Pixel-perfect Font Size, Line Spacing (Leading), Letter Spacing (Tracking), Alignment (Left, Center, Right).
+   - Automatic Outside Outline/Stroke effect (`Stroke FX`) matching project color and stroke width.
+   - Text Fill color (`RGB`).
+   - Font matching with fallback: matches PostScriptName and font families without runtime exceptions.
+   - Paragraph box text wrapping within speech bubble bounds.
 
-### Explanation of settings
+3. **Bidirectional Synchronization (Round-Trip Sync)**:
+   - Edit, reformat, or reposition text blocks directly in Photoshop.
+   - Click `💾 Save PSD back to JSON` to export typography changes back to `imgtrans_*.json` in real time.
 
-**Import original and translation** - import the original and translation blocks, respectively. Import works either separately or together; 2 versions of blocks are created.
+4. **Batch Processing**:
+   - Select one, several, or all pages in a chapter to import into layered Photoshop documents in a single click.
 
-**Hide original and hide translation** - if you need the blocks to be hidden after import (for example, if you selected both import options, then these checkboxes will hide the visibility of the blocks in the layers panel)
+---
 
-**Use block text** - use block closed and block open (yes, I'm a little stupid with names xD). How are they different?
-Just look at the GIF:
-![1700865117922](https://github.com/bropines/BallonsTranslator/assets/57861007/8a2d639a-181d-4292-80ec-8a37bf778006)
+## 📥 Installation / Установка
 
+### Method 1: Automatic Installer (Recommended)
+Just double-click **`install_ps_script.bat`** (or right-click `install_ps_script.ps1` -> *Run with PowerShell*).
+It will request Admin elevation and automatically install `BallonTranslator_PS_Bridge.jsx` into `Presets/Scripts`.
 
-## Bugs
+### Method 2: Manual Installation
+Copy `BallonTranslator_PS_Bridge.jsx` directly into:
+- **Windows**: `C:\Program Files\Adobe\Adobe Photoshop [Version]\Presets\Scripts\`
+- **macOS**: `/Applications/Adobe Photoshop [Version]/Presets/Scripts/`
 
-I will warn you that I am just learning JS and my skills are not omnipotent, plus I don’t have much time. Well, Adobe also has extremely unclear documentation -_-.
+Restart Photoshop or run directly via `File -> Scripts -> Browse...` (Ctrl+F12).
 
-- [ ] The font is not imported. I roughly understand why, but I don’t understand how to fix it.
-- [ ] Text effects such as Italic, Bold and Underline are not imported.
-- [ ] Due to the lack of “All caps” functions in BT and, in principle, most of the character settings, they are not available in import. Maybe I’ll add a checkbox or normal buttons that do this at the stage of preparing for import.
-- [ ] Speed. Since in fact I am feeding bare JSON, the script needs time to read and extract data. Maybe we can speed this up...
+---
 
-#### Made by the crooked hands of @bropines 
+## 🚀 Usage / Использование
+
+1. Translate & Inpaint your chapter in **BallonsTranslator** and save the project.
+2. Open **Adobe Photoshop**.
+3. Go to **File -> Scripts -> BallonTranslator_PS_Bridge** (or `File -> Scripts -> Browse...` and select `BallonTranslator_PS_Bridge.jsx`).
+4. Select your project file `imgtrans_*.json`.
+5. In the dialog:
+   - Choose pages to import.
+   - Toggle inpaint, mask, translation, stroke FX, and paragraph box options.
+   - Click **🚀 Import Selected Pages**.
+6. Polish text/art in Photoshop.
+7. To push changes back to BallonsTranslator, reopen the script and click **💾 Save PSD back to JSON**.
