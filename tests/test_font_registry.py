@@ -314,3 +314,65 @@ def test_entry_lookup_keys_include_localized_face_aliases() -> None:
     )
 
     assert '바탕체 별칭' in entry.lookup_keys()
+
+
+def test_redundant_weight_family_is_collapsed_into_picker_base() -> None:
+    base = FontEntry(
+        'Example', 'Example', 'Example', 'system', weights=[300, 500]
+    )
+    light = FontEntry(
+        'Example Light', 'Example Light', 'Example Light', 'system',
+        weights=[300],
+    )
+    registry = FontRegistry(system_entries=[base, light])
+
+    assert registry.entries() == [base]
+    assert registry.picker_entry_for_family('Example Light') is base
+
+
+def test_weight_family_remains_when_picker_base_is_excluded() -> None:
+    base = FontEntry(
+        'Example', 'Example', 'Example', 'system', weights=[300, 500]
+    )
+    light = FontEntry(
+        'Example Light', 'Example Light', 'Example Light', 'system',
+        weights=[300],
+    )
+    other = FontEntry(
+        'Other', 'Other', 'Other', 'system', weights=[300, 400]
+    )
+    multiweight_light = FontEntry(
+        'Other Light', 'Other Light', 'Other Light', 'system',
+        weights=[300, 400],
+    )
+    registry = FontRegistry(
+        system_entries=[base, light, other, multiweight_light]
+    )
+
+    assert registry.entries(excluded=['Example']) == [
+        light, other, multiweight_light,
+    ]
+    assert registry.entries(excluded=['Example Light']) == [
+        base, other, multiweight_light,
+    ]
+
+
+def test_system_weight_alias_rule_does_not_hide_custom_entries() -> None:
+    system_base = FontEntry(
+        'Example', 'Example', 'Example', 'system', weights=[300, 500]
+    )
+    system_light = FontEntry(
+        'Example Light', 'Example Light', 'Example Light', 'system',
+        weights=[300],
+    )
+    custom_base = FontEntry(
+        'Example', 'Custom Example', 'Custom Example', 'custom',
+        weights=[500],
+    )
+    registry = FontRegistry(
+        system_entries=[system_base, system_light],
+        custom_entries=[custom_base],
+    )
+
+    assert registry.entries() == [custom_base, system_light]
+    assert registry.picker_entry_for_family('Example Light') is system_light

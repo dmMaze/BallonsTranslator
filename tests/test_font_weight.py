@@ -18,8 +18,6 @@ from ballontranslator.ui.text_engine.formatting.panel import (
     FontFamilyComboBox,
     FontFormatPanel,
     FontWeightComboBox,
-    _split_weight_family_name,
-    _weight_family_aliases,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils import config as C
@@ -137,27 +135,6 @@ class FontWeightPersistenceTest(unittest.TestCase):
         )
 
 
-class _FontDatabaseStub:
-    _weights = {
-        ('Example', 'Regular'): 400,
-        ('Example', 'Light'): 300,
-        ('Example Light', 'Light'): 300,
-        ('Example Medium', 'Regular'): 400,
-    }
-
-    @classmethod
-    def styles(cls, family: str) -> list[str]:
-        return [
-            style
-            for candidate, style in cls._weights
-            if candidate == family
-        ]
-
-    @classmethod
-    def weight(cls, family: str, style: str) -> int:
-        return cls._weights[(family, style)]
-
-
 class FontWeightUiTest(unittest.TestCase):
 
     @classmethod
@@ -167,14 +144,12 @@ class FontWeightUiTest(unittest.TestCase):
     def setUp(self) -> None:
         self.old_active_format = C.active_format
         self.old_canvas = getattr(SW, 'canvas', None)
-        self.old_font_families = shared.FONT_FAMILIES
         self.old_font_registry = shared.FONT_REGISTRY
         SW.canvas = SimpleNamespace(selected_text_items=lambda: [])
 
     def tearDown(self) -> None:
         C.active_format = self.old_active_format
         SW.canvas = self.old_canvas
-        shared.FONT_FAMILIES = self.old_font_families
         shared.FONT_REGISTRY = self.old_font_registry
 
     def _make_panel(self) -> FontFormatPanel:
@@ -198,7 +173,7 @@ class FontWeightUiTest(unittest.TestCase):
         )
         self.assertIs(selector.weight(), FontWeight.Normal)
 
-    def test_single_face_selection_canonicalizes_nonstandard_weight(self):
+    def test_family_selection_preserves_requested_weight(self):
         panel = self._make_panel()
         active = FontFormat(font_family='Example', font_weight=FontWeight.Light)
         panel.global_format = active
@@ -215,7 +190,7 @@ class FontWeightUiTest(unittest.TestCase):
         panel.familybox.setCurrentIndex(0)
 
         self.assertEqual(active.font_family, 'Example Book')
-        self.assertIs(active.font_weight, FontWeight.ExtraLight)
+        self.assertIs(active.font_weight, FontWeight.Light)
 
     def test_picker_group_changes_storage_face_with_weight(self):
         panel = self._make_panel()
@@ -358,22 +333,83 @@ class FontWeightUiTest(unittest.TestCase):
         self.assertIs(active.font_weight, FontWeight.Normal)
         self.assertIs(panel.fontWeightBox.weight(), FontWeight.Normal)
 
-    def test_explicit_weight_change_canonicalizes_a_weight_alias(self):
-        shared.FONT_FAMILIES = {'Example', 'Example Light'}
+    def test_explicit_weight_change_resolves_a_hidden_group_face(self):
+        faces = [
+            FontFace(
+                'Example Light', 'Example Light', 'Example Light',
+                'Light', 300,
+            ),
+            FontFace(
+                'Example Bold', 'Example Bold', 'Example Bold',
+                'Bold', 700,
+            ),
+        ]
+        entry = FontEntry(
+            'Example', 'Example', 'Example Light', 'custom',
+            weights=[300, 700], faces=faces, is_pseudo_group=True,
+        )
+        shared.FONT_REGISTRY = FontRegistry(custom_entries=[entry])
         panel = self._make_panel()
         active = FontFormat(
             font_family='Example Light',
             font_weight=FontWeight.Light,
         )
         panel.global_format = active
-        panel.familybox.canonical_weight_aliases = {
-            'Example Light': ('Example', FontWeight.Light),
-        }
+        panel.set_active_format(active)
+
+        panel.on_font_weight_changed('font_weight', FontWeight.Bold)
+
+        self.assertEqual(active.font_family, 'Example Bold')
+        self.assertIs(active.font_weight, FontWeight.Bold)
+
+    def test_explicit_weight_change_canonicalizes_hidden_weight_family(self):
+        base = FontEntry(
+            'Example', 'Example', 'Example', 'system', weights=[300, 500]
+        )
+        light = FontEntry(
+            'Example Light', 'Example Light', 'Example Light', 'system',
+            weights=[300],
+        )
+        registry = FontRegistry(system_entries=[base, light])
+        shared.FONT_REGISTRY = registry
+        panel = self._make_panel()
+        active = FontFormat(
+            font_family='Example Light',
+            font_weight=FontWeight.Light,
+        )
+        panel.global_format = active
+        panel.familybox.update_font_entries(registry.entries())
         panel.set_active_format(active)
 
         panel.on_font_weight_changed('font_weight', FontWeight.Medium)
 
         self.assertEqual(active.font_family, 'Example')
+        self.assertIs(active.font_weight, FontWeight.Medium)
+
+    def test_weight_family_is_preserved_when_base_is_filtered_out(self):
+        base = FontEntry(
+            'Example', 'Example', 'Example', 'system', weights=[300, 500]
+        )
+        light = FontEntry(
+            'Example Light', 'Example Light', 'Example Light', 'system',
+            weights=[300],
+        )
+        registry = FontRegistry(system_entries=[base, light])
+        shared.FONT_REGISTRY = registry
+        panel = self._make_panel()
+        active = FontFormat(
+            font_family='Example Light',
+            font_weight=FontWeight.Light,
+        )
+        panel.global_format = active
+        panel.familybox.update_font_entries(
+            registry.entries(excluded=['Example'])
+        )
+        panel.set_active_format(active)
+
+        panel.on_font_weight_changed('font_weight', FontWeight.Medium)
+
+        self.assertEqual(active.font_family, 'Example Light')
         self.assertIs(active.font_weight, FontWeight.Medium)
 
     def test_selected_text_receives_only_the_new_weight(self):
@@ -408,63 +444,6 @@ class FontWeightUiTest(unittest.TestCase):
             font_weight_from_qt(second.charFormat().fontWeight()),
             FontWeight.Normal,
         )
-
-    def test_family_alias_filter_is_conservative(self):
-        families = {
-            'Example',
-            'Example Light',
-            'Example Medium',
-            'Missing Base Bold',
-        }
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.panel._font_database',
-            return_value=_FontDatabaseStub,
-        ):
-            aliases = _weight_family_aliases(families)
-
-        self.assertEqual(
-            aliases,
-            {'Example Light': ('Example', FontWeight.Light)},
-        )
-        self.assertEqual(
-            _split_weight_family_name('Example SemiBold'),
-            ('Example', FontWeight.DemiBold),
-        )
-
-    def test_alias_stays_available_when_its_base_is_filtered_out(self):
-        shared.FONT_FAMILIES = {'Example', 'Example Light'}
-        aliases = {'Example Light': ('Example', FontWeight.Light)}
-        combo = FontFamilyComboBox()
-        self.addCleanup(combo.deleteLater)
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.panel.'
-            '_weight_family_aliases',
-            return_value=aliases,
-        ):
-            combo.update_font_list(['Example Light'])
-
-        self.assertEqual(
-            [combo.itemText(index) for index in range(combo.count())],
-            ['Example Light'],
-        )
-        self.assertEqual(
-            combo.canonical_family('Example Light'),
-            ('Example Light', None),
-        )
-
-        combo.set_displayed_font('Example Light')
-        combo.update_font_list(['Example', 'Example Light'])
-
-        self.assertEqual(
-            [combo.itemText(index) for index in range(combo.count())],
-            ['Example'],
-        )
-        self.assertEqual(combo.currentText(), 'Example Light')
-        self.assertEqual(
-            combo.canonical_family('Example Light'),
-            ('Example', FontWeight.Light),
-        )
-
 
 if __name__ == '__main__':
     unittest.main()

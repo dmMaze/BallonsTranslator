@@ -16,7 +16,6 @@ from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
-from ballontranslator.utils.font_registry import normalize_key
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from .misc import parse_stylesheet, set_html_family, QKEY
 from ballontranslator.utils.config import (
@@ -688,25 +687,8 @@ class MainWindow(mainwindow_cls):
 
     def on_show_only_custom_font(self, only_custom: bool) -> None:
         registry = shared.FONT_REGISTRY
-        if registry is not None:
-            entries = registry.entries(only_custom)
-            excluded = {
-                normalize_key(name) for name in pcfg.excluded_fonts
-            }
-            entries = [
-                entry
-                for entry in entries
-                if entry.lookup_keys().isdisjoint(excluded)
-            ]
-            self.textPanel.formatpanel.familybox.update_font_entries(entries)
-            return
-
-        if only_custom:
-            font_list = shared.CUSTOM_FONTS
-        else:
-            font_list = shared.FONT_FAMILIES
-        font_list = shared.get_filtered_font_list(font_list, pcfg.excluded_fonts)
-        self.textPanel.formatpanel.familybox.update_font_list(font_list)
+        entries = registry.entries(only_custom, pcfg.excluded_fonts)
+        self.textPanel.formatpanel.familybox.update_font_entries(entries)
 
     def openDir(self, directory: str):
         try:

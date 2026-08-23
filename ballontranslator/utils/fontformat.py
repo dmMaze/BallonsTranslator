@@ -696,7 +696,6 @@ class FontFormat(Config):
     def to_serializable_dict(self) -> dict:
         """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
-        serialized.pop('bold', None)
         serialized.pop('deprecated_attributes', None)
         serialized['font_weight'] = int(FontWeight(self.font_weight))
         serialized['text_transform'] = [

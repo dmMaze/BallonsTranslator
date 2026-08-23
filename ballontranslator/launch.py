@@ -350,12 +350,7 @@ def main():
             else None
         ),
     )
-    shared.CUSTOM_FONTS = shared.FONT_REGISTRY.legacy_family_list(
-        only_custom=True
-    )
-    shared.FONT_FAMILIES = set(
-        shared.FONT_REGISTRY.legacy_family_list(only_custom=False)
-    )
+    shared.FONT_FAMILIES = set(font_database.families())
 
     from ballontranslator.ui.text_engine.font_family import (
         register_qt_font_family_aliases,
