@@ -128,33 +128,10 @@ def _gradient_angle_from_ui(signed_clockwise_angle: float) -> float:
     return float(signed_clockwise_angle) % 360.0
 
 
-class EffectGroupBox(QGroupBox):
-    """Group title with an independent effect toggle."""
-
-    def __init__(self, title: str, parent: QWidget = None) -> None:
-        super().__init__(title, parent)
-        self.setObjectName('EffectGroupBox')
-        self.enable_checker = QCheckBox(self)
-        self.enable_checker.setObjectName('EffectTitleChecker')
-        self.enable_checker.setToolTip(self.tr('Enable'))
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        hint = self.enable_checker.sizeHint()
-        self.enable_checker.setGeometry(
-            8,
-            0,
-            hint.width(),
-            hint.height(),
-        )
-
-
-class TextShadowGroup(EffectGroupBox):
+class TextShadowGroup(QGroupBox):
     def __init__(self, on_param_changed: Callable = None, title=None):
         super().__init__(title or '')
         self.on_param_changed = on_param_changed
-        self._enabled_strength = 1.0
-        self.enable_checker.toggled.connect(self._on_enabled_changed)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -185,7 +162,7 @@ class TextShadowGroup(EffectGroupBox):
         self.color_label = SmallColorPickerLabel(self, param_name='shadow_color')
         self.strength_box = SmallSizeComboBox([0, 3], 'shadow_strength', self)
         self.strength_box.setToolTip(self.tr("Set Shadow Strength"))
-        self.strength_box.param_changed.connect(self._on_strength_changed)
+        self.strength_box.param_changed.connect(self.on_param_changed)
         self.strength_label = SmallSizeControlLabel(
             self,
             direction=1,
@@ -257,37 +234,6 @@ class TextShadowGroup(EffectGroupBox):
         self.adaptive_layout = QVBoxLayout(self)
         self.adaptive_layout.addWidget(self.detail_row)
 
-    def _on_enabled_changed(self, enabled: bool) -> None:
-        strength = self.strength_box.value()
-        if enabled:
-            restored_strength = (
-                self._enabled_strength if self._enabled_strength > 0 else 1.0
-            )
-            with QSignalBlocker(self.strength_box):
-                self.strength_box.setValue(restored_strength)
-            self.on_param_changed(
-                'shadow_strength',
-                restored_strength,
-            )
-            if self.radius_box.value() <= 0:
-                with QSignalBlocker(self.radius_box):
-                    self.radius_box.setValue(0.1)
-                self.on_param_changed('shadow_radius', 0.1)
-        else:
-            if strength > 0:
-                self._enabled_strength = strength
-            self.on_param_changed('shadow_strength', 0.0)
-
-    def _on_strength_changed(self, param_name: str, value: float) -> None:
-        if self.enable_checker.isChecked():
-            self.on_param_changed(param_name, value)
-        elif value > 0:
-            self._enabled_strength = value
-
-    def set_effect_enabled(self, enabled: bool) -> None:
-        with QSignalBlocker(self.enable_checker):
-            self.enable_checker.setChecked(enabled)
-
     def on_offset_changed(self, *args, **kwargs):
         self.on_param_changed(
             'shadow_offset',
@@ -312,7 +258,7 @@ class TextShadowGroup(EffectGroupBox):
         self.strength_box.changeByDelta(delta, multiplier=0.03)
 
     def _apply_strength(self) -> None:
-        self._on_strength_changed(
+        self.on_param_changed(
             'shadow_strength', self.strength_box.value()
         )
 
@@ -322,7 +268,7 @@ class TextShadowGroup(EffectGroupBox):
     def _reset_strength(self) -> None:
         with QSignalBlocker(self.strength_box):
             self.strength_box.setValue(0.0)
-        self._on_strength_changed('shadow_strength', 0.0)
+        self.on_param_changed('shadow_strength', 0.0)
 
     def _reset_radius(self) -> None:
         with QSignalBlocker(self.radius_box):
@@ -330,11 +276,15 @@ class TextShadowGroup(EffectGroupBox):
         self.on_param_changed('shadow_radius', 0.0)
 
 
-class TextGradientGroup(EffectGroupBox):
+class TextGradientGroup(QGroupBox):
     def __init__(self, on_param_changed: Callable = None):
         super().__init__('')
+        self.setObjectName('TextGradientGroup')
         self.setTitle(self.tr('Gradient'))
         self.on_param_changed = on_param_changed
+        self.enable_checker = QCheckBox(self)
+        self.enable_checker.setObjectName('EffectTitleChecker')
+        self.enable_checker.setToolTip(self.tr('Enable'))
         self.enable_checker.toggled.connect(self._on_enabled_changed)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
@@ -370,11 +320,7 @@ class TextGradientGroup(EffectGroupBox):
         self.angle_label.reset_requested.connect(self._reset_angle)
 
         self.size_box = SmallSizeComboBox([0.5, 2], 'gradient_size', self)
-        self.size_box.setToolTip(
-            self.tr("Set Gradient Size")
-            + '\n'
-            + self.tr('0.5 spans the longest side of the text box.')
-        )
+        self.size_box.setToolTip(self.tr("Set Gradient Size"))
         self.size_box.param_changed.connect(self.on_param_changed)
         self.size_label = SmallSizeControlLabel(
             self,
@@ -410,6 +356,16 @@ class TextGradientGroup(EffectGroupBox):
         )
         self.adaptive_layout = QVBoxLayout(self)
         self.adaptive_layout.addWidget(self.color_row)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        hint = self.enable_checker.sizeHint()
+        self.enable_checker.setGeometry(
+            8,
+            0,
+            hint.width(),
+            hint.height(),
+        )
 
     def _on_enabled_changed(self, enabled: bool) -> None:
         self.on_param_changed('gradient_enabled', enabled)
@@ -973,10 +929,6 @@ class TextAdvancedFormatPanel(PanelArea):
         self.shadow_group.radius_box.setValue(font_format.shadow_radius)
         self.shadow_group.xoffset_box.setValue(font_format.shadow_offset[0])
         self.shadow_group.yoffset_box.setValue(font_format.shadow_offset[1])
-        self.shadow_group.set_effect_enabled(
-            font_format.shadow_radius > 0
-            and font_format.shadow_strength > 0
-        )
 
         self.gradient_group.size_box.setValue(font_format.gradient_size)
         self.gradient_group.angle_box.setValue(

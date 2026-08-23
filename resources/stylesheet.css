@@ -2558,7 +2558,7 @@ QLabel#GradientColorArrow {
     background-color: transparent;
 }
 
-QGroupBox#EffectGroupBox::title {
+QGroupBox#TextGradientGroup::title {
     subcontrol-position: top left;
     padding-left: 24px;
 }
