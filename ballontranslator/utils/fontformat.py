@@ -737,9 +737,8 @@ class FontFormat(Config):
     deprecated_attributes: dict = field(default_factory = lambda: dict())
 
     def __getattribute__(self, name: str):
-        # Temporary package-2 adapter: the old renderer and controls read
-        # these names, but their only live owner is text_effects. Package 4
-        # removes the adapter after all production callers use the stack.
+        # Pipeline/headless compatibility still exposes these legacy names,
+        # but their only live owner is text_effects. The UI edits the stack.
         if name in _LEGACY_EFFECT_VIEW_NAMES:
             data = object.__getattribute__(self, '__dict__')
             stack = data.get('text_effects')

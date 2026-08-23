@@ -6,6 +6,7 @@ from qtpy.QtGui import QDrag, QFontMetrics, QColor, QPixmap, QPainter, QContextM
 
 
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.text_effects import primary_stroke
 from ballontranslator.utils.config import save_text_styles, text_styles
 from ballontranslator.utils import config as C
 from ..font_family import qfont_with_family
@@ -160,7 +161,7 @@ class TextStyleLabel(Widget):
         if len(updated_keys) > 0:
             save_text_styles()
         
-        preview_keys = {'font_family', 'frgb', 'srgb', 'stroke_width'}
+        preview_keys = {'font_family', 'frgb', 'text_effects'}
         for k in updated_keys:
             if k in preview_keys:
                 self.updatePreview()
@@ -222,11 +223,13 @@ class TextStyleLabel(Widget):
         painter = QPainter(pixmap)
         painter.setRenderHints(QPainter.Antialiasing)
         painter.setPen(Qt.NoPen)
+        painter.setOpacity(self.fontfmt.text_effects.overall_opacity)
 
         draw_rect, draw_radius = QRectF(0, 0, d, d), radius
-        if self.fontfmt.stroke_width > 0:
-            r, g, b = self.fontfmt.stroke_color()
-            color = QColor(r, g, b, 255)
+        stroke = primary_stroke(self.fontfmt.text_effects)
+        if stroke is not None and not stroke.is_neutral():
+            r, g, b = stroke.paint.color
+            color = QColor(r, g, b, round(255 * stroke.opacity))
             painter.setBrush(color)
             painter.drawRoundedRect(draw_rect, draw_radius, draw_radius)
             draw_radius = draw_radius * 0.66

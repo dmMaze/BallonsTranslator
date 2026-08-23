@@ -663,29 +663,7 @@ class TextAdvancedFormatPanel(PanelArea):
         for row in self.ligature_rows:
             self.ligature_group_layout.addWidget(row)
 
-        self.opacity_box = SmallSizeComboBox(
-            [0, 1], 'opacity', self.top_section, init_value=1.
-        )
-        self.opacity_box.setToolTip(self.tr("Set Text Opacity"))
-        self.opacity_box.param_changed.connect(self.on_format_changed)
-        self.opacity_label = SmallSizeControlLabel(
-            self.top_section,
-            direction=1,
-            text=self.tr('Opacity'),
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        )
-        _word_wrap_label(self.opacity_label)
-        self.opacity_label.size_ctrl_changed.connect(self.opacity_box.changeByDelta)
-        self.opacity_label.btn_released.connect(
-            lambda: self.on_format_changed('opacity', self.opacity_box.value())
-        )
-        self.opacity_unit = _atomic_unit(
-            self.top_section, self.opacity_label, self.opacity_box
-        )
-        self.top_atomic_units = (
-            self.linespacing_type_unit,
-            self.opacity_unit,
-        )
+        self.top_atomic_units = (self.linespacing_type_unit,)
         self.top_layout = AdaptiveWrapLayout(self.top_section)
         for unit in self.top_atomic_units:
             self.top_layout.addWidget(unit)
