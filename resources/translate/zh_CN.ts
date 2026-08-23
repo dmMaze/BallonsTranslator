@@ -5028,7 +5028,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/torch_install_dialog.py" line="128"/>
         <source>NVIDIA: choose CUDA. Intel Arc/Core Ultra: choose XPU. Not sure: choose CPU.</source>
-        <translation>英伟达显卡选 CUDA,因特尔Xe显卡选 XPU, 不确定选 CPU</translation>
+        <translation>英伟达显卡选 CUDA,英特尔Xe显卡选 XPU, 不确定选 CPU</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/torch_install_dialog.py" line="132"/>
