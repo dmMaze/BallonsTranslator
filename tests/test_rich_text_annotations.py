@@ -3534,10 +3534,13 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertFalse(panel.formatBtnGroup.italicBtn.isChecked())
         self.assertFalse(panel.formatBtnGroup.underlineBtn.isChecked())
         self.assertFalse(panel.formatBtnGroup.emphasisBtn.isChecked())
-        self.assertTrue(all(
-            combo.currentData() == LIGATURE_DEFAULT
-            for combo in panel.textadvancedfmt_panel.ligature_comboboxes.values()
-        ))
+        for axis, combo in panel.textadvancedfmt_panel.ligature_comboboxes.items():
+            expected = (
+                normal.oldstyle_nums
+                if axis == OLDSTYLE_NUMS
+                else getattr(normal, f'ligature_{axis}')
+            )
+            self.assertEqual(combo.currentData(), expected)
 
 
 if __name__ == '__main__':

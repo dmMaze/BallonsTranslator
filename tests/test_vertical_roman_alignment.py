@@ -115,10 +115,9 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             orientation,
             0.0,
         ).bounds
-        line_width = item.layout.per_char_records[0][position][
-            'line_width'
-        ]
-        top, bottom = item.layout.y_offset_lst[0][position]
+        cells = item.layout._vertical_line_cells(block, line_number)
+        line_width = item.layout._vertical_line_width(block, line_number)
+        top, bottom = cells[0][2], cells[-1][3]
         return ink, QRectF(line.x(), top, line_width, bottom - top)
 
     @staticmethod
