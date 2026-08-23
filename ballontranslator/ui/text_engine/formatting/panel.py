@@ -65,7 +65,11 @@ from .advanced import TextAdvancedFormatPanel
 from ..transforms.edit_session import TextTransformEditSession
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
-from .commands import handle_ffmt_change, restore_canvas_view_focus
+from .commands import (
+    ffmt_change_font_family_and_weight,
+    handle_ffmt_change,
+    restore_canvas_view_focus,
+)
 from ... import shared_widget as SW
 
 class LineEdit(QLineEdit):
@@ -1042,12 +1046,15 @@ class FontFormatPanel(Widget):
             storage_family = entry.storage_family_for_weight(
                 C.active_format.font_weight
             )
-        self.on_param_changed(param_name, storage_family)
-        self._refresh_weight_box(C.active_format)
         if entry is not None and len(entry.weights) == 1:
             inferred_weight = coerce_font_weight(int(entry.weights[0]))
             self.fontWeightBox.set_weight(inferred_weight)
-            self.on_param_changed('font_weight', inferred_weight)
+            self._apply_font_family_and_weight(
+                storage_family, inferred_weight
+            )
+            return
+        self.on_param_changed(param_name, storage_family)
+        self._refresh_weight_box(C.active_format)
 
     def on_font_weight_changed(
         self, param_name: str, weight: FontWeight
@@ -1065,18 +1072,36 @@ class FontFormatPanel(Widget):
 
     def _apply_font_weight(self, weight: FontWeight) -> None:
         entry = self.familybox.current_entry()
+        storage_family = C.active_format.font_family
         if entry is not None:
             storage_family = entry.storage_family_for_weight(int(weight))
-            if storage_family != C.active_format.font_family:
-                self.on_param_changed('font_family', storage_family)
         else:
             canonical_family, _ = self.familybox.canonical_family(
                 C.active_format.font_family
             )
-            if canonical_family != C.active_format.font_family:
-                self.on_param_changed('font_family', canonical_family)
+            storage_family = canonical_family
         self.fontWeightBox.set_weight(weight)
-        self.on_param_changed('font_weight', weight)
+        if storage_family != C.active_format.font_family:
+            self._apply_font_family_and_weight(storage_family, weight)
+        else:
+            self.on_param_changed('font_weight', weight)
+
+    def _apply_font_family_and_weight(
+        self,
+        font_family: str,
+        font_weight: FontWeight,
+    ) -> None:
+        is_global = self.global_mode()
+        ffmt_change_font_family_and_weight(
+            font_family,
+            font_weight,
+            C.active_format,
+            is_global=is_global,
+            blkitems=self.textblk_item,
+            set_focus=not is_global,
+        )
+        if is_global:
+            self.update_text_style_label()
 
     def _refresh_weight_box(self, font_format: FontFormat) -> None:
         self.fontWeightBox.set_weight(font_format.font_weight)

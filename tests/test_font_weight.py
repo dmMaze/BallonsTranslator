@@ -51,6 +51,31 @@ class FontWeightPersistenceTest(unittest.TestCase):
 
         self.assertIs(block.font_weight, FontWeight.Light)
 
+    def test_legacy_bold_migrates_without_overriding_explicit_weight(self):
+        self.assertIs(
+            FontFormat(bold=True).font_weight,
+            FontWeight.Bold,
+        )
+        self.assertIs(
+            FontFormat(bold=True, font_weight=FontWeight.Light).font_weight,
+            FontWeight.Light,
+        )
+        self.assertIs(
+            TextBlock(bold=True).font_weight,
+            FontWeight.Bold,
+        )
+        self.assertIs(
+            TextBlock(bold=True, font_weight=25).font_weight,
+            FontWeight.Light,
+        )
+
+    def test_serialized_format_drops_legacy_migration_fields(self):
+        serialized = FontFormat(bold=True).to_serializable_dict()
+
+        self.assertEqual(serialized['font_weight'], int(FontWeight.Bold))
+        self.assertNotIn('bold', serialized)
+        self.assertNotIn('deprecated_attributes', serialized)
+
     def test_every_weight_round_trips_across_qt_boundaries(self):
         for weight in FontWeight:
             with self.subTest(weight=weight):
@@ -220,6 +245,77 @@ class FontWeightUiTest(unittest.TestCase):
 
         self.assertEqual(active.font_family, 'Example Bold')
         self.assertIs(active.font_weight, FontWeight.Bold)
+
+    def test_picker_group_face_and_weight_use_one_document_edit(self):
+        faces = [
+            FontFace(
+                'DejaVu Sans', 'Example Light', 'DejaVu Sans',
+                'Light', 300,
+            ),
+            FontFace(
+                'DejaVu Serif', 'Example Bold', 'DejaVu Serif',
+                'Bold', 700,
+            ),
+        ]
+        entry = FontEntry(
+            'Example', 'Example', 'DejaVu Sans', 'custom',
+            weights=[300, 700], faces=faces, is_pseudo_group=True,
+        )
+        shared.FONT_REGISTRY = FontRegistry(custom_entries=[entry])
+        block = TextBlock([0, 0, 300, 100])
+        block._bounding_rect = [0, 0, 300, 100]
+        block.translation = 'AB'
+        block.font_family = 'DejaVu Sans'
+        block.font_weight = FontWeight.Light
+        item = TextBlkItem(block)
+        self.addCleanup(item.deleteLater)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+
+        panel = self._make_panel()
+        panel.global_format = FontFormat()
+        panel.textblk_item = item
+        panel.familybox.update_font_entries([entry])
+        active = item.get_fontformat()
+        panel.set_active_format(active)
+        pushed_steps = []
+        item.push_undo_stack.connect(
+            lambda count, formatting: pushed_steps.append(
+                (count, formatting)
+            )
+        )
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.commands.'
+            'restore_canvas_view_focus'
+        ):
+            panel.on_font_weight_changed(
+                'font_weight', FontWeight.Bold
+            )
+
+        self.assertEqual(len(pushed_steps), 1)
+        self.assertGreater(pushed_steps[0][0], 0)
+        self.assertTrue(pushed_steps[0][1])
+        self.assertEqual(active.font_family, 'DejaVu Serif')
+        self.assertIs(active.font_weight, FontWeight.Bold)
+        formatted = QTextCursor(item.document())
+        formatted.select(QTextCursor.SelectionType.Document)
+        self.assertEqual(formatted.charFormat().font().family(), 'DejaVu Serif')
+        self.assertIs(
+            font_weight_from_qt(formatted.charFormat().fontWeight()),
+            FontWeight.Bold,
+        )
+
+        item.document().undo()
+        restored = QTextCursor(item.document())
+        restored.select(QTextCursor.SelectionType.Document)
+        self.assertEqual(restored.charFormat().font().family(), 'DejaVu Sans')
+        self.assertIs(
+            font_weight_from_qt(restored.charFormat().fontWeight()),
+            FontWeight.Light,
+        )
 
     def test_editable_family_resolves_display_name_and_rejects_unknowns(self):
         combo = FontFamilyComboBox()
