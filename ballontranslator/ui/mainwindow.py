@@ -1133,7 +1133,7 @@ class MainWindow(mainwindow_cls):
         from qtpy.QtWidgets import QMessageBox
         
         if self.imgtrans_proj.is_empty:
-            QMessageBox.warning(self, self.tr('Warning'), self.tr('Open a project first'))
+            QMessageBox.warning(self, "警告", "请先打开一个项目")
             return
         
         config = self.merge_dialog.get_config()
@@ -1141,19 +1141,20 @@ class MainWindow(mainwindow_cls):
         if on_current:
             # 对当前文件运行 - 直接在内存中操作，不读写文件
             from ballontranslator.utils.textblock import TextBlock
+            
             current_img = self.imgtrans_proj.current_img
             if not current_img:
-                QMessageBox.warning(self, self.tr('Warning'), self.tr('No current file'))
+                QMessageBox.warning(self, "警告", "没有当前文件")
                 return
             
             # 直接从内存获取当前页面的文本框
             if current_img not in self.imgtrans_proj.pages:
-                QMessageBox.warning(self, self.tr('Warning'), self.tr('Current page data missing'))
+                QMessageBox.warning(self, "警告", "当前页面数据不存在")
                 return
-
+            
             textblocks = self.imgtrans_proj.pages[current_img]
             if not textblocks:
-                QMessageBox.warning(self, self.tr('Notice'), self.tr('No text blocks on the current page'))
+                QMessageBox.warning(self, "提示", "当前页面没有文本框")
                 return
             
             # 将 TextBlock 对象转换为字典格式（merger 需要字典）
@@ -1188,29 +1189,28 @@ class MainWindow(mainwindow_cls):
                 self.canvas.updateCanvas()
                 self.st_manager.updateSceneTextitems()
                 final_count = len(final_shapes)
-                QMessageBox.information(self, self.tr('Success'), self.tr('Merge complete: blocks {initial} -> {final} ({removed} removed)').format(initial=initial_count, final=final_count, removed=initial_count - final_count))
+                QMessageBox.information(self, "成功", f"合并完成: 框数 {initial_count} -> {final_count} (减少了 {initial_count - final_count} 个)")
             else:
                 # 提供更详细的提示
-                # label can be None for unlabeled blocks; str() keeps join() from raising.
-                labels = sorted({str(s.get('label')) for s in initial_shapes if s.get('label')})
-                detail_msg = self.tr('No merges were performed.\nTotal text blocks: {count}.\nLabel types: {labels}\n\n').format(count=initial_count, labels=', '.join(labels) or 'none')
-                detail_msg += self.tr('Suggestions:\n')
-                detail_msg += self.tr('1. Try increasing the max gap values (e.g. 100-200)\n')
-                detail_msg += self.tr('2. Lower the min overlap ratios (e.g. 50-70%)\n')
-                detail_msg += self.tr("3. Uncheck 'Enable excluded labels (blacklist)'\n")
-                detail_msg += self.tr('4. Check whether the labels are blacklisted')
-                QMessageBox.warning(self, self.tr('Notice'), detail_msg)
+                labels = set(s.get('label', '') for s in initial_shapes)
+                detail_msg = f"未发生任何合并。\n共有 {initial_count} 个文本框。\n标签类型: {', '.join(labels) or '无'}\n\n"
+                detail_msg += "建议：\n"
+                detail_msg += "1. 尝试增大最大间隙值（如 100-200）\n"
+                detail_msg += "2. 降低最小重叠比例（如 50-70%）\n"
+                detail_msg += "3. 取消勾选'启用排除合并的标签'\n"
+                detail_msg += "4. 检查标签是否在黑名单中"
+                QMessageBox.warning(self, "提示", detail_msg)
         else:
             # 对所有文件运行
             img_list = list(self.imgtrans_proj.pages.keys())
             if not img_list:
-                QMessageBox.warning(self, self.tr('Warning'), self.tr('No images in the project'))
+                QMessageBox.warning(self, "警告", "项目中没有图片")
                 return
             
             # 使用项目的 JSON 文件路径
             json_path = self.imgtrans_proj.proj_path
             if not json_path or not osp.exists(json_path):
-                QMessageBox.warning(self, self.tr('Warning'), self.tr('Project JSON file not found: {path}').format(path=json_path))
+                QMessageBox.warning(self, "警告", f"找不到项目 JSON 文件: {json_path}")
                 return
             
             # 使用后台线程执行合并
@@ -1262,7 +1262,7 @@ class MainWindow(mainwindow_cls):
         
         # 显示结果
         total = success_count + fail_count
-        QMessageBox.information(self, self.tr('Finished'), self.tr('Region merge finished\nSucceeded: {ok}/{total}\nFailed: {failed}/{total}').format(ok=success_count, failed=fail_count, total=total))
+        QMessageBox.information(self, "完成", f"区域合并完成\n成功: {success_count}/{total}\n失败: {fail_count}/{total}")
 
     def on_req_update_pagetext(self):
         if self.canvas.text_change_unsaved():

@@ -420,7 +420,7 @@ class TitleBar(Widget):
         self.toolsToolBtn.setText(self.tr('Tools'))
         
         # 区域合并工具
-        mergeToolAction = QAction(self.tr('Region Merge Tool'), self)
+        mergeToolAction = QAction('区域合并工具', self)
         mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
 
