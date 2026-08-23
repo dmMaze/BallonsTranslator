@@ -1,9 +1,16 @@
-from typing import List, Union, Tuple
+from typing import Callable, List, Optional, Union, Tuple
 
 import numpy as np
 from qtpy.QtWidgets import QGraphicsOpacityEffect, QLabel, QColorDialog, QMenu
-from qtpy.QtCore import  Qt, QPropertyAnimation, QEasingCurve, Signal
-from qtpy.QtGui import QMouseEvent, QWheelEvent, QColor
+from qtpy.QtCore import (
+    Qt,
+    QEvent,
+    QObject,
+    QPropertyAnimation,
+    QEasingCurve,
+    Signal,
+)
+from qtpy.QtGui import QMouseEvent, QResizeEvent, QWheelEvent, QColor
 
 
 from ballontranslator.utils.shared import CONFIG_FONTSIZE_CONTENT
@@ -49,12 +56,26 @@ class ColorPickerLabel(QLabel):
         super().__init__(parent=parent, *args, **kwargs)
         self.color: QColor = None
         self.param_name = param_name
+        self.dialog_color_provider: Optional[
+            Callable[[], Optional[Union[QColor, List, Tuple]]]
+        ] = None
 
-    def mousePressEvent(self, event: QMouseEvent):
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         btn = event.button()
         if btn == Qt.MouseButton.LeftButton:
             self.changingColor.emit()
-            initial_color = self.color if self.color is not None else QColor(255, 255, 255)
+            initial_color = self.color
+            if self.dialog_color_provider is not None:
+                provided_color = self.dialog_color_provider()
+                if provided_color is not None:
+                    initial_color = (
+                        provided_color
+                        if isinstance(provided_color, QColor)
+                        else QColor(*provided_color)
+                    )
+                    self.setPickerColor(initial_color)
+            if initial_color is None:
+                initial_color = QColor(255, 255, 255)
             color = QColorDialog.getColor(initial_color, self.window())
             is_valid = color.isValid()
             if is_valid:
@@ -88,6 +109,59 @@ class ColorPickerLabel(QLabel):
 
 class SmallColorPickerLabel(ColorPickerLabel):
     pass
+
+
+class NestedColorPickerLabel(ColorPickerLabel):
+    """An outline-color swatch containing a separately clickable fill swatch."""
+
+    INNER_LEFT_RATIO = 0.5
+
+    def __init__(
+        self,
+        parent=None,
+        param_name: str = '',
+        inner_param_name: str = '',
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(parent=parent, param_name=param_name, *args, **kwargs)
+        self.setObjectName('NestedStrokeColorPicker')
+        self.inner = ColorPickerLabel(self, param_name=inner_param_name)
+        self.inner.setObjectName('NestedFillColorPicker')
+        self.setProperty('innerHover', False)
+        self.inner.installEventFilter(self)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is not self.inner:
+            return super().eventFilter(watched, event)
+        event_type = event.type()
+        if event_type == QEvent.Type.Enter:
+            self._set_inner_hover(True)
+        elif event_type == QEvent.Type.Leave:
+            self._set_inner_hover(False)
+        return super().eventFilter(watched, event)
+
+    def _set_inner_hover(self, hovering: bool) -> None:
+        if bool(self.property('innerHover')) == hovering:
+            return
+        self.setProperty('innerHover', hovering)
+        # Enter/Leave is a safe point to refresh this property-scoped rule.
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        content = self.contentsRect()
+        hint = self.inner.sizeHint()
+        width = self.inner.minimumWidth() or hint.width()
+        height = self.inner.minimumHeight() or hint.height()
+        x = content.left() + round(
+            max(0, content.width() - width) * self.INNER_LEFT_RATIO
+        )
+        y = content.top() + round(max(0, content.height() - height) / 2)
+        self.inner.setGeometry(x, y, width, height)
+        self.inner.raise_()
 
 
 
@@ -193,6 +267,7 @@ class SizeControlLabel(QLabel):
 
     btn_released = Signal()
     size_ctrl_changed = Signal(int)
+    reset_requested = Signal()
 
     def __init__(self, parent=None, direction=0, text='', alignment=None, transparent_bg=True):
         super().__init__(parent)
@@ -206,6 +281,8 @@ class SizeControlLabel(QLabel):
         self.cur_pos = 0
         self.direction = direction
         self.mouse_pressed = False
+        self._drag_changed = False
+        self.size_ctrl_changed.connect(self._on_size_ctrl_changed)
         if transparent_bg:
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         if alignment is not None:
@@ -215,6 +292,7 @@ class SizeControlLabel(QLabel):
         if e.button() == Qt.MouseButton.LeftButton:
             self.setFocus(Qt.FocusReason.MouseFocusReason)
             self.mouse_pressed = True
+            self._drag_changed = False
             if shared.FLAG_QT6:
                 g_pos = e.globalPosition().toPoint()
             else:
@@ -225,7 +303,9 @@ class SizeControlLabel(QLabel):
     def mouseReleaseEvent(self, e: QMouseEvent) -> None:
         if e.button() == Qt.MouseButton.LeftButton:
             self.mouse_pressed = False
-            self.btn_released.emit()
+            if self._drag_changed:
+                self.btn_released.emit()
+            self._drag_changed = False
         return super().mouseReleaseEvent(e)
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
@@ -236,12 +316,27 @@ class SizeControlLabel(QLabel):
                 g_pos = e.globalPos()
             if self.direction == 0:
                 new_pos = g_pos.x()
-                self.size_ctrl_changed.emit(new_pos - self.cur_pos)
+                delta = new_pos - self.cur_pos
             else:
                 new_pos = g_pos.y()
-                self.size_ctrl_changed.emit(self.cur_pos - new_pos)
+                delta = self.cur_pos - new_pos
+            if delta:
+                self.size_ctrl_changed.emit(delta)
             self.cur_pos = new_pos
         return super().mouseMoveEvent(e)
+
+    def _on_size_ctrl_changed(self, delta: int) -> None:
+        if self.mouse_pressed and delta:
+            self._drag_changed = True
+
+    def mouseDoubleClickEvent(self, e: QMouseEvent) -> None:
+        if e.button() == Qt.MouseButton.LeftButton:
+            self.mouse_pressed = False
+            self._drag_changed = False
+            self.reset_requested.emit()
+            e.accept()
+            return
+        super().mouseDoubleClickEvent(e)
     
 
 class SmallSizeControlLabel(SizeControlLabel):

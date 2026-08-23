@@ -509,8 +509,7 @@ class MainWindow(mainwindow_cls):
         self.configPanel.apply_auto_tate_chu_yoko_requested.connect(
             self.apply_auto_tate_chu_yoko_to_project
         )
-        if pcfg.let_show_only_custom_fonts_flag or pcfg.excluded_fonts:
-            self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -687,12 +686,9 @@ class MainWindow(mainwindow_cls):
             save_text_styles()
 
     def on_show_only_custom_font(self, only_custom: bool) -> None:
-        if only_custom:
-            font_list = shared.CUSTOM_FONTS
-        else:
-            font_list = shared.FONT_FAMILIES
-        font_list = shared.get_filtered_font_list(font_list, pcfg.excluded_fonts)
-        self.textPanel.formatpanel.familybox.update_font_list(font_list)
+        registry = shared.FONT_REGISTRY
+        entries = registry.entries(only_custom, pcfg.excluded_fonts)
+        self.textPanel.formatpanel.update_font_entries(entries)
 
     def openDir(self, directory: str):
         try:

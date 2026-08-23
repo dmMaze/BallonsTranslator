@@ -1,5 +1,7 @@
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -25,6 +27,9 @@ from ballontranslator.ui.text_engine.pipeline_formatting import (
     _load_text_block_document,
 )
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils import shared
+from ballontranslator.utils.font_registry import FontEntry, FontFace, FontRegistry
+from ballontranslator.utils.fontformat import FontWeight, font_weight_to_qt
 
 
 class FontFamilyResolutionTests(unittest.TestCase):
@@ -73,6 +78,27 @@ class FontFamilyResolutionTests(unittest.TestCase):
         self.assertEqual(aliases, {})
         self.assertEqual(font_family_for_qt(family), family)
 
+    def test_html_family_precheck_uses_indexed_css_names(self):
+        class MembershipOnlyDict(dict):
+            def __iter__(self):
+                raise AssertionError('registry keys must not be scanned')
+
+        registry = SimpleNamespace(
+            entries_by_key=MembershipOnlyDict({
+                'a & b, display': object(),
+            })
+        )
+        html = (
+            "<span style=\"font-family:'A &amp; B, Display', serif\">"
+            'text</span>'
+        )
+
+        with patch.object(shared, 'FONT_REGISTRY', registry):
+            self.assertTrue(html_uses_project_font_family(html))
+            self.assertFalse(html_uses_project_font_family(
+                "<span style=\"font-family:'Unknown'\">text</span>"
+            ))
+
     def test_comma_family_remains_one_qt_family(self):
         family = 'Synthetic, Comma Family'
 
@@ -98,6 +124,153 @@ class FontFamilyResolutionTests(unittest.TestCase):
         self.assertEqual(font.families(), ['DejaVu Sans'])
         self.assertEqual(font.pointSizeF(), 22)
         self.assertTrue(font.italic())
+
+    def test_registry_resolution_does_not_pin_weight_or_italic_face(self):
+        database = QFontDatabase if QT6 else QFontDatabase()
+        family = 'DejaVu Sans'
+        if family not in database.families():
+            self.skipTest(f'{family} is not installed')
+        entry = FontEntry(
+            family,
+            family,
+            family,
+            'system',
+            weights=[400, 700],
+            faces=[
+                FontFace(family, family, family, 'Book', 400),
+                FontFace(family, family, family, 'Bold', 700),
+            ],
+        )
+        font = QFont(family, 18)
+        font.setWeight(
+            QFont.Weight(font_weight_to_qt(FontWeight.Bold, qt6=QT6))
+        )
+        font.setItalic(True)
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(system_entries=[entry]),
+        ):
+            resolved = qfont_with_family(font, family)
+
+        style_name = QRawFont.fromFont(resolved).styleName().casefold()
+        self.assertIn('bold', style_name)
+        self.assertTrue(
+            'italic' in style_name or 'oblique' in style_name,
+            style_name,
+        )
+
+    def test_html_exports_real_face_names_instead_of_picker_groups(self):
+        faces = [
+            FontFace(
+                'Example Light', 'Example Light', 'Qt Example Light',
+                'Light', 300,
+            ),
+            FontFace(
+                'Example Bold', 'Example Bold', 'Qt Example Bold',
+                'Bold', 700,
+            ),
+        ]
+        entry = FontEntry(
+            'Example',
+            'Example',
+            'Qt Example Light',
+            'custom',
+            faces=faces,
+            weights=[300, 700],
+            is_pseudo_group=True,
+        )
+        html = "<span style=\"font-family:'Qt Example Bold'\">x</span>"
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(custom_entries=[entry]),
+        ):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn("font-family:'Example Bold'", restored)
+        self.assertNotIn("font-family:'Example'", restored)
+
+    def test_html_exports_canonical_system_alias_name(self):
+        face = FontFace(
+            '바탕', '바탕', '바탕', 'Regular', 400, aliases={'Batang'}
+        )
+        entry = FontEntry(
+            'Batang', '바탕', '바탕', 'system',
+            faces=[face], weights=[400], aliases={'Batang', '바탕'},
+            alias_source='optional-table',
+        )
+        html = "<span style=\"font-family:'바탕'\">x</span>"
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(system_entries=[entry]),
+        ):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn("font-family:'Batang'", restored)
+        self.assertNotIn("font-family:'바탕'", restored)
+
+    def test_html_export_uses_index_and_preserves_entity_escaping(self):
+        face = FontFace(
+            'Canonical & Name', 'Canonical & Name', 'A & B, Display',
+            'Regular', 400,
+        )
+        registry = FontRegistry(custom_entries=[FontEntry(
+            'Canonical & Name', 'Canonical & Name', 'A & B, Display',
+            'custom', faces=[face], weights=[400],
+        )])
+        registry.entries = lambda *_args: (_ for _ in ()).throw(
+            AssertionError('registry entries must not be scanned')
+        )
+        html = (
+            "<span style=\"font-family:'A &amp; B, Display', serif\">"
+            'x</span>'
+        )
+
+        with patch.object(shared, 'FONT_REGISTRY', registry):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn(
+            "font-family:'Canonical &amp; Name', serif", restored
+        )
+
+    def test_internal_qt_alias_exports_registry_canonical_name(self):
+        qt_family = '[localized-vendor]Synthetic Font'
+        internal = register_qt_font_family_aliases(
+            [qt_family], lambda _family: []
+        )[qt_family]
+        face = FontFace(
+            'Canonical Synthetic Font',
+            qt_family,
+            qt_family,
+            'Regular',
+            400,
+        )
+        entry = FontEntry(
+            'Canonical Synthetic Font',
+            qt_family,
+            qt_family,
+            'custom',
+            faces=[face],
+            weights=[400],
+        )
+        html = f"<span style=\"font-family:'{internal}'\">x</span>"
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(custom_entries=[entry]),
+        ):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn(
+            "font-family:'Canonical Synthetic Font'", restored
+        )
+        self.assertNotIn(internal, restored)
 
     def test_buding_uses_real_face_through_horizontal_vertical_switch(self):
         family = '[toolbox]BuDing-JF'

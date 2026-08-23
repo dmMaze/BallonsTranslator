@@ -9,9 +9,8 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy import QT6
 from qtpy.QtCore import QEvent, QPointF, QTranslator, Qt
-from qtpy.QtGui import QFontDatabase, QMouseEvent
+from qtpy.QtGui import QMouseEvent
 from qtpy.QtWidgets import QApplication, QDialog, QWidget
 
 from ballontranslator.ui.configpanel import ConfigPanel, FontExcludeDialog
@@ -22,6 +21,7 @@ from ballontranslator.ui.text_engine.formatting.panel import (
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import ProgramConfig, pcfg
+from ballontranslator.utils.font_registry import FontEntry, FontRegistry
 from ballontranslator.utils.fontformat import FontFormat
 
 
@@ -98,12 +98,14 @@ class FontExclusionUiTests(unittest.TestCase):
         self.old_excluded_fonts = pcfg.excluded_fonts
         self.old_only_custom = pcfg.let_show_only_custom_fonts_flag
         self.old_active_format = C.active_format
+        self.old_font_registry = shared.FONT_REGISTRY
 
     def tearDown(self):
         shared.FONT_FAMILIES = self.old_font_families
         pcfg.excluded_fonts = self.old_excluded_fonts
         pcfg.let_show_only_custom_fonts_flag = self.old_only_custom
         C.active_format = self.old_active_format
+        shared.FONT_REGISTRY = self.old_font_registry
 
     def test_search_clears_hidden_selection_before_moving_fonts(self):
         shared.FONT_FAMILIES = {'Zulu', 'Alpha', 'Beta'}
@@ -193,26 +195,34 @@ class FontExclusionUiTests(unittest.TestCase):
         self.assertEqual(saves, [True])
 
     def test_font_combo_preserves_an_applied_hidden_font(self):
-        shared.FONT_FAMILIES = {'Alpha', 'Beta'}
+        alpha = FontEntry('Alpha', 'Alpha', 'Alpha', 'system')
+        beta = FontEntry('Beta', 'Beta', 'Beta', 'system')
+        shared.FONT_REGISTRY = FontRegistry(system_entries=[alpha, beta])
         combo = FontFamilyComboBox()
         self.addCleanup(combo.close)
-        combo.update_font_list(['Alpha', 'Beta'])
-        combo.setCurrentText('Beta')
+        combo.update_font_entries([alpha, beta])
+        combo.set_current_family('Beta')
         changes = []
         combo.param_changed.connect(lambda *args: changes.append(args))
 
-        combo.update_font_list(['Alpha'])
+        combo.update_font_entries([alpha])
 
         self.assertEqual(combo.currentText(), 'Beta')
         self.assertEqual([combo.itemText(i) for i in range(combo.count())], ['Alpha'])
         self.assertEqual(changes, [])
 
     def test_selecting_item_with_hidden_font_keeps_filtered_popup(self):
-        font_database = QFontDatabase if QT6 else QFontDatabase()
-        font_families = sorted(font_database.families(), key=str.casefold)
-        self.assertGreaterEqual(len(font_families), 2)
-        allowed_font, hidden_font = font_families[0], font_families[-1]
-        shared.FONT_FAMILIES = set(font_families)
+        allowed_font = 'Alpha'
+        hidden_font = 'Beta'
+        allowed_entry = FontEntry(
+            allowed_font, allowed_font, allowed_font, 'system'
+        )
+        hidden_entry = FontEntry(
+            hidden_font, hidden_font, hidden_font, 'system'
+        )
+        shared.FONT_REGISTRY = FontRegistry(
+            system_entries=[allowed_entry, hidden_entry]
+        )
         with patch.object(
             shared,
             'register_view_widget',
@@ -223,7 +233,7 @@ class FontExclusionUiTests(unittest.TestCase):
         self.addCleanup(panel.deleteLater)
         active_format = FontFormat(font_family=hidden_font)
         panel.global_format = active_format
-        panel.familybox.update_font_list([allowed_font])
+        panel.familybox.update_font_entries([allowed_entry])
         panel.familybox.param_changed.disconnect(
             panel.on_font_family_changed
         )

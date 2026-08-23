@@ -130,6 +130,38 @@ def ffmt_change_font_weight(
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontWeight(value, **set_kwargs)
 
+
+def ffmt_change_font_family_and_weight(
+    font_family: str,
+    font_weight: FontWeight,
+    act_ffmt: FontFormat,
+    is_global: bool,
+    blkitems: List[TextBlkItem] = None,
+    set_focus: bool = False,
+) -> None:
+    """Apply the face family and its weight as one formatting action.
+
+    >>> callable(ffmt_change_font_family_and_weight)
+    True
+    """
+    act_ffmt.font_family = font_family
+    act_ffmt.font_weight = font_weight
+    if is_global:
+        targets = SW.canvas.selected_text_items()
+        set_kwargs = global_default_set_kwargs
+    else:
+        targets = blkitems if isinstance(blkitems, list) else [blkitems]
+        set_kwargs = local_default_set_kwargs
+    for blkitem in targets:
+        if blkitem is not None:
+            blkitem.setFontFamilyAndWeight(
+                font_family,
+                font_weight,
+                **set_kwargs,
+            )
+    if set_focus:
+        restore_canvas_view_focus()
+
 @font_formating()
 def ffmt_change_letter_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     for blkitem, value in zip(blkitems, values):

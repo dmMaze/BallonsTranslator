@@ -11,6 +11,7 @@ from .structures import Union, List, Dict, field, nested_dataclass
 from .split_text_region import split_textblock as split_text_region
 from .fontformat import (
     FontFormat,
+    FontWeight,
     LineSpacingType,
     TextAlignment,
     coerce_font_weight,
@@ -230,6 +231,10 @@ class TextBlock:
                 self.fontformat.font_weight = coerce_font_weight(
                     da['font_weight']
                 )
+            elif isinstance(da.get('bold'), bool) and da['bold']:
+                # Flat project records predate FontFormat and stored only the
+                # Bold toggle. An explicit weight, when present, stays newer.
+                self.fontformat.font_weight = FontWeight.Bold
 
         version = self.text_layout_version
         if (

@@ -1,10 +1,8 @@
-from typing import Iterable, Union
+from typing import Iterable
 
-from qtpy import QT6
 from qtpy.QtWidgets import (
     QApplication,
     QComboBox,
-    QFontComboBox,
     QFrame,
     QHBoxLayout,
     QLineEdit,
@@ -20,7 +18,7 @@ from qtpy.QtGui import (
     QActionGroup,
     QColor,
     QFocusEvent,
-    QFontDatabase,
+    QFont,
     QIcon,
     QKeyEvent,
     QPainter,
@@ -35,12 +33,15 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     FontWeight,
     LineSpacingType,
-    font_weight_from_qt,
+    coerce_font_weight,
+    font_weight_to_qt,
 )
+from ballontranslator.utils.font_registry import FontEntry
 from ...custom_widget import (
     AlignmentChecker,
     CheckableLabel,
     ColorPickerLabel,
+    NestedColorPickerLabel,
     QFontChecker,
     SizeComboBox,
     SizeControlLabel,
@@ -48,6 +49,7 @@ from ...custom_widget import (
     Widget,
 )
 from ..item import TextBlkItem
+from ..font_family import qfont_with_family
 from ..annotations import (
     DEFAULT_EMPHASIS_POSITION,
     EMPHASIS_GLYPHS,
@@ -60,7 +62,11 @@ from .advanced import TextAdvancedFormatPanel
 from ..transforms.edit_session import TextTransformEditSession
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
-from .commands import handle_ffmt_change, restore_canvas_view_focus
+from .commands import (
+    ffmt_change_font_family_and_weight,
+    handle_ffmt_change,
+    restore_canvas_view_focus,
+)
 from ... import shared_widget as SW
 
 class LineEdit(QLineEdit):
@@ -352,6 +358,7 @@ class EmphasisToolButton(QToolButton):
 
 class FormatGroupBtn(QFrame):
     param_changed = Signal(str, bool)
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.italicBtn = QFontChecker(self)
@@ -442,7 +449,7 @@ class FontWeightComboBox(QComboBox):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        labels = {
+        self._labels = {
             FontWeight.Thin: self.tr('Thin'),
             FontWeight.ExtraLight: self.tr('Extra Light'),
             FontWeight.Light: self.tr('Light'),
@@ -453,167 +460,200 @@ class FontWeightComboBox(QComboBox):
             FontWeight.ExtraBold: self.tr('Extra Bold'),
             FontWeight.Black: self.tr('Black'),
         }
-        for weight in FontWeight:
-            self.addItem(labels[weight], int(weight))
         self.activated.connect(self._on_activated)
-        self.set_weight(FontWeight.Normal)
+        self.update_weights((), FontWeight.Normal)
 
     def _on_activated(self, index: int) -> None:
         self.param_changed.emit('font_weight', self.weight())
 
     def weight(self) -> FontWeight:
-        return FontWeight(int(self.currentData()))
+        return coerce_font_weight(int(self.currentData()))
 
     def set_weight(self, weight: FontWeight) -> None:
-        index = self.findData(int(FontWeight(weight)))
+        index = self.findData(int(coerce_font_weight(int(weight))))
         if index >= 0:
             self.setCurrentIndex(index)
 
-
-_FONT_WEIGHT_SUFFIXES = (
-    ('extra light', FontWeight.ExtraLight),
-    ('extra bold', FontWeight.ExtraBold),
-    ('semi bold', FontWeight.DemiBold),
-    ('demi bold', FontWeight.DemiBold),
-    ('extralight', FontWeight.ExtraLight),
-    ('extrabold', FontWeight.ExtraBold),
-    ('semibold', FontWeight.DemiBold),
-    ('demibold', FontWeight.DemiBold),
-    ('regular', FontWeight.Normal),
-    ('normal', FontWeight.Normal),
-    ('medium', FontWeight.Medium),
-    ('light', FontWeight.Light),
-    ('black', FontWeight.Black),
-    ('bold', FontWeight.Bold),
-    ('thin', FontWeight.Thin),
-)
-
-
-def _split_weight_family_name(
-    family: str,
-) -> tuple[str, FontWeight] | tuple[None, None]:
-    """Split a family only when it has a recognized final weight token.
-
-    >>> _split_weight_family_name('Inter Display SemiBold')
-    ('Inter Display', <FontWeight.DemiBold: 600>)
-    >>> _split_weight_family_name('Blackadder ITC')
-    (None, None)
-    """
-    folded = family.casefold()
-    for suffix, weight in _FONT_WEIGHT_SUFFIXES:
-        marker = f' {suffix}'
-        if folded.endswith(marker):
-            return family[:-len(marker)], weight
-    return None, None
-
-
-def _font_database() -> Union[type[QFontDatabase], QFontDatabase]:
-    return QFontDatabase if QT6 else QFontDatabase()
-
-
-def _family_weights(
-    database: Union[type[QFontDatabase], QFontDatabase],
-    family: str,
-) -> set[FontWeight]:
-    weights = set()
-    for style in database.styles(family):
-        weights.add(font_weight_from_qt(int(database.weight(family, style))))
-    return weights
-
-
-def _weight_family_aliases(
-    font_families: Iterable[str],
-) -> dict[str, tuple[str, FontWeight]]:
-    """Return suffix aliases that resolve to a base family's same face."""
-    families = list(font_families)
-    by_folded_name = {family.casefold(): family for family in families}
-    database = _font_database()
-    weights_by_family = {}
-    aliases = {}
-    for alias in families:
-        base_name, weight = _split_weight_family_name(alias)
-        if base_name is None:
-            continue
-        base = by_folded_name.get(base_name.casefold())
-        if base is None:
-            continue
-        if base not in weights_by_family:
-            weights_by_family[base] = _family_weights(database, base)
-        if alias not in weights_by_family:
-            weights_by_family[alias] = _family_weights(database, alias)
-        base_weights = weights_by_family[base]
-        alias_weights = weights_by_family[alias]
+    def update_weights(
+        self,
+        weights: Iterable[int],
+        selected_weight: FontWeight,
+    ) -> None:
+        """Show detected weights while preserving safe editing choices."""
+        selected_weight = coerce_font_weight(int(selected_weight))
+        available = {
+            coerce_font_weight(int(weight)) for weight in weights
+        }
+        if available:
+            available.update((FontWeight.Bold, selected_weight))
+        else:
+            # Missing metadata must not make an existing font unusable.
+            available.update(FontWeight)
+        ordered_weights = [
+            weight for weight in FontWeight if weight in available
+        ]
+        ordered_values = [int(weight) for weight in ordered_weights]
+        current_weights = [
+            self.itemData(index) for index in range(self.count())
+        ]
         if (
-            weight in base_weights
-            and alias_weights == {weight}
+            current_weights == ordered_values
+            and self.currentData() == int(selected_weight)
         ):
-            aliases[alias] = (base, weight)
-    return aliases
+            return
+        with QSignalBlocker(self):
+            if current_weights != ordered_values:
+                self.clear()
+                for weight in ordered_weights:
+                    self.addItem(self._labels[weight], int(weight))
+            self.set_weight(selected_weight)
 
 
-class FontFamilyComboBox(QFontComboBox):
+class FontFamilyComboBox(QComboBox):
     param_changed = Signal(str, object)
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.currentFontChanged.connect(self.on_fontfamily_changed)
+        # Apply the compact selector before Qt caches a content-sized hint.
+        self.setObjectName('FontFamilyBox')
+        self.setEditable(True)
+        self.view().setUniformItemSizes(True)
+        self.currentIndexChanged.connect(self.on_fontfamily_changed)
         self.lineedit = lineedit = LineEdit(parent=self)
         lineedit.return_pressed.connect(self.on_return_pressed)
+        lineedit.editingFinished.connect(self.apply_fontfamily)
         self.setLineEdit(lineedit)
         self.return_pressed = False
-        self.weight_aliases = {}
-        self.canonical_weight_aliases = {}
-        self._weight_alias_source = None
+        self._last_valid_family = ''
+        self._visible_entry_ids: set[int] = set()
+
+    def _preview_font(self, family: str) -> QFont:
+        font = qfont_with_family(self.view().font(), family)
+        if font.pointSizeF() > 0:
+            font.setPointSizeF(font.pointSizeF() + 4)
+        elif font.pixelSize() > 0:
+            font.setPixelSize(font.pixelSize() + 5)
+        return font
         
     def apply_fontfamily(self) -> None:
-        ffamily = self.currentText()
-        if ffamily in shared.FONT_FAMILIES:
+        ffamily = self.current_storage_family()
+        if ffamily:
+            self._last_valid_family = ffamily
             self.param_changed.emit('font_family', ffamily)
+        elif self._last_valid_family:
+            with QSignalBlocker(self):
+                self.set_current_family(self._last_valid_family)
 
     def set_displayed_font(self, font_family: str) -> None:
         """Show a family without changing the filtered popup model."""
         index = self.findText(font_family)
         self.setCurrentIndex(index)
         if index < 0:
-            # setCurrentFont() rebuilds QFontComboBox's database-backed model.
             self.setEditText(font_family)
 
-    def update_font_list(self, font_list: Iterable[str]) -> None:
-        font_list = list(font_list)
-        alias_source = frozenset(shared.FONT_FAMILIES or font_list)
-        if alias_source != self._weight_alias_source:
-            self.weight_aliases = _weight_family_aliases(alias_source)
-            self._weight_alias_source = alias_source
-        visible_families = set(font_list)
-        self.canonical_weight_aliases = {
-            alias: target
-            for alias, target in self.weight_aliases.items()
-            if target[0] in visible_families
-        }
-        font_list = [
-            family
-            for family in font_list
-            if family not in self.canonical_weight_aliases
-        ]
-        if font_list == [self.itemText(i) for i in range(self.count())]:
-            return
-
-        current_font = self.currentText()
-        self.currentFontChanged.disconnect(self.on_fontfamily_changed)
+    def update_font_entries(self, entries: Iterable[FontEntry]) -> None:
+        """Display localized entries and retain canonical storage values."""
+        entries = list(entries)
+        current_family = self.current_storage_family()
+        self.currentIndexChanged.disconnect(self.on_fontfamily_changed)
         try:
             self.clear()
-            self.addItems(font_list)
-            # Keep an applied hidden font visible in the editable field without
-            # putting it back in the popup or changing the underlying format.
-            self.set_displayed_font(current_font)
+            self._visible_entry_ids = {id(entry) for entry in entries}
+            for entry in entries:
+                index = self.count()
+                self.addItem(entry.display_family, entry)
+                preview = self._preview_font(entry.qt_family)
+                if len(entry.weights) == 1:
+                    preview.setWeight(
+                        font_weight_to_qt(
+                            coerce_font_weight(int(entry.weights[0]))
+                        )
+                    )
+                self.setItemData(
+                    index,
+                    preview,
+                    Qt.ItemDataRole.FontRole,
+                )
+            self.set_current_family(current_family)
         finally:
-            self.currentFontChanged.connect(self.on_fontfamily_changed)
+            self.currentIndexChanged.connect(self.on_fontfamily_changed)
 
-    def canonical_family(
-        self, font_family: str
-    ) -> tuple[str, FontWeight | None]:
-        return self.canonical_weight_aliases.get(
-            font_family, (font_family, None)
+    def set_current_family(self, family: str) -> None:
+        if not family:
+            self.setCurrentText('')
+            return
+        self._last_valid_family = family
+        registry = getattr(shared, 'FONT_REGISTRY', None)
+        weight = getattr(C.active_format, 'font_weight', None)
+        resolved = (
+            registry.resolve_family(family, weight) if registry else None
         )
+        for index in range(self.count()):
+            entry = self.itemData(index)
+            if not isinstance(entry, FontEntry):
+                continue
+            names = {
+                entry.canonical_family,
+                entry.display_family,
+                entry.qt_family,
+                *entry.aliases,
+            }
+            if (
+                family in names
+                or entry is getattr(resolved, 'entry', None)
+                or getattr(resolved, 'face', None) in entry.faces
+            ):
+                self.setCurrentIndex(index)
+                self.lineEdit().setText(self.itemText(index))
+                return
+        self.set_displayed_font(family)
+
+    def current_entry(self) -> FontEntry | None:
+        index = self.currentIndex()
+        entry = self.itemData(index)
+        if (
+            isinstance(entry, FontEntry)
+            and self.currentText().strip().casefold()
+            != self.itemText(index).strip().casefold()
+        ):
+            return None
+        return entry if isinstance(entry, FontEntry) else None
+
+    def entry_for_family(
+        self,
+        family: str,
+        weight: int | None = None,
+    ) -> FontEntry | None:
+        registry = getattr(shared, 'FONT_REGISTRY', None)
+        if registry is None or not family:
+            return None
+        resolved = registry.resolve_family(family, weight)
+        entry = registry.picker_entry_for_family(family)
+        if (
+            entry is not None
+            and entry is not resolved.entry
+            and id(entry) not in self._visible_entry_ids
+        ):
+            return resolved.entry
+        return entry
+
+    def current_storage_family(self, weight: int | None = None) -> str:
+        if weight is None:
+            weight = getattr(C.active_format, 'font_weight', None)
+        entry = self.current_entry()
+        if entry is not None:
+            return entry.storage_family_for_weight(weight)
+        family = self.currentText().strip()
+        entry = self.entry_for_family(family, weight)
+        if entry is not None:
+            return entry.storage_family_for_weight(weight)
+        if (
+            family
+            and self._last_valid_family
+            and family.casefold() == self._last_valid_family.casefold()
+        ):
+            return self._last_valid_family
+        return ''
 
     def on_return_pressed(self):
         self.return_pressed = True
@@ -641,14 +681,9 @@ class FontFormatPanel(Widget):
         self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.familybox = FontFamilyComboBox(parent=self)
         self.familybox.setContentsMargins(0, 0, 0, 0)
-        self.familybox.setObjectName("FontFamilyBox")
         self.familybox.setToolTip(self.tr("Font Family"))
         self.familybox.param_changed.connect(self.on_font_family_changed)
         self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        if shared.FONT_FAMILIES:
-            self.familybox.update_font_list(
-                shared.get_filtered_font_list(shared.FONT_FAMILIES)
-            )
 
         self.fontWeightBox = FontWeightComboBox(self)
         self.fontWeightBox.setObjectName('FontWeightBox')
@@ -679,12 +714,18 @@ class FontFormatPanel(Widget):
         linesp_hlayout.addWidget(self.lineSpacingBox)
         linesp_hlayout.setSpacing(7)
         
-        self.colorPicker = ColorPickerLabel(self, param_name='frgb')
-        self.colorPicker.setObjectName('FontFormatColorPicker')
+        self.strokeColorPicker = NestedColorPickerLabel(
+            self, param_name='srgb', inner_param_name='frgb'
+        )
+        self.colorPicker = self.strokeColorPicker.inner
         self.colorPicker.setToolTip(self.tr("Change font color"))
         self.colorPicker.changingColor.connect(self.changingColor)
         self.colorPicker.colorChanged.connect(self.onColorLabelChanged)
         self.colorPicker.apply_color.connect(self.on_apply_color)
+        self.strokeColorPicker.setToolTip(self.tr("Change stroke color"))
+        self.strokeColorPicker.changingColor.connect(self.changingColor)
+        self.strokeColorPicker.colorChanged.connect(self.onColorLabelChanged)
+        self.strokeColorPicker.apply_color.connect(self.on_apply_color)
 
         self.alignBtnGroup = AlignmentBtnGroup(self)
         self.alignBtnGroup.param_changed.connect(self.on_param_changed)
@@ -729,17 +770,9 @@ class FontFormatPanel(Widget):
         self.fontStrokeLabel.size_ctrl_changed.connect(self.strokeWidthBox.changeByDelta)
         self.fontStrokeLabel.btn_released.connect(lambda : self.on_param_changed('stroke_width', self.strokeWidthBox.value()))
         
-        self.strokeColorPicker = ColorPickerLabel(self, param_name='srgb')
-        self.strokeColorPicker.setObjectName('FontFormatColorPicker')
-        self.strokeColorPicker.setToolTip(self.tr("Change stroke color"))
-        self.strokeColorPicker.changingColor.connect(self.changingColor)
-        self.strokeColorPicker.colorChanged.connect(self.onColorLabelChanged)
-        self.strokeColorPicker.apply_color.connect(self.on_apply_color)
-
         stroke_hlayout = QHBoxLayout()
         stroke_hlayout.addWidget(self.fontStrokeLabel)
         stroke_hlayout.addWidget(self.strokeWidthBox)
-        stroke_hlayout.addWidget(self.strokeColorPicker)
         stroke_hlayout.setSpacing(7)
 
         self.letterSpacingBox = SizeComboBox([0, 10], "letter_spacing", self)
@@ -826,7 +859,6 @@ class FontFormatPanel(Widget):
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
         font_selector_layout = QHBoxLayout()
-        font_selector_layout.addWidget(self.colorPicker)
         font_selector_layout.addWidget(self.familybox, 1)
         font_selector_layout.addWidget(self.fontWeightBox)
         font_selector_layout.setSpacing(7)
@@ -850,6 +882,7 @@ class FontFormatPanel(Widget):
         hl2.setContentsMargins(0, 0, 0, 0)
         hl3 = QHBoxLayout()
         hl3.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hl3.addWidget(self.strokeColorPicker)
         hl3.addLayout(stroke_hlayout)
         hl3.addLayout(lettersp_hlayout)
         hl3.addLayout(linesp_hlayout)
@@ -879,7 +912,7 @@ class FontFormatPanel(Widget):
 
     def global_mode(self):
         return id(C.active_format) == id(self.global_format)
-    
+
     def active_text_style_label(self):
         return self.textstyle_panel.active_text_style_label
 
@@ -904,21 +937,13 @@ class FontFormatPanel(Widget):
     def on_font_family_changed(
         self, param_name: str, font_family: str
     ) -> None:
-        canonical_family, inferred_weight = (
-            self.familybox.canonical_family(font_family)
-        )
-        if canonical_family != font_family:
-            with QSignalBlocker(self.familybox):
-                self.familybox.set_displayed_font(canonical_family)
-        self.on_param_changed(param_name, canonical_family)
-        if inferred_weight is not None:
-            self.fontWeightBox.set_weight(inferred_weight)
-            self.on_param_changed('font_weight', inferred_weight)
+        self.on_param_changed(param_name, font_family)
+        self._sync_weight_options(C.active_format)
 
     def on_font_weight_changed(
         self, param_name: str, weight: FontWeight
     ) -> None:
-        self._apply_font_weight(FontWeight(weight))
+        self._apply_font_weight(coerce_font_weight(int(weight)))
 
     def toggle_bold(self) -> None:
         current_weight = FontWeight(C.active_format.font_weight)
@@ -930,14 +955,40 @@ class FontFormatPanel(Widget):
         self._apply_font_weight(weight)
 
     def _apply_font_weight(self, weight: FontWeight) -> None:
-        font_family = self.familybox.currentText()
-        canonical_family, _ = self.familybox.canonical_family(font_family)
-        if canonical_family != font_family:
-            with QSignalBlocker(self.familybox):
-                self.familybox.set_displayed_font(canonical_family)
-            self.on_param_changed('font_family', canonical_family)
-        self.fontWeightBox.set_weight(weight)
-        self.on_param_changed('font_weight', weight)
+        storage_family = (
+            self.familybox.current_storage_family(int(weight))
+            or C.active_format.font_family
+        )
+        if storage_family != C.active_format.font_family:
+            is_global = self.global_mode()
+            ffmt_change_font_family_and_weight(
+                storage_family,
+                weight,
+                C.active_format,
+                is_global=is_global,
+                blkitems=self.textblk_item,
+                set_focus=not is_global,
+            )
+            if is_global:
+                self.update_text_style_label()
+        else:
+            self.on_param_changed('font_weight', weight)
+        self._sync_weight_options(C.active_format)
+
+    def update_font_entries(self, entries: Iterable[FontEntry]) -> None:
+        self.familybox.update_font_entries(entries)
+        self._sync_weight_options(C.active_format)
+
+    def _sync_weight_options(self, font_format: FontFormat) -> None:
+        weight = coerce_font_weight(int(font_format.font_weight))
+        entry = self.familybox.current_entry()
+        if entry is None:
+            entry = self.familybox.entry_for_family(
+                font_format.font_family,
+                int(weight),
+            )
+        weights = entry.weights if entry is not None else ()
+        self.fontWeightBox.update_weights(weights, weight)
 
     def on_emphasis_changed(self, style: str, position: str) -> None:
         if self.textblk_item is not None:
@@ -1117,7 +1168,7 @@ class FontFormatPanel(Widget):
 
         if not preserve_focused_editors or not self.familybox.hasFocus():
             with QSignalBlocker(self.familybox):
-                self.familybox.set_displayed_font(font_format.font_family)
+                self.familybox.set_current_family(font_format.font_family)
         if (
             not preserve_focused_editors
             or not self.fontsizebox.fcombobox.hasFocus()
@@ -1125,8 +1176,7 @@ class FontFormatPanel(Widget):
             with QSignalBlocker(self.fontsizebox.fcombobox):
                 self.fontsizebox.fcombobox.setCurrentText(font_size)
         if not preserve_focused_editors or not self.fontWeightBox.hasFocus():
-            with QSignalBlocker(self.fontWeightBox):
-                self.fontWeightBox.set_weight(font_format.font_weight)
+            self._sync_weight_options(font_format)
         foreground = tuple(font_format.foreground_color())
         if (
             (not preserve_focused_editors or not self.focusOnColorDialog)
