@@ -596,16 +596,21 @@ class TextBlkItem(QGraphicsTextItem):
         return self.effect_renderer.effective_text_effects()
 
     def set_text_alpha_mask(
-        self, mask: Optional[TextAlphaMask]
+        self,
+        mask: Optional[TextAlphaMask],
+        *,
+        preview: bool = False,
     ) -> bool:
-        """Replace or remove the committed TextBlock-owned alpha mask."""
-        if mask is not None and not isinstance(mask, TextAlphaMask):
-            raise TypeError('live text alpha mask requires TextAlphaMask or None')
-        if self.blk.text_alpha_mask == mask:
-            return False
-        self.blk.text_alpha_mask = mask
-        self.effect_renderer._on_text_alpha_mask_changed()
-        return True
+        """Replace the committed mask or its renderer-owned live preview."""
+        return self.effect_renderer.set_text_alpha_mask(
+            mask, preview=preview
+        )
+
+    def clear_text_alpha_mask_preview(self) -> bool:
+        return self.effect_renderer.clear_text_alpha_mask_preview()
+
+    def effective_text_alpha_mask(self) -> Optional[TextAlphaMask]:
+        return self.effect_renderer.effective_text_alpha_mask()
 
     def _set_effective_opacity(self, opacity: float) -> None:
         QGraphicsTextItem.setOpacity(self, opacity)

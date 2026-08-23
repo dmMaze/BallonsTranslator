@@ -476,11 +476,12 @@ class SceneTextManager(QObject):
         if key_event is not None:
             key_event.accept()
 
-    def setTextEditMode(self, edit: bool = False):
+    def setTextEditMode(self, edit: bool = False) -> None:
         if edit:
             self.textpanel.show()
             self.canvas.textLayer.show()
         else:
+            self.canvas.alpha_mask_edit_session.deactivate()
             self.canvas.cancel_path_reorder()
             self.txtblkShapeControl.setBlkItem(None)
             self.textpanel.hide()
@@ -490,7 +491,8 @@ class SceneTextManager(QObject):
     def clearSceneTextitems(
         self,
         reason=SceneTextReplacementReason.CURRENT_PAGE_RELOAD,
-    ):
+    ) -> None:
+        self.canvas.alpha_mask_edit_session.deactivate()
         self.canvas.cancel_path_reorder()
         if reason is not SceneTextReplacementReason.PAGE_CHANGE:
             self.formatpanel.cancel_text_transform_edits_for_scene_change()

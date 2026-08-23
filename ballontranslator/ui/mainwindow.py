@@ -1314,7 +1314,9 @@ class MainWindow(mainwindow_cls):
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         edit.setTextCursor(cursor)
 
-    def shortcutEscape(self):
+    def shortcutEscape(self) -> None:
+        if self.canvas.alpha_mask_edit_session.handle_escape():
+            return
         if self.canvas.path_reorder_active:
             self.canvas.cancel_path_reorder()
             return
@@ -2016,10 +2018,12 @@ class MainWindow(mainwindow_cls):
             render_only=render_only,
         )
 
-    def on_transpanel_changed(self):
+    def on_transpanel_changed(self) -> None:
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
         if not self.canvas.textEditMode() and self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
+        if not self.canvas.textEditMode():
+            self.canvas.alpha_mask_edit_session.deactivate()
         self.canvas.updateLayers()
 
     def import_tstyles(self):

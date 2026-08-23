@@ -29,6 +29,7 @@ Project JSON
 | Shaping and placement | `SceneTextLayout` and its writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
 | Fill, effects, raster bounds | `TextEffectRenderer` and rendering helpers | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
 | Bounds, transforms, and input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py), [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
+| Alpha-mask brush input, preview, and undo | Canvas-owned `TextAlphaMaskEditSession` | [`ui/text_engine/alpha_mask_edit_session.py`](../../ballontranslator/ui/text_engine/alpha_mask_edit_session.py), [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
 | Paired editors and undo integration | `SceneTextManager` | [`ui/text_engine/editing/`](../../ballontranslator/ui/text_engine/editing/) |
 | Formatting UI | Formatting panels and commands | [`ui/text_engine/formatting/`](../../ballontranslator/ui/text_engine/formatting/) |
 
@@ -155,8 +156,19 @@ or create undo steps. Keep Qt's text control authoritative for shaping, cursor,
 selection, IME, and normal hit testing. Interactive rendering may use bounded
 fallbacks, but export must report incomplete output instead of silently
 omitting text. Mask raster/cache state is item-owned and keyed by an O(1)
-generation; only the immutable stroke history is persisted. Editing feedback
-is transient and unmasked.
+generation; each raster namespace reuses at most two bounded pre-mask surfaces
+for mask-only changes instead of regenerating glyph and effect phases. Only
+the immutable stroke history is persisted. Editing feedback is transient and
+unmasked.
+
+The Canvas-owned mask session freezes the scene-to-source mapper and unpadded
+logical origin for each stroke. Raw samples remain session-owned until release;
+only the derived preview mask and pixels enter the renderer. One completed
+stroke then replaces the immutable block mask through one canvas undo command.
+Escape and scene/selection/tool teardown discard an
+incomplete stroke. The first activation inserts an empty mask as its own undo
+step. Mask preview pixels use the existing scratch namespace, while export
+always reads the committed block mask and hides the control overlay.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render

@@ -87,6 +87,9 @@ class _EffectRasterState:
         self.background_pixmap = None
         self.background_pixmap_scale = None
         self.cache_input_key = None
+        # Mask previews only change the final alpha. Keep at most two complete
+        # pre-mask surfaces so visible full/tile output can be derived cheaply.
+        self.pre_mask_cache = {}
 
 
 class _EffectRasterField:
@@ -123,6 +126,8 @@ class TextEffectRenderer:
     force_tiles = _EffectRasterField()
     direct_stroke = _EffectRasterField()
 
+    _NO_MASK_PREVIEW = object()
+
     def __init__(self, item) -> None:
         self.item = item
         self._effect_raster_state = None
@@ -130,6 +135,9 @@ class TextEffectRenderer:
         self._export_effect_raster_state = None
         self._export_active = False
         self._mask_generation = 0
+        self._mask_preview_generation = 0
+        self._mask_preview = self._NO_MASK_PREVIEW
+        self._mask_preview_changes_pixels = False
         self.preview = None
         self._render_stroke = None
         self._outline_only_stroke = False
@@ -238,7 +246,7 @@ class TextEffectRenderer:
         )
 
     def has_preview(self) -> bool:
-        return self.preview is not None
+        return self.preview is not None or self.has_text_alpha_mask_preview()
 
     def uses_preview_surface(self) -> bool:
         """Return whether preview changes source-surface pixels or geometry."""
@@ -259,12 +267,39 @@ class TextEffectRenderer:
         """Return effect values that change completed source-surface pixels."""
         return (
             self.effective_text_effects().effects,
-            self._mask_generation,
+            self._effective_mask_generation(),
         )
 
-    def _active_text_alpha_mask(self) -> Optional[TextAlphaMask]:
+    def canonical_text_alpha_mask(self) -> Optional[TextAlphaMask]:
         block = getattr(self.item, 'blk', None)
-        mask = None if block is None else block.text_alpha_mask
+        return None if block is None else block.text_alpha_mask
+
+    def effective_text_alpha_mask(self) -> Optional[TextAlphaMask]:
+        """Return preview mask interactively and canonical mask for export."""
+        if self._export_active or not self.has_text_alpha_mask_preview():
+            return self.canonical_text_alpha_mask()
+        return self._mask_preview
+
+    def has_text_alpha_mask_preview(self) -> bool:
+        return self._mask_preview is not self._NO_MASK_PREVIEW
+
+    def _effect_preview_changes_pixels(self) -> bool:
+        return bool(
+            self.preview is not None
+            and self.preview.effects
+            != self.canonical_text_effects().effects
+        )
+
+    def _effective_mask_generation(self) -> int:
+        if (
+            not self._export_active
+            and self._mask_preview_changes_pixels
+        ):
+            return -self._mask_preview_generation - 1
+        return self._mask_generation
+
+    def _active_text_alpha_mask(self) -> Optional[TextAlphaMask]:
+        mask = self.effective_text_alpha_mask()
         return mask if mask is not None and not mask.is_neutral() else None
 
     def _mask_requires_surface(self) -> bool:
@@ -275,9 +310,8 @@ class TextEffectRenderer:
 
     def _uses_preview_cache_namespace(self) -> bool:
         return (
-            self.preview is not None
-            and self.preview.effects
-            != self.canonical_text_effects().effects
+            self._mask_preview_changes_pixels
+            or self._effect_preview_changes_pixels()
         )
 
     def _active_strokes(
@@ -336,7 +370,7 @@ class TextEffectRenderer:
         )
         return (
             active.effects,
-            self._mask_generation,
+            self._effective_mask_generation(),
             self.document().revision(),
             layout_generation,
             layout_render_key,
@@ -359,6 +393,37 @@ class TextEffectRenderer:
             layout_render_key,
         ) + cache_key[5:]
 
+    @staticmethod
+    def _effect_cache_key_without_mask(cache_key: tuple) -> tuple:
+        return cache_key[:1] + cache_key[2:]
+
+    def _pre_mask_cache_key(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+        target_stroke: bool,
+    ) -> tuple:
+        return (
+            self._effect_cache_key_without_mask(
+                self._effect_cache_input_key()
+            ),
+            self._active_text_alpha_mask() is not None,
+            float(render_scale),
+            round(surface_rect.left(), 6),
+            round(surface_rect.top(), 6),
+            round(surface_rect.width(), 6),
+            round(surface_rect.height(), 6),
+            bool(target_stroke),
+        )
+
+    @staticmethod
+    def _copy_pre_mask_cache(
+        source: Optional[_EffectRasterState],
+        target: _EffectRasterState,
+    ) -> None:
+        if source is not None:
+            target.pre_mask_cache.update(source.pre_mask_cache)
+
     def _promotable_preview_state(
         self, stack: TextEffectStack
     ) -> Optional[_EffectRasterState]:
@@ -369,6 +434,31 @@ class TextEffectRenderer:
             or state.cache_dirty
             or state.cache_rendered_generation != state.cache_generation
             or state.cache_input_key != self._effect_cache_input_key(stack)
+        ):
+            return None
+        rect = self.boundingRect()
+        plan = plan_effect_raster(
+            rect.width(), rect.height(), quality_raster_request(1.0)
+        )
+        if (
+            plan.mode != 'full'
+            or state.background_pixmap_scale != plan.tier
+        ):
+            return None
+        return state
+
+    def _promotable_mask_preview_state(
+        self, mask: Optional[TextAlphaMask]
+    ) -> Optional[_EffectRasterState]:
+        state = self._preview_effect_raster_state
+        if (
+            not self._mask_preview_changes_pixels
+            or self._mask_preview != mask
+            or state is None
+            or state.background_pixmap is None
+            or state.cache_dirty
+            or state.cache_rendered_generation != state.cache_generation
+            or state.cache_input_key != self._effect_cache_input_key()
         ):
             return None
         rect = self.boundingRect()
@@ -512,10 +602,13 @@ class TextEffectRenderer:
         ):
             if state is not None:
                 state.tile_cache.clear()
+                state.pre_mask_cache.clear()
         self._effect_raster_state = None
         self._preview_effect_raster_state = None
         self._export_effect_raster_state = None
         self._export_active = False
+        self._mask_preview = self._NO_MASK_PREVIEW
+        self._mask_preview_changes_pixels = False
 
     def _apply_effective_opacity(self) -> None:
         self.item._set_effective_opacity(
@@ -529,6 +622,21 @@ class TextEffectRenderer:
 
     @staticmethod
     def _invalidate_raster_state(state: Optional[_EffectRasterState]) -> None:
+        if state is None:
+            return
+        state.cache_generation += 1
+        state.cache_dirty = True
+        state.cache_rendered_generation = -1
+        state.cache_input_key = None
+        state.tile_cache.clear()
+        state.pre_mask_cache.clear()
+        state.background_pixmap = None
+        state.background_pixmap_scale = None
+
+    @staticmethod
+    def _invalidate_mask_raster_state(
+        state: Optional[_EffectRasterState],
+    ) -> None:
         if state is None:
             return
         state.cache_generation += 1
@@ -573,12 +681,18 @@ class TextEffectRenderer:
                 return self.clear_text_effect_preview()
             if preview_before == stack:
                 return False
+            had_pixel_preview = self._uses_preview_cache_namespace()
             self.preview = stack
             effects_changed = effective_before.effects != stack.effects
             if effects_changed:
                 self._preview_effect_raster_state = None
                 if stack.effects != canonical.effects:
-                    self.geometry_controller.retain_effect_preview_surface()
+                    if not had_pixel_preview:
+                        self.geometry_controller.retain_effect_preview_surface()
+                    self._mark_effect_cache_dirty()
+                elif self._mask_preview_changes_pixels:
+                    # The mask scratch remains active, but its upstream effect
+                    # phases must return to the canonical stack.
                     self._mark_effect_cache_dirty()
                 else:
                     # Returning to canonical effect pixels keeps the complete
@@ -604,9 +718,22 @@ class TextEffectRenderer:
             self._apply_effective_opacity()
             return False
         effects_changed = canonical.effects != stack.effects
+        mask_preview_active = self._mask_preview_changes_pixels
+        scratch_state = self._preview_effect_raster_state
+        scratch_current = bool(
+            scratch_state is not None
+            and not scratch_state.cache_dirty
+            and scratch_state.cache_rendered_generation
+            == scratch_state.cache_generation
+            and scratch_state.cache_input_key == self._effect_cache_input_key()
+        )
         promoted_state = (
             self._promotable_preview_state(stack)
-            if effects_changed and preview_before == stack
+            if (
+                effects_changed
+                and preview_before == stack
+                and not mask_preview_active
+            )
             else None
         )
         committed_generation = (
@@ -619,10 +746,23 @@ class TextEffectRenderer:
         if render_format_changed:
             render_format.text_effects = stack
         self.preview = None
-        self._preview_effect_raster_state = None
-        self.geometry_controller.invalidate_effect_preview_surface()
+        if not mask_preview_active:
+            self._preview_effect_raster_state = None
+            self.geometry_controller.invalidate_effect_preview_surface()
         if effects_changed:
-            if promoted_state is None:
+            if mask_preview_active:
+                # Scratch may contain the exact committed effect stack plus a
+                # live mask. It remains preview-owned until the mask settles.
+                self._invalidate_raster_state(self._effect_raster_state)
+                self._invalidate_raster_state(self._export_effect_raster_state)
+                self.geometry_controller.invalidate_effect_preview_surface()
+                if not (
+                    preview_before == stack
+                    and scratch_current
+                    and scratch_state is self._preview_effect_raster_state
+                ):
+                    self._mark_effect_cache_dirty()
+            elif promoted_state is None:
                 self._mark_effect_cache_dirty()
             else:
                 promoted_state.cache_generation = committed_generation + 1
@@ -632,9 +772,24 @@ class TextEffectRenderer:
                 promoted_state.tile_cache.clear()
                 self._effect_raster_state = promoted_state
         self._finish_effect_transition(
-            effects_changed and promoted_state is None
+            effects_changed
+            and promoted_state is None
+            and not (
+                mask_preview_active
+                and preview_before == stack
+                and scratch_current
+            )
         )
-        if promoted_state is not None:
+        if (
+            mask_preview_active
+            and effects_changed
+            and preview_before == stack
+            and scratch_current
+        ):
+            current_key = self._effect_cache_input_key()
+            if scratch_state is not None:
+                scratch_state.cache_input_key = current_key
+        elif promoted_state is not None:
             current_key = self._effect_cache_input_key(stack)
             if promoted_state.cache_input_key != current_key:
                 self._mark_effect_cache_dirty()
@@ -647,29 +802,190 @@ class TextEffectRenderer:
             or effective_before != stack
         )
 
-    def _on_text_alpha_mask_changed(self) -> None:
-        """Invalidate every raster namespace after a committed mask replace."""
-        self._mask_generation += 1
-        for state in (
-            self._effect_raster_state,
-            self._preview_effect_raster_state,
-            self._export_effect_raster_state,
-        ):
-            self._invalidate_raster_state(state)
+    def set_text_alpha_mask(
+        self,
+        mask: Optional[TextAlphaMask],
+        *,
+        preview: bool = False,
+    ) -> bool:
+        """Replace one committed mask or its complete transient preview.
+
+        >>> hasattr(TextEffectRenderer, 'clear_text_alpha_mask_preview')
+        True
+        """
+        if mask is not None and not isinstance(mask, TextAlphaMask):
+            raise TypeError('live text alpha mask requires TextAlphaMask or None')
+        canonical = self.canonical_text_alpha_mask()
+        effective_before = self.effective_text_alpha_mask()
+
+        if preview:
+            if mask == canonical:
+                return self.clear_text_alpha_mask_preview()
+            if self.has_text_alpha_mask_preview() and self._mask_preview == mask:
+                return False
+            first_preview = not self._mask_preview_changes_pixels
+            had_pixel_preview = self._uses_preview_cache_namespace()
+            source_state = self._peek_raster_state()
+            self._mask_preview = mask
+            self._mask_preview_changes_pixels = True
+            self._mask_preview_generation += 1
+            if first_preview and not had_pixel_preview:
+                preview_state = _EffectRasterState()
+                self._copy_pre_mask_cache(source_state, preview_state)
+                self._preview_effect_raster_state = preview_state
+                self.geometry_controller.retain_effect_preview_surface()
+            self._mark_mask_cache_dirty()
+            self.item.refresh_cache_policy()
+            if not self.reshaping:
+                self.repaint_background()
+            self.item.update()
+            return True
+
+        canonical_changed = canonical != mask
+        had_preview = self._mask_preview_changes_pixels
+        if not canonical_changed and not had_preview:
+            return False
+        preview_matches_commit = bool(had_preview and self._mask_preview == mask)
+        effect_preview_active = self._effect_preview_changes_pixels()
+        scratch_state = self._preview_effect_raster_state
+        scratch_current = bool(
+            scratch_state is not None
+            and not scratch_state.cache_dirty
+            and scratch_state.cache_rendered_generation
+            == scratch_state.cache_generation
+            and scratch_state.cache_input_key == self._effect_cache_input_key()
+        )
+        promoted_state = (
+            self._promotable_mask_preview_state(mask)
+            if canonical_changed and had_preview and not effect_preview_active
+            else None
+        )
+        preview_key = (
+            None if promoted_state is None else promoted_state.cache_input_key
+        )
+        committed_generation = (
+            0
+            if self._effect_raster_state is None
+            else self._effect_raster_state.cache_generation
+        )
+        if canonical_changed:
+            self.item.blk.text_alpha_mask = mask
+            self._mask_generation += 1
+        self._mask_preview = self._NO_MASK_PREVIEW
+        self._mask_preview_changes_pixels = False
+        self._invalidate_raster_state(self._export_effect_raster_state)
+
+        if effect_preview_active:
+            # The scratch remains preview-owned. Never publish pixels that
+            # include a transient effect stack into the canonical namespace.
+            if canonical_changed:
+                self._invalidate_mask_raster_state(self._effect_raster_state)
+                self.geometry_controller.invalidate_effect_preview_surface()
+            current_key = self._effect_cache_input_key()
+            can_rekey_scratch = bool(
+                canonical_changed
+                and preview_matches_commit
+                and scratch_current
+                and scratch_state is self._preview_effect_raster_state
+            )
+            if can_rekey_scratch and scratch_state is not None:
+                scratch_state.cache_input_key = current_key
+            else:
+                self._mark_mask_cache_dirty()
+                if not self.reshaping:
+                    self.repaint_background()
+            self.item.refresh_cache_policy()
+            self.item.update()
+            return canonical_changed or effective_before != mask
+
+        self._preview_effect_raster_state = None
+        self.geometry_controller.invalidate_effect_preview_surface()
+
+        current_key = self._effect_cache_input_key()
+        can_promote = bool(
+            promoted_state is not None
+            and preview_key is not None
+            and self._effect_cache_key_without_mask(preview_key)
+            == self._effect_cache_key_without_mask(current_key)
+        )
+        if can_promote:
+            promoted_state.cache_generation = committed_generation + 1
+            promoted_state.cache_rendered_generation = (
+                promoted_state.cache_generation
+            )
+            promoted_state.cache_input_key = current_key
+            promoted_state.tile_cache.clear()
+            self._effect_raster_state = promoted_state
+        elif canonical_changed:
+            self._invalidate_mask_raster_state(self._effect_raster_state)
+
         self.geometry_controller.invalidate_surface_cache()
         self.item.refresh_cache_policy()
-        if not self.reshaping:
+        if canonical_changed and not can_promote and not self.reshaping:
             self.repaint_background()
         self.item.update()
+        return canonical_changed or effective_before != mask
+
+    def clear_text_alpha_mask_preview(self) -> bool:
+        if not self.has_text_alpha_mask_preview():
+            return False
+        changed_pixels = self._mask_preview_changes_pixels
+        effect_preview_active = self._effect_preview_changes_pixels()
+        self._mask_preview = self._NO_MASK_PREVIEW
+        self._mask_preview_changes_pixels = False
+        if effect_preview_active:
+            self._mark_mask_cache_dirty()
+            self.item.refresh_cache_policy()
+            if not self.reshaping:
+                self.repaint_background()
+            self.item.update()
+            return True
+        self._preview_effect_raster_state = None
+        state = self._effect_raster_state
+        current_key = self._effect_cache_input_key()
+        if (
+            state is not None
+            and not state.cache_dirty
+            and state.cache_rendered_generation == state.cache_generation
+            and state.cache_input_key is not None
+            and self._effect_cache_semantic_key(state.cache_input_key)
+            == self._effect_cache_semantic_key(current_key)
+        ):
+            state.cache_input_key = current_key
+        needs_repaint = bool(
+            changed_pixels
+            and (any(self._effect_flags()) or self._renders_completed_foreground())
+            and (
+                state is None
+                or state.cache_dirty
+                or state.cache_rendered_generation != state.cache_generation
+                or state.cache_input_key != current_key
+            )
+        )
+        self.item.refresh_cache_policy()
+        if needs_repaint and not self.reshaping:
+            self.repaint_background()
+        self.geometry_controller.restore_effect_preview_surface()
+        self.item.update()
+        return True
 
     def clear_text_effect_preview(self) -> bool:
         if self.preview is None:
             return False
         preview = self.preview
+        mask_preview_active = self._mask_preview_changes_pixels
         self.preview = None
-        self._preview_effect_raster_state = None
         effects_changed = preview.effects != self.canonical_text_effects().effects
+        if effects_changed:
+            self._preview_effect_raster_state = None
+        elif not mask_preview_active:
+            self._preview_effect_raster_state = None
         self._finish_effect_transition(False)
+        if effects_changed and mask_preview_active:
+            self._mark_effect_cache_dirty()
+            if not self.reshaping:
+                self.repaint_background()
+            return True
         state = self._effect_raster_state
         current_key = self._effect_cache_input_key()
         if (
@@ -696,7 +1012,8 @@ class TextEffectRenderer:
         )
         if needs_repaint and not self.reshaping:
             self.repaint_background()
-        self.geometry_controller.restore_effect_preview_surface()
+        if not mask_preview_active:
+            self.geometry_controller.restore_effect_preview_surface()
         return True
 
     def begin_reshape(self) -> None:
@@ -1392,9 +1709,72 @@ class TextEffectRenderer:
         *,
         target_stroke: bool = True,
     ) -> QPixmap:
-        """Render fixed effect phases from one canonical glyph alpha.
+        """Render or reuse fixed phases, then apply the final block mask.
 
         >>> hasattr(TextEffectRenderer, '_render_effect_surface')
+        True
+        """
+        state = self._raster_state()
+        pre_mask_key = self._pre_mask_cache_key(
+            surface_rect, render_scale, target_stroke
+        )
+        target_map = state.pre_mask_cache.get(pre_mask_key)
+        if target_map is None:
+            target_map = self._render_pre_mask_effect_surface(
+                surface_rect,
+                render_scale,
+                target_stroke=target_stroke,
+            )
+            state.pre_mask_cache[pre_mask_key] = target_map
+            while len(state.pre_mask_cache) > 2:
+                state.pre_mask_cache.pop(next(iter(state.pre_mask_cache)))
+
+        alpha_mask = self._active_text_alpha_mask()
+        if alpha_mask is None:
+            return target_map
+
+        masked_map = self._new_effect_pixmap(render_scale, surface_rect)
+        painter = None
+        try:
+            painter = QPainter(masked_map)
+            if not painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin masked effect painter'
+                )
+            painter.drawPixmap(QPointF(), target_map)
+            painter.translate(-surface_rect.topLeft())
+            self._apply_text_alpha_mask(
+                painter,
+                alpha_mask,
+                surface_rect,
+                render_scale,
+            )
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render masked effect surface'
+            ) from error
+        finally:
+            try:
+                if painter is not None and painter.isActive():
+                    painter.end()
+            except RASTER_BOUNDARY_FAILURES as error:
+                raise EffectRasterAllocationError(
+                    'unable to finish masked effect painter'
+                ) from error
+        return masked_map
+
+    def _render_pre_mask_effect_surface(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+        *,
+        target_stroke: bool = True,
+    ) -> QPixmap:
+        """Render the complete Normal composite before its global mask.
+
+        >>> hasattr(TextEffectRenderer, '_render_pre_mask_effect_surface')
         True
         """
         paint_stroke, _paint_non_stroke = self._effect_flags()
@@ -1500,13 +1880,6 @@ class TextEffectRenderer:
                 assert canonical is not None
                 target_painter.drawPixmap(surface_rect.topLeft(), canonical)
 
-            if alpha_mask is not None:
-                self._apply_text_alpha_mask(
-                    target_painter,
-                    alpha_mask,
-                    surface_rect,
-                    render_scale,
-                )
             if self.surface_raster_error is not None:
                 raise self.surface_raster_error
         except RASTER_BOUNDARY_FAILURES as error:
@@ -1837,7 +2210,18 @@ class TextEffectRenderer:
         state.cache_dirty = True
         state.cache_input_key = None
         state.tile_cache.clear()
+        state.pre_mask_cache.clear()
         # Never combine a previous glyph silhouette with a new fill angle.
+        self.background_pixmap = None
+        self.background_pixmap_scale = None
+
+    def _mark_mask_cache_dirty(self) -> None:
+        """Invalidate final alpha while retaining matching upstream pixels."""
+        state = self._raster_state()
+        state.cache_generation += 1
+        state.cache_dirty = True
+        state.cache_input_key = None
+        state.tile_cache.clear()
         self.background_pixmap = None
         self.background_pixmap_scale = None
 

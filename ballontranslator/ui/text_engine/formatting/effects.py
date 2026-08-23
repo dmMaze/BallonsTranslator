@@ -1,12 +1,13 @@
 """Expandable controls for item-wide text effects."""
 
-from typing import Iterator, Sequence, Tuple, TYPE_CHECKING
+from typing import Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from qtpy.QtCore import QSignalBlocker, QTimer, Signal, QSize, Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -18,6 +19,7 @@ from qtpy.QtWidgets import (
 )
 
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     HollowEffect,
     SHADOW_BLUR_LIMIT,
@@ -35,6 +37,7 @@ from ...misc import themed_icon_path
 from ..transforms.controls import CommittedTransformControl
 
 if TYPE_CHECKING:
+    from ..alpha_mask_edit_session import TextAlphaMaskEditSession
     from ..item import TextBlkItem
 
 
@@ -657,6 +660,124 @@ class HollowEffectCard(QFrame):
         self.remove_requested.emit(self.index)
 
 
+class AlphaMaskCard(QFrame):
+    """Pinned controls for the selected TextBlock-owned mask.
+
+    >>> AlphaMaskCard.__name__
+    'AlphaMaskCard'
+    """
+
+    enabled_requested = Signal(bool)
+    mode_changed = Signal(str)
+    diameter_changed = Signal(float)
+    clear_requested = Signal()
+    remove_requested = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName('TextAlphaMaskCard')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
+        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
+        self.enabled_checkbox.clicked.connect(self.enabled_requested.emit)
+        title = QLabel(self.tr('Alpha Mask'), self)
+        title.setObjectName('TextEffectParameterTitle')
+        title.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.remove_button = QToolButton(self)
+        self.remove_button.setObjectName('TextEffectCloseButton')
+        self.remove_button.setIcon(
+            QIcon(themed_icon_path('titlebar_close.svg'))
+        )
+        self.remove_button.setToolTip(self.tr('Remove Alpha Mask'))
+        self.remove_button.setAccessibleName(self.tr('Remove Alpha Mask'))
+        self.remove_button.setFixedSize(18, 18)
+        self.remove_button.clicked.connect(self.remove_requested.emit)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(5)
+        header.addWidget(self.enabled_checkbox)
+        header.addWidget(title)
+        header.addWidget(self.remove_button)
+
+        mode_label = QLabel(self.tr('Mode'), self)
+        mode_label.setObjectName('TextEffectParamLabel')
+        self.mode_selector = QComboBox(self)
+        self.mode_selector.setObjectName('TextAlphaMaskModeSelector')
+        self.mode_selector.addItem(self.tr('Erase'), 'erase')
+        self.mode_selector.addItem(self.tr('Restore'), 'restore')
+        self.mode_selector.currentIndexChanged.connect(
+            self._on_mode_changed
+        )
+
+        size_label = QLabel(self.tr('Size'), self)
+        size_label.setObjectName('TextEffectParamLabel')
+        self.diameter_editor = QDoubleSpinBox(self)
+        self.diameter_editor.setObjectName('TextAlphaMaskSizeEditor')
+        self.diameter_editor.setRange(1.0, 500.0)
+        self.diameter_editor.setDecimals(1)
+        self.diameter_editor.setSingleStep(1.0)
+        self.diameter_editor.setSuffix(self.tr(' px'))
+        self.diameter_editor.valueChanged.connect(
+            self.diameter_changed.emit
+        )
+
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(8)
+        controls.setVerticalSpacing(4)
+        controls.addWidget(mode_label, 0, 0)
+        controls.addWidget(self.mode_selector, 0, 1)
+        controls.addWidget(size_label, 1, 0)
+        controls.addWidget(self.diameter_editor, 1, 1)
+        controls.setColumnStretch(1, 1)
+
+        self.clear_button = QToolButton(self)
+        self.clear_button.setObjectName('TextAlphaMaskClearButton')
+        self.clear_button.setText(self.tr('Clear'))
+        self.clear_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.clear_button.clicked.connect(self.clear_requested.emit)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(6)
+        layout.addLayout(header)
+        layout.addLayout(controls)
+        layout.addWidget(
+            self.clear_button, alignment=Qt.AlignmentFlag.AlignLeft
+        )
+
+    def set_values(
+        self,
+        mask: TextAlphaMask,
+        mode: str,
+        diameter: float,
+    ) -> None:
+        blockers = (
+            QSignalBlocker(self.enabled_checkbox),
+            QSignalBlocker(self.mode_selector),
+            QSignalBlocker(self.diameter_editor),
+        )
+        self.enabled_checkbox.setChecked(mask.enabled)
+        index = self.mode_selector.findData(mode)
+        self.mode_selector.setCurrentIndex(max(0, index))
+        self.diameter_editor.setValue(diameter)
+        del blockers
+
+    def _on_mode_changed(self, index: int) -> None:
+        mode = self.mode_selector.itemData(index)
+        if mode in {'erase', 'restore'}:
+            self.mode_changed.emit(mode)
+
+
 class TextEffectPanel(PanelArea):
     """Own Overall Opacity and typed effect cards.
 
@@ -673,6 +794,12 @@ class TextEffectPanel(PanelArea):
     remove_effect_requested = Signal(int)
     move_effect_requested = Signal(int, int)
     color_dialog_active_changed = Signal(bool)
+    mask_edit_requested = Signal(bool)
+    mask_enabled_requested = Signal(bool)
+    mask_mode_changed = Signal(str)
+    mask_diameter_changed = Signal(float)
+    mask_clear_requested = Signal()
+    mask_remove_requested = Signal()
 
     MAX_CONTENT_HEIGHT = 480
 
@@ -724,12 +851,16 @@ class TextEffectPanel(PanelArea):
             QIcon(themed_icon_path('drawingtools_pen.svg'))
         )
         self.mask_brush_button.setFixedSize(26, 26)
+        self.mask_brush_button.setCheckable(True)
         self.mask_brush_button.setEnabled(False)
         self.mask_brush_button.setToolTip(
-            self.tr('Alpha mask brush is not available yet.')
+            self.tr('Select one text block in text edit mode.')
         )
         self.mask_brush_button.setAccessibleName(
             self.tr('Alpha Mask Brush')
+        )
+        self.mask_brush_button.clicked.connect(
+            self._on_mask_brush_clicked
         )
 
         top_row = QHBoxLayout()
@@ -776,11 +907,17 @@ class TextEffectPanel(PanelArea):
         self.shadow_cards = []
         self.hollow_card = None
         self._effect_types = None
+        self.alpha_mask_card = None
+        self._mask_items = ()
+        self._alpha_mask_session = None
+        self.mask_card_layout = QVBoxLayout()
+        self.mask_card_layout.setContentsMargins(0, 0, 0, 0)
 
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
         layout.addLayout(top_row)
+        layout.addLayout(self.mask_card_layout)
         layout.addWidget(
             self.add_effect_button,
             alignment=Qt.AlignmentFlag.AlignLeft,
@@ -792,6 +929,68 @@ class TextEffectPanel(PanelArea):
         self.scrollContent.after_resized.connect(self._sync_content_height)
         self._sync_content_height()
         QTimer.singleShot(0, self._sync_content_height)
+
+    def set_alpha_mask_session(
+        self, session: "TextAlphaMaskEditSession"
+    ) -> None:
+        self._alpha_mask_session = session
+        self.refresh_alpha_mask_state()
+
+    def _set_alpha_mask_card(self, present: bool) -> None:
+        if present and self.alpha_mask_card is None:
+            card = AlphaMaskCard(self.scrollContent)
+            card.enabled_requested.connect(
+                self.mask_enabled_requested.emit
+            )
+            card.mode_changed.connect(self.mask_mode_changed.emit)
+            card.diameter_changed.connect(
+                self.mask_diameter_changed.emit
+            )
+            card.clear_requested.connect(self.mask_clear_requested.emit)
+            card.remove_requested.connect(self.mask_remove_requested.emit)
+            self.mask_card_layout.addWidget(card)
+            self.alpha_mask_card = card
+        elif not present and self.alpha_mask_card is not None:
+            card = self.alpha_mask_card
+            self.alpha_mask_card = None
+            self.mask_card_layout.removeWidget(card)
+            card.setParent(None)
+            card.deleteLater()
+
+    def refresh_alpha_mask_state(self) -> None:
+        session = self._alpha_mask_session
+        item = self._mask_items[0] if len(self._mask_items) == 1 else None
+        if item is not None and session is not None:
+            try:
+                attached = item.scene() is session.canvas
+            except RuntimeError:
+                attached = False
+            if not attached:
+                self._mask_items = ()
+                item = None
+        mask = None if item is None else item.blk.text_alpha_mask
+        self._set_alpha_mask_card(mask is not None)
+        eligible = bool(session is not None and session.can_activate(item))
+        active = bool(
+            session is not None and session.active and session.target is item
+        )
+        self.mask_brush_button.setEnabled(eligible)
+        blocker = QSignalBlocker(self.mask_brush_button)
+        self.mask_brush_button.setChecked(active)
+        del blocker
+        self.mask_brush_button.setToolTip(
+            self.tr('Edit Alpha Mask')
+            if eligible
+            else self.tr('Select one text block in text edit mode.')
+        )
+        if self.alpha_mask_card is not None and mask is not None:
+            self.alpha_mask_card.setEnabled(eligible)
+            self.alpha_mask_card.set_values(
+                mask,
+                session.mode if session is not None else 'erase',
+                session.diameter if session is not None else 24.0,
+            )
+        self._sync_content_height()
 
     def _clear_effect_cards(self) -> None:
         for card in self.effect_cards:
@@ -912,12 +1111,21 @@ class TextEffectPanel(PanelArea):
         self._sync_content_height()
 
     def set_active_format(self, font_format: FontFormat) -> None:
+        self._mask_items = ()
         self._set_effect_states([font_format.text_effects])
+        self.refresh_alpha_mask_state()
 
     def set_effect_items(self, items: Sequence["TextBlkItem"]) -> None:
+        self._mask_items = tuple(items)
         self._set_effect_states(
             [item.blk.fontformat.text_effects for item in items]
         )
+        self.refresh_alpha_mask_state()
+
+    def set_alpha_mask_items(self, items: Sequence["TextBlkItem"]) -> None:
+        """Refresh only the TextBlock-owned mask target boundary."""
+        self._mask_items = tuple(items)
+        self.refresh_alpha_mask_state()
 
     def iter_controls(self) -> Iterator[EffectNumericControl]:
         yield self.overall_opacity_control
@@ -977,3 +1185,6 @@ class TextEffectPanel(PanelArea):
             'stroke', 'shadow', 'hollow'
         }:
             self.add_effect_requested.emit(action.data())
+
+    def _on_mask_brush_clicked(self, checked: bool) -> None:
+        self.mask_edit_requested.emit(checked)

@@ -818,6 +818,11 @@ class FontFormatPanel(Widget):
         self.text_effect_session = TextEffectEditSession(
             self, self.texteffect_panel
         )
+        self.alpha_mask_session = getattr(
+            SW.canvas, 'alpha_mask_edit_session', None
+        )
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.bind_controls(self.texteffect_panel)
         color_label = self.textadvancedfmt_panel.gradient_group.start_picker
         color_label.changingColor.connect(self.changingColor)
         color_label.colorChanged.connect(self.onColorLabelChanged)
@@ -1097,19 +1102,27 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.set_ruby_state(*item.ruby_editor_values())
         self._restore_ruby_edit_focus(item)
 
-    def resolve_text_transform_edits_for_save(self):
+    def resolve_text_transform_edits_for_save(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.resolve_for_save()
         self.text_transform_session.resolve_for_save()
         self.text_effect_session.resolve_for_save()
 
-    def resolve_text_transform_edits_for_history_change(self):
+    def resolve_text_transform_edits_for_history_change(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.resolve_for_history_change()
         self.text_transform_session.resolve_for_history_change()
         self.text_effect_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.resolve_for_page_change()
         self.text_effect_session.resolve_for_page_change()
         self.text_transform_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.cancel_for_scene_change()
         self.text_effect_session.cancel_for_scene_change()
         self.text_transform_session.cancel_for_scene_change()
 
@@ -1358,4 +1371,5 @@ class FontFormatPanel(Widget):
                 self.textblk_item = textblk_item
                 multi_size = not textblk_item.isEditing() and textblk_item.isMultiFontSize()
                 self.set_active_format(blk_fmt, multi_size)
+                self.texteffect_panel.set_alpha_mask_items([textblk_item])
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')

@@ -4288,6 +4288,9 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             txtblkShapeControl=shape,
             txtblkGridControl=grid,
             txtblkProjectiveControl=projective,
+            alpha_mask_edit_session=SimpleNamespace(
+                deactivate=lambda: calls.append(('mask', None))
+            ),
             _rubber_band_target=None,
             selected_text_items=lambda: [selected],
         )
@@ -4297,12 +4300,14 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         )
 
         Canvas.bind_text_grid_control(canvas, selected, 2)
+        self.assertIn(('mask', None), calls)
         shape.blk_item = hovered
         Canvas.clear_text_transform_controls(canvas)
 
         self.assertEqual(
             calls,
             [
+                ('mask', None),
                 ('shape', selected),
                 ('grid', selected, 2),
                 ('hide', selected),

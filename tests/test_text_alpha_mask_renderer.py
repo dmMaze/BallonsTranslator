@@ -1,4 +1,5 @@
 import os
+from dataclasses import replace
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -399,6 +400,203 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             self.assertEqual(render.call_count, 3)
             item.endReshape()
             self.assertEqual(render.call_count, 4)
+
+    def test_mask_preview_reuses_expensive_stroke_shadow_composite(self):
+        stack = TextEffectStack(effects=(
+            ShadowEffect(offset=(0.18, 0.12), blur=0.08, spread=0.04),
+            StrokeEffect(width=0.12),
+        ))
+        item = self._item(stack, self._partial_mask())
+        renderer = item.effect_renderer
+        renderer._effect_raster_state.pre_mask_cache.clear()
+        masks = (
+            TextAlphaMask(strokes=(
+                AlphaBrushStroke('erase', 18, ((20, 20),)),
+            )),
+            TextAlphaMask(strokes=(
+                AlphaBrushStroke('erase', 18, ((20, 20), (80, 60))),
+                AlphaBrushStroke('restore', 6, ((40, 35),)),
+            )),
+        )
+        with patch.object(
+            renderer,
+            '_render_pre_mask_effect_surface',
+            wraps=renderer._render_pre_mask_effect_surface,
+        ) as upstream:
+            item.set_text_alpha_mask(masks[0], preview=True)
+            self.assertEqual(upstream.call_count, 1)
+            item.set_text_alpha_mask(masks[1], preview=True)
+            self.assertEqual(upstream.call_count, 1)
+        self.assertEqual(item.blk.text_alpha_mask, self._partial_mask())
+
+    def test_mask_preview_reuses_pre_mask_tile_for_same_visible_region(self):
+        stack = TextEffectStack(effects=(
+            ShadowEffect(offset=(0.18, 0.12), blur=0.08),
+            StrokeEffect(width=0.12),
+        ))
+        item = self._item(stack, self._partial_mask())
+        renderer = item.effect_renderer
+        first = TextAlphaMask(strokes=(
+            AlphaBrushStroke('erase', 18, ((20, 20),)),
+        ))
+        second = TextAlphaMask(strokes=(
+            AlphaBrushStroke('erase', 18, ((20, 20), (60, 40))),
+        ))
+        item.set_text_alpha_mask(first, preview=True)
+        bounds = renderer.boundingRect()
+        visible = QRectF(bounds.left(), bounds.top(), 48, 48)
+        target = renderer._new_effect_pixmap(1.0, bounds)
+        painter = QPainter(target)
+        painter.translate(-bounds.topLeft())
+        try:
+            with patch.object(
+                renderer,
+                '_render_pre_mask_effect_surface',
+                wraps=renderer._render_pre_mask_effect_surface,
+            ) as upstream:
+                renderer._draw_tiled_effects(
+                    painter,
+                    EffectRasterPlan('tiles', 1.0, 0, 0, 128),
+                    visible,
+                )
+                calls = upstream.call_count
+                self.assertGreater(calls, 0)
+                item.set_text_alpha_mask(second, preview=True)
+                renderer._draw_tiled_effects(
+                    painter,
+                    EffectRasterPlan('tiles', 1.0, 0, 0, 128),
+                    visible,
+                )
+                self.assertEqual(upstream.call_count, calls)
+        finally:
+            painter.end()
+
+    def _assert_canonical_cache_not_preview_owned(
+        self, item: TextBlkItem, scratch
+    ) -> None:
+        renderer = item.effect_renderer
+        committed = renderer._effect_raster_state
+        self.assertIsNot(committed, scratch)
+        if committed is not None and committed.cache_input_key is not None:
+            self.assertEqual(
+                committed.cache_input_key[0],
+                item.blk.fontformat.text_effects.effects,
+            )
+            self.assertGreaterEqual(committed.cache_input_key[1], 0)
+
+    def _assert_active_scratch_is_current(self, item: TextBlkItem) -> None:
+        renderer = item.effect_renderer
+        scratch = renderer._preview_effect_raster_state
+        self.assertIs(renderer._peek_raster_state(), scratch)
+        self.assertIsNotNone(scratch)
+        self.assertFalse(scratch.cache_dirty)
+        self.assertEqual(
+            scratch.cache_input_key, renderer._effect_cache_input_key()
+        )
+
+    def test_effect_mask_preview_overlap_commit_orders_stay_isolated(self):
+        canonical = TextEffectStack(effects=(StrokeEffect(width=0.10),))
+        effect_preview = TextEffectStack(effects=(
+            ShadowEffect(blur=0.06, offset=(0.12, 0.08)),
+            StrokeEffect(width=0.22),
+        ))
+        mask_preview = self._erase_all()
+
+        mask_first = self._item(canonical, self._partial_mask())
+        mask_first.set_text_transform(TextTransformStack((SineTextTransform(),)))
+        self._render(mask_first)
+        renderer = mask_first.effect_renderer
+        mask_first.set_text_alpha_mask(mask_preview, preview=True)
+        retained = renderer.geometry_controller._retained_effect_preview_surface
+        self.assertIsNotNone(retained)
+        mask_first.set_text_effects(effect_preview, preview=True)
+        scratch = renderer._preview_effect_raster_state
+        mask_first.set_text_alpha_mask(mask_preview)
+        self._assert_canonical_cache_not_preview_owned(mask_first, scratch)
+        self.assertEqual(mask_first.effective_text_effects(), effect_preview)
+        self.assertEqual(mask_first.effective_text_alpha_mask(), mask_preview)
+        self._assert_active_scratch_is_current(mask_first)
+        self.assertIsNone(
+            renderer.geometry_controller._retained_effect_preview_surface
+        )
+        mask_first.clear_text_effect_preview()
+        self.assertEqual(mask_first.effective_text_effects(), canonical)
+
+        effect_first = self._item(canonical, self._partial_mask())
+        renderer = effect_first.effect_renderer
+        effect_first.set_text_effects(effect_preview, preview=True)
+        effect_first.set_text_alpha_mask(mask_preview, preview=True)
+        scratch = renderer._preview_effect_raster_state
+        effect_first.set_text_effects(effect_preview)
+        self._assert_canonical_cache_not_preview_owned(effect_first, scratch)
+        self.assertEqual(effect_first.effective_text_effects(), effect_preview)
+        self.assertEqual(effect_first.effective_text_alpha_mask(), mask_preview)
+        self._assert_active_scratch_is_current(effect_first)
+        effect_first.clear_text_alpha_mask_preview()
+        self.assertEqual(
+            effect_first.effective_text_alpha_mask(), self._partial_mask()
+        )
+
+    def test_effect_mask_preview_overlap_cancel_paths_keep_remaining_preview(self):
+        canonical = TextEffectStack(effects=(StrokeEffect(width=0.10),))
+        effect_preview = TextEffectStack(effects=(StrokeEffect(width=0.24),))
+        mask_preview = self._erase_all()
+
+        item = self._item(canonical, self._partial_mask())
+        item.set_text_transform(TextTransformStack((SineTextTransform(),)))
+        self._render(item)
+        renderer = item.effect_renderer
+        item.set_text_alpha_mask(mask_preview, preview=True)
+        item.set_text_effects(effect_preview, preview=True)
+        item.clear_text_alpha_mask_preview()
+        self.assertEqual(item.effective_text_effects(), effect_preview)
+        self.assertEqual(item.effective_text_alpha_mask(), self._partial_mask())
+        self._assert_active_scratch_is_current(item)
+        self.assertIsNotNone(
+            renderer.geometry_controller._retained_effect_preview_surface
+        )
+        item.clear_text_effect_preview()
+        self.assertIsNone(
+            renderer.geometry_controller._retained_effect_preview_surface
+        )
+
+        item = self._item(canonical, self._partial_mask())
+        renderer = item.effect_renderer
+        item.set_text_effects(effect_preview, preview=True)
+        item.set_text_alpha_mask(mask_preview, preview=True)
+        item.clear_text_effect_preview()
+        self.assertEqual(item.effective_text_effects(), canonical)
+        self.assertEqual(item.effective_text_alpha_mask(), mask_preview)
+        self._assert_active_scratch_is_current(item)
+        scratch = renderer._preview_effect_raster_state
+        item.set_text_alpha_mask(mask_preview)
+        self.assertIs(renderer._effect_raster_state, scratch)
+
+    def test_overall_opacity_overlap_keeps_mask_scratch_and_upstream(self):
+        canonical = TextEffectStack(effects=(StrokeEffect(width=0.12),))
+        opacity_preview = replace(canonical, overall_opacity=0.45)
+        item = self._item(canonical, self._partial_mask())
+        renderer = item.effect_renderer
+        item.set_text_alpha_mask(self._erase_all(), preview=True)
+        scratch = renderer._preview_effect_raster_state
+        pre_mask = dict(scratch.pre_mask_cache)
+        with patch.object(
+            renderer,
+            '_render_pre_mask_effect_surface',
+            wraps=renderer._render_pre_mask_effect_surface,
+        ) as upstream:
+            item.set_text_effects(opacity_preview, preview=True)
+            item.clear_text_effect_preview()
+            self.assertIs(renderer._preview_effect_raster_state, scratch)
+            self.assertEqual(scratch.pre_mask_cache, pre_mask)
+            self.assertEqual(upstream.call_count, 0)
+
+            item.set_text_effects(opacity_preview, preview=True)
+            item.set_text_effects(opacity_preview)
+            self.assertIs(renderer._preview_effect_raster_state, scratch)
+            self.assertEqual(scratch.pre_mask_cache, pre_mask)
+            self.assertEqual(upstream.call_count, 0)
+        self.assertAlmostEqual(item.opacity(), 0.45)
 
     def test_reshape_omits_mask_but_strict_export_does_not(self):
         item = self._item(mask=self._erase_all())

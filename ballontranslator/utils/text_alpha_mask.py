@@ -10,6 +10,7 @@ from .logger import logger as LOGGER
 
 TEXT_ALPHA_MASK_VERSION = 1
 ALPHA_BRUSH_MODES = ('erase', 'restore')
+ALPHA_BRUSH_SIMPLIFY_TOLERANCE = 0.25
 
 
 def _finite_number(name: str, value: Real) -> float:
@@ -104,6 +105,69 @@ class TextAlphaMask:
                 stroke.to_serializable_dict() for stroke in self.strokes
             ],
         }
+
+
+def simplify_alpha_brush_points(
+    points: Sequence[Sequence[Real]],
+    tolerance: Real = ALPHA_BRUSH_SIMPLIFY_TOLERANCE,
+) -> Tuple[Tuple[float, float], ...]:
+    """Deterministically simplify one sampled brush path.
+
+    Endpoints are always retained and the default tolerance stays below one
+    item-local pixel at normal scale.
+
+    >>> simplify_alpha_brush_points(((0, 0), (1, 0.01), (2, 0)))
+    ((0.0, 0.0), (2.0, 0.0))
+    >>> simplify_alpha_brush_points(((-1, 2),))
+    ((-1.0, 2.0),)
+    """
+    values = tuple(_point_tuple(point) for point in points)
+    threshold = _finite_number('alpha brush simplify tolerance', tolerance)
+    if threshold < 0.0:
+        raise ValueError('alpha brush simplify tolerance must be non-negative')
+    if len(values) < 3:
+        return values
+
+    keep = [False] * len(values)
+    keep[0] = keep[-1] = True
+    pending = [(0, len(values) - 1)]
+    threshold_sq = threshold * threshold
+    while pending:
+        start_index, end_index = pending.pop()
+        start_x, start_y = values[start_index]
+        end_x, end_y = values[end_index]
+        delta_x = end_x - start_x
+        delta_y = end_y - start_y
+        segment_sq = delta_x * delta_x + delta_y * delta_y
+        farthest_index = -1
+        farthest_sq = threshold_sq
+        for index in range(start_index + 1, end_index):
+            point_x, point_y = values[index]
+            if segment_sq == 0.0:
+                distance_sq = (
+                    (point_x - start_x) ** 2
+                    + (point_y - start_y) ** 2
+                )
+            else:
+                amount = (
+                    (point_x - start_x) * delta_x
+                    + (point_y - start_y) * delta_y
+                ) / segment_sq
+                amount = min(1.0, max(0.0, amount))
+                nearest_x = start_x + amount * delta_x
+                nearest_y = start_y + amount * delta_y
+                distance_sq = (
+                    (point_x - nearest_x) ** 2
+                    + (point_y - nearest_y) ** 2
+                )
+            if distance_sq > farthest_sq:
+                farthest_sq = distance_sq
+                farthest_index = index
+        if farthest_index >= 0:
+            keep[farthest_index] = True
+            pending.append((start_index, farthest_index))
+            pending.append((farthest_index, end_index))
+    return tuple(point for point, retained in zip(values, keep) if retained)
 
 
 def _load_alpha_brush_stroke(

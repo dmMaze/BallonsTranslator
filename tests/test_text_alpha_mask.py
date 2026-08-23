@@ -12,11 +12,20 @@ from ballontranslator.utils.text_alpha_mask import (
     AlphaBrushStroke,
     TextAlphaMask,
     load_text_alpha_mask,
+    simplify_alpha_brush_points,
 )
 from ballontranslator.utils.textblock import TextBlock
 
 
 class TextAlphaMaskDomainTest(unittest.TestCase):
+    def test_deterministic_simplification_preserves_visible_turns_and_endpoints(self):
+        points = ((0, 0), (1, 0.01), (2, 0), (2, 2), (3, 2))
+        simplified = simplify_alpha_brush_points(points)
+        self.assertEqual(simplified[0], (0.0, 0.0))
+        self.assertEqual(simplified[-1], (3.0, 2.0))
+        self.assertIn((2.0, 0.0), simplified)
+        self.assertEqual(simplified, simplify_alpha_brush_points(points))
+
     def test_live_values_are_typed_immutable_and_strict(self):
         stroke = AlphaBrushStroke('erase', 12, ((-3, 4), (20, 30)))
         mask = TextAlphaMask(strokes=(stroke,))

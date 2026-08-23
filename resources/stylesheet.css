@@ -2393,7 +2393,8 @@ DeleteStyleButton::hover {
 }
 
 QFrame#TextTransformParameterPanel,
-QFrame#TextEffectParameterPanel {
+QFrame#TextEffectParameterPanel,
+QFrame#TextAlphaMaskCard {
     background-color: @widgetBackgroundColor;
     border: 1px solid @borderColor;
     border-radius: 6px;
@@ -2406,7 +2407,8 @@ QFrame#TextTransformParameterPanel[selected="true"] {
 QFrame#TextTransformParameterPanel QLabel,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelActions,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls,
-QFrame#TextEffectParameterPanel QLabel {
+QFrame#TextEffectParameterPanel QLabel,
+QFrame#TextAlphaMaskCard QLabel {
     background-color: transparent;
 }
 
@@ -2422,7 +2424,8 @@ QMenu#TextEffectAddMenu::item {
 }
 
 QFrame#TextTransformParameterPanel QLabel#TextTransformParameterTitle,
-QFrame#TextEffectParameterPanel QLabel#TextEffectParameterTitle {
+QFrame#TextEffectParameterPanel QLabel#TextEffectParameterTitle,
+QFrame#TextAlphaMaskCard QLabel#TextEffectParameterTitle {
     font-size: 13px;
     font-weight: 600;
 }
@@ -2557,6 +2560,27 @@ QToolButton#TextEffectBrushButton {
 QToolButton#TextTransformCloseButton:hover,
 QToolButton#TextEffectCloseButton:hover {
     background-color: #FF605C;
+}
+
+QToolButton#TextEffectBrushButton:checked {
+    background-color: rgb(30, 147, 229);
+}
+
+QFrame#TextAlphaMaskCard QComboBox#TextAlphaMaskModeSelector,
+QFrame#TextAlphaMaskCard QDoubleSpinBox#TextAlphaMaskSizeEditor {
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+}
+
+QFrame#TextAlphaMaskCard QToolButton#TextAlphaMaskClearButton {
+    min-height: 22px;
+    color: @qwidgetForegroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    background-color: transparent;
+    padding: 0px 8px;
 }
 
 QLabel#TextTransformMixedLabel,
