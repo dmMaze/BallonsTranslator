@@ -1436,11 +1436,11 @@ QFontChecker::indicator::checked {
     border: 2px solid @borderColor;
 }
 
-#NestedStrokeColorPicker::hover {
+QLabel#NestedStrokeColorPicker:hover {
     border: 2px solid rgb(30, 147, 229);
 }
 
-#NestedStrokeColorPicker[innerHover="true"]::hover {
+QLabel#NestedStrokeColorPicker[innerHover="true"]:hover {
     border: 2px solid @borderColor;
 }
 
@@ -1452,7 +1452,7 @@ QFontChecker::indicator::checked {
     border: 1px solid @borderColor;
 }
 
-#NestedFillColorPicker::hover {
+QLabel#NestedFillColorPicker:hover {
     border: 1px solid rgb(30, 147, 229);
 }
 

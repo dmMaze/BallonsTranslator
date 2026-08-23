@@ -241,6 +241,8 @@ class TextShadowGroup(QGroupBox):
         )
 
     def _reset_offset_component(self, box: SmallSizeComboBox) -> None:
+        if box.value() == 0.0:
+            return
         with QSignalBlocker(box):
             box.setValue(0.0)
         self.on_offset_changed()
@@ -266,11 +268,15 @@ class TextShadowGroup(QGroupBox):
         self.on_param_changed('shadow_radius', self.radius_box.value())
 
     def _reset_strength(self) -> None:
+        if self.strength_box.value() == 1.0:
+            return
         with QSignalBlocker(self.strength_box):
-            self.strength_box.setValue(0.0)
-        self.on_param_changed('shadow_strength', 0.0)
+            self.strength_box.setValue(1.0)
+        self.on_param_changed('shadow_strength', 1.0)
 
     def _reset_radius(self) -> None:
+        if self.radius_box.value() == 0.0:
+            return
         with QSignalBlocker(self.radius_box):
             self.radius_box.setValue(0.0)
         self.on_param_changed('shadow_radius', 0.0)
@@ -388,6 +394,8 @@ class TextGradientGroup(QGroupBox):
         self.on_param_changed(param_name, _gradient_angle_from_ui(value))
 
     def _reset_angle(self) -> None:
+        if self.angle_box.value() == 0.0:
+            return
         with QSignalBlocker(self.angle_box):
             self.angle_box.setValue(0.0)
         self._on_angle_changed('gradient_angle', 0.0)
@@ -399,6 +407,8 @@ class TextGradientGroup(QGroupBox):
         self.on_param_changed('gradient_size', self.size_box.value())
 
     def _reset_size(self) -> None:
+        if self.size_box.value() == 1.0:
+            return
         with QSignalBlocker(self.size_box):
             self.size_box.setValue(1.0)
         self.on_param_changed('gradient_size', 1.0)
