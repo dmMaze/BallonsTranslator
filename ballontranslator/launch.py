@@ -74,7 +74,9 @@ os.environ['NUMBA_CACHE_DIR'] = osp.join(shared.cache_dir, 'numba')
 
 PATH_ROOT = Path(shared.PROGRAM_PATH)
 PATH_FONTS = str(PATH_ROOT / 'fonts')
-PATH_FONT_REGISTRY_CONFIG = PATH_ROOT / 'resources' / 'font_registry.json'
+PATH_FONT_REGISTRY_OVERRIDES = (
+    PATH_ROOT / 'resources' / 'font_registry_overrides.json'
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
@@ -337,17 +339,21 @@ def main():
         system_families = sorted(font_database.families(), key=str.casefold)
 
     from ballontranslator.utils.font_registry import build_font_registry
-    registry_path = (
-        str(PATH_FONT_REGISTRY_CONFIG)
-        if PATH_FONT_REGISTRY_CONFIG.exists()
-        else None
+    user_registry_path = (
+        Path(args.config_path).expanduser().resolve().parent
+        / 'font_registry.json'
     )
+    registry_paths = [
+        str(path)
+        for path in (PATH_FONT_REGISTRY_OVERRIDES, user_registry_path)
+        if path.exists()
+    ]
     shared.FONT_REGISTRY = build_font_registry(
         font_database,
         font_paths,
         system_families,
         locale=lang,
-        font_registry_config_path=registry_path,
+        font_registry_paths=registry_paths,
     )
     shared.CUSTOM_FONTS = shared.FONT_REGISTRY.legacy_family_list(
         only_custom=True

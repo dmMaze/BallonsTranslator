@@ -16,6 +16,7 @@ from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
+from ballontranslator.utils.font_registry import normalize_key
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from .misc import parse_stylesheet, set_html_family, QKEY
 from ballontranslator.utils.config import (
@@ -503,16 +504,13 @@ class MainWindow(mainwindow_cls):
         self.configPanel.check_update.connect(self.check_for_updates)
         self.configPanel.reload_textstyle.connect(self.load_textstyle_from_proj_dir)
         self.configPanel.font_list_changed.connect(self.on_show_only_custom_font)
-        self.configPanel.group_font_faces_changed.connect(
-            self.on_font_picker_mode_changed
-        )
         self.configPanel.compact_vertical_punctuation_changed.connect(
             self.st_manager.refresh_vertical_layouts
         )
         self.configPanel.apply_auto_tate_chu_yoko_requested.connect(
             self.apply_auto_tate_chu_yoko_to_project
         )
-        self.on_font_picker_mode_changed()
+        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -689,31 +687,18 @@ class MainWindow(mainwindow_cls):
             save_text_styles()
 
     def on_show_only_custom_font(self, only_custom: bool) -> None:
-        self.on_font_picker_mode_changed(only_custom)
-
-    def on_font_picker_mode_changed(
-        self, only_custom: bool | None = None
-    ) -> None:
-        if only_custom is None:
-            only_custom = pcfg.let_show_only_custom_fonts_flag
         registry = shared.FONT_REGISTRY
         if registry is not None:
-            if pcfg.let_group_font_faces_flag:
-                entries = registry.grouped_entries(only_custom)
-            else:
-                entries = registry.separate_face_entries(only_custom)
-            excluded = {name.casefold() for name in pcfg.excluded_fonts}
+            entries = registry.entries(only_custom)
+            excluded = {
+                normalize_key(name) for name in pcfg.excluded_fonts
+            }
             entries = [
                 entry
                 for entry in entries
-                if entry.qt_family.casefold() not in excluded
-                and entry.canonical_family.casefold() not in excluded
+                if entry.lookup_keys().isdisjoint(excluded)
             ]
-            format_panel = self.textPanel.formatpanel
-            format_panel.familybox.update_font_entries(entries)
-            format_panel.set_font_grouping_mode(
-                pcfg.let_group_font_faces_flag
-            )
+            self.textPanel.formatpanel.familybox.update_font_entries(entries)
             return
 
         if only_custom:

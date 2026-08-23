@@ -139,6 +139,38 @@ class FontFamilyResolutionTests(unittest.TestCase):
             style_name,
         )
 
+    def test_html_exports_real_face_names_instead_of_picker_groups(self):
+        faces = [
+            FontFace(
+                'Example Light', 'Example Light', 'Qt Example Light',
+                'Light', 300,
+            ),
+            FontFace(
+                'Example Bold', 'Example Bold', 'Qt Example Bold',
+                'Bold', 700,
+            ),
+        ]
+        entry = FontEntry(
+            'Example',
+            'Example',
+            'Qt Example Light',
+            'custom',
+            faces=faces,
+            weights=[300, 700],
+            is_pseudo_group=True,
+        )
+        html = "<span style=\"font-family:'Qt Example Bold'\">x</span>"
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(custom_entries=[entry]),
+        ):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn("font-family:'Example Bold'", restored)
+        self.assertNotIn("font-family:'Example'", restored)
+
     def test_buding_uses_real_face_through_horizontal_vertical_switch(self):
         family = '[toolbox]BuDing-JF'
         database = QFontDatabase if QT6 else QFontDatabase()

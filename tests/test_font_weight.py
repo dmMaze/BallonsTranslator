@@ -30,7 +30,7 @@ from ballontranslator.utils.fontformat import (
     font_weight_from_qt,
     font_weight_to_qt,
 )
-from ballontranslator.utils.font_registry import FontEntry
+from ballontranslator.utils.font_registry import FontEntry, FontFace, FontRegistry
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -143,12 +143,14 @@ class FontWeightUiTest(unittest.TestCase):
         self.old_active_format = C.active_format
         self.old_canvas = getattr(SW, 'canvas', None)
         self.old_font_families = shared.FONT_FAMILIES
+        self.old_font_registry = shared.FONT_REGISTRY
         SW.canvas = SimpleNamespace(selected_text_items=lambda: [])
 
     def tearDown(self) -> None:
         C.active_format = self.old_active_format
         SW.canvas = self.old_canvas
         shared.FONT_FAMILIES = self.old_font_families
+        shared.FONT_REGISTRY = self.old_font_registry
 
     def _make_panel(self) -> FontFormatPanel:
         with patch.object(
@@ -171,7 +173,7 @@ class FontWeightUiTest(unittest.TestCase):
         )
         self.assertIs(selector.weight(), FontWeight.Normal)
 
-    def test_nonstandard_face_weight_is_safe_in_separate_mode(self):
+    def test_single_face_selection_canonicalizes_nonstandard_weight(self):
         panel = self._make_panel()
         active = FontFormat(font_family='Example', font_weight=FontWeight.Light)
         panel.global_format = active
@@ -189,6 +191,60 @@ class FontWeightUiTest(unittest.TestCase):
 
         self.assertEqual(active.font_family, 'Example Book')
         self.assertIs(active.font_weight, FontWeight.ExtraLight)
+
+    def test_picker_group_changes_storage_face_with_weight(self):
+        panel = self._make_panel()
+        faces = [
+            FontFace(
+                'Example Light', 'Example Light', 'Example Light',
+                'Light', 300,
+            ),
+            FontFace(
+                'Example Bold', 'Example Bold', 'Example Bold',
+                'Bold', 700,
+            ),
+        ]
+        entry = FontEntry(
+            'Example', 'Example', 'Example Light', 'custom',
+            weights=[300, 700], faces=faces, is_pseudo_group=True,
+        )
+        shared.FONT_REGISTRY = FontRegistry(custom_entries=[entry])
+        active = FontFormat(
+            font_family='Example Light', font_weight=FontWeight.Light,
+        )
+        panel.global_format = active
+        panel.familybox.update_font_entries([entry])
+        panel.set_active_format(active)
+
+        panel.on_font_weight_changed('font_weight', FontWeight.Bold)
+
+        self.assertEqual(active.font_family, 'Example Bold')
+        self.assertIs(active.font_weight, FontWeight.Bold)
+
+    def test_editable_family_resolves_display_name_and_rejects_unknowns(self):
+        combo = FontFamilyComboBox()
+        self.addCleanup(combo.deleteLater)
+        entry = FontEntry(
+            'Example Sans', 'Example Display', 'Example Sans', 'custom',
+            aliases={'예제 산스'},
+        )
+        shared.FONT_REGISTRY = FontRegistry(custom_entries=[entry])
+        combo.update_font_entries([entry])
+        changes = []
+        combo.param_changed.connect(lambda _name, value: changes.append(value))
+
+        combo.setEditText('예제 산스')
+        combo.apply_fontfamily()
+
+        self.assertEqual(changes, ['Example Sans'])
+
+        combo.set_current_family('Missing Legacy Font')
+        combo.apply_fontfamily()
+        combo.setEditText('Made Up Font')
+        combo.apply_fontfamily()
+
+        self.assertEqual(changes, ['Example Sans', 'Missing Legacy Font'])
+        self.assertEqual(combo.currentText(), 'Missing Legacy Font')
 
     def test_bold_shortcut_action_keeps_its_normal_bold_toggle(self):
         panel = self._make_panel()

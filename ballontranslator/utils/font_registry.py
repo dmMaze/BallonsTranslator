@@ -8,7 +8,7 @@ from pathlib import Path
 import struct
 from typing import Any, Dict, Iterable, List, Optional, Set
 
-from .fontformat import font_weight_from_qt
+from .fontformat import FontWeight, font_weight_from_qt
 
 
 LOGGER = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ WINDOWS_LEGACY_RASTER_FAMILIES = {
     'System',
     'Terminal',
 }
+CANONICAL_FONT_WEIGHTS = {int(weight) for weight in FontWeight}
 
 
 @dataclass
@@ -144,6 +145,22 @@ class FontEntry:
             return self.faces[0]
         return min(weighted, key=lambda face: (abs(face.weight - weight), -face.weight))
 
+    def lookup_keys(self) -> Set[str]:
+        names = {
+            self.canonical_family,
+            self.display_family,
+            self.qt_family,
+            *self.aliases,
+        }
+        for face in self.faces:
+            names.update({
+                face.canonical_family,
+                face.display_family,
+                face.qt_family,
+                *face.aliases,
+            })
+        return {normalize_key(name) for name in names if name}
+
 
 @dataclass
 class ResolvedFont:
@@ -203,46 +220,12 @@ class FontRegistry:
                     self.entries_by_key[normalize_key(key)] = entry
 
     def entries(self, only_custom: bool = False) -> List[FontEntry]:
-        return self.grouped_entries(only_custom)
-
-    def grouped_entries(self, only_custom: bool = False) -> List[FontEntry]:
         if only_custom:
             return sorted(self.custom_entries, key=lambda entry: entry.display_family.casefold())
 
         custom_keys = {normalize_key(entry.canonical_family) for entry in self.custom_entries}
         system = [entry for entry in self.system_entries if normalize_key(entry.canonical_family) not in custom_keys]
         return sorted([*system, *self.custom_entries], key=lambda entry: entry.display_family.casefold())
-
-    def separate_face_entries(self, only_custom: bool = False) -> List[FontEntry]:
-        entries = []
-        custom_keys = {normalize_key(entry.canonical_family) for entry in self.custom_entries}
-        system_entries = [entry for entry in self.system_entries if normalize_key(entry.canonical_family) not in custom_keys]
-        source_entries = self.custom_entries if only_custom else [*system_entries, *self.custom_entries]
-        for entry in source_entries:
-            if not entry.faces:
-                entries.append(entry)
-                continue
-            for face in entry.faces:
-                display_family = face.display_family
-                if normalize_key(display_family) == normalize_key(entry.display_family) and face.style_name:
-                    display_family = f'{display_family} {face.style_name}'
-                entries.append(
-                    FontEntry(
-                        canonical_family=face.storage_family,
-                        display_family=display_family,
-                        qt_family=face.qt_family,
-                        source=entry.source,
-                        file_paths=list(entry.file_paths),
-                        weights=[face.weight] if face.weight is not None else [],
-                        styles=[face.style_name] if face.style_name else [],
-                        faces=[face],
-                        is_scalable=entry.is_scalable,
-                        aliases={alias for alias in {face.canonical_family, face.display_family, face.qt_family, *face.aliases} if alias},
-                        alias_source=entry.alias_source,
-                        warnings=list(entry.warnings),
-                    )
-                )
-        return sorted(entries, key=lambda item: item.display_family.casefold())
 
     def legacy_family_list(self, only_custom: bool = False) -> List[str]:
         """Return renderable family strings for the old QFontComboBox path."""
@@ -322,7 +305,7 @@ def _sfnt_offsets(data: bytes) -> List[int]:
 
     tag = data[:4]
     if tag == b'ttcf':
-        count = _read_u32(data, 8)
+        count = min(_read_u32(data, 8), (len(data) - 12) // 4)
         offsets = []
         for index in range(count):
             pos = 12 + index * 4
@@ -667,15 +650,38 @@ def _localized_config_display(
     )
 
 
+def _config_name(value: Any) -> Optional[str]:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _config_aliases(value: Any, context: str) -> List[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        LOGGER.warning('Ignore invalid aliases for %s: %r', context, value)
+        return []
+    aliases = []
+    for alias in value:
+        name = _config_name(alias)
+        if name is None:
+            LOGGER.warning('Ignore invalid font alias for %s: %r', context, alias)
+        else:
+            aliases.append(name)
+    return aliases
+
+
 def load_custom_group_table(
     path: Optional[str], locale: str = 'en-US'
 ) -> Dict[str, Dict[str, Any]]:
     table = {}
     for group in _load_json_groups(path, 'custom_groups'):
-        if not isinstance(group, dict) or not group.get('canonical'):
+        canonical = (
+            _config_name(group.get('canonical'))
+            if isinstance(group, dict) else None
+        )
+        if canonical is None:
             LOGGER.warning('Ignore invalid custom font group: %r', group)
             continue
-        canonical = group['canonical']
         display = _localized_config_display(
             group.get('display'), canonical, locale
         )
@@ -686,11 +692,15 @@ def load_custom_group_table(
         normalized_group = {
             'canonical': canonical,
             'display': display,
-            'members': members,
+            'members': [],
             'note': group.get('note', ''),
         }
         for member in members:
-            if not isinstance(member, dict) or not member.get('canonical'):
+            member_canonical = (
+                _config_name(member.get('canonical'))
+                if isinstance(member, dict) else None
+            )
+            if member_canonical is None:
                 LOGGER.warning(
                     'Ignore invalid member in font group %s: %r',
                     canonical,
@@ -698,10 +708,39 @@ def load_custom_group_table(
                 )
                 continue
             member = dict(member)
+            member['canonical'] = member_canonical
             member['display'] = _localized_config_display(
-                member.get('display'), member['canonical'], locale
+                member.get('display'), member_canonical, locale
             )
-            member_names = [member['canonical'], *member.get('aliases', [])]
+            member['aliases'] = _config_aliases(
+                member.get('aliases'), member_canonical
+            )
+            weight = member.get('weight')
+            if weight is not None and (
+                isinstance(weight, bool)
+                or not isinstance(weight, int)
+                or weight not in CANONICAL_FONT_WEIGHTS
+            ):
+                LOGGER.warning(
+                    'Ignore invalid weight for font group member %s: %r',
+                    member_canonical,
+                    weight,
+                )
+                member.pop('weight', None)
+            style = member.get('style')
+            if style is not None:
+                style = _config_name(style)
+                if style is None:
+                    LOGGER.warning(
+                        'Ignore invalid style for font group member %s: %r',
+                        member_canonical,
+                        member.get('style'),
+                    )
+                    member.pop('style', None)
+                else:
+                    member['style'] = style
+            normalized_group['members'].append(member)
+            member_names = [member_canonical, *member['aliases']]
             for name in member_names:
                 table[normalize_key(name)] = {**normalized_group, 'member': member}
     return table
@@ -712,11 +751,17 @@ def load_system_alias_table(
 ) -> Dict[str, Dict[str, Any]]:
     table = {}
     for group in _load_json_groups(path, 'system_aliases'):
-        if not isinstance(group, dict) or not group.get('canonical'):
+        canonical = (
+            _config_name(group.get('canonical'))
+            if isinstance(group, dict) else None
+        )
+        if canonical is None:
             LOGGER.warning('Ignore invalid system font alias: %r', group)
             continue
-        canonical = group['canonical']
-        aliases = [canonical, *group.get('aliases', [])]
+        aliases = [
+            canonical,
+            *_config_aliases(group.get('aliases'), canonical),
+        ]
         normalized_group = {
             'canonical': canonical,
             'display': _localized_config_display(
@@ -950,22 +995,13 @@ def build_font_registry(
     font_paths: Iterable[str],
     system_families: Iterable[str],
     locale: str = 'en-US',
-    font_registry_config_path: Optional[str] = None,
-    custom_group_table_path: Optional[str] = None,
-    system_alias_table_path: Optional[str] = None,
+    font_registry_paths: Iterable[str] = (),
 ) -> FontRegistry:
-    custom_group_table = load_custom_group_table(
-        font_registry_config_path, locale
-    )
-    custom_group_table.update(
-        load_custom_group_table(custom_group_table_path, locale)
-    )
-    system_alias_table = load_system_alias_table(
-        font_registry_config_path, locale
-    )
-    system_alias_table.update(
-        load_system_alias_table(system_alias_table_path, locale)
-    )
+    custom_group_table = {}
+    system_alias_table = {}
+    for path in font_registry_paths:
+        custom_group_table.update(load_custom_group_table(path, locale))
+        system_alias_table.update(load_system_alias_table(path, locale))
     custom_faces = collect_custom_faces(font_paths, qfont_db, locale)
     custom_entries = build_custom_entries(custom_faces, custom_group_table)
     system_entries = [_system_entry(qfont_db, family) for family in sorted(system_families, key=str.casefold)]

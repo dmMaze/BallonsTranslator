@@ -420,11 +420,6 @@
         <translation>Показывать только пользовательские шрифты</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
-        <source>Group font weights by family</source>
-        <translation>Группировать начертания по семейству</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="538" />
         <source>Result image format</source>
         <translation>Формат итогового изображения</translation>

@@ -5,7 +5,9 @@ from ballontranslator.utils.font_registry import (
     FontFace,
     _candidate_from_parsed_face,
     _disambiguate_duplicate_weights,
+    _sfnt_offsets,
     _system_entry,
+    build_font_registry,
     load_custom_group_table,
     load_system_alias_table,
     qt_family_weights,
@@ -152,6 +154,42 @@ def test_invalid_optional_registry_is_ignored(tmp_path: Path) -> None:
     assert load_system_alias_table(str(registry_path)) == {}
 
 
+def test_invalid_registry_fields_discard_only_the_bad_portion(
+    tmp_path: Path,
+) -> None:
+    registry_path = tmp_path / 'font_registry.json'
+    registry_path.write_text(
+        '{"custom_groups":['
+        '{"canonical":7,"members":[]},'
+        '{"canonical":"Example","members":['
+        '{"canonical":[],"aliases":[]},'
+        '{"canonical":"Example Bold","display":4,'
+        '"aliases":"bad","weight":"bold","style":[]}'
+        ']}],"system_aliases":['
+        '{"canonical":9,"aliases":[]},'
+        '{"canonical":"Batang","display":4,"aliases":"bad"}'
+        ']}',
+        encoding='utf-8',
+    )
+
+    custom = load_custom_group_table(str(registry_path))
+    system = load_system_alias_table(str(registry_path))
+
+    member = custom['example bold']['member']
+    assert member['display'] == 'Example Bold'
+    assert member['aliases'] == []
+    assert 'weight' not in member
+    assert 'style' not in member
+    assert system['batang']['display'] == 'Batang'
+    assert system['batang']['aliases'] == ['Batang']
+
+
+def test_ttc_face_count_is_limited_by_available_offsets() -> None:
+    data = b'ttcf\x00\x01\x00\x00\xff\xff\xff\xff'
+
+    assert _sfnt_offsets(data) == []
+
+
 def test_optional_display_alias_follows_ui_locale(tmp_path: Path) -> None:
     registry_path = tmp_path / 'font_registry.json'
     registry_path.write_text(
@@ -165,3 +203,38 @@ def test_optional_display_alias_follows_ui_locale(tmp_path: Path) -> None:
 
     assert korean['batang']['display'] == '바탕'
     assert english['batang']['display'] == 'Batang'
+
+
+def test_user_registry_overrides_shipped_display(tmp_path: Path) -> None:
+    shipped = tmp_path / 'shipped.json'
+    user = tmp_path / 'user.json'
+    shipped.write_text(
+        '{"system_aliases":[{"canonical":"Batang",'
+        '"display":"Shipped"}]}',
+        encoding='utf-8',
+    )
+    user.write_text(
+        '{"system_aliases":[{"canonical":"Batang",'
+        '"display":"User"}]}',
+        encoding='utf-8',
+    )
+
+    registry = build_font_registry(
+        _Qt5FontDatabase(),
+        [],
+        ['Batang'],
+        font_registry_paths=[str(shipped), str(user)],
+    )
+
+    assert registry.entries()[0].display_family == 'User'
+
+
+def test_entry_lookup_keys_include_localized_face_aliases() -> None:
+    face = FontFace(
+        'Batang', '바탕', 'Batang', aliases={'바탕체 별칭'}
+    )
+    entry = FontEntry(
+        'Batang', '바탕', 'Batang', 'system', faces=[face]
+    )
+
+    assert '바탕체 별칭' in entry.lookup_keys()

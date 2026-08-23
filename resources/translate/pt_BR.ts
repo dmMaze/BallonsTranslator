@@ -125,11 +125,6 @@
   <context>
     <name>ConfigPanel</name>
     <message>
-      <location filename="../../ballontranslator/ui/configpanel.py" line="1109"/>
-      <source>Group font weights by family</source>
-      <translation>Agrupar espessuras por família</translation>
-    </message>
-    <message>
       <location filename="..\ui\configpanel.py" line="360"/>
       <source>DL Module</source>
       <translation>Módulo DL</translation>

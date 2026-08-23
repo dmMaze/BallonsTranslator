@@ -181,16 +181,27 @@ def restore_project_font_families_in_html(html: str) -> str:
     }
     registry = getattr(shared, 'FONT_REGISTRY', None)
     if registry is not None:
-        for key, entry in registry.entries_by_key.items():
-            replacements.setdefault(key, entry.canonical_family)
+        storage_by_qt_name: dict[str, set[str]] = {}
+        qt_names: dict[str, str] = {}
         for entry in registry.entries():
-            for name in {
-                entry.display_family,
-                entry.qt_family,
-                *entry.aliases,
-            }:
-                if name:
-                    replacements.setdefault(name, entry.canonical_family)
+            faces = entry.faces or (entry,)
+            for face in faces:
+                qt_family = face.qt_family
+                storage_family = (
+                    face.storage_family
+                    if hasattr(face, 'storage_family')
+                    else entry.canonical_family
+                )
+                key = qt_family.casefold()
+                qt_names.setdefault(key, qt_family)
+                storage_by_qt_name.setdefault(key, set()).add(
+                    storage_family
+                )
+        for key, storage_names in storage_by_qt_name.items():
+            if len(storage_names) == 1:
+                replacements.setdefault(
+                    qt_names[key], next(iter(storage_names))
+                )
     if not replacements:
         return html
 
