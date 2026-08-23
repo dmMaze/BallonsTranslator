@@ -2408,6 +2408,8 @@ QFrame#TextTransformParameterPanel QLabel,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelActions,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls,
 QFrame#TextEffectParameterPanel QLabel,
+QFrame#TextEffectParameterPanel QWidget#TextEffectPanelActions,
+QFrame#TextAlphaMaskCard QWidget#TextEffectPanelActions,
 QFrame#TextAlphaMaskCard QLabel {
     background-color: transparent;
 }
@@ -2551,6 +2553,7 @@ QToolButton#TextTransformMoveButton,
 QToolButton#TextTransformCloseButton,
 QToolButton#TextEffectMoveButton,
 QToolButton#TextEffectCloseButton,
+QToolButton#TextEffectVisibilityButton,
 QToolButton#TextEffectBrushButton {
     border: none;
     border-radius: 3px;
@@ -2560,6 +2563,10 @@ QToolButton#TextEffectBrushButton {
 QToolButton#TextTransformCloseButton:hover,
 QToolButton#TextEffectCloseButton:hover {
     background-color: #FF605C;
+}
+
+QToolButton#TextEffectVisibilityButton:hover {
+    background-color: @borderColor;
 }
 
 QToolButton#TextEffectBrushButton:checked {

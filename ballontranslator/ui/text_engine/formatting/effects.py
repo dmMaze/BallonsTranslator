@@ -5,7 +5,6 @@ from typing import Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
 from qtpy.QtCore import QSignalBlocker, QTimer, Signal, QSize, Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFrame,
@@ -16,6 +15,7 @@ from qtpy.QtWidgets import (
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from ballontranslator.utils.fontformat import FontFormat
@@ -33,12 +33,87 @@ from ballontranslator.utils.text_effects import (
 )
 
 from ...custom_widget import ColorPickerLabel, PanelArea
+from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 from ..transforms.controls import CommittedTransformControl
 
 if TYPE_CHECKING:
     from ..alpha_mask_edit_session import TextAlphaMaskEditSession
     from ..item import TextBlkItem
+
+
+class EffectVisibilityButton(QToolButton):
+    """Compact enabled, disabled, or mixed visibility control.
+
+    >>> EffectVisibilityButton.__name__
+    'EffectVisibilityButton'
+    """
+
+    visibility_requested = Signal(bool)
+
+    def __init__(
+        self,
+        show_tooltip: str,
+        hide_tooltip: str,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._show_tooltip = show_tooltip
+        self._hide_tooltip = hide_tooltip
+        self._visibility: Optional[bool] = None
+        self.setObjectName('TextEffectVisibilityButton')
+        self.setFixedSize(18, 18)
+        self.setIconSize(QSize(14, 14))
+        self.clicked.connect(self._on_clicked)
+        self.set_visibility(None)
+
+    def set_visibility(self, visible: Optional[bool]) -> None:
+        self._visibility = visible
+        if visible is True:
+            icon_name = 'text-effect-visibility-open.svg'
+            description = self._hide_tooltip
+        elif visible is False:
+            icon_name = 'text-effect-visibility-closed.svg'
+            description = self._show_tooltip
+        else:
+            icon_name = 'text-effect-visibility-mixed.svg'
+            description = self._show_tooltip
+        self.setIcon(QIcon(themed_icon_path(icon_name)))
+        self.setToolTip(description)
+        self.setAccessibleName(description)
+
+    def _on_clicked(self) -> None:
+        self.visibility_requested.emit(self._visibility is not True)
+
+
+def _effect_icon_label(
+    icon_name: str,
+    parent: QWidget,
+) -> QLabel:
+    label = QLabel(parent)
+    label.setObjectName('TextEffectParameterIcon')
+    label.setFixedSize(16, 16)
+    label.setPixmap(render_svg_pixmap(
+        themed_icon_path(icon_name),
+        16,
+        16,
+        parent.devicePixelRatioF(),
+    ))
+    return label
+
+
+def _effect_action_widget(
+    parent: QWidget,
+    buttons: Sequence[QToolButton],
+) -> QWidget:
+    widget = QWidget(parent)
+    widget.setObjectName('TextEffectPanelActions')
+    layout = QHBoxLayout(widget)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(4)
+    for button in buttons:
+        layout.addWidget(button)
+    return widget
 
 
 class EffectNumericControl(CommittedTransformControl):
@@ -104,10 +179,9 @@ class StrokeEffectCard(QFrame):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
-        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
-        self.enabled_checkbox.clicked.connect(self._on_enabled_clicked)
-
+        self.title_icon_label = _effect_icon_label(
+            'text-effect-stroke.svg', self
+        )
         self.title_label = QLabel(self.tr('Stroke'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
@@ -125,14 +199,29 @@ class StrokeEffectCard(QFrame):
         )
         self.delete_button.setObjectName('TextEffectCloseButton')
 
+        self.visibility_button = EffectVisibilityButton(
+            self.tr('Show Stroke'), self.tr('Hide Stroke'), self
+        )
+        self.visibility_button.visibility_requested.connect(
+            self._on_enabled_clicked
+        )
+
+        action_widget = _effect_action_widget(
+            self,
+            (
+                self.visibility_button,
+                self.move_up_button,
+                self.move_down_button,
+                self.delete_button,
+            ),
+        )
+
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(5)
-        header.addWidget(self.enabled_checkbox)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.move_up_button)
-        header.addWidget(self.move_down_button)
-        header.addWidget(self.delete_button)
+        header.addWidget(action_widget)
 
         self.width_control = EffectNumericControl(
             self.tr('Width'), 'width', 1.0, 0.0, 10.0, '', 0.01,
@@ -215,14 +304,7 @@ class StrokeEffectCard(QFrame):
             and all(value == enabled_values[0] for value in enabled_values)
             else None
         )
-        with QSignalBlocker(self.enabled_checkbox):
-            self.enabled_checkbox.setTristate(enabled is None)
-            if enabled is None:
-                self.enabled_checkbox.setCheckState(
-                    Qt.CheckState.PartiallyChecked
-                )
-            else:
-                self.enabled_checkbox.setChecked(enabled)
+        self.visibility_button.set_visibility(enabled)
 
         for name, control in (
             ('width', self.width_control),
@@ -324,9 +406,9 @@ class ShadowEffectCard(QFrame):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
-        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
-        self.enabled_checkbox.clicked.connect(self._on_enabled_clicked)
+        self.title_icon_label = _effect_icon_label(
+            'text-effect-shadow.svg', self
+        )
         self.title_label = QLabel(self.tr('Shadow'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
@@ -343,14 +425,29 @@ class ShadowEffectCard(QFrame):
         )
         self.delete_button.setObjectName('TextEffectCloseButton')
 
+        self.visibility_button = EffectVisibilityButton(
+            self.tr('Show Shadow'), self.tr('Hide Shadow'), self
+        )
+        self.visibility_button.visibility_requested.connect(
+            self._on_enabled_clicked
+        )
+
+        action_widget = _effect_action_widget(
+            self,
+            (
+                self.visibility_button,
+                self.move_up_button,
+                self.move_down_button,
+                self.delete_button,
+            ),
+        )
+
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(5)
-        header.addWidget(self.enabled_checkbox)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.move_up_button)
-        header.addWidget(self.move_down_button)
-        header.addWidget(self.delete_button)
+        header.addWidget(action_widget)
 
         type_label = QLabel(self.tr('Type'), self)
         type_label.setObjectName('TextEffectParamLabel')
@@ -468,14 +565,7 @@ class ShadowEffectCard(QFrame):
             and all(value == enabled_values[0] for value in enabled_values)
             else None
         )
-        with QSignalBlocker(self.enabled_checkbox):
-            self.enabled_checkbox.setTristate(enabled is None)
-            if enabled is None:
-                self.enabled_checkbox.setCheckState(
-                    Qt.CheckState.PartiallyChecked
-                )
-            else:
-                self.enabled_checkbox.setChecked(enabled)
+        self.visibility_button.set_visibility(enabled)
 
         types = [shadow.shadow_type for shadow in shadows]
         common_type = (
@@ -608,9 +698,9 @@ class HollowEffectCard(QFrame):
         self.index = int(index)
         self.setObjectName('TextEffectParameterPanel')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
-        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
-        self.enabled_checkbox.clicked.connect(self._on_enabled_clicked)
+        self.title_icon_label = _effect_icon_label(
+            'text-effect-hollow.svg', self
+        )
         self.title_label = QLabel(self.tr('Hollow'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
@@ -625,12 +715,24 @@ class HollowEffectCard(QFrame):
         self.delete_button.setAccessibleName(self.tr('Delete Hollow'))
         self.delete_button.setFixedSize(18, 18)
         self.delete_button.clicked.connect(self._on_delete_clicked)
+
+        self.visibility_button = EffectVisibilityButton(
+            self.tr('Show Hollow'), self.tr('Hide Hollow'), self
+        )
+        self.visibility_button.visibility_requested.connect(
+            self._on_enabled_clicked
+        )
+
+        action_widget = _effect_action_widget(
+            self, (self.visibility_button, self.delete_button)
+        )
+
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(5)
-        layout.addWidget(self.enabled_checkbox)
+        layout.setSpacing(6)
+        layout.addWidget(self.title_icon_label)
         layout.addWidget(self.title_label)
-        layout.addWidget(self.delete_button)
+        layout.addWidget(action_widget)
 
     def set_values(self, hollows: Sequence[HollowEffect]) -> None:
         values = [hollow.enabled for hollow in hollows]
@@ -639,14 +741,7 @@ class HollowEffectCard(QFrame):
             if values and all(value == values[0] for value in values)
             else None
         )
-        with QSignalBlocker(self.enabled_checkbox):
-            self.enabled_checkbox.setTristate(common is None)
-            if common is None:
-                self.enabled_checkbox.setCheckState(
-                    Qt.CheckState.PartiallyChecked
-                )
-            else:
-                self.enabled_checkbox.setChecked(common)
+        self.visibility_button.set_visibility(common)
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
         return ()
@@ -681,13 +776,19 @@ class AlphaMaskCard(QFrame):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
-        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
-        self.enabled_checkbox.clicked.connect(self.enabled_requested.emit)
-        title = QLabel(self.tr('Alpha Mask'), self)
-        title.setObjectName('TextEffectParameterTitle')
-        title.setSizePolicy(
+        self.title_icon_label = _effect_icon_label(
+            'text-effect-alpha-mask.svg', self
+        )
+        self.title_label = QLabel(self.tr('Alpha Mask'), self)
+        self.title_label.setObjectName('TextEffectParameterTitle')
+        self.title_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.visibility_button = EffectVisibilityButton(
+            self.tr('Show Alpha Mask'), self.tr('Hide Alpha Mask'), self
+        )
+        self.visibility_button.visibility_requested.connect(
+            self.enabled_requested.emit
         )
         self.remove_button = QToolButton(self)
         self.remove_button.setObjectName('TextEffectCloseButton')
@@ -699,12 +800,16 @@ class AlphaMaskCard(QFrame):
         self.remove_button.setFixedSize(18, 18)
         self.remove_button.clicked.connect(self.remove_requested.emit)
 
+        action_widget = _effect_action_widget(
+            self, (self.visibility_button, self.remove_button)
+        )
+
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(5)
-        header.addWidget(self.enabled_checkbox)
-        header.addWidget(title)
-        header.addWidget(self.remove_button)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
+        header.addWidget(self.title_label)
+        header.addWidget(action_widget)
 
         mode_label = QLabel(self.tr('Mode'), self)
         mode_label.setObjectName('TextEffectParamLabel')
@@ -762,11 +867,10 @@ class AlphaMaskCard(QFrame):
         diameter: float,
     ) -> None:
         blockers = (
-            QSignalBlocker(self.enabled_checkbox),
             QSignalBlocker(self.mode_selector),
             QSignalBlocker(self.diameter_editor),
         )
-        self.enabled_checkbox.setChecked(mask.enabled)
+        self.visibility_button.set_visibility(mask.enabled)
         index = self.mode_selector.findData(mode)
         self.mode_selector.setCurrentIndex(max(0, index))
         self.diameter_editor.setValue(diameter)
@@ -884,12 +988,14 @@ class TextEffectPanel(PanelArea):
         add_menu = QMenu(self.add_effect_button)
         add_menu.setObjectName('TextEffectAddMenu')
         self.add_effect_actions = {}
-        for label, effect_type in (
-            (self.tr('Stroke'), 'stroke'),
-            (self.tr('Shadow'), 'shadow'),
-            (self.tr('Hollow'), 'hollow'),
+        for label, effect_type, icon_name in (
+            (self.tr('Stroke'), 'stroke', 'text-effect-stroke.svg'),
+            (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
+            (self.tr('Hollow'), 'hollow', 'text-effect-hollow.svg'),
         ):
-            action = add_menu.addAction(label)
+            action = add_menu.addAction(
+                QIcon(themed_icon_path(icon_name)), label
+            )
             action.setData(effect_type)
             action.triggered.connect(self._on_add_effect_triggered)
             self.add_effect_actions[effect_type] = action

@@ -452,9 +452,29 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             controls.mask_brush_button.click()
             self.assertTrue(self.session.active)
             self.assertIsNotNone(controls.alpha_mask_card)
+            mask_card = controls.alpha_mask_card
+            self.assertFalse(mask_card.title_icon_label.pixmap().isNull())
+            self.assertFalse(mask_card.visibility_button.icon().isNull())
+            self.assertEqual(
+                mask_card.visibility_button.toolTip(), 'Hide Alpha Mask'
+            )
+            self.assertEqual(
+                mask_card.visibility_button.accessibleName(),
+                'Hide Alpha Mask',
+            )
             count = self.canvas.text_undo_stack.count()
-            controls.alpha_mask_card.mode_selector.setCurrentIndex(1)
-            controls.alpha_mask_card.diameter_editor.setValue(48.0)
+            mask_card.visibility_button.click()
+            self.assertFalse(self.item.blk.text_alpha_mask.enabled)
+            self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
+            self.assertEqual(
+                mask_card.visibility_button.toolTip(), 'Show Alpha Mask'
+            )
+            self.canvas.text_undo_stack.undo()
+            self.assertTrue(self.item.blk.text_alpha_mask.enabled)
+
+            count = self.canvas.text_undo_stack.count()
+            mask_card.mode_selector.setCurrentIndex(1)
+            mask_card.diameter_editor.setValue(48.0)
             self.assertEqual(self.canvas.text_undo_stack.count(), count)
 
             controls.color_dialog_active_changed.emit(True)

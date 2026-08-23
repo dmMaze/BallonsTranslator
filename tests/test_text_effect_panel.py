@@ -263,7 +263,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(len(item.blk.fontformat.text_effects), 2)
         self.assertEqual(self.canvas.stack.count(), 2)
 
-        effect_panel.stroke_cards[0].enabled_checkbox.click()
+        effect_panel.stroke_cards[0].visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
         self.assertEqual(self.canvas.stack.count(), 3)
 
@@ -276,6 +276,64 @@ class TextEffectPanelTest(unittest.TestCase):
             [card.index for card in self.panel.texteffect_panel.stroke_cards],
             [0, 1],
         )
+
+    def test_card_and_menu_icons_expose_visibility_actions(self):
+        item = self._item(self._stack(
+            StrokeEffect(),
+            ShadowEffect(enabled=False),
+            HollowEffect(),
+        ))
+        self.panel.set_textblk_item(item)
+        effect_panel = self.panel.texteffect_panel
+        cards = (
+            effect_panel.stroke_cards[0],
+            effect_panel.shadow_cards[0],
+            effect_panel.hollow_card,
+        )
+        for card in cards:
+            self.assertFalse(card.title_icon_label.pixmap().isNull())
+            self.assertFalse(card.visibility_button.icon().isNull())
+        self.assertEqual(
+            effect_panel.stroke_cards[0].visibility_button.toolTip(),
+            'Hide Stroke',
+        )
+        self.assertEqual(
+            effect_panel.shadow_cards[0].visibility_button.toolTip(),
+            'Show Shadow',
+        )
+        self.assertEqual(
+            effect_panel.hollow_card.visibility_button.accessibleName(),
+            'Hide Hollow',
+        )
+        self.assertTrue(all(
+            not action.icon().isNull()
+            for action in effect_panel.add_effect_actions.values()
+        ))
+
+    def test_mixed_eye_click_enables_all_with_one_command(self):
+        enabled = self._item(self._stack(StrokeEffect(enabled=True)))
+        disabled = self._item(self._stack(StrokeEffect(enabled=False)))
+        self.canvas.selected = [enabled, disabled]
+        self.panel.set_textblk_item(None, multi_select=True)
+        card = self.panel.texteffect_panel.stroke_cards[0]
+
+        mixed_icon_key = card.visibility_button.icon().cacheKey()
+        card.visibility_button.set_visibility(False)
+        self.assertNotEqual(
+            mixed_icon_key, card.visibility_button.icon().cacheKey()
+        )
+        card.visibility_button.set_visibility(None)
+        self.assertEqual(card.visibility_button.toolTip(), 'Show Stroke')
+        self.assertEqual(
+            card.visibility_button.accessibleName(), 'Show Stroke'
+        )
+        card.visibility_button.click()
+
+        self.assertTrue(all(
+            item.blk.fontformat.text_effects[0].enabled
+            for item in (enabled, disabled)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_multi_selection_maps_common_structure_and_blocks_mixed_indices(self):
         first = self._item(self._stack(StrokeEffect(width=0.1)))
@@ -426,7 +484,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         self.assertEqual(self.canvas.stack.count(), 3)
 
-        effect_panel.hollow_card.enabled_checkbox.click()
+        effect_panel.hollow_card.visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
         self.assertEqual(self.canvas.stack.count(), 4)
         effect_panel.hollow_card.delete_button.click()
