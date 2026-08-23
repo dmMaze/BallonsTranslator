@@ -1,4 +1,4 @@
-from typing import Callable, List, Mapping, Set, Tuple
+from typing import Callable, List, Mapping, Optional, Set, Tuple
 import numpy as np
 from shapely.geometry import Polygon
 import math
@@ -27,6 +27,7 @@ from .text_effects import (
     primary_stroke,
     with_primary_stroke,
 )
+from .text_alpha_mask import TextAlphaMask, load_text_alpha_mask
 
 
 LANG_LIST = ['eng', 'ja', 'unknown']
@@ -128,6 +129,7 @@ class TextBlock:
     region_inpaint_dict: Dict = None
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
+    text_alpha_mask: Optional[TextAlphaMask] = None
 
     # 字体识别相关属性
     _detected_font_name: str = ""  # 识别出的字体名称
@@ -279,7 +281,8 @@ class TextBlock:
     def alignment(self, value: int):
         self.fontformat.alignment = value
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        self.text_alpha_mask = load_text_alpha_mask(self.text_alpha_mask)
         if self.xyxy is not None:
             self.xyxy = [int(num) for num in self.xyxy]
         if self.distance is not None:

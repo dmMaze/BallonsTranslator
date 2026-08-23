@@ -15,6 +15,7 @@ from .textblock import (
     normalize_textblock_effect_payload,
 )
 from .fontformat import warn_ignored_legacy_effects
+from .text_alpha_mask import AlphaBrushStroke, TextAlphaMask
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -100,6 +101,8 @@ class TextBlkEncoder(NumpyEncoder):
         if isinstance(obj, TextBlock):
             return obj.to_dict()
         elif isinstance(obj, FontFormat):
+            return obj.to_serializable_dict()
+        elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke)):
             return obj.to_serializable_dict()
         return NumpyEncoder.default(self, obj)
 

@@ -1,4 +1,4 @@
-"""Typed text effects, legacy Gradient, and transformed rendering."""
+"""Typed effects, block alpha masks, legacy Gradient, and text rendering."""
 
 import math
 from typing import Callable, Optional, Tuple
@@ -21,6 +21,7 @@ from qtpy.QtWidgets import QStyle, QStyleOptionGraphicsItem, QWidget
 
 from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     HollowEffect,
     ShadowEffect,
@@ -32,6 +33,7 @@ from ballontranslator.utils.text_effects import (
 from ..misc import ndarray2pixmap, pixmap2ndarray
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
+from .rendering.alpha_mask import render_text_alpha_mask
 from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
@@ -127,6 +129,7 @@ class TextEffectRenderer:
         self._preview_effect_raster_state = None
         self._export_effect_raster_state = None
         self._export_active = False
+        self._mask_generation = 0
         self.preview = None
         self._render_stroke = None
         self._outline_only_stroke = False
@@ -254,7 +257,21 @@ class TextEffectRenderer:
 
     def surface_semantic_state(self) -> tuple:
         """Return effect values that change completed source-surface pixels."""
-        return self.effective_text_effects().effects
+        return (
+            self.effective_text_effects().effects,
+            self._mask_generation,
+        )
+
+    def _active_text_alpha_mask(self) -> Optional[TextAlphaMask]:
+        block = getattr(self.item, 'blk', None)
+        mask = None if block is None else block.text_alpha_mask
+        return mask if mask is not None and not mask.is_neutral() else None
+
+    def _mask_requires_surface(self) -> bool:
+        return (
+            self._active_text_alpha_mask() is not None
+            and not self._hollow_enabled()
+        )
 
     def _uses_preview_cache_namespace(self) -> bool:
         return (
@@ -319,6 +336,7 @@ class TextEffectRenderer:
         )
         return (
             active.effects,
+            self._mask_generation,
             self.document().revision(),
             layout_generation,
             layout_render_key,
@@ -331,14 +349,15 @@ class TextEffectRenderer:
 
     @staticmethod
     def _effect_cache_semantic_key(cache_key: tuple) -> tuple:
-        layout_render_key = cache_key[3]
+        layout_render_key = cache_key[4]
         if isinstance(layout_render_key, tuple) and layout_render_key:
             layout_render_key = layout_render_key[1:]
         return (
             cache_key[0],
             cache_key[1],
+            cache_key[2],
             layout_render_key,
-        ) + cache_key[4:]
+        ) + cache_key[5:]
 
     def _promotable_preview_state(
         self, stack: TextEffectStack
@@ -628,6 +647,21 @@ class TextEffectRenderer:
             or effective_before != stack
         )
 
+    def _on_text_alpha_mask_changed(self) -> None:
+        """Invalidate every raster namespace after a committed mask replace."""
+        self._mask_generation += 1
+        for state in (
+            self._effect_raster_state,
+            self._preview_effect_raster_state,
+            self._export_effect_raster_state,
+        ):
+            self._invalidate_raster_state(state)
+        self.geometry_controller.invalidate_surface_cache()
+        self.item.refresh_cache_policy()
+        if not self.reshaping:
+            self.repaint_background()
+        self.item.update()
+
     def clear_text_effect_preview(self) -> bool:
         if self.preview is None:
             return False
@@ -698,7 +732,10 @@ class TextEffectRenderer:
             if any(self._effect_flags()):
                 self._draw_effects(painter, option.exposedRect)
             replace_foreground = self._hollow_enabled() or (
-                bool(self._active_shadows('inner'))
+                (
+                    bool(self._active_shadows('inner'))
+                    or self._active_text_alpha_mask() is not None
+                )
                 and (
                     self.export_render
                     or self._completed_foreground_ready()
@@ -715,7 +752,11 @@ class TextEffectRenderer:
             self.in_graphics_paint = was_in_graphics_paint
 
     def _renders_completed_foreground(self) -> bool:
-        return self._hollow_enabled() or bool(self._active_shadows('inner'))
+        return (
+            self._hollow_enabled()
+            or bool(self._active_shadows('inner'))
+            or self._mask_requires_surface()
+        )
 
     def _completed_foreground_ready(self) -> bool:
         state = self._peek_raster_state()
@@ -1270,10 +1311,10 @@ class TextEffectRenderer:
             self.refreshing_effect_padding = False
 
     def _effect_flags(self) -> Tuple[bool, bool]:
-        """Return active Stroke and generated/non-foreground phase flags."""
+        """Return active Stroke and generated completed-surface flags."""
         return (
             bool(self._active_strokes()),
-            bool(self._compiled_shadows()),
+            bool(self._compiled_shadows()) or self._mask_requires_surface(),
         )
 
     def _effect_tile_overlap(self) -> float:
@@ -1358,6 +1399,7 @@ class TextEffectRenderer:
         """
         paint_stroke, _paint_non_stroke = self._effect_flags()
         hollow = self._hollow_enabled()
+        alpha_mask = self._active_text_alpha_mask()
         exterior = tuple(
             shadow
             for shadow in self._active_shadows()
@@ -1367,7 +1409,13 @@ class TextEffectRenderer:
         target_map = self._new_effect_pixmap(render_scale, surface_rect)
         canonical = None
         canonical_alpha = None
-        if interior or (exterior and not paint_stroke) or (hollow and exterior):
+        completed_foreground = alpha_mask is not None and not hollow
+        if (
+            interior
+            or completed_foreground
+            or (exterior and not paint_stroke)
+            or (hollow and exterior)
+        ):
             canonical = self._capture_effect_source(
                 surface_rect, render_scale, include_strokes=False
             )
@@ -1448,6 +1496,17 @@ class TextEffectRenderer:
                         ),
                     )
                 target_painter.translate(-surface_rect.topLeft())
+            elif completed_foreground:
+                assert canonical is not None
+                target_painter.drawPixmap(surface_rect.topLeft(), canonical)
+
+            if alpha_mask is not None:
+                self._apply_text_alpha_mask(
+                    target_painter,
+                    alpha_mask,
+                    surface_rect,
+                    render_scale,
+                )
             if self.surface_raster_error is not None:
                 raise self.surface_raster_error
         except RASTER_BOUNDARY_FAILURES as error:
@@ -1469,6 +1528,40 @@ class TextEffectRenderer:
                     'unable to finish typed effect painter'
                 ) from end_error
         return target_map
+
+    def _apply_text_alpha_mask(
+        self,
+        painter: QPainter,
+        mask: TextAlphaMask,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> None:
+        """Clip a complete Normal composite with the block-owned alpha mask.
+
+        >>> hasattr(TextEffectRenderer, '_apply_text_alpha_mask')
+        True
+        """
+        try:
+            alpha = render_text_alpha_mask(
+                mask,
+                surface_rect,
+                self.logical_unpadded_rect().topLeft(),
+                render_scale,
+            )
+            painter.save()
+            try:
+                painter.setCompositionMode(
+                    QPainter.CompositionMode.CompositionMode_DestinationIn
+                )
+                painter.drawImage(surface_rect.topLeft(), alpha)
+            finally:
+                painter.restore()
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to apply text alpha mask'
+            ) from error
 
     def _paint_hollow_strokes(
         self,
@@ -1711,6 +1804,8 @@ class TextEffectRenderer:
                 if target_map is None:
                     self.background_pixmap = None
                     self.background_pixmap_scale = None
+                    self.cache_dirty = True
+                    self.cache_rendered_generation = -1
                     if self.export_render:
                         # A policy-valid full allocation can still fail at
                         # runtime. Export gets one bounded visible-tile retry
@@ -1774,6 +1869,8 @@ class TextEffectRenderer:
         vector_stroke_direct = (
             paint_stroke
             and not paint_non_stroke
+            # The vector fallback cannot apply the block-wide alpha mask.
+            and self._active_text_alpha_mask() is None
             and 2 * math.ceil(stroke_overlap * plan.tier)
             >= plan.tile_edge
         )
@@ -1942,6 +2039,8 @@ class TextEffectRenderer:
         if raster_failure is not None:
             self.tile_cache.clear()
             self.direct_stroke = paint_stroke
+            self.cache_dirty = True
+            self.cache_rendered_generation = -1
             if self._raise_or_defer_export_effect_error(raster_failure):
                 return
             self._warn_effect_allocation_once(raster_failure)

@@ -20,6 +20,7 @@ from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     SolidPaint,
     TextEffectStack,
@@ -593,6 +594,18 @@ class TextBlkItem(QGraphicsTextItem):
 
     def effective_text_effects(self) -> TextEffectStack:
         return self.effect_renderer.effective_text_effects()
+
+    def set_text_alpha_mask(
+        self, mask: Optional[TextAlphaMask]
+    ) -> bool:
+        """Replace or remove the committed TextBlock-owned alpha mask."""
+        if mask is not None and not isinstance(mask, TextAlphaMask):
+            raise TypeError('live text alpha mask requires TextAlphaMask or None')
+        if self.blk.text_alpha_mask == mask:
+            return False
+        self.blk.text_alpha_mask = mask
+        self.effect_renderer._on_text_alpha_mask_changed()
+        return True
 
     def _set_effective_opacity(self, opacity: float) -> None:
         QGraphicsTextItem.setOpacity(self, opacity)

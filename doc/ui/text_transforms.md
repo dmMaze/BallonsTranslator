@@ -183,8 +183,9 @@ The effective render paths are:
 | Glyph Slant, no nonlinear stage | Custom glyph layout | Identity or matrix | No |
 | Any active nonlinear stage | Native or custom glyph layout | Composite mapper | Once |
 
-For nonlinear output, capture the completed typed-effect/Hollow output (and the
-legacy Gradient bridge) into one padded source surface, inverse-map it once,
+For nonlinear output, capture the completed typed-effect/Hollow output and its
+block-owned alpha mask (plus the legacy Gradient bridge) into one padded source
+surface, inverse-map it once,
 and draw editing UI over the mapped destination where necessary. Matrix-only
 stacks stay on Qt's native path. Effect padding changes the source rectangle,
 not the persistent logical text rectangle.

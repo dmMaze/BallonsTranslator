@@ -12,6 +12,7 @@ Wave, Grid, and Glyph Slant.
 ```text
 Project JSON
   -> TextBlock + FontFormat.text_effects    persistent state
+               + TextBlock.text_alpha_mask
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
   -> TextEffectRenderer                     fixed effect phases + fill
@@ -21,7 +22,7 @@ Project JSON
 
 | Concern | Owner | Main files |
 | --- | --- | --- |
-| Block content, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
+| Block content, logical rectangle, angle, metadata, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
 | Persistent typography, transforms, and immutable effect stack | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py), [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
@@ -38,7 +39,8 @@ owner instead of adding a parallel path.
 ## State boundaries
 
 - **Persistent state:** `TextBlock` and `FontFormat`; only this belongs in
-  project JSON.
+  project JSON. The immutable alpha-mask history is block-owned, never part of
+  a typography style or preset.
 - **Live editing state:** `QTextDocument`, cursor, selection, IME state, and
   paired-editor synchronization.
 - **Derived state:** layout records, padding, visual mappings, previews,
@@ -136,7 +138,11 @@ Shadow, Stroke, foreground, then interior Inner Shadow. Entry order is retained
 within each phase. Hollow suppresses foreground and Inner output, and removes
 the canonical face from exterior output before Stroke is painted, so the source
 alpha and full Stroke outline remain available. The existing Gradient path is
-a legacy renderer bridge until its typed cutover.
+a legacy renderer bridge until its typed cutover. A non-neutral
+`TextBlock.text_alpha_mask` clips the completed Normal composite after those
+phases and before Overall Opacity and global Text Transform. Its points are
+relative to the unpadded logical origin, may reach effect overflow, and never
+expand persistent or derived bounds.
 
 The renderer owns derived padding and separate committed, preview, and export
 raster namespaces. A live preview replaces the complete effective stack but
@@ -148,7 +154,9 @@ own non-promoted namespace. Paint-only state must not change document content
 or create undo steps. Keep Qt's text control authoritative for shaping, cursor,
 selection, IME, and normal hit testing. Interactive rendering may use bounded
 fallbacks, but export must report incomplete output instead of silently
-omitting text.
+omitting text. Mask raster/cache state is item-owned and keyed by an O(1)
+generation; only the immutable stroke history is persisted. Editing feedback
+is transient and unmasked.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render
@@ -182,6 +190,7 @@ Refresh from the first owner whose input changed:
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
 | Typed effect stack, Overall Opacity, or legacy Gradient | Effect renderer |
+| TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |
 | Item/page lifetime | Every item-owned cache |
