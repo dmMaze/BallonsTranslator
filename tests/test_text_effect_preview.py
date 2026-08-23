@@ -53,11 +53,20 @@ class TextEffectPreviewTest(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     @staticmethod
-    def _stack(width=0.12, color=(20, 40, 60), opacity=1.0):
+    def _stack(
+        width=0.12,
+        color=(20, 40, 60),
+        opacity=1.0,
+        position='center',
+    ):
         return TextEffectStack(
             overall_opacity=opacity,
             effects=(
-                StrokeEffect(width=width, paint=SolidPaint(color)),
+                StrokeEffect(
+                    width=width,
+                    paint=SolidPaint(color),
+                    position=position,
+                ),
             ),
         )
 
@@ -88,7 +97,12 @@ class TextEffectPreviewTest(unittest.TestCase):
 
     def test_preview_is_live_but_not_model_or_serialization_state(self):
         canonical = self._stack()
-        preview = self._stack(0.25, (120, 80, 40), opacity=0.45)
+        preview = self._stack(
+            0.25,
+            (120, 80, 40),
+            opacity=0.45,
+            position='inside',
+        )
         item = self._item(stack=canonical)
         before_json = json.dumps(item.blk, cls=TextBlkEncoder, sort_keys=True)
         renderer = item.effect_renderer
@@ -441,7 +455,9 @@ class TextEffectPreviewTest(unittest.TestCase):
 
     def test_commit_promotes_only_compatible_effect_preview_cache(self):
         canonical = self._stack()
-        target = self._stack(0.23, (70, 80, 90))
+        target = self._stack(
+            0.23, (70, 80, 90), position='outside'
+        )
         item = self._item(stack=canonical)
         renderer = item.effect_renderer
         with patch.object(
@@ -555,7 +571,7 @@ class TextEffectPreviewTest(unittest.TestCase):
 
     def test_strict_export_overrides_preview_and_reshape_degradation(self):
         canonical = self._stack()
-        preview = self._stack(0.24)
+        preview = self._stack(0.24, position='inside')
         item = self._item(stack=canonical)
         item.set_text_transform(TextTransformStack((SineTextTransform(),)))
         scene = QGraphicsScene()

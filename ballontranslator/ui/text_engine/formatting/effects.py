@@ -231,6 +231,25 @@ class StrokeEffectCard(QFrame):
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
             self, decimals=1,
         )
+        position_label = QLabel(self.tr('Position'), self)
+        position_label.setObjectName('TextEffectParamLabel')
+        self.position_selector = QComboBox(self)
+        self.position_selector.setObjectName('TextEffectPositionSelector')
+        self.position_selector.setPlaceholderText(self.tr('Mixed'))
+        for label, value in (
+            (self.tr('Inside'), 'inside'),
+            (self.tr('Center'), 'center'),
+            (self.tr('Outside'), 'outside'),
+        ):
+            self.position_selector.addItem(label, value)
+        self.position_selector.currentIndexChanged.connect(
+            self._on_position_changed
+        )
+        position_row = QHBoxLayout()
+        position_row.setContentsMargins(0, 0, 0, 0)
+        position_row.addWidget(position_label)
+        position_row.addWidget(self.position_selector)
+
         for control in (self.width_control, self.opacity_control):
             control.editor.setProperty('cardEditor', True)
             control.commit_requested.connect(self._on_control_commit)
@@ -269,7 +288,8 @@ class StrokeEffectCard(QFrame):
         controls.setVerticalSpacing(4)
         controls.addWidget(self.width_control, 0, 0)
         controls.addLayout(color_row, 0, 1)
-        controls.addWidget(self.opacity_control, 1, 0, 1, 2)
+        controls.addLayout(position_row, 1, 0)
+        controls.addWidget(self.opacity_control, 1, 1)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
 
@@ -306,6 +326,20 @@ class StrokeEffectCard(QFrame):
         )
         self.visibility_button.set_visibility(enabled)
 
+        positions = [stroke.position for stroke in strokes]
+        common_position = (
+            positions[0]
+            if positions
+            and all(position == positions[0] for position in positions)
+            else None
+        )
+        with QSignalBlocker(self.position_selector):
+            self.position_selector.setCurrentIndex(
+                -1
+                if common_position is None
+                else self.position_selector.findData(common_position)
+            )
+
         for name, control in (
             ('width', self.width_control),
             ('opacity', self.opacity_control),
@@ -339,6 +373,14 @@ class StrokeEffectCard(QFrame):
         self.value_commit_requested.emit(
             self.index, 'enabled', bool(enabled)
         )
+
+    def _on_position_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'position',
+                self.position_selector.itemData(combo_index),
+            )
 
     def _on_control_commit(self, name: str, value) -> None:
         self.value_commit_requested.emit(self.index, name, value)

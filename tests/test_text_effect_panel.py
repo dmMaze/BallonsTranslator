@@ -335,6 +335,43 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 1)
 
+    def test_stroke_position_common_mixed_and_one_command_undo(self):
+        item = self._item(self._stack(StrokeEffect(position='center')))
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.stroke_cards[0]
+
+        self.assertEqual(card.position_selector.currentData(), 'center')
+        card.position_selector.setCurrentIndex(
+            card.position_selector.findData('outside')
+        )
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].position, 'outside'
+        )
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.canvas.stack.undo()
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].position, 'center'
+        )
+        self.canvas.stack.redo()
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].position, 'outside'
+        )
+        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+
+        second = self._item(self._stack(StrokeEffect(position='inside')))
+        self.canvas.selected = [item, second]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        self.assertEqual(mixed_card.position_selector.currentIndex(), -1)
+        mixed_card.position_selector.setCurrentIndex(
+            mixed_card.position_selector.findData('center')
+        )
+        self.assertTrue(all(
+            target.blk.fontformat.text_effects[0].position == 'center'
+            for target in (item, second)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 2)
+
     def test_multi_selection_maps_common_structure_and_blocks_mixed_indices(self):
         first = self._item(self._stack(StrokeEffect(width=0.1)))
         second = self._item(self._stack(StrokeEffect(width=0.3)))

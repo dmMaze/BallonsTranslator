@@ -135,15 +135,17 @@ hit testing; adapting only one consumer creates visible drift or broken editing.
 `FontFormat.text_effects` is the canonical committed `TextEffectStack`; it is
 an immutable ordered value persisted with the format. `TextEffectRenderer`
 compiles it from one glyph/source alpha in fixed phases: exterior Drop/Long
-Shadow, Stroke, foreground, then interior Inner Shadow. Entry order is retained
-within each phase. Hollow suppresses foreground and Inner output, and removes
-the canonical face from exterior output before Stroke is painted, so the source
-alpha and full Stroke outline remain available. The existing Gradient path is
-a legacy renderer bridge until its typed cutover. A non-neutral
-`TextBlock.text_alpha_mask` clips the completed Normal composite after those
-phases and before Overall Opacity and global Text Transform. Its points are
-relative to the unpadded logical origin, may reach effect overflow, and never
-expand persistent or derived bounds.
+Shadow, exterior/center Stroke, foreground, inside Stroke, then interior Inner
+Shadow. Center keeps the native half-in/half-out outline; Outside and Inside
+clip a full-width outline to the corresponding side of canonical glyph alpha.
+Entry order is retained within each phase. Hollow suppresses foreground and
+Inner output, and removes the canonical face from exterior output before Stroke
+is painted, so the source alpha and full Stroke outline remain available. The
+existing Gradient path is a legacy renderer bridge until its typed cutover. A
+non-neutral `TextBlock.text_alpha_mask` clips the completed Normal composite
+after those phases and before Overall Opacity and global Text Transform. Its
+points are relative to the unpadded logical origin, may reach effect overflow,
+and never expand persistent or derived bounds.
 
 The renderer owns derived padding and separate committed, preview, and export
 raster namespaces. A live preview replaces the complete effective stack but

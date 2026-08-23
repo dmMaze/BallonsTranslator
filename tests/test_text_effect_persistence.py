@@ -63,6 +63,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
         self.assertEqual(legacy.text_effects.overall_opacity, 0.7)
         self.assertEqual(stroke.width, 0.2)
         self.assertEqual(stroke.paint, SolidPaint((1, 2, 3)))
+        self.assertEqual(stroke.position, 'center')
 
         explicit_empty = FontFormat(
             text_effects={'overall_opacity': 0.9, 'effects': []},
@@ -257,8 +258,16 @@ class TextEffectPersistenceTest(unittest.TestCase):
                     blur=0.1,
                     spread=0.05,
                 ),
-                StrokeEffect(width=0.2, paint=SolidPaint((1, 2, 3))),
-                StrokeEffect(width=0.7, paint=SolidPaint((7, 8, 9))),
+                StrokeEffect(
+                    width=0.2,
+                    paint=SolidPaint((1, 2, 3)),
+                    position='outside',
+                ),
+                StrokeEffect(
+                    width=0.7,
+                    paint=SolidPaint((7, 8, 9)),
+                    position='inside',
+                ),
                 HollowEffect(enabled=False),
                 ShadowEffect(shadow_type='inner', opacity=0.6),
             ),

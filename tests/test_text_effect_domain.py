@@ -47,6 +47,18 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertIsNone(primary_stroke(original))
         self.assertEqual(result.overall_opacity, 0.4)
         self.assertEqual(result.effects, (StrokeEffect(),))
+        self.assertEqual(result.effects[0].position, 'center')
+
+    def test_stroke_position_is_strict_and_keeps_positional_paint_compatibility(self):
+        paint = SolidPaint((1, 2, 3))
+        positional = StrokeEffect(True, 1.0, 'normal', 0.2, paint)
+
+        self.assertIs(positional.paint, paint)
+        self.assertEqual(positional.position, 'center')
+        for position in ('inside', 'center', 'outside'):
+            self.assertEqual(StrokeEffect(position=position).position, position)
+        with self.assertRaises(ValueError):
+            StrokeEffect(position='future')
 
     def test_ensure_and_equal_update_are_no_ops_for_existing_stroke(self):
         stack = TextEffectStack(effects=(StrokeEffect(width=0.3),))
@@ -60,6 +72,7 @@ class TextEffectDomainTest(unittest.TestCase):
             opacity=0.4,
             width=0.2,
             paint=SolidPaint((10, 20, 30)),
+            position='outside',
         )
         second = StrokeEffect(
             width=0.8,
@@ -75,6 +88,7 @@ class TextEffectDomainTest(unittest.TestCase):
             opacity=0.4,
             width=0.5,
             paint=first.paint,
+            position='outside',
         ))
         self.assertIs(result.effects[1], second)
         self.assertEqual(stack.effects, (first, second))
@@ -205,6 +219,7 @@ class TextEffectDomainTest(unittest.TestCase):
                 },
                 {'effect_type': 'glow', 'blur': 0.5},
                 {'effect_type': 'stroke', 'width': -1},
+                {'effect_type': 'stroke', 'position': 'diagonal'},
                 {'effect_type': 'stroke', 'future_field': 1},
                 {
                     'effect_type': 'stroke',
@@ -213,6 +228,7 @@ class TextEffectDomainTest(unittest.TestCase):
                 {
                     'effect_type': 'stroke',
                     'width': 0.4,
+                    'position': 'outside',
                     'paint': {
                         'paint_type': 'solid',
                         'color': [4, 5, 6],
@@ -231,10 +247,14 @@ class TextEffectDomainTest(unittest.TestCase):
             stack.effects,
             (
                 StrokeEffect(width=0.2, paint=SolidPaint((1, 2, 3))),
-                StrokeEffect(width=0.4, paint=SolidPaint((4, 5, 6))),
+                StrokeEffect(
+                    width=0.4,
+                    paint=SolidPaint((4, 5, 6)),
+                    position='outside',
+                ),
             ),
         )
-        self.assertEqual(warning.call_count, 5)
+        self.assertEqual(warning.call_count, 6)
 
     def test_payload_keeps_mixed_order_and_isolates_duplicate_hollow(self):
         payload = {'effects': [
@@ -326,6 +346,7 @@ class TextEffectDomainTest(unittest.TestCase):
             opacity=0.5,
             width=0.25,
             paint=SolidPaint((7, 8, 9)),
+            position='inside',
         ),))
 
         payload = {
@@ -336,6 +357,7 @@ class TextEffectDomainTest(unittest.TestCase):
                 'opacity': 0.5,
                 'blend_mode': 'normal',
                 'width': 0.25,
+                'position': 'inside',
                 'paint': {
                     'paint_type': 'solid',
                     'color': [7, 8, 9],

@@ -200,13 +200,21 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                 ShadowEffect(
                     color=(0, 255, 0), offset=(-0.35, 0), blur=0.04
                 ),
-                StrokeEffect(width=0.18, paint=SolidPaint((0, 0, 255))),
+                StrokeEffect(
+                    width=0.18,
+                    position='outside',
+                    paint=SolidPaint((0, 0, 255)),
+                ),
             )),
             TextEffectStack(effects=(
                 ShadowEffect(
                     shadow_type='long', color=(0, 255, 0), offset=(-0.5, 0.2)
                 ),
-                StrokeEffect(width=0.18, paint=SolidPaint((0, 0, 255))),
+                StrokeEffect(
+                    width=0.18,
+                    position='inside',
+                    paint=SolidPaint((0, 0, 255)),
+                ),
                 HollowEffect(),
             )),
         )
@@ -229,14 +237,14 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         stacks = (
             TextEffectStack(effects=(
                 ShadowEffect(offset=(0.18, 0.12), blur=0.08, spread=0.04),
-                StrokeEffect(width=0.12),
+                StrokeEffect(width=0.12, position='outside'),
                 ShadowEffect(
                     shadow_type='inner', offset=(0.08, 0.04), blur=0.06
                 ),
             )),
             TextEffectStack(effects=(
                 ShadowEffect(shadow_type='long', offset=(0.30, 0.22)),
-                StrokeEffect(width=0.12),
+                StrokeEffect(width=0.12, position='inside'),
                 HollowEffect(),
             )),
         )
@@ -306,7 +314,13 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             renderer.set_export_effect_render(False)
 
     def test_mask_covers_vertical_annotations_and_distorted_glyphs(self):
-        item = self._item(vertical=True, text='東京12')
+        item = self._item(
+            TextEffectStack(effects=(
+                StrokeEffect(width=0.12, position='outside'),
+            )),
+            vertical=True,
+            text='東京12',
+        )
         cursor = QTextCursor(item.document())
         cursor.setPosition(0)
         cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
@@ -329,7 +343,12 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         item.set_text_alpha_mask(self._erase_all())
         self.assertEqual(np.count_nonzero(self._render(item)[..., 3]), 0)
 
-        projective = self._item(text='Projective mask')
+        projective = self._item(
+            TextEffectStack(effects=(
+                StrokeEffect(width=0.12, position='inside'),
+            )),
+            text='Projective mask',
+        )
         projective.set_text_transform(TextTransformStack((
             ProjectiveTextTransform(rotation_y=25, perspective=0.3),
         )))

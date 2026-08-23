@@ -160,6 +160,141 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         vertical = self._item(inner_stack, vertical=True)
         self.assertGreater(np.count_nonzero(self._render(vertical)[..., 3]), 0)
 
+    def test_stroke_positions_control_coverage_and_external_padding(self):
+        paint = SolidPaint((20, 60, 220))
+
+        def rendered(position=None):
+            options = {'width': 0.24, 'paint': paint}
+            if position is not None:
+                options['position'] = position
+            item = self._item(TextEffectStack(effects=(
+                StrokeEffect(**options),
+            )))
+            item.setPlainText('\N{FULL BLOCK}')
+            item.layout.reLayoutEverything()
+            item.repaint_background()
+            return item, self._render(item)
+
+        default, default_pixels = rendered()
+        center, center_pixels = rendered('center')
+        inside, inside_pixels = rendered('inside')
+        outside, outside_pixels = rendered('outside')
+        plain = self._item(TextEffectStack())
+        plain.setPlainText('\N{FULL BLOCK}')
+        plain.layout.reLayoutEverything()
+        plain_pixels = self._render(plain)
+
+        np.testing.assert_array_equal(default_pixels, center_pixels)
+        self.assertEqual(inside.padding(), 0.0)
+        self.assertAlmostEqual(
+            outside.effect_renderer._conservative_effect_padding(),
+            center.effect_renderer._conservative_effect_padding() * 2.0,
+        )
+        # Committed padding is rounded outward to 1/64 layout units.
+        self.assertAlmostEqual(
+            outside.padding(),
+            center.padding() * 2.0,
+            delta=1.0 / 32.0,
+        )
+
+        glyph = plain_pixels[..., 3] > 16
+        deep_glyph = cv2.erode(
+            glyph.astype(np.uint8), np.ones((7, 7), dtype=np.uint8)
+        ) > 0
+
+        def blue(pixels):
+            return (
+                (pixels[..., 2] > 140)
+                & (pixels[..., 0] < 100)
+                & (pixels[..., 3] > 16)
+            )
+
+        inside_blue = blue(inside_pixels)
+        outside_blue = blue(outside_pixels)
+        center_blue = blue(center_pixels)
+        self.assertGreater(np.count_nonzero(inside_blue), 0)
+        self.assertEqual(np.count_nonzero(inside_blue & ~glyph), 0)
+        self.assertGreater(np.count_nonzero(outside_blue & ~glyph), 0)
+        self.assertEqual(np.count_nonzero(outside_blue & deep_glyph), 0)
+        self.assertGreater(
+            np.count_nonzero(outside_blue & ~glyph),
+            np.count_nonzero(center_blue & ~glyph),
+        )
+
+    def test_hollow_and_shadow_silhouette_use_positioned_stroke_band(self):
+        plain = self._item(TextEffectStack())
+        plain.setPlainText('\N{FULL BLOCK}')
+        plain.layout.reLayoutEverything()
+        glyph = self._render(plain)[..., 3] > 16
+        distance = cv2.distanceTransform(
+            glyph.astype(np.uint8), cv2.DIST_L2, 5
+        )
+        deepest = np.unravel_index(np.argmax(distance), distance.shape)
+
+        for position in ('inside', 'center', 'outside'):
+            with self.subTest(position=position):
+                stroke = StrokeEffect(
+                    width=0.24,
+                    position=position,
+                    paint=SolidPaint((20, 60, 220)),
+                )
+                item = self._item(TextEffectStack(effects=(
+                    stroke,
+                    HollowEffect(),
+                )))
+                item.setPlainText('\N{FULL BLOCK}')
+                item.layout.reLayoutEverything()
+                item.repaint_background()
+                pixels = self._render(item)
+                blue = (
+                    (pixels[..., 2] > 140)
+                    & (pixels[..., 0] < 100)
+                    & (pixels[..., 3] > 16)
+                )
+
+                self.assertGreater(np.count_nonzero(blue), 0)
+                self.assertEqual(pixels[deepest][3], 0)
+                if position == 'inside':
+                    self.assertEqual(np.count_nonzero(blue & ~glyph), 0)
+                elif position == 'outside':
+                    self.assertGreater(np.count_nonzero(blue & ~glyph), 0)
+
+                renderer = item.effect_renderer
+                bounds = renderer.boundingRect()
+                canonical = renderer._capture_effect_source(bounds, 1.0)
+                canonical_alpha = renderer._pixmap_alpha(canonical)
+                silhouette = renderer._stroke_silhouette(
+                    canonical, canonical_alpha, bounds, 1.0
+                )
+                silhouette_alpha = pixmap2ndarray(
+                    silhouette, keep_alpha=True
+                )[..., 3]
+                outside_source = (
+                    (silhouette_alpha > 16) & (canonical_alpha <= 16)
+                )
+                if position == 'inside':
+                    self.assertEqual(np.count_nonzero(outside_source), 0)
+                else:
+                    self.assertGreater(np.count_nonzero(outside_source), 0)
+
+    def test_inside_does_not_add_nonlinear_external_padding(self):
+        transform = TextTransformStack((SineTextTransform(),))
+        plain = self._item(TextEffectStack())
+        inside = self._item(TextEffectStack(effects=(
+            StrokeEffect(width=0.24, position='inside'),
+        )))
+        outside = self._item(TextEffectStack(effects=(
+            StrokeEffect(width=0.24, position='outside'),
+        )))
+
+        for item in (plain, inside, outside):
+            item.set_text_transform(transform)
+
+        self.assertEqual(inside.padding(), plain.padding())
+        self.assertGreater(outside.padding(), inside.padding())
+        self.assertGreater(np.count_nonzero(self._render(inside)[..., 3]), 0)
+        self.assertGreater(np.count_nonzero(self._render(outside)[..., 3]), 0)
+
     def test_first_shadow_card_paints_on_top_within_exterior_phase(self):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(color=(255, 0, 0), offset=(0.0, 0.0)),
@@ -412,6 +547,42 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         finally:
             item.set_export_effect_render(False)
 
+    def test_noncenter_stroke_failure_never_uses_center_vector_fallback(self):
+        failure = EffectRasterAllocationError('mock positioned Stroke failure')
+        for position in ('inside', 'outside'):
+            with self.subTest(position=position):
+                item = self._item(TextEffectStack())
+                renderer = item.effect_renderer
+                stack = TextEffectStack(effects=(StrokeEffect(
+                    width=0.24,
+                    position=position,
+                    paint=SolidPaint((0, 0, 255)),
+                ),))
+
+                with patch.object(
+                    renderer, '_render_effect_surface', side_effect=failure
+                ):
+                    item.set_text_effects(stack)
+                    pixels = self._render(item)
+                self.assertGreater(np.count_nonzero(pixels[..., 3]), 0)
+                self.assertFalse(renderer.direct_stroke)
+
+                item.set_export_effect_render(True)
+                try:
+                    with patch.object(
+                        renderer,
+                        '_render_effect_surface',
+                        side_effect=failure,
+                    ):
+                        self._render(item)
+                    self.assertIsInstance(
+                        item.export_effect_error,
+                        EffectRasterAllocationError,
+                    )
+                    self.assertFalse(renderer.direct_stroke)
+                finally:
+                    item.set_export_effect_render(False)
+
     def test_shadow_preview_promotes_cache_and_reshape_rebuilds_once(self):
         before = TextEffectStack(effects=(ShadowEffect(
             offset=(0.1, 0.1), blur=0.08
@@ -450,7 +621,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ShadowEffect(
                     offset=(0.18, 0.12), blur=0.08, spread=0.04
                 ),
-                StrokeEffect(width=0.12),
+                StrokeEffect(width=0.12, position='outside'),
                 ShadowEffect(
                     shadow_type='inner',
                     offset=(0.08, 0.04),
@@ -462,7 +633,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ShadowEffect(
                     shadow_type='long', offset=(0.30, 0.22)
                 ),
-                StrokeEffect(width=0.12),
+                StrokeEffect(width=0.12, position='inside'),
                 HollowEffect(),
             )),
         )

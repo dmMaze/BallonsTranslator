@@ -492,7 +492,21 @@ class TextEffectRenderer:
 
     def _stroke_width(self) -> float:
         stroke = self._current_stroke()
-        return 0.0 if stroke is None else stroke.width
+        if stroke is None:
+            return 0.0
+        # Inside/Outside are clipped from a full-width native outline. Center
+        # keeps the established pen width and allocation-free paint path.
+        return stroke.width * (2.0 if stroke.position != 'center' else 1.0)
+
+    def _all_strokes_centered(self) -> bool:
+        return all(
+            stroke.position == 'center' for stroke in self._active_strokes()
+        )
+
+    def _has_inside_strokes(self) -> bool:
+        return any(
+            stroke.position == 'inside' for stroke in self._active_strokes()
+        )
 
     def _paint_strokes(
         self, painter: QPainter, paint: Callable[[], None]
@@ -1052,6 +1066,7 @@ class TextEffectRenderer:
                 (
                     bool(self._active_shadows('inner'))
                     or self._active_text_alpha_mask() is not None
+                    or self._has_inside_strokes()
                 )
                 and (
                     self.export_render
@@ -1073,6 +1088,7 @@ class TextEffectRenderer:
             self._hollow_enabled()
             or bool(self._active_shadows('inner'))
             or self._mask_requires_surface()
+            or self._has_inside_strokes()
         )
 
     def _completed_foreground_ready(self) -> bool:
@@ -1223,13 +1239,33 @@ class TextEffectRenderer:
         return context
 
     def _stroke_outset(self) -> float:
+        """Return the maximum visible Stroke reach outside glyph alpha."""
         strokes = self._active_strokes()
         if not strokes:
             return 0.0
-        return (
-            self.layout.max_font_size(to_px=True)
-            * max(stroke.width for stroke in strokes)
-            / 2
+        font_size = self.layout.max_font_size(to_px=True)
+        return max(
+            font_size
+            * stroke.width
+            * (
+                0.0
+                if stroke.position == 'inside'
+                else (1.0 if stroke.position == 'outside' else 0.5)
+            )
+            for stroke in strokes
+        )
+
+    def _stroke_generation_reach(self) -> float:
+        """Return the halo needed to generate positioned Stroke tiles."""
+        strokes = self._active_strokes()
+        if not strokes:
+            return 0.0
+        font_size = self.layout.max_font_size(to_px=True)
+        return max(
+            font_size
+            * stroke.width
+            * (0.5 if stroke.position == 'center' else 1.0)
+            for stroke in strokes
         )
 
     def _sync_native_stroke_alignment(self) -> None:
@@ -1545,12 +1581,16 @@ class TextEffectRenderer:
                 effect_bounds = effect_bounds.united(
                     self._shadowed_bounds(shadow_source_bounds, shadow)
                 )
-        effect_bounds = effect_bounds.adjusted(
-            -EFFECT_RASTER_GUARD,
-            -EFFECT_RASTER_GUARD,
-            EFFECT_RASTER_GUARD,
-            EFFECT_RASTER_GUARD,
-        )
+        if stroke_outset > 0.0 or any(
+            shadow.shadow_type != 'inner'
+            for shadow in self._compiled_shadows()
+        ):
+            effect_bounds = effect_bounds.adjusted(
+                -EFFECT_RASTER_GUARD,
+                -EFFECT_RASTER_GUARD,
+                EFFECT_RASTER_GUARD,
+                EFFECT_RASTER_GUARD,
+            )
         return max(
             0.0,
             logical_rect.left() - effect_bounds.left(),
@@ -1567,10 +1607,15 @@ class TextEffectRenderer:
         stroke_outset = 0.0
         active_strokes = self._active_strokes()
         if active_strokes:
-            stroke_outset = (
+            stroke_outset = max(
                 max_font_size
-                * (max(stroke.width for stroke in active_strokes) + 0.05)
-                / 2
+                * (stroke.width + 0.05)
+                * (
+                    0.0
+                    if stroke.position == 'inside'
+                    else (1.0 if stroke.position == 'outside' else 0.5)
+                )
+                for stroke in active_strokes
             )
         padding = stroke_outset
         exterior_padding = None
@@ -1629,13 +1674,17 @@ class TextEffectRenderer:
 
     def _effect_flags(self) -> Tuple[bool, bool]:
         """Return active Stroke and generated completed-surface flags."""
+        strokes = self._active_strokes()
         return (
-            bool(self._active_strokes()),
-            bool(self._compiled_shadows()) or self._mask_requires_surface(),
+            bool(strokes),
+            bool(self._compiled_shadows())
+            or self._mask_requires_surface()
+            or any(stroke.position != 'center' for stroke in strokes),
         )
 
     def _effect_tile_overlap(self) -> float:
-        overlap = self._stroke_outset() + EFFECT_RASTER_GUARD
+        stroke_reach = self._stroke_generation_reach()
+        overlap = stroke_reach + EFFECT_RASTER_GUARD
         for shadow in self._compiled_shadows():
             blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
             if shadow.shadow_type == 'long':
@@ -1644,7 +1693,7 @@ class TextEffectRenderer:
                 reach = blur + spread + max(abs(xoffset), abs(yoffset))
             overlap = max(
                 overlap,
-                reach + self._stroke_outset() + EFFECT_RASTER_GUARD,
+                reach + stroke_reach + EFFECT_RASTER_GUARD,
             )
         return overlap
 
@@ -1786,24 +1835,42 @@ class TextEffectRenderer:
             if shadow.shadow_type != 'inner'
         )
         interior = self._active_shadows('inner') if not hollow else ()
+        active_strokes = self._active_strokes()
+        positioned_strokes = any(
+            stroke.position != 'center' for stroke in active_strokes
+        )
+        inside_strokes = any(
+            stroke.position == 'inside' for stroke in active_strokes
+        )
         target_map = self._new_effect_pixmap(render_scale, surface_rect)
         canonical = None
         canonical_alpha = None
-        completed_foreground = alpha_mask is not None and not hollow
+        completed_foreground = (
+            (alpha_mask is not None or inside_strokes) and not hollow
+        )
         if (
             interior
             or completed_foreground
             or (exterior and not paint_stroke)
             or (hollow and exterior)
+            or positioned_strokes
         ):
             canonical = self._capture_effect_source(
-                surface_rect, render_scale, include_strokes=False
+                surface_rect, render_scale
             )
             canonical_alpha = self._pixmap_alpha(canonical)
         exterior_alpha = canonical_alpha
         if exterior and paint_stroke:
-            silhouette = self._capture_effect_source(
-                surface_rect, render_scale, include_strokes=True
+            if canonical is None:
+                canonical = self._capture_effect_source(
+                    surface_rect, render_scale
+                )
+                canonical_alpha = self._pixmap_alpha(canonical)
+            silhouette = self._stroke_silhouette(
+                canonical,
+                canonical_alpha,
+                surface_rect,
+                render_scale,
             )
             exterior_alpha = self._pixmap_alpha(silhouette)
 
@@ -1854,19 +1921,29 @@ class TextEffectRenderer:
                         target_painter,
                         surface_rect,
                         render_scale,
+                        canonical_alpha,
                     )
                 else:
-                    self._paint_strokes(
+                    self._paint_positioned_strokes(
                         target_painter,
-                        lambda: self.paint_stroke(
-                            target_painter, render_scale, surface_rect
-                        ),
+                        surface_rect,
+                        render_scale,
+                        canonical_alpha,
+                        ('center', 'outside'),
                     )
 
             if interior:
                 assert canonical is not None
                 assert canonical_alpha is not None
                 target_painter.drawPixmap(surface_rect.topLeft(), canonical)
+                if paint_stroke and target_stroke and inside_strokes:
+                    self._paint_positioned_strokes(
+                        target_painter,
+                        surface_rect,
+                        render_scale,
+                        canonical_alpha,
+                        ('inside',),
+                    )
                 target_painter.translate(surface_rect.topLeft())
                 for shadow in reversed(interior):
                     target_painter.drawPixmap(
@@ -1879,6 +1956,14 @@ class TextEffectRenderer:
             elif completed_foreground:
                 assert canonical is not None
                 target_painter.drawPixmap(surface_rect.topLeft(), canonical)
+                if paint_stroke and target_stroke and inside_strokes:
+                    self._paint_positioned_strokes(
+                        target_painter,
+                        surface_rect,
+                        render_scale,
+                        canonical_alpha,
+                        ('inside',),
+                    )
 
             if self.surface_raster_error is not None:
                 raise self.surface_raster_error
@@ -1941,76 +2026,153 @@ class TextEffectRenderer:
         painter: QPainter,
         surface_rect: QRectF,
         render_scale: float,
+        canonical_alpha: Optional[np.ndarray] = None,
     ) -> None:
-        """Paint centered Stroke bands without their opaque glyph fill.
+        """Paint positioned Stroke bands without their opaque glyph fill.
 
         >>> hasattr(TextEffectRenderer, '_paint_hollow_strokes')
         True
         """
+        self._paint_positioned_strokes(
+            painter,
+            surface_rect,
+            render_scale,
+            canonical_alpha,
+            ('center', 'inside', 'outside'),
+            hollow=True,
+        )
+
+    def _positioned_stroke_band(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+        stroke: StrokeEffect,
+        canonical_alpha: Optional[np.ndarray],
+    ) -> QPixmap:
+        """Capture one native outline and clip it to its semantic side.
+
+        >>> hasattr(TextEffectRenderer, '_positioned_stroke_band')
+        True
+        """
         previous = self._render_stroke
         previous_outline_only = self._outline_only_stroke
+        self._render_stroke = stroke
         self._outline_only_stroke = True
         try:
-            for stroke in reversed(self._active_strokes()):
-                self._render_stroke = stroke
-                try:
-                    layer = self._new_effect_pixmap(
-                        render_scale, surface_rect
-                    )
-                    layer_painter = QPainter(layer)
-                    if not layer_painter.isActive():
-                        raise EffectRasterAllocationError(
-                            'unable to begin Hollow Stroke painter'
-                        )
-                    try:
-                        layer_painter.setRenderHints(
-                            _VECTOR_EFFECT_RENDER_HINTS
-                        )
-                        layer_painter.translate(-surface_rect.topLeft())
-                        self.paint_stroke(
-                            layer_painter, render_scale, surface_rect
-                        )
-                    finally:
-                        layer_painter.end()
+            layer = self._new_effect_pixmap(render_scale, surface_rect)
+            layer_painter = QPainter(layer)
+            if not layer_painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin positioned Stroke painter'
+                )
+            try:
+                layer_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+                layer_painter.translate(-surface_rect.topLeft())
+                self.paint_stroke(
+                    layer_painter, render_scale, surface_rect
+                )
+            finally:
+                layer_painter.end()
 
-                    rgba = pixmap2ndarray(layer, keep_alpha=True)
-                    if rgba is None:
-                        raise EffectRasterAllocationError(
-                            'unable to access Hollow Stroke pixels'
-                        )
-                    # The fragment-correct outline pass uses alpha 1 only to
-                    # keep Qt from suppressing textOutline. Remove that
-                    # sentinel before this layer becomes persistent pixels.
-                    rgba[..., 3][rgba[..., 3] <= 1] = 0
-                    if stroke.opacity != 1.0:
-                        product = rgba[..., 3].astype(np.uint16)
-                        product *= int(round(stroke.opacity * 255))
-                        product += 127
-                        product //= 255
-                        rgba[..., 3] = product.astype(np.uint8)
-                    band = ndarray2pixmap(rgba)
-                    if band is None or band.isNull():
-                        raise EffectRasterAllocationError(
-                            'unable to allocate Hollow Stroke band'
-                        )
-                    band.setDevicePixelRatio(render_scale)
-                    painter.drawPixmap(surface_rect.topLeft(), band)
-                except RASTER_BOUNDARY_FAILURES as error:
+            rgba = pixmap2ndarray(layer, keep_alpha=True)
+            if rgba is None:
+                raise EffectRasterAllocationError(
+                    'unable to access positioned Stroke pixels'
+                )
+            # Alpha 1 keeps Qt from suppressing textOutline. It is a capture
+            # sentinel, not visible foreground in the persistent band.
+            alpha = rgba[..., 3]
+            alpha[alpha <= 1] = 0
+            if stroke.position != 'center':
+                if canonical_alpha is None:
                     raise EffectRasterAllocationError(
-                        'unable to render Hollow Stroke band'
-                    ) from error
+                        'positioned Stroke requires canonical glyph alpha'
+                    )
+                coverage = (
+                    canonical_alpha
+                    if stroke.position == 'inside'
+                    else 255 - canonical_alpha
+                )
+                product = alpha.astype(np.uint16)
+                product *= coverage.astype(np.uint16)
+                product += 127
+                product //= 255
+                alpha = product.astype(np.uint8)
+            if stroke.opacity != 1.0:
+                product = alpha.astype(np.uint16)
+                product *= int(round(stroke.opacity * 255))
+                product += 127
+                product //= 255
+                alpha = product.astype(np.uint8)
+            rgba[..., 3] = alpha
+            band = ndarray2pixmap(rgba)
+            if band is None or band.isNull():
+                raise EffectRasterAllocationError(
+                    'unable to allocate positioned Stroke band'
+                )
+            band.setDevicePixelRatio(render_scale)
+            return band
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render positioned Stroke band'
+            ) from error
         finally:
             self._outline_only_stroke = previous_outline_only
+            self._render_stroke = previous
+
+    def _paint_positioned_strokes(
+        self,
+        painter: QPainter,
+        surface_rect: QRectF,
+        render_scale: float,
+        canonical_alpha: Optional[np.ndarray],
+        positions: Tuple[str, ...],
+        *,
+        hollow: bool = False,
+    ) -> None:
+        """Paint selected Stroke positions back-to-front.
+
+        >>> hasattr(TextEffectRenderer, '_paint_positioned_strokes')
+        True
+        """
+        previous = self._render_stroke
+        try:
+            for stroke in reversed(self._active_strokes()):
+                if stroke.position not in positions:
+                    continue
+                self._render_stroke = stroke
+                if stroke.position == 'center' and not hollow:
+                    painter.save()
+                    try:
+                        painter.setOpacity(
+                            painter.opacity() * stroke.opacity
+                        )
+                        self.paint_stroke(
+                            painter, render_scale, surface_rect
+                        )
+                    finally:
+                        painter.restore()
+                    continue
+                painter.drawPixmap(
+                    surface_rect.topLeft(),
+                    self._positioned_stroke_band(
+                        surface_rect,
+                        render_scale,
+                        stroke,
+                        canonical_alpha,
+                    ),
+                )
+        finally:
             self._render_stroke = previous
 
     def _capture_effect_source(
         self,
         surface_rect: QRectF,
         render_scale: float,
-        *,
-        include_strokes: bool,
     ) -> QPixmap:
-        """Capture the canonical glyph alpha, optionally with Stroke coverage.
+        """Capture the canonical glyph pixels once for compiled phases.
 
         >>> hasattr(TextEffectRenderer, '_capture_effect_source')
         True
@@ -2036,13 +2198,6 @@ class TextEffectRenderer:
             painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
             painter.translate(-surface_rect.topLeft())
             self._paint_live_layout(painter, self._effect_paint_context())
-            if include_strokes:
-                self._paint_strokes(
-                    painter,
-                    lambda: self.paint_stroke(
-                        painter, render_scale, surface_rect
-                    ),
-                )
             if self.surface_raster_error is not None:
                 raise self.surface_raster_error
         except RASTER_BOUNDARY_FAILURES as error:
@@ -2064,6 +2219,45 @@ class TextEffectRenderer:
                     'unable to finish effect source painter'
                 ) from end_error
         return source
+
+    def _stroke_silhouette(
+        self,
+        canonical: QPixmap,
+        canonical_alpha: np.ndarray,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> QPixmap:
+        """Add visible positioned Stroke coverage to canonical shadow alpha.
+
+        >>> hasattr(TextEffectRenderer, '_stroke_silhouette')
+        True
+        """
+        try:
+            silhouette = QPixmap(canonical)
+            painter = QPainter(silhouette)
+            if not painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin Stroke silhouette painter'
+                )
+            try:
+                painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+                painter.translate(-surface_rect.topLeft())
+                self._paint_positioned_strokes(
+                    painter,
+                    surface_rect,
+                    render_scale,
+                    canonical_alpha,
+                    ('center', 'inside', 'outside'),
+                )
+            finally:
+                painter.end()
+            return silhouette
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render Stroke shadow silhouette'
+            ) from error
 
     @staticmethod
     def _pixmap_alpha(pixmap: QPixmap) -> np.ndarray:
@@ -2186,7 +2380,9 @@ class TextEffectRenderer:
                         self.direct_stroke = False
                         self.force_tiles = True
                         return
-                    self.direct_stroke = paint_stroke
+                    self.direct_stroke = (
+                        paint_stroke and self._all_strokes_centered()
+                    )
                     self._warn_effect_allocation_once(error)
                     return
 
@@ -2249,10 +2445,13 @@ class TextEffectRenderer:
             return
 
         paint_stroke, paint_non_stroke = self._effect_flags()
-        stroke_overlap = self._stroke_outset() + EFFECT_RASTER_GUARD
+        stroke_overlap = (
+            self._stroke_generation_reach() + EFFECT_RASTER_GUARD
+        )
         vector_stroke_direct = (
             paint_stroke
             and not paint_non_stroke
+            and self._all_strokes_centered()
             # The vector fallback cannot apply the block-wide alpha mask.
             and self._active_text_alpha_mask() is None
             and 2 * math.ceil(stroke_overlap * plan.tier)
@@ -2283,7 +2482,9 @@ class TextEffectRenderer:
             if self._raise_or_defer_export_effect_error(error):
                 return
             self._warn_effect_allocation_once(error)
-            self.direct_stroke = paint_stroke
+            self.direct_stroke = (
+                paint_stroke and self._all_strokes_centered()
+            )
             return
         core_edge = core_edge_px / plan.tier
 
@@ -2422,7 +2623,9 @@ class TextEffectRenderer:
 
         if raster_failure is not None:
             self.tile_cache.clear()
-            self.direct_stroke = paint_stroke
+            self.direct_stroke = (
+                paint_stroke and self._all_strokes_centered()
+            )
             self.cache_dirty = True
             self.cache_rendered_generation = -1
             if self._raise_or_defer_export_effect_error(raster_failure):
@@ -2448,7 +2651,7 @@ class TextEffectRenderer:
         self.force_tiles = False
 
     def _draw_direct_stroke(self, painter: QPainter):
-        if not self._effect_flags()[0]:
+        if not self._effect_flags()[0] or not self._all_strokes_centered():
             return
         # This path intentionally avoids every intermediate raster allocation.
         # The custom glyph renderer still consumes outline selections, while a

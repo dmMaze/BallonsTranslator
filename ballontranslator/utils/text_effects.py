@@ -85,9 +85,10 @@ class SolidPaint:
 
 @dataclass(frozen=True)
 class StrokeEffect:
-    """One immutable centered solid Stroke effect.
+    """One immutable positioned solid Stroke effect.
 
-    Width remains relative to font size, matching the existing Stroke value.
+    Width is the full band relative to font size. Center splits it across the
+    glyph edge; Inside and Outside place it wholly on the corresponding side.
 
     >>> StrokeEffect(width=0.2).effect_type
     'stroke'
@@ -98,6 +99,7 @@ class StrokeEffect:
     blend_mode: str = 'normal'
     width: float = 0.1
     paint: SolidPaint = field(default_factory=SolidPaint)
+    position: str = 'center'
     effect_type: str = field(init=False, default='stroke')
 
     def __post_init__(self) -> None:
@@ -117,6 +119,8 @@ class StrokeEffect:
         )
         if not isinstance(self.paint, SolidPaint):
             raise TypeError('stroke paint must be SolidPaint')
+        if self.position not in {'inside', 'center', 'outside'}:
+            raise ValueError('unsupported stroke position')
 
     def to_serializable_dict(self) -> dict:
         return {
@@ -125,6 +129,7 @@ class StrokeEffect:
             'opacity': self.opacity,
             'blend_mode': self.blend_mode,
             'width': self.width,
+            'position': self.position,
             'paint': self.paint.to_serializable_dict(),
         }
 
@@ -340,7 +345,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             payload,
             (
                 'effect_type', 'enabled', 'opacity', 'blend_mode', 'width',
-                'paint',
+                'paint', 'position',
             ),
             'Stroke effect',
         )

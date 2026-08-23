@@ -108,7 +108,9 @@ class TextEffectEditSession:
         effect = state.effects[index]
         parameters = {}
         if isinstance(effect, StrokeEffect):
-            if param_name not in {'enabled', 'width', 'opacity', 'paint'}:
+            if param_name not in {
+                'enabled', 'width', 'opacity', 'paint', 'position'
+            }:
                 raise ValueError('unknown Stroke field')
             if param_name == 'paint' and not isinstance(value, SolidPaint):
                 value = SolidPaint(value)
