@@ -173,6 +173,18 @@ class FontWeightUiTest(unittest.TestCase):
         )
         self.assertIs(selector.weight(), FontWeight.Normal)
 
+    def test_selector_shows_detected_weights_bold_and_current_weight(self):
+        selector = FontWeightComboBox()
+        self.addCleanup(selector.deleteLater)
+
+        selector.update_weights([300, 500], FontWeight.Black)
+
+        self.assertEqual(
+            [selector.itemData(index) for index in range(selector.count())],
+            [300, 500, 700, 900],
+        )
+        self.assertIs(selector.weight(), FontWeight.Black)
+
     def test_family_selection_preserves_requested_weight(self):
         panel = self._make_panel()
         active = FontFormat(font_family='Example', font_weight=FontWeight.Light)
@@ -191,6 +203,44 @@ class FontWeightUiTest(unittest.TestCase):
 
         self.assertEqual(active.font_family, 'Example Book')
         self.assertIs(active.font_weight, FontWeight.Light)
+        self.assertEqual(
+            [
+                panel.fontWeightBox.itemData(index)
+                for index in range(panel.fontWeightBox.count())
+            ],
+            [200, 300, 700],
+        )
+
+    def test_explicit_weight_change_removes_old_unsupported_weight(self):
+        panel = self._make_panel()
+        entry = FontEntry(
+            'Example', 'Example', 'Example', 'custom',
+            weights=[300, 500],
+        )
+        shared.FONT_REGISTRY = FontRegistry(custom_entries=[entry])
+        active = FontFormat(
+            font_family='Example',
+            font_weight=FontWeight.Black,
+        )
+        panel.global_format = active
+        panel.set_active_format(active)
+        panel.update_font_entries([entry])
+
+        self.assertGreaterEqual(
+            panel.fontWeightBox.findData(int(FontWeight.Black)),
+            0,
+        )
+
+        panel.on_font_weight_changed('font_weight', FontWeight.Medium)
+
+        self.assertIs(active.font_weight, FontWeight.Medium)
+        self.assertEqual(
+            [
+                panel.fontWeightBox.itemData(index)
+                for index in range(panel.fontWeightBox.count())
+            ],
+            [300, 500, 700],
+        )
 
     def test_picker_group_changes_storage_face_with_weight(self):
         panel = self._make_panel()
@@ -381,6 +431,14 @@ class FontWeightUiTest(unittest.TestCase):
         panel.familybox.update_font_entries(registry.entries())
         panel.set_active_format(active)
 
+        self.assertEqual(
+            [
+                panel.fontWeightBox.itemData(index)
+                for index in range(panel.fontWeightBox.count())
+            ],
+            [300, 500, 700],
+        )
+
         panel.on_font_weight_changed('font_weight', FontWeight.Medium)
 
         self.assertEqual(active.font_family, 'Example')
@@ -407,10 +465,25 @@ class FontWeightUiTest(unittest.TestCase):
         )
         panel.set_active_format(active)
 
+        self.assertEqual(
+            [
+                panel.fontWeightBox.itemData(index)
+                for index in range(panel.fontWeightBox.count())
+            ],
+            [300, 700],
+        )
+
         panel.on_font_weight_changed('font_weight', FontWeight.Medium)
 
         self.assertEqual(active.font_family, 'Example Light')
         self.assertIs(active.font_weight, FontWeight.Medium)
+        self.assertEqual(
+            [
+                panel.fontWeightBox.itemData(index)
+                for index in range(panel.fontWeightBox.count())
+            ],
+            [300, 500, 700],
+        )
 
     def test_selected_text_receives_only_the_new_weight(self):
         block = TextBlock([0, 0, 300, 100])

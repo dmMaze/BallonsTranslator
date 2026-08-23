@@ -688,7 +688,7 @@ class MainWindow(mainwindow_cls):
     def on_show_only_custom_font(self, only_custom: bool) -> None:
         registry = shared.FONT_REGISTRY
         entries = registry.entries(only_custom, pcfg.excluded_fonts)
-        self.textPanel.formatpanel.familybox.update_font_entries(entries)
+        self.textPanel.formatpanel.update_font_entries(entries)
 
     def openDir(self, directory: str):
         try:
