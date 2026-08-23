@@ -8,6 +8,7 @@ from ballontranslator.utils.font_registry import (
     _sfnt_offsets,
     _system_entry,
     build_font_registry,
+    collect_custom_faces,
     load_custom_group_table,
     load_system_alias_table,
     qt_family_weights,
@@ -32,6 +33,15 @@ class _Qt5FontDatabase:
 
     def isScalable(self, _family: str, _style: str = '') -> bool:
         return True
+
+
+class _ApplicationFontDatabase(_EmptyFontDatabase):
+    def addApplicationFont(self, _path: str) -> int:
+        return 7
+
+    def applicationFontFamilies(self, font_id: int) -> list[str]:
+        assert font_id == 7
+        return ['Example Type 1']
 
 
 def _name(label: str, language: str, value: str) -> dict:
@@ -188,6 +198,21 @@ def test_ttc_face_count_is_limited_by_available_offsets() -> None:
     data = b'ttcf\x00\x01\x00\x00\xff\xff\xff\xff'
 
     assert _sfnt_offsets(data) == []
+
+
+def test_non_sfnt_font_registered_by_qt_remains_available(
+    tmp_path: Path,
+) -> None:
+    font_path = tmp_path / 'example.pfb'
+    font_path.write_bytes(b'not an sfnt font')
+
+    faces = collect_custom_faces(
+        [str(font_path)], _ApplicationFontDatabase(), 'en-US'
+    )
+
+    assert len(faces) == 1
+    assert faces[0].canonical_family == 'Example Type 1'
+    assert faces[0].qt_family == 'Example Type 1'
 
 
 def test_optional_display_alias_follows_ui_locale(tmp_path: Path) -> None:

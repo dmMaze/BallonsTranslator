@@ -789,6 +789,14 @@ def collect_custom_faces(font_paths: Iterable[str], qfont_db: Any, locale: str) 
             parsed_faces = parse_font_names(font_path)
         except Exception as exc:
             parsed_faces = [{'face_index': 0, 'error': repr(exc), 'names': []}]
+        if not parsed_faces:
+            # Type 1 and other Qt-supported formats do not expose SFNT name
+            # tables, but a successfully registered family is still usable.
+            parsed_faces = [{
+                'face_index': 0,
+                'error': 'unsupported font metadata format',
+                'names': [],
+            }]
         for parsed_face in parsed_faces:
             candidate = _candidate_from_parsed_face(font_path, parsed_face, qt_families, qfont_db, locale)
             if candidate is not None:
