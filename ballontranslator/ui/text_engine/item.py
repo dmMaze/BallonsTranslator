@@ -1,4 +1,5 @@
 import numpy as np
+from dataclasses import replace
 from typing import Callable, List, Optional, Tuple, Union
 
 from qtpy import QT6
@@ -19,6 +20,12 @@ from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_effects import (
+    SolidPaint,
+    TextEffectStack,
+    primary_stroke,
+    with_primary_stroke,
+)
 from ballontranslator.utils.imgproc_utils import xywh2xyxypoly
 from ballontranslator.utils.fontformat import (
     FontFormat,
@@ -569,6 +576,24 @@ class TextBlkItem(QGraphicsTextItem):
             self.visual_geometry_changed.emit()
         return changed
 
+    def set_text_effects(
+        self,
+        stack: TextEffectStack,
+        *,
+        preview: bool = False,
+    ) -> bool:
+        """Apply one complete effect stack through the renderer owner."""
+        return self.effect_renderer.set_text_effects(stack, preview=preview)
+
+    def clear_text_effect_preview(self) -> bool:
+        return self.effect_renderer.clear_text_effect_preview()
+
+    def effective_text_effects(self) -> TextEffectStack:
+        return self.effect_renderer.effective_text_effects()
+
+    def _set_effective_opacity(self, opacity: float) -> None:
+        QGraphicsTextItem.setOpacity(self, opacity)
+
     def clear_text_transform_preview(self) -> bool:
         effective_before = self.geometry_controller.effective()
         changed = self.geometry_controller.clear_preview()
@@ -611,13 +636,12 @@ class TextBlkItem(QGraphicsTextItem):
     def startReshape(self):
         self._old_rect = self.absBoundingRect(qrect=True)
         self.reshaping = True
-        # disable background repainting to avoid heavy redrawing in the whole process
-        self.effect_renderer.clear_cached_surface()
+        self.effect_renderer.begin_reshape()
 
     def endReshape(self):
         self.reshaped.emit(self)
         self.reshaping = False
-        self.repaint_background()
+        self.effect_renderer.end_reshape()
 
     def setRect(
         self,
@@ -1507,6 +1531,9 @@ class TextBlkItem(QGraphicsTextItem):
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.setTextCursor(cursor)
+        # Apply while the canonical model still contains the previous stack;
+        # merging first would skip renderer/cache invalidation.
+        self.set_text_effects(ffmat.text_effects)
         self.stroke_qcolor = QColor(*ffmat.stroke_color())
 
         if set_effect:
@@ -2004,22 +2031,39 @@ class TextBlkItem(QGraphicsTextItem):
         self._after_set_ffmt(cursor, repaint_background=repaint_background, restore_cursor=restore_cursor, **after_kwargs)
 
     def setStrokeColor(self, scolor, **kwargs):
-        self.stroke_qcolor = scolor if isinstance(scolor, QColor) else QColor(*scolor)
-        self.fontformat.srgb = [self.stroke_qcolor.red(), self.stroke_qcolor.green(), self.stroke_qcolor.blue()]
-        self.repaint_background()
-        self.update()
+        color = scolor if isinstance(scolor, QColor) else QColor(*scolor)
+        parameters = {
+            'paint': SolidPaint((color.red(), color.green(), color.blue()))
+        }
+        if primary_stroke(self.fontformat.text_effects) is None:
+            parameters['width'] = 0.0
+        self.set_text_effects(
+            with_primary_stroke(self.fontformat.text_effects, **parameters)
+        )
 
     def setStrokeWidth(self, stroke_width: float, padding=True, repaint_background=True, restore_cursor=False, **kwargs):
         
         cursor, after_kwargs = self._before_set_ffmt(set_selected=False, restore_cursor=restore_cursor)
 
-        self.fontformat.stroke_width = stroke_width
-        if padding:
-            self._update_effect_padding()
-
-        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
+        current = self.fontformat.text_effects
+        target = (
+            current
+            if primary_stroke(current) is None and stroke_width == 0
+            else with_primary_stroke(current, width=stroke_width)
+        )
         if repaint_background:
-            self.update()
+            self.set_text_effects(target)
+        else:
+            was_repainting = self.repainting
+            self.repainting = True
+            try:
+                self.set_text_effects(target)
+            finally:
+                self.repainting = was_repainting
+
+        self._after_set_ffmt(
+            cursor, False, restore_cursor, **after_kwargs
+        )
 
     def setRelFontSize(self, value: float, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, clip_size: bool = False, **kwargs):
         self.layout.relayout_on_changed = False
@@ -2163,8 +2207,9 @@ class TextBlkItem(QGraphicsTextItem):
         self.old_ffmt_values = None
 
     def setOpacity(self, opacity: float):
-        super().setOpacity(opacity)
-        self.fontformat.opacity = opacity
+        self.set_text_effects(
+            replace(self.fontformat.text_effects, overall_opacity=opacity)
+        )
 
     def setPlainTextAndKeepUndoStack(self, text: str):
         cursor = QTextCursor(self.document())

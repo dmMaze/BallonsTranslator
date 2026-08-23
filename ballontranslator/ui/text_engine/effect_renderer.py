@@ -1,7 +1,7 @@
 """Stroke, shadow, gradient, and transformed-effect rendering."""
 
 import math
-from typing import Tuple
+from typing import Callable, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -21,6 +21,11 @@ from qtpy.QtWidgets import QStyle, QWidget
 
 from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.text_effects import (
+    StrokeEffect,
+    TextEffectStack,
+    primary_stroke,
+)
 from ..misc import ndarray2pixmap, pixmap2ndarray
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
@@ -68,13 +73,15 @@ class _EffectRasterState:
         self.cache_dirty = False
         self.tile_cache = {}
         self.allocation_warning_generation = -1
-        self.export_render = False
         self.export_error = None
         self.in_graphics_paint = False
         self.capturing_surface = False
         self.surface_raster_error = None
         self.force_tiles = False
         self.direct_stroke = False
+        self.background_pixmap = None
+        self.background_pixmap_scale = None
+        self.cache_input_key = None
 
 
 class _EffectRasterField:
@@ -104,7 +111,6 @@ class TextEffectRenderer:
     cache_dirty = _EffectRasterField()
     tile_cache = _EffectRasterField()
     allocation_warning_generation = _EffectRasterField()
-    export_render = _EffectRasterField()
     export_error = _EffectRasterField()
     in_graphics_paint = _EffectRasterField()
     capturing_surface = _EffectRasterField()
@@ -114,26 +120,256 @@ class TextEffectRenderer:
 
     def __init__(self, item) -> None:
         self.item = item
-        self.background_pixmap = None
-        self.background_pixmap_scale = None
         self._effect_raster_state = None
+        self._preview_effect_raster_state = None
+        self._export_effect_raster_state = None
+        self._export_active = False
+        self.preview = None
+        self._render_stroke = None
         self.refreshing_gradient_geometry = False
         self.refreshing_effect_padding = False
         self.has_transient_gradient_ranges = False
 
     def _raster_state(self) -> _EffectRasterState:
-        state = self._effect_raster_state
+        if self._export_active:
+            state = self._export_effect_raster_state
+            if state is None:
+                state = _EffectRasterState()
+                self._export_effect_raster_state = state
+            return state
+        preview = self._uses_preview_cache_namespace()
+        state = (
+            self._preview_effect_raster_state
+            if preview
+            else self._effect_raster_state
+        )
         if state is None:
             state = _EffectRasterState()
-            self._effect_raster_state = state
+            if preview:
+                self._preview_effect_raster_state = state
+            else:
+                self._effect_raster_state = state
         return state
 
-    def surface_cache_state(self) -> Tuple[int, bool]:
-        """Return final-warp cache inputs without allocating effect state."""
-        state = self._effect_raster_state
+    def _peek_raster_state(self) -> Optional[_EffectRasterState]:
+        if self._export_active:
+            return self._export_effect_raster_state
+        if self._uses_preview_cache_namespace():
+            return self._preview_effect_raster_state
+        return self._effect_raster_state
+
+    def _drop_active_raster_state(self) -> None:
+        if self._export_active:
+            self._export_effect_raster_state = None
+            return
+        if self._uses_preview_cache_namespace():
+            self._preview_effect_raster_state = None
+        else:
+            self._effect_raster_state = None
+
+    @property
+    def background_pixmap(self):
+        state = self._peek_raster_state()
+        return None if state is None else state.background_pixmap
+
+    @background_pixmap.setter
+    def background_pixmap(self, pixmap) -> None:
+        state = self._peek_raster_state()
+        if state is None and pixmap is None:
+            return
+        self._raster_state().background_pixmap = pixmap
+
+    @property
+    def background_pixmap_scale(self):
+        state = self._peek_raster_state()
+        return None if state is None else state.background_pixmap_scale
+
+    @background_pixmap_scale.setter
+    def background_pixmap_scale(self, scale) -> None:
+        state = self._peek_raster_state()
+        if state is None and scale is None:
+            return
+        self._raster_state().background_pixmap_scale = scale
+
+    def surface_cache_state(self) -> Tuple[Tuple[str, int], bool]:
+        """Return settled final-warp inputs without allocating effect state."""
+        stale = self._invalidate_stale_active_raster_state()
+        if stale and not self._export_active and any(self._effect_flags()):
+            # The nonlinear cache key includes the completed effect pixmap.
+            # Settle it before geometry snapshots that key.
+            self.repaint_background()
+        export = self._export_active
+        preview = self._uses_preview_cache_namespace()
+        state = self._peek_raster_state()
         if state is None:
-            return 0, False
-        return state.cache_generation, state.export_render
+            namespace = 'export' if export else (
+                'preview' if preview else 'committed'
+            )
+            return (namespace, 0), export
+        return (
+            (
+                'export'
+                if export
+                else ('preview' if preview else 'committed'),
+                state.cache_generation,
+            ),
+            export,
+        )
+
+    @property
+    def export_render(self) -> bool:
+        return self._export_active
+
+    def canonical_text_effects(self) -> TextEffectStack:
+        return self.item.blk.fontformat.text_effects
+
+    def effective_text_effects(self) -> TextEffectStack:
+        return (
+            self.preview
+            if self.preview is not None
+            else self.canonical_text_effects()
+        )
+
+    def has_preview(self) -> bool:
+        return self.preview is not None
+
+    def uses_preview_surface(self) -> bool:
+        """Return whether preview changes source-surface pixels or geometry."""
+        return self._uses_preview_cache_namespace()
+
+    def has_active_effects(self) -> bool:
+        return self.effective_text_effects().has_active_effects
+
+    def has_raster_effects(self) -> bool:
+        """Return whether strict export must cover a rendered raster effect."""
+        return any(self._effect_flags())
+
+    def surface_semantic_state(self) -> tuple:
+        """Return effect values that change completed source-surface pixels."""
+        return (
+            self.effective_text_effects().effects,
+            self.fontformat.shadow_radius,
+            self.fontformat.shadow_strength,
+            tuple(self.fontformat.shadow_color),
+            tuple(self.fontformat.shadow_offset),
+        )
+
+    def _uses_preview_cache_namespace(self) -> bool:
+        return (
+            self.preview is not None
+            and self.preview.effects
+            != self.canonical_text_effects().effects
+        )
+
+    def _active_strokes(
+        self, stack: Optional[TextEffectStack] = None
+    ) -> Tuple[StrokeEffect, ...]:
+        active = self.effective_text_effects() if stack is None else stack
+        return tuple(
+            effect
+            for effect in active.effects
+            if isinstance(effect, StrokeEffect) and not effect.is_neutral()
+        )
+
+    def _effect_cache_input_key(
+        self, stack: Optional[TextEffectStack] = None
+    ) -> tuple:
+        active = self.effective_text_effects() if stack is None else stack
+        rect = self.boundingRect()
+        layout_generation = getattr(self.layout, 'layout_generation', 0)
+        layout_render_key = (
+            None
+            if self.geometry_controller.layout_renderer is None
+            else self.geometry_controller.layout_renderer.render_cache_key()
+        )
+        return (
+            active.effects,
+            self.document().revision(),
+            layout_generation,
+            layout_render_key,
+            self.geometry_controller.effective(),
+            self.fontformat.vertical,
+            (
+                rect.x(), rect.y(), rect.width(), rect.height()
+            ),
+            self.fontformat.shadow_radius,
+            self.fontformat.shadow_strength,
+            tuple(self.fontformat.shadow_color),
+            tuple(self.fontformat.shadow_offset),
+        )
+
+    @staticmethod
+    def _effect_cache_semantic_key(cache_key: tuple) -> tuple:
+        layout_render_key = cache_key[3]
+        if isinstance(layout_render_key, tuple) and layout_render_key:
+            layout_render_key = layout_render_key[1:]
+        return (
+            cache_key[0],
+            cache_key[1],
+            layout_render_key,
+        ) + cache_key[4:]
+
+    def _promotable_preview_state(
+        self, stack: TextEffectStack
+    ) -> Optional[_EffectRasterState]:
+        state = self._preview_effect_raster_state
+        if (
+            state is None
+            or state.background_pixmap is None
+            or state.cache_dirty
+            or state.cache_rendered_generation != state.cache_generation
+            or state.cache_input_key != self._effect_cache_input_key(stack)
+        ):
+            return None
+        rect = self.boundingRect()
+        plan = plan_effect_raster(
+            rect.width(), rect.height(), quality_raster_request(1.0)
+        )
+        if (
+            plan.mode != 'full'
+            or state.background_pixmap_scale != plan.tier
+        ):
+            return None
+        return state
+
+    def _invalidate_stale_active_raster_state(self) -> bool:
+        state = self._peek_raster_state()
+        if (
+            state is not None
+            and (not self.pre_editing or self._export_active)
+            and not state.cache_dirty
+            and state.cache_rendered_generation == state.cache_generation
+            and state.cache_input_key != self._effect_cache_input_key()
+        ):
+            self._mark_effect_cache_dirty()
+            return True
+        return False
+
+    def _current_stroke(self) -> Optional[StrokeEffect]:
+        if self._render_stroke is not None:
+            return self._render_stroke
+        return primary_stroke(self.effective_text_effects())
+
+    def _stroke_width(self) -> float:
+        stroke = self._current_stroke()
+        return 0.0 if stroke is None else stroke.width
+
+    def _paint_strokes(
+        self, painter: QPainter, paint: Callable[[], None]
+    ) -> None:
+        previous = self._render_stroke
+        try:
+            # The first card is topmost, so paint semantic order back-to-front.
+            for stroke in reversed(self._active_strokes()):
+                self._render_stroke = stroke
+                painter.save()
+                try:
+                    painter.setOpacity(painter.opacity() * stroke.opacity)
+                    paint()
+                finally:
+                    painter.restore()
+        finally:
+            self._render_stroke = previous
 
     @property
     def fontformat(self):
@@ -166,7 +402,10 @@ class TextEffectRenderer:
 
     @property
     def stroke_qcolor(self):
-        return self.item.stroke_qcolor
+        stroke = self._current_stroke()
+        if stroke is None:
+            return self.item.stroke_qcolor
+        return QColor(*stroke.paint.color)
 
     @property
     def idx(self):
@@ -216,15 +455,202 @@ class TextEffectRenderer:
 
     def release_caches(self) -> None:
         """Release every item-owned raster cache before page removal."""
-        self.clear_cached_surface()
-        state = self._effect_raster_state
-        if state is not None:
-            state.tile_cache.clear()
+        for state in (
+            self._effect_raster_state,
+            self._preview_effect_raster_state,
+            self._export_effect_raster_state,
+        ):
+            if state is not None:
+                state.tile_cache.clear()
         self._effect_raster_state = None
+        self._preview_effect_raster_state = None
+        self._export_effect_raster_state = None
+        self._export_active = False
+
+    def _apply_effective_opacity(self) -> None:
+        self.item._set_effective_opacity(
+            self.effective_text_effects().overall_opacity
+        )
+
+    def _sync_legacy_primary_stroke_view(self) -> None:
+        stroke = primary_stroke(self.effective_text_effects())
+        if stroke is not None:
+            self.item.stroke_qcolor = QColor(*stroke.paint.color)
+
+    @staticmethod
+    def _invalidate_raster_state(state: Optional[_EffectRasterState]) -> None:
+        if state is None:
+            return
+        state.cache_generation += 1
+        state.cache_dirty = True
+        state.cache_rendered_generation = -1
+        state.cache_input_key = None
+        state.tile_cache.clear()
+        state.background_pixmap = None
+        state.background_pixmap_scale = None
+
+    def _finish_effect_transition(self, repaint: bool) -> None:
+        self._apply_effective_opacity()
+        self._sync_legacy_primary_stroke_view()
+        was_repainting = self.repainting
+        self.repainting = True
+        try:
+            self._sync_native_stroke_alignment()
+        finally:
+            self.repainting = was_repainting
+        self._update_effect_padding()
+        self.item.refresh_cache_policy()
+        if repaint and not self.reshaping:
+            self.repaint_background()
+        self.item.update()
+
+    def set_text_effects(
+        self, stack: TextEffectStack, preview: bool = False
+    ) -> bool:
+        """Apply a complete preview or committed stack at the item boundary.
+
+        >>> isinstance(TextEffectStack(), TextEffectStack)
+        True
+        """
+        if not isinstance(stack, TextEffectStack):
+            raise TypeError('live text effects require TextEffectStack')
+        canonical = self.canonical_text_effects()
+        effective_before = self.effective_text_effects()
+        preview_before = self.preview
+
+        if preview:
+            if stack == canonical:
+                return self.clear_text_effect_preview()
+            if preview_before == stack:
+                return False
+            self.preview = stack
+            effects_changed = effective_before.effects != stack.effects
+            if effects_changed:
+                self._preview_effect_raster_state = None
+                if stack.effects != canonical.effects:
+                    self.geometry_controller.retain_effect_preview_surface()
+                    self._mark_effect_cache_dirty()
+                else:
+                    # Returning to canonical effect pixels keeps the complete
+                    # preview alive only for its native overall opacity.
+                    self._finish_effect_transition(False)
+                    self.geometry_controller.restore_effect_preview_surface()
+                    return True
+            self._finish_effect_transition(effects_changed)
+            return True
+
+        model_format = self.item.blk.fontformat
+        render_format = self.item.fontformat
+        canonical_changed = canonical != stack
+        render_format_changed = (
+            render_format is not model_format
+            and render_format.text_effects != stack
+        )
+        if (
+            not canonical_changed
+            and not render_format_changed
+            and preview_before is None
+        ):
+            self._apply_effective_opacity()
+            return False
+        effects_changed = canonical.effects != stack.effects
+        promoted_state = (
+            self._promotable_preview_state(stack)
+            if effects_changed and preview_before == stack
+            else None
+        )
+        committed_generation = (
+            0
+            if self._effect_raster_state is None
+            else self._effect_raster_state.cache_generation
+        )
+        if canonical_changed:
+            model_format.text_effects = stack
+        if render_format_changed:
+            render_format.text_effects = stack
+        self.preview = None
+        self._preview_effect_raster_state = None
+        self.geometry_controller.invalidate_effect_preview_surface()
+        if effects_changed:
+            if promoted_state is None:
+                self._mark_effect_cache_dirty()
+            else:
+                promoted_state.cache_generation = committed_generation + 1
+                promoted_state.cache_rendered_generation = (
+                    promoted_state.cache_generation
+                )
+                promoted_state.tile_cache.clear()
+                self._effect_raster_state = promoted_state
+        self._finish_effect_transition(
+            effects_changed and promoted_state is None
+        )
+        if promoted_state is not None:
+            current_key = self._effect_cache_input_key(stack)
+            if promoted_state.cache_input_key != current_key:
+                self._mark_effect_cache_dirty()
+                self.repaint_background()
+            else:
+                promoted_state.cache_input_key = current_key
+        return (
+            canonical_changed
+            or render_format_changed
+            or effective_before != stack
+        )
+
+    def clear_text_effect_preview(self) -> bool:
+        if self.preview is None:
+            return False
+        preview = self.preview
+        self.preview = None
+        self._preview_effect_raster_state = None
+        effects_changed = preview.effects != self.canonical_text_effects().effects
+        self._finish_effect_transition(False)
+        state = self._effect_raster_state
+        current_key = self._effect_cache_input_key()
+        if (
+            state is not None
+            and not state.cache_dirty
+            and state.cache_rendered_generation == state.cache_generation
+            and state.cache_input_key is not None
+            and self._effect_cache_semantic_key(state.cache_input_key)
+            == self._effect_cache_semantic_key(current_key)
+        ):
+            # Preview padding advances layout-only generations. Re-key only
+            # after all pixel-bearing inputs return to the canonical values.
+            state.cache_input_key = current_key
+        needs_repaint = bool(
+            effects_changed
+            and any(self._effect_flags())
+            and (
+                state is None
+                or state.cache_dirty
+                or state.cache_rendered_generation
+                != state.cache_generation
+                or state.cache_input_key != current_key
+            )
+        )
+        if needs_repaint and not self.reshaping:
+            self.repaint_background()
+        self.geometry_controller.restore_effect_preview_surface()
+        return True
+
+    def begin_reshape(self) -> None:
+        """Omit effects during pointer motion and retire old geometry caches."""
+        self._invalidate_raster_state(self._effect_raster_state)
+        self._invalidate_raster_state(self._preview_effect_raster_state)
+        self._invalidate_raster_state(self._export_effect_raster_state)
+        self.geometry_controller.invalidate_effect_preview_surface()
+
+    def end_reshape(self) -> None:
+        """Rebuild only the effective namespace after geometry settles."""
+        self.repaint_background()
 
     def paint_item(self, painter: QPainter, option, widget: QWidget, base_paint) -> None:
         """Paint effects around the host item's normal text pass."""
-        if not any(self._effect_flags()):
+        if (
+            (self.reshaping and not self._export_active)
+            or not any(self._effect_flags())
+        ):
             option.state = QStyle.State_None
             base_paint(painter, option, widget)
             return
@@ -243,7 +669,7 @@ class TextEffectRenderer:
     def finalize_neutral_cache(self) -> None:
         """Invalidate transformed pixels after neutral restoration."""
         self._refresh_gradient_geometry()
-        state = self._effect_raster_state
+        state = self._peek_raster_state()
         if state is not None:
             state.tile_cache.clear()
             state.force_tiles = False
@@ -253,7 +679,7 @@ class TextEffectRenderer:
         self.clear_cached_surface()
         self.item.update()
         if not any(self._effect_flags()):
-            self._effect_raster_state = None
+            self._drop_active_raster_state()
 
     def _effect_paint_context(self):
         context = QAbstractTextDocumentLayout.PaintContext()
@@ -285,7 +711,7 @@ class TextEffectRenderer:
 
                 pen = QPen(
                     self.stroke_qcolor,
-                    pt2px(point_size) * self.fontformat.stroke_width,
+                    pt2px(point_size) * self._stroke_width(),
                     Qt.PenStyle.SolidLine,
                     Qt.PenCapStyle.RoundCap,
                     Qt.PenJoinStyle.RoundJoin,
@@ -315,11 +741,12 @@ class TextEffectRenderer:
         return context
 
     def _stroke_outset(self) -> float:
-        if self.fontformat.stroke_width <= 0:
+        strokes = self._active_strokes()
+        if not strokes:
             return 0.0
         return (
             self.layout.max_font_size(to_px=True)
-            * self.fontformat.stroke_width
+            * max(stroke.width for stroke in strokes)
             / 2
         )
 
@@ -327,7 +754,7 @@ class TextEffectRenderer:
         """Keep fill and stroke on Qt's same native glyph raster path."""
         if self.layout is None:
             return
-        enabled = self.fontformat.stroke_width > 0
+        enabled = bool(self._active_strokes())
         changed = False
         alignment_format = None
         block = self.document().firstBlock()
@@ -440,7 +867,7 @@ class TextEffectRenderer:
                 char_format = fragment.charFormat()
                 stroke_pen.setWidthF(
                     pt2px(char_format.fontPointSize())
-                    * self.fontformat.stroke_width
+                    * self._stroke_width()
                 )
                 cursor.setPosition(fragment.position())
                 cursor.setPosition(
@@ -633,9 +1060,12 @@ class TextEffectRenderer:
             return 0.0
         max_font_size = max(0.0, self.layout.max_font_size(to_px=True))
         stroke_outset = 0.0
-        if self.fontformat.stroke_width > 0:
+        active_strokes = self._active_strokes()
+        if active_strokes:
             stroke_outset = (
-                max_font_size * (self.fontformat.stroke_width + 0.05) / 2
+                max_font_size
+                * (max(stroke.width for stroke in active_strokes) + 0.05)
+                / 2
             )
         padding = stroke_outset
         if (
@@ -686,7 +1116,7 @@ class TextEffectRenderer:
 
     def _effect_flags(self) -> Tuple[bool, bool]:
         return (
-            self.fontformat.stroke_width > 0,
+            bool(self._active_strokes()),
             self.fontformat.shadow_radius > 0
             and self.fontformat.shadow_strength > 0,
         )
@@ -724,11 +1154,11 @@ class TextEffectRenderer:
         """Make effect allocation failures fatal during a render transaction."""
         enabled = bool(enabled)
         if enabled:
-            self.export_error = None
-            self.force_tiles = False
-        else:
-            self.force_tiles = False
-        self.export_render = enabled
+            self._export_active = True
+            self._export_effect_raster_state = _EffectRasterState()
+            return
+        self._export_active = False
+        self._export_effect_raster_state = None
 
     def _raise_or_defer_export_effect_error(self, error: Exception) -> bool:
         """Raise at a Python boundary or defer across Qt's paint callback.
@@ -783,8 +1213,11 @@ class TextEffectRenderer:
                     silhouette_painter, self._effect_paint_context()
                 )
                 if paint_stroke:
-                    self.paint_stroke(
-                        silhouette_painter, shadow_scale, shadow_rect
+                    self._paint_strokes(
+                        silhouette_painter,
+                        lambda: self.paint_stroke(
+                            silhouette_painter, shadow_scale, shadow_rect
+                        ),
                     )
                 if self.surface_raster_error is not None:
                     raise self.surface_raster_error
@@ -859,8 +1292,11 @@ class TextEffectRenderer:
             try:
                 stroke_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
                 stroke_painter.translate(-surface_rect.topLeft())
-                self.paint_stroke(
-                    stroke_painter, render_scale, surface_rect
+                self._paint_strokes(
+                    stroke_painter,
+                    lambda: self.paint_stroke(
+                        stroke_painter, render_scale, surface_rect
+                    ),
                 )
                 if self.surface_raster_error is not None:
                     raise self.surface_raster_error
@@ -873,7 +1309,11 @@ class TextEffectRenderer:
     def repaint_background(self, render_scale: float = 1.0):
         self.item.refresh_cache_policy()
         empty = self.document().isEmpty()
-        if self.repainting or self.reshaping or self.pre_editing:
+        if (
+            self.repainting
+            or (self.reshaping and not self._export_active)
+            or (self.pre_editing and not self._export_active)
+        ):
             # Avoid reshape/reentrant work. During IME, reuse the preedit-free
             # cache because PaintContext cannot exclude active preedit glyphs.
             return
@@ -890,10 +1330,10 @@ class TextEffectRenderer:
             changed = self.background_pixmap is not None
             self.background_pixmap = None
             self.background_pixmap_scale = None
-            state = self._effect_raster_state
+            state = self._peek_raster_state()
             if state is not None:
                 state.tile_cache.clear()
-            self._effect_raster_state = None
+            self._drop_active_raster_state()
             if changed:
                 self.item.update()
             return
@@ -949,15 +1389,20 @@ class TextEffectRenderer:
             self.force_tiles = False
             self.cache_dirty = False
             self.cache_rendered_generation = self.cache_generation
+            self._raster_state().cache_input_key = (
+                self._effect_cache_input_key()
+            )
         finally:
             self.repainting = False
         self.item.update()
 
 
     def _mark_effect_cache_dirty(self):
-        self.cache_generation += 1
-        self.cache_dirty = True
-        self.tile_cache.clear()
+        state = self._raster_state()
+        state.cache_generation += 1
+        state.cache_dirty = True
+        state.cache_input_key = None
+        state.tile_cache.clear()
         # Never combine a previous glyph silhouette with a new fill angle.
         self.background_pixmap = None
         self.background_pixmap_scale = None
@@ -1025,6 +1470,9 @@ class TextEffectRenderer:
             self.direct_stroke = True
             self.cache_dirty = False
             self.cache_rendered_generation = self.cache_generation
+            self._raster_state().cache_input_key = (
+                self._effect_cache_input_key()
+            )
             self.force_tiles = False
             return
         overlap_px = math.ceil(target_overlap * plan.tier)
@@ -1192,6 +1640,9 @@ class TextEffectRenderer:
         self.direct_stroke = vector_stroke_direct
         self.cache_dirty = False
         self.cache_rendered_generation = self.cache_generation
+        self._raster_state().cache_input_key = (
+            self._effect_cache_input_key()
+        )
         self.force_tiles = False
 
     def _draw_direct_stroke(self, painter: QPainter):
@@ -1200,7 +1651,9 @@ class TextEffectRenderer:
         # This path intentionally avoids every intermediate raster allocation.
         # The custom glyph renderer still consumes outline selections, while a
         # native box transform keeps the unclipped cloned-document stroke.
-        self._paint_source_local_stroke(painter)
+        self._paint_strokes(
+            painter, lambda: self._paint_source_local_stroke(painter)
+        )
 
     def _draw_effects(
         self, painter: QPainter, exposed_rect: QRectF = None
@@ -1210,6 +1663,10 @@ class TextEffectRenderer:
             paint_stroke, paint_shadow = self._effect_flags()
             if not paint_stroke and not paint_shadow:
                 return
+            # A preview can park committed pixels while content or a legacy
+            # effect changes. Validate semantics at the final reuse boundary
+            # so cancellation cannot revive that stale surface.
+            self._invalidate_stale_active_raster_state()
             br = self.boundingRect()
             requested_scale = self._paint_device_scale(painter)
             plan = plan_effect_raster(
@@ -1227,7 +1684,7 @@ class TextEffectRenderer:
             )
             if plan.mode == 'full':
                 if (
-                    not self.pre_editing
+                    (not self.pre_editing or self._export_active)
                     and (
                         self.background_pixmap is None
                         or self.background_pixmap_scale != plan.tier

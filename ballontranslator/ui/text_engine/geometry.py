@@ -69,6 +69,7 @@ class TextItemGeometryController:
         self.layout_renderer = None
         self.visual_mapper = None
         self.surface_renderer = None
+        self._retained_effect_preview_surface = None
         self._surface_cursor_position = -1
         self._input_mapping_active = False
         self._input_previous_source = None
@@ -87,6 +88,7 @@ class TextItemGeometryController:
         self._compiled_input_key = None
         self._compile_deferred = False
         self._compile_defer_depth = 0
+        self._retained_effect_preview_surface = None
 
     def item_change(self, change, value, base_item_change):
         item = self.item
@@ -880,6 +882,7 @@ class TextItemGeometryController:
         return changed
 
     def detach_surface_mapper(self) -> bool:
+        self.invalidate_effect_preview_surface()
         changed = (
             self.visual_mapper is not None
             or self.surface_renderer is not None
@@ -904,13 +907,117 @@ class TextItemGeometryController:
 
     def release_render_resources(self) -> None:
         """Release every item-owned renderer/cache at the page boundary."""
+        self.invalidate_effect_preview_surface()
         self.detach_layout_renderer()
         self.detach_surface_mapper()
         self.item.effect_renderer.release_caches()
 
     def invalidate_surface_cache(self) -> None:
+        self.invalidate_effect_preview_surface()
         if self.surface_renderer is not None:
             self.surface_renderer.invalidate_surface()
+
+    def retain_effect_preview_surface(self) -> None:
+        """Keep canonical nonlinear output outside temporary preview geometry."""
+        if self._retained_effect_preview_surface is not None:
+            return
+        renderer = self.surface_renderer
+        if renderer is None:
+            return
+        self._retained_effect_preview_surface = (
+            renderer.cached_pixmap,
+            renderer.cached_key,
+            renderer.cached_remap,
+            renderer.cached_remap_key,
+        )
+
+    def invalidate_effect_preview_surface(self) -> None:
+        self._retained_effect_preview_surface = None
+
+    def restore_effect_preview_surface(self) -> None:
+        """Restore canonical pixels after canonical geometry is reinstated."""
+        retained = self._retained_effect_preview_surface
+        self._retained_effect_preview_surface = None
+        renderer = self.surface_renderer
+        if retained is None or renderer is None:
+            return
+        (
+            cached_pixmap,
+            cached_key,
+            cached_remap,
+            cached_remap_key,
+        ) = retained
+        base_key = self.surface_cache_key()
+        current_key = (
+            None
+            if base_key is None or cached_key is None
+            else base_key + cached_key[-2:]
+        )
+        if self._remap_key_is_current(cached_remap_key):
+            renderer.cached_remap = cached_remap
+            renderer.cached_remap_key = cached_remap_key
+        else:
+            renderer.cached_remap = None
+            renderer.cached_remap_key = None
+        if (
+            cached_pixmap is None
+            or self._surface_semantic_key(cached_key)
+            != self._surface_semantic_key(current_key)
+        ):
+            renderer.cached_pixmap = None
+            renderer.cached_key = None
+            return
+        # Preview padding advances layout-only generations. Once all semantic
+        # inputs match again, the canonical pixels can use the current key.
+        renderer.cached_pixmap = cached_pixmap
+        renderer.cached_key = current_key
+
+    @staticmethod
+    def _surface_semantic_key(cache_key):
+        if cache_key is None or len(cache_key) < 10:
+            return None
+        layout_render_key = cache_key[2]
+        if isinstance(layout_render_key, tuple) and layout_render_key:
+            # Glyph geometry generation may advance during preview relayout;
+            # its remaining fields describe the actual layout effect.
+            layout_render_key = layout_render_key[1:]
+        return (
+            cache_key[0],
+            layout_render_key,
+            cache_key[3],
+            cache_key[4],
+            cache_key[5],
+            cache_key[6],
+            cache_key[7],
+            cache_key[-2],
+            cache_key[-1],
+        )
+
+    def _remap_key_is_current(self, remap_key) -> bool:
+        if (
+            remap_key is None
+            or len(remap_key) < 12
+            or self.visual_mapper is None
+        ):
+            return False
+        source_rect = self.source_paint_rect()
+        destination_rect = self.visual_mapper.visual_bounds(source_rect)
+        scale = remap_key[9]
+        expected = (
+            self.visual_mapper.geometry_key,
+            source_rect.x(),
+            source_rect.y(),
+            source_rect.width(),
+            source_rect.height(),
+            destination_rect.x(),
+            destination_rect.y(),
+            destination_rect.width(),
+            destination_rect.height(),
+            scale,
+            max(1, math.ceil(destination_rect.width() * scale)),
+            max(1, math.ceil(destination_rect.height() * scale)),
+        )
+        return remap_key == expected
 
     def _paint_surface_cursor(
         self,
@@ -982,37 +1089,8 @@ class TextItemGeometryController:
             return
 
         effect_renderer = self.item.effect_renderer
-        effect_generation, export_render = (
-            effect_renderer.surface_cache_state()
-        )
-        layout_generation = getattr(self.item.layout, 'layout_generation', 0)
-        layout_render_key = (
-            None
-            if self.layout_renderer is None
-            else self.layout_renderer.render_cache_key()
-        )
-        selection_key = None
-        if self.item.isEditing():
-            cursor = self.item.textCursor()
-            if cursor.hasSelection():
-                selection_key = (
-                    cursor.selectionStart(),
-                    cursor.selectionEnd(),
-                    self.item.hasFocus(),
-                )
-        cache_key = (
-            mapper.geometry_key,
-            layout_generation,
-            layout_render_key,
-            effect_generation,
-            (
-                0
-                if effect_renderer.background_pixmap is None
-                else effect_renderer.background_pixmap.cacheKey()
-            ),
-            self.item.document().revision(),
-            selection_key,
-        )
+        _, export_render = effect_renderer.surface_cache_state()
+        cache_key = self.surface_cache_key()
 
         def paint_source(source_painter, source_option, source_widget):
             layout = self.item.layout
@@ -1032,12 +1110,19 @@ class TextItemGeometryController:
             self.item.isEditing()
             or self.item.reshaping
             or self.preview is not None
+            or effect_renderer.uses_preview_surface()
         )
-        maximum_scale = (
-            0.5
-            if self.item.reshaping or self.preview is not None
-            else (2.0 if interactive else None)
+        degraded = (
+            self.item.reshaping
+            or self.preview is not None
+            or effect_renderer.uses_preview_surface()
         )
+        if export_render:
+            maximum_scale = None
+        elif degraded:
+            maximum_scale = 0.5
+        else:
+            maximum_scale = 2.0 if interactive else None
         try:
             cache_hit = renderer.paint(
                 painter,
@@ -1049,11 +1134,17 @@ class TextItemGeometryController:
                     not export_render
                     and not self.item.reshaping
                     and self.preview is None
+                    and not effect_renderer.uses_preview_surface()
                 ),
                 paint_source=paint_source,
                 maximum_scale=maximum_scale,
                 high_quality=(
-                    not self.item.reshaping and self.preview is None
+                    export_render
+                    or (
+                        not self.item.reshaping
+                        and self.preview is None
+                        and not effect_renderer.uses_preview_surface()
+                    )
                 ),
             )
             if cache_hit and self.item.isEditing():
@@ -1073,6 +1164,43 @@ class TextItemGeometryController:
             effect_renderer.paint_item(
                 painter, option, widget, base_paint
             )
+
+    def surface_cache_key(self) -> Optional[tuple]:
+        """Return every committed final-surface pixel and geometry input."""
+        mapper = self.visual_mapper
+        if mapper is None:
+            return None
+        effect_renderer = self.item.effect_renderer
+        effect_generation, _ = effect_renderer.surface_cache_state()
+        layout_generation = getattr(self.item.layout, 'layout_generation', 0)
+        layout_render_key = (
+            None
+            if self.layout_renderer is None
+            else self.layout_renderer.render_cache_key()
+        )
+        selection_key = None
+        if self.item.isEditing():
+            cursor = self.item.textCursor()
+            if cursor.hasSelection():
+                selection_key = (
+                    cursor.selectionStart(),
+                    cursor.selectionEnd(),
+                    self.item.hasFocus(),
+                )
+        return (
+            mapper.geometry_key,
+            layout_generation,
+            layout_render_key,
+            effect_generation,
+            (
+                0
+                if effect_renderer.background_pixmap is None
+                else effect_renderer.background_pixmap.cacheKey()
+            ),
+            effect_renderer.surface_semantic_state(),
+            self.item.document().revision(),
+            selection_key,
+        )
 
     def attach_layout_renderer(self):
         renderer = self.layout_renderer
@@ -1285,6 +1413,8 @@ class TextItemGeometryController:
         if preview:
             if target == current:
                 return False
+            if item.effect_renderer.has_preview():
+                self.invalidate_effect_preview_surface()
             was_visual_neutral = self.visual_is_neutral()
             was_effect_neutral = (
                 item.effect_renderer._text_transform_is_neutral()
@@ -1307,6 +1437,8 @@ class TextItemGeometryController:
         )
         if target == current and not model_changed and not render_format_changed:
             return False
+        if item.effect_renderer.has_preview():
+            self.invalidate_effect_preview_surface()
         had_preview = self.preview is not None
         was_visual_neutral = self.visual_is_neutral()
         was_effect_neutral = (
@@ -1336,6 +1468,8 @@ class TextItemGeometryController:
     def clear_preview(self) -> bool:
         if self.preview is None:
             return False
+        if self.item.effect_renderer.has_preview():
+            self.invalidate_effect_preview_surface()
         was_visual_neutral = self.visual_is_neutral()
         was_effect_neutral = (
             self.item.effect_renderer._text_transform_is_neutral()

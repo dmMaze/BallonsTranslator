@@ -60,6 +60,7 @@ from ..annotations import (
 )
 from .advanced import TextAdvancedFormatPanel
 from ..transforms.edit_session import TextTransformEditSession
+from ..effect_edit_session import TextEffectEditSession
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
 from .commands import (
@@ -828,6 +829,7 @@ class FontFormatPanel(Widget):
             self,
             self.texttransform_panel,
         )
+        self.text_effect_session = TextEffectEditSession(self)
         color_label = self.textadvancedfmt_panel.shadow_group.color_label
         color_label.changingColor.connect(self.changingColor)
         color_label.colorChanged.connect(self.onColorLabelChanged)
@@ -1114,15 +1116,19 @@ class FontFormatPanel(Widget):
 
     def resolve_text_transform_edits_for_save(self):
         self.text_transform_session.resolve_for_save()
+        self.text_effect_session.resolve_for_save()
 
     def resolve_text_transform_edits_for_history_change(self):
         self.text_transform_session.resolve_for_history_change()
+        self.text_effect_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self):
         self.text_transform_session.resolve_for_page_change()
+        self.text_effect_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self):
         self.text_transform_session.cancel_for_scene_change()
+        self.text_effect_session.cancel_for_scene_change()
 
     def update_text_style_label(self):
         if self.global_mode():
@@ -1322,6 +1328,7 @@ class FontFormatPanel(Widget):
                 transform_items = [self.textblk_item]
 
         self.text_transform_session.replace_targets(transform_items)
+        self.text_effect_session.replace_targets(transform_items)
 
         if textblk_item is None:
             if not preserve_local_owner:

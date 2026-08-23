@@ -16,6 +16,7 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     TextTransformStack,
 )
+from ballontranslator.utils.text_effects import TextEffectStack
 from ...misc import doc_replace, doc_replace_no_shift
 from ..shape_control import TextBlkShapeControl
 from ...page_search_widget import PageSearchWidget, Matched
@@ -164,6 +165,52 @@ class SetTextTransformCommand(QUndoCommand):
     def _apply(self, states: Sequence[TextTransformStack]) -> None:
         for item, state in zip(self.items, states):
             item.set_text_transform(state, preview=False)
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+
+    def redo(self) -> None:
+        self._apply(self.after)
+
+    def undo(self) -> None:
+        self._apply(self.before)
+
+
+class SetTextEffectStackCommand(QUndoCommand):
+    """Atomically replace complete effect state on selected text items.
+
+    >>> SetTextEffectStackCommand.create([], [], []) is None
+    True
+    """
+
+    def __init__(
+        self,
+        items: Sequence[TextBlkItem],
+        before: Sequence[TextEffectStack],
+        after: Sequence[TextEffectStack],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__()
+        self.items = tuple(items)
+        if len(self.items) != len(before) or len(self.items) != len(after):
+            raise ValueError("items, before, and after must have the same length")
+        self.before = tuple(before)
+        self.after = tuple(after)
+        self.refresh_callback = refresh_callback
+
+    @classmethod
+    def create(
+        cls,
+        items: Sequence[TextBlkItem],
+        before: Sequence[TextEffectStack],
+        after: Sequence[TextEffectStack],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> Optional["SetTextEffectStackCommand"]:
+        command = cls(items, before, after, refresh_callback)
+        return None if command.before == command.after else command
+
+    def _apply(self, states: Sequence[TextEffectStack]) -> None:
+        for item, state in zip(self.items, states):
+            item.set_text_effects(state, preview=False)
         if self.refresh_callback is not None:
             self.refresh_callback()
 

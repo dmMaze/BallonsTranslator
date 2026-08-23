@@ -535,7 +535,10 @@ class Canvas(QGraphicsScene):
         export_effect_items = [
             item
             for item in text_items
-            if not item._text_transform_is_neutral()
+            if (
+                not item._text_transform_is_neutral()
+                or item.effect_renderer.has_raster_effects()
+            )
         ]
         enabled_export_effect_items = []
         painter = None
