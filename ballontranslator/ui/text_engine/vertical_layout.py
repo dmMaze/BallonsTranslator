@@ -186,16 +186,22 @@ def _single_glyph_character(
 def _uncached_line_ink_bounds(
     line: QTextLine,
     space_shift: float = 0.0,
+    start: Optional[int] = None,
+    length: Optional[int] = None,
 ) -> QRectF:
-    """Return shaped vector ink normalized to the line origin.
+    """Return shaped vector ink for one range normalized to the line origin.
 
     >>> callable(_uncached_line_ink_bounds)
     True
     """
+    if start is None:
+        start = line.textStart()
+    if length is None:
+        length = line.textLength()
     return glyph_geometry(
         line,
-        line.textStart(),
-        line.textLength(),
+        start,
+        length,
         QPointF(-line.x() - space_shift, -line.y()),
         QTransform(),
         0.0,
@@ -205,6 +211,8 @@ def _uncached_line_ink_bounds(
 def _line_ink_cache_key(
     line: QTextLine,
     space_shift: float,
+    start: Optional[int] = None,
+    length: Optional[int] = None,
 ) -> Optional[tuple]:
     """Describe exact shaped ink independently of line placement.
 
@@ -213,10 +221,14 @@ def _line_ink_cache_key(
     """
     if not line.isValid():
         return None
+    if start is None:
+        start = line.textStart()
+    if length is None:
+        length = line.textLength()
     origin_x = line.x() + space_shift
     origin_y = line.y()
     signature = []
-    for run in line.glyphRuns(line.textStart(), line.textLength()):
+    for run in line.glyphRuns(start, length):
         raw_font = run.rawFont()
         font_key = (type(raw_font), raw_font)
         try:
@@ -240,20 +252,26 @@ def _line_ink_cache_key(
 def _line_ink_bounds(
     line: QTextLine,
     space_shift: float = 0.0,
+    start: Optional[int] = None,
+    length: Optional[int] = None,
 ) -> QRectF:
     """Return exact normalized ink without retaining live Qt layouts.
 
     >>> LINE_INK_BOUNDS_CACHE_MAX_ENTRIES > 0
     True
     """
-    cache_key = _line_ink_cache_key(line, space_shift)
+    cache_key = _line_ink_cache_key(line, space_shift, start, length)
     if cache_key is None:
-        return _uncached_line_ink_bounds(line, space_shift)
+        return _uncached_line_ink_bounds(
+            line, space_shift, start, length
+        )
     cached = _LINE_INK_BOUNDS_CACHE.get_or_create(
         cache_key,
         _uncached_line_ink_bounds,
         line,
         space_shift,
+        start,
+        length,
     )
     return QRectF(cached)
 
@@ -617,6 +635,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 space_shift = 0
                 if num_lspaces > 0:
                     space_shift = num_lspaces * cfmt.space_width
+                # Whitespace owns vertical cells, never horizontal ink
+                # centering, even if its raw font exposes a glyph outline.
+                ink_start = line.textStart() + num_lspaces
+                ink_length = max(
+                    0,
+                    line.textLength() - num_lspaces - num_rspaces,
+                )
 
                 if self.needs_vertical_rotation(char):
                     char = (
@@ -633,7 +658,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                     else:   # () （）
                         non_bracket_br = _line_ink_bounds(
-                            line, space_shift
+                            line, space_shift, ink_start, ink_length
                         )
                         yoff = (
                             -non_bracket_br.top()
@@ -665,7 +690,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         and _is_non_fullwidth_roman(char)
                     )
                     if standard_roman:
-                        tight_rect = _line_ink_bounds(line, space_shift)
+                        tight_rect = _line_ink_bounds(
+                            line, space_shift, ink_start, ink_length
+                        )
                         xoff = (
                             -tight_rect.left()
                             + (base_width - tight_rect.width()) / 2
@@ -682,7 +709,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             ) / 2
                         )
                     else:
-                        act_rect = _line_ink_bounds(line, space_shift)
+                        act_rect = _line_ink_bounds(
+                            line, space_shift, ink_start, ink_length
+                        )
                         if self.centers_vertical_glyph(char):
                             xoff = (
                                 -act_rect.left()
@@ -1277,6 +1306,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self,
         line: QTextLine,
         transform: QTransform,
+        cell: QRectF,
         point: QPointF,
     ) -> int:
         """Map one horizontal cell back to its ordinary text cursor.
@@ -1292,6 +1322,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         end_x = transform.map(
             QPointF(self._line_cursor_x(line, line_end), line.y())
         ).x()
+        if line.textLength() == 1:
+            # Its visible ink is centered independently of Qt's asymmetric
+            # advance, so the editable split belongs at the cell midpoint.
+            before_midpoint = point.x() <= cell.center().x()
+            if start_x > end_x:
+                before_midpoint = not before_midpoint
+            return line_start if before_midpoint else line_end
         if start_x <= end_x:
             if point.x() <= start_x:
                 return line_start
@@ -1329,7 +1366,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     continue
                 line, _offset, transform = placement
                 return block.position() + self._tate_chu_yoko_hit_position(
-                    line, transform, point
+                    line, transform, cell, point
                 )
             block = block.next()
         return None
@@ -1980,6 +2017,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 # Whitespace is part of the authored horizontal run, not
                 # vertical column leading around it.
                 num_rspaces = num_lspaces = 0
+            ink_start = line.textStart() + num_lspaces
+            ink_length = max(
+                0,
+                line.textLength() - num_lspaces - num_rspaces,
+            )
 
             tbr_h = space_w = spacing_advance = 0
             char_idx += num_lspaces
@@ -2029,7 +2071,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 )
                 if is_first_lbracket:
                     _lbracket_shift = -_line_ink_bounds(
-                        line, space_shift
+                        line, space_shift, ink_start, ink_length
                     ).left()
 
                 if is_text_combine:
@@ -2085,7 +2127,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     and _grapheme_count(text.strip()) == 1
                 ):
                     full_advance = max(tbr_h - spacing_advance, 0.0)
-                    ink_bounds = _line_ink_bounds(line, space_shift)
+                    ink_bounds = _line_ink_bounds(
+                        line, space_shift, ink_start, ink_length
+                    )
                     visible_ink_advance = (
                         ink_bounds.width()
                         if self.needs_vertical_rotation(char)

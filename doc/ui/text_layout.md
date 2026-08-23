@@ -67,10 +67,11 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
-Tate-chu-yoko is a horizontal Qt run occupying one vertical cell. Its natural
-width may overflow for painting and interaction, but it must not widen the
-column or move neighboring columns. Whitespace and enabled font features remain
-part of that run.
+Tate-chu-yoko is a horizontal Qt run occupying one vertical cell. A
+single-character run centers its visible ink instead of any unused font
+advance. Multi-character natural width may overflow for painting and
+interaction, but it must not widen the column or move neighboring columns.
+Whitespace and enabled font features remain part of that run.
 
 Ruby/furigana is attached layout content, not a detached overlay. Group Ruby is
 indivisible; mono Ruby may wrap only between base/reading pairs. Each unit uses
@@ -85,7 +86,8 @@ overlap, and automatic Ruby overhang is not supported.
 Whitespace remains document content and must consume explicit editable cells.
 Horizontal and vertical layouts may represent those cells differently, but
 neither may move whitespace into a second text model or drop it from cursor and
-hit geometry.
+hit geometry. Vertical whitespace contributes flow advance, not the ink bounds
+used to center the neighboring glyph in its column.
 
 Character spacing is a trailing advance for the affected glyph or joined run.
 On a squeezed single-column vertical item, increasing it may grow the logical

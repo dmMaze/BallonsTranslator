@@ -1670,6 +1670,38 @@ class RichTextAnnotationTest(unittest.TestCase):
         ]
         self.assertEqual(positions, [1, 2, 3])
 
+    def test_single_character_text_combine_centers_visible_ink(self):
+        tolerance = 1 / 64 + 0.001
+        for char in ('!', '！'):
+            with self.subTest(char=char):
+                item = self._make_item(True, text=f'年{char}月')
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.setPosition(1)
+                cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+                item.setTextCursor(cursor)
+                item.setTateChuYoko(True)
+
+                block = item.document().firstBlock()
+                line = block.layout().lineAt(1)
+                cell = item.layout.tate_chu_yoko_cell_rect(block, 1)
+                ink = tate_chu_yoko_ink_bounds(line, cell)
+                self.assertAlmostEqual(
+                    ink.center().x(), cell.center().x(), delta=tolerance
+                )
+                for x_offset, expected_position in ((-0.1, 1), (0.1, 2)):
+                    self.assertEqual(
+                        item.layout.hitTest(
+                            QPointF(
+                                cell.center().x() + x_offset,
+                                cell.center().y(),
+                            ),
+                            Qt.HitTestAccuracy.FuzzyHit,
+                        ),
+                        expected_position,
+                    )
+                self.assertEqual(item.toPlainText(), f'年{char}月')
+
     def test_text_combine_cursor_blink_invalidates_mapped_rect(self):
         item = self._make_item(True, text='年12月')
         item.startEdit()

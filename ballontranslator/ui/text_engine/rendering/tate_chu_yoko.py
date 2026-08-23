@@ -21,28 +21,31 @@ def _source_ink_bounds(line: QTextLine) -> QRectF:
     return QRectF(line.naturalTextRect() if bounds.isEmpty() else bounds)
 
 
-def tate_chu_yoko_natural_bounds(line: QTextLine) -> QRectF:
-    """Include Qt's horizontal advance used by carets and decorations."""
-    ink = _source_ink_bounds(line)
+def _source_natural_bounds(line: QTextLine, ink: QRectF) -> QRectF:
     logical = line.naturalTextRect()
     left = min(ink.left(), logical.left())
     right = max(ink.right(), logical.right())
     return QRectF(left, ink.top(), right - left, ink.height())
 
 
-def tate_chu_yoko_transform(
+def tate_chu_yoko_natural_bounds(line: QTextLine) -> QRectF:
+    """Include Qt's horizontal advance used by carets and decorations."""
+    return _source_natural_bounds(line, _source_ink_bounds(line))
+
+
+def _transform_from_ink(
     line: QTextLine,
     cell: QRectF,
+    ink: QRectF,
 ) -> QTransform:
-    """Center an unscaled horizontal run in its reserved vertical cell.
-
-    The cell may grow wider than one em so the run follows Photoshop-like
-    horizontal flow rather than CSS's one-em compression.
-
-    >>> callable(tate_chu_yoko_transform)
-    True
-    """
-    source = tate_chu_yoko_natural_bounds(line)
+    # A single character has no authored horizontal spacing to preserve.
+    # Center its ink without the asymmetric empty advance used by some
+    # full-width punctuation; natural bounds still size its cell and carets.
+    source = (
+        ink
+        if line.textLength() == 1
+        else _source_natural_bounds(line, ink)
+    )
     if source.isEmpty() or cell.isEmpty():
         return QTransform()
     source_center = source.center()
@@ -57,10 +60,29 @@ def tate_chu_yoko_transform(
     )
 
 
+def tate_chu_yoko_transform(
+    line: QTextLine,
+    cell: QRectF,
+) -> QTransform:
+    """Center an unscaled horizontal run in its reserved vertical cell.
+
+    The cell may grow wider than one em so the run follows Photoshop-like
+    horizontal flow rather than CSS's one-em compression.
+
+    >>> callable(tate_chu_yoko_transform)
+    True
+    """
+    return _transform_from_ink(
+        line,
+        cell,
+        _source_ink_bounds(line),
+    )
+
+
 def tate_chu_yoko_ink_bounds(
     line: QTextLine,
     cell: QRectF,
 ) -> QRectF:
     """Return the translated natural ink used for visible-geometry checks."""
     source = _source_ink_bounds(line)
-    return tate_chu_yoko_transform(line, cell).mapRect(source)
+    return _transform_from_ink(line, cell, source).mapRect(source)
