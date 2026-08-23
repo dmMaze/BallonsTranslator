@@ -1,6 +1,7 @@
 import os
 import unittest
 from typing import List
+from unittest.mock import Mock, patch
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -64,6 +65,53 @@ class VerticalInteractionTest(unittest.TestCase):
         context.cursorPosition = -1
         context.selections = [selection]
         return context
+
+    def test_empty_vertical_item_paints_a_visible_caret(self) -> None:
+        item = self._make_item('')
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        event = Mock()
+        event.pos.return_value = item.rect().center()
+        with patch.object(
+            item,
+            '_update_nonlinear_editing_ui',
+            wraps=item._update_nonlinear_editing_ui,
+        ) as update_editing_ui:
+            item.mouseDoubleClickEvent(event)
+        self.assertEqual(update_editing_ui.call_count, 1)
+
+        caret = item.layout.source_cursor_rect(
+            item.textCursor().position()
+        )
+        self.assertFalse(caret.isEmpty())
+        self.assertGreater(caret.width(), caret.height())
+        self.assertEqual(
+            QRectF(item.inputMethodQuery(
+                Qt.InputMethodQuery.ImCursorRectangle
+            )),
+            caret,
+        )
+
+        context = QAbstractTextDocumentLayout.PaintContext()
+        context.cursorPosition = item.textCursor().position()
+        image = QImage(
+            240,
+            320,
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        image.fill(Qt.GlobalColor.white)
+        painter = QPainter(image)
+        try:
+            item.layout.draw(painter, context)
+        finally:
+            painter.end()
+        self.assertNotEqual(
+            image.pixelColor(
+                round(caret.center().x()),
+                round(caret.center().y()),
+            ),
+            Qt.GlobalColor.white,
+        )
 
     def test_joined_punctuation_shares_caret_and_hit_cells(self):
         item = self._make_item('——')
@@ -436,6 +484,98 @@ class VerticalInteractionTest(unittest.TestCase):
 
         self.assertEqual(item.toPlainText(), original_text)
         self.assertEqual(item.document().availableUndoSteps(), 0)
+
+    def test_up_down_moves_between_each_vertical_character_stop(self) -> None:
+        item = self._make_item('t   est')
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        item.startEdit()
+        original_text = item.toPlainText()
+        item.document().clearUndoRedoStacks()
+        item.updateUndoSteps()
+
+        def set_position(position: int) -> None:
+            cursor = item.textCursor()
+            cursor.setPosition(position)
+            item.setTextCursor(cursor)
+
+        def press(
+            key: Qt.Key,
+            modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+        ) -> None:
+            item.keyPressEvent(QKeyEvent(
+                QEvent.Type.KeyPress,
+                key,
+                modifiers,
+            ))
+
+        set_position(0)
+        for expected in range(1, len(original_text) + 1):
+            press(Qt.Key.Key_Down)
+            self.assertEqual(item.textCursor().position(), expected)
+        press(Qt.Key.Key_Down)
+        self.assertEqual(item.textCursor().position(), len(original_text))
+
+        for expected in range(len(original_text) - 1, -1, -1):
+            press(Qt.Key.Key_Up)
+            self.assertEqual(item.textCursor().position(), expected)
+        press(Qt.Key.Key_Up)
+        self.assertEqual(item.textCursor().position(), 0)
+
+        set_position(2)
+        press(Qt.Key.Key_Down)
+        self.assertEqual(item.textCursor().position(), 3)
+        press(Qt.Key.Key_Up)
+        self.assertEqual(item.textCursor().position(), 2)
+        press(Qt.Key.Key_Down, Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual(
+            (item.textCursor().position(), item.textCursor().anchor()),
+            (3, 2),
+        )
+        press(Qt.Key.Key_Down)
+        self.assertEqual(
+            (item.textCursor().position(), item.textCursor().anchor()),
+            (3, 3),
+        )
+
+        set_position(3)
+        press(Qt.Key.Key_Up, Qt.KeyboardModifier.ShiftModifier)
+        self.assertEqual(
+            (item.textCursor().position(), item.textCursor().anchor()),
+            (2, 3),
+        )
+        press(Qt.Key.Key_Up)
+        self.assertEqual(
+            (item.textCursor().position(), item.textCursor().anchor()),
+            (2, 2),
+        )
+
+        self.assertEqual(item.toPlainText(), original_text)
+        self.assertEqual(item.document().availableUndoSteps(), 0)
+
+    def test_vertical_up_down_preserves_unicode_character_boundaries(
+        self,
+    ) -> None:
+        item = self._make_item('\U0001f600e\u0301\u6728')
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        item.startEdit()
+
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        item.setTextCursor(cursor)
+        positions = [0]
+        while positions[-1] < 5:
+            item.keyPressEvent(QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Down,
+                Qt.KeyboardModifier.NoModifier,
+            ))
+            next_position = item.textCursor().position()
+            self.assertNotEqual(next_position, positions[-1])
+            positions.append(next_position)
+
+        self.assertEqual(positions, [0, 2, 4, 5])
 
 
 if __name__ == '__main__':

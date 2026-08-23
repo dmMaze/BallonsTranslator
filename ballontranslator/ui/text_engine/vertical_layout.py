@@ -909,18 +909,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             line_position + leading,
             max(0, _utf16_length(block.text()) - 1),
         )
-        char_format = self.get_char_fontfmt(
-            block.blockNumber(), char_position
-        )
+        # Empty blocks have no character-format fragment, but layoutBlock()
+        # still records the real width of their editable column.
         record = self.per_char_records[block.blockNumber()].get(
             char_position, {}
         )
+        line_width = record.get('line_width')
+        if line_width is not None:
+            return max(0.0, line_width)
+        char_format = self.get_char_fontfmt(
+            block.blockNumber(), char_position
+        )
         if char_format is None:
             return max(0.0, self.block_ideal_width[block.blockNumber()])
-        return max(
-            0.0,
-            record.get('line_width', char_format.tbr.width()),
-        )
+        return max(0.0, char_format.tbr.width())
 
     @staticmethod
     def _line_has_selection(

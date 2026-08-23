@@ -330,6 +330,39 @@ class TextBlkItem(QGraphicsTextItem):
         self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
 
+    def _move_cursor_along_vertical_flow(
+        self,
+        forward: bool,
+        keep_anchor: bool,
+    ) -> None:
+        """Move to the next logical character stop in vertical flow.
+
+        >>> callable(TextBlkItem._move_cursor_along_vertical_flow)
+        True
+        """
+        self._vertical_navigation_y = None
+        cursor = self.textCursor()
+        if cursor.hasSelection() and not keep_anchor:
+            cursor.setPosition(
+                cursor.selectionEnd()
+                if forward
+                else cursor.selectionStart()
+            )
+            self.setTextCursor(cursor)
+            return
+        operation = (
+            QTextCursor.MoveOperation.NextCharacter
+            if forward
+            else QTextCursor.MoveOperation.PreviousCharacter
+        )
+        move_mode = (
+            QTextCursor.MoveMode.KeepAnchor
+            if keep_anchor
+            else QTextCursor.MoveMode.MoveAnchor
+        )
+        if cursor.movePosition(operation, move_mode):
+            self.setTextCursor(cursor)
+
     def _emit_inline_format_changed(self) -> None:
         self.inline_format_changed.emit()
 
@@ -913,20 +946,34 @@ class TextBlkItem(QGraphicsTextItem):
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
 
-        vertical_column_navigation = (
+        vertical_arrow_navigation = (
             self.isEditing()
             and isinstance(self.layout, VerticalTextDocumentLayout)
-            and e.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right)
+            and e.key() in (
+                Qt.Key.Key_Left,
+                Qt.Key.Key_Right,
+                Qt.Key.Key_Up,
+                Qt.Key.Key_Down,
+            )
             and e.modifiers() in (
                 Qt.KeyboardModifier.NoModifier,
                 Qt.KeyboardModifier.ShiftModifier,
             )
         )
-        if vertical_column_navigation:
-            self._move_cursor_across_vertical_column(
-                -1 if e.key() == Qt.Key.Key_Left else 1,
-                e.modifiers() == Qt.KeyboardModifier.ShiftModifier,
+        if vertical_arrow_navigation:
+            keep_anchor = (
+                e.modifiers() == Qt.KeyboardModifier.ShiftModifier
             )
+            if e.key() in (Qt.Key.Key_Left, Qt.Key.Key_Right):
+                self._move_cursor_across_vertical_column(
+                    -1 if e.key() == Qt.Key.Key_Left else 1,
+                    keep_anchor,
+                )
+            else:
+                self._move_cursor_along_vertical_flow(
+                    e.key() == Qt.Key.Key_Down,
+                    keep_anchor,
+                )
             e.accept()
             return
         self._vertical_navigation_y = None
@@ -1199,8 +1246,8 @@ class TextBlkItem(QGraphicsTextItem):
         self._vertical_navigation_y = None
         if not self.isEditing():
             self.startEdit(pos=event.pos())
-        else:
-            super().mouseDoubleClickEvent(event)
+            return
+        super().mouseDoubleClickEvent(event)
         self._emit_inline_format_changed()
         self._update_nonlinear_editing_ui()
         
