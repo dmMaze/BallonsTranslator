@@ -418,7 +418,7 @@ QComboBox QAbstractItemView::item:selected {
     color: @qwidgetForegroundColor;
 }
 
-QFontComboBox#FontFamilyBox {
+QComboBox#FontFamilyBox {
     width: 95px;
     height: 23px;
     font-size: 13px;
@@ -427,7 +427,7 @@ QFontComboBox#FontFamilyBox {
     border-color: @borderColor;
 }
 
-QFontComboBox#FontFamilyBox::hover {
+QComboBox#FontFamilyBox::hover {
     border: 1px solid rgb(30, 147, 229);
 }
 
@@ -440,7 +440,7 @@ QComboBox#FontWeightBox {
     padding-left: 5px;
 }
 
-QFontComboBox#FontFamilyBox::down-arrow,
+QComboBox#FontFamilyBox::down-arrow,
 QComboBox#FontWeightBox::down-arrow {
     width: 10px;
     height: 10px;

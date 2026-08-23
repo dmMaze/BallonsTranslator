@@ -565,6 +565,8 @@ class FontFamilyComboBox(QComboBox):
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        # Apply the compact selector before Qt caches a content-sized hint.
+        self.setObjectName('FontFamilyBox')
         self.setEditable(True)
         self.view().setUniformItemSizes(True)
         self.currentIndexChanged.connect(self.on_fontfamily_changed)
@@ -778,7 +780,6 @@ class FontFormatPanel(Widget):
         self.vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.familybox = FontFamilyComboBox(parent=self)
         self.familybox.setContentsMargins(0, 0, 0, 0)
-        self.familybox.setObjectName("FontFamilyBox")
         self.familybox.setToolTip(self.tr("Font Family"))
         self.familybox.param_changed.connect(self.on_font_family_changed)
         self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
