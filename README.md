@@ -19,7 +19,11 @@
 
 
 
-<p align="center">交流反馈 QQ 群：719881337 </p>
+<p align="center">
+  <a href="https://t.me/BallonTranslatorforum"><img src="https://img.shields.io/badge/Telegram-%E7%94%A8%E6%88%B7%E4%BA%A4%E6%B5%81%E7%BE%A4-26A5E4?style=flat-square&logo=telegram&logoColor=white" style="vertical-align: middle;" alt="Telegram Group"/></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="vertical-align: middle;"><b>QQ 交流反馈群：</b><code>719881337</code></span>
+</p>
 
  
 
