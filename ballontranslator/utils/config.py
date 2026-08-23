@@ -2,10 +2,14 @@ import json, os, string, traceback
 import os.path as osp
 import copy
 from dataclasses import fields
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional
 
 from . import shared
-from .fontformat import FontFormat
+from .fontformat import (
+    FontFormat,
+    normalize_fontformat_effect_payload,
+    warn_ignored_legacy_effects,
+)
 from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
@@ -406,6 +410,23 @@ class ProgramConfig(Config):
             # LLM translator keys must be consumed before module-param patching drops unknown keys.
             migrate_module_llm_profiles(module_cfg)
 
+        effect_notices = set()
+        if 'global_fontformat' in config_dict:
+            global_fontformat = config_dict['global_fontformat']
+            if isinstance(global_fontformat, Mapping):
+                normalized, notices = normalize_fontformat_effect_payload(
+                    global_fontformat
+                )
+                config_dict['global_fontformat'] = normalized
+                effect_notices.update(notices)
+            else:
+                LOGGER.warning(
+                    'Ignoring invalid global FontFormat config %r.',
+                    global_fontformat,
+                )
+                config_dict.pop('global_fontformat')
+        warn_ignored_legacy_effects(effect_notices, 'program config')
+
         return ProgramConfig(**config_dict)
     
 
@@ -424,11 +445,17 @@ def load_textstyle_from(p: str, raise_exception = False):
         with open(p, 'r', encoding='utf8') as f:
             style_list = json.loads(f.read())
             styles_loaded = []
+            effect_notices = set()
             for style in style_list:
                 try:
-                    styles_loaded.append(FontFormat(**style))
+                    normalized, notices = (
+                        normalize_fontformat_effect_payload(style)
+                    )
+                    effect_notices.update(notices)
+                    styles_loaded.append(FontFormat(**normalized))
                 except Exception as e:
                     LOGGER.warning(f'Skip invalid text style: {style}')
+            warn_ignored_legacy_effects(effect_notices, 'text styles')
     except Exception as e:
         LOGGER.error(f'Failed to load text style from {p}: {e}')
         if raise_exception:

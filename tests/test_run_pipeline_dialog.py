@@ -64,6 +64,11 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.text_effects import (
+    SolidPaint,
+    StrokeEffect,
+    TextEffectStack,
+)
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS
 from ballontranslator.modules.translators import base as translator_base
@@ -1377,18 +1382,39 @@ class RunPipelineDialogTests(unittest.TestCase):
         global_format = FontFormat(
             font_family='Render Font',
             font_size=47,
-            stroke_width=0.18,
             frgb=[1, 2, 3],
-            srgb=[4, 5, 6],
             alignment=2,
             vertical=True,
-            opacity=0.75,
+            text_effects=TextEffectStack(
+                0.75,
+                (
+                    StrokeEffect(
+                        width=0.18,
+                        paint=SolidPaint((4, 5, 6)),
+                    ),
+                    StrokeEffect(width=0.9),
+                ),
+            ),
             shadow_radius=3,
             shadow_strength=0.4,
             shadow_color=[7, 8, 9],
             shadow_offset=[2, 1],
         )
         blocks = [TextBlock(), TextBlock()]
+        extra_strokes = []
+        for block in blocks:
+            extra = StrokeEffect(
+                width=0.7,
+                paint=SolidPaint((70, 80, 90)),
+            )
+            extra_strokes.append(extra)
+            block.fontformat.text_effects = TextEffectStack(
+                0.4,
+                (
+                    StrokeEffect(width=0.05),
+                    extra,
+                ),
+            )
         project = SimpleNamespace(
             num_pages=1,
             get_blklist_byidx=lambda _: blocks,
@@ -1435,7 +1461,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             for name, value in old_flags.items():
                 setattr(pcfg, name, value)
 
-        for block in blocks:
+        for block, extra in zip(blocks, extra_strokes):
             self.assertEqual(block.font_size, 47)
             self.assertEqual(block.stroke_width, 0.18)
             self.assertEqual(block.fontformat.frgb, [1, 2, 3])
@@ -1444,10 +1470,11 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertTrue(block.vertical)
             self.assertEqual(block.font_family, 'Render Font')
             self.assertEqual(block.fontformat.opacity, 0.75)
-            self.assertEqual(block.fontformat.shadow_radius, 3)
-            self.assertEqual(block.fontformat.shadow_strength, 0.4)
-            self.assertEqual(block.fontformat.shadow_color, [7, 8, 9])
-            self.assertEqual(block.fontformat.shadow_offset, [2, 1])
+            self.assertIs(block.fontformat.text_effects.effects[1], extra)
+            self.assertEqual(block.fontformat.shadow_radius, 0.0)
+            self.assertEqual(block.fontformat.shadow_strength, 1.0)
+            self.assertEqual(block.fontformat.shadow_color, [0, 0, 0])
+            self.assertEqual(block.fontformat.shadow_offset, [0.0, 0.0])
 
     def test_pipeline_auto_tate_chu_yoko_preserves_plain_text_format(self):
         settings = AutoTateChuYokoConfig(

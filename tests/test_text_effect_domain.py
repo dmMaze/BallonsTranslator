@@ -9,6 +9,7 @@ from ballontranslator.utils.text_effects import (
     coerce_text_effect_stack,
     ensure_primary_stroke,
     primary_stroke,
+    with_non_stroke_effects,
     with_primary_stroke,
 )
 
@@ -77,6 +78,20 @@ class TextEffectDomainTest(unittest.TestCase):
             width=0.0,
             paint=SolidPaint((90, 80, 70)),
         ),))
+
+    def test_non_stroke_override_preserves_all_stroke_cards(self):
+        strokes = (
+            StrokeEffect(width=0.2),
+            StrokeEffect(width=0.7, paint=SolidPaint((4, 5, 6))),
+        )
+        target = TextEffectStack(0.4, strokes)
+        source = TextEffectStack(0.8, (StrokeEffect(width=0.9),))
+
+        result = with_non_stroke_effects(target, source)
+
+        self.assertEqual(result.overall_opacity, 0.8)
+        self.assertEqual(result.effects, strokes)
+        self.assertIs(with_non_stroke_effects(result, source), result)
 
     def test_neutral_state_tracks_opacity_and_active_strokes(self):
         self.assertTrue(TextEffectStack().is_neutral())

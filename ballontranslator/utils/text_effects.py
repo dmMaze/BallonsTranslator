@@ -316,3 +316,26 @@ def with_primary_stroke(
     effects = list(ensured.effects)
     effects[effects.index(stroke)] = updated
     return replace(ensured, effects=tuple(effects))
+
+
+def with_non_stroke_effects(
+    stack: TextEffectStack, source: TextEffectStack
+) -> TextEffectStack:
+    """Copy the currently supported non-Stroke style state from ``source``.
+
+    Work Package 2 supports only overall opacity outside Stroke. Keeping this
+    operation named prevents run callers from growing index assumptions when
+    later typed effects extend the stack.
+
+    >>> target = TextEffectStack(effects=(StrokeEffect(width=0.4),))
+    >>> source = TextEffectStack(overall_opacity=0.6)
+    >>> with_non_stroke_effects(target, source).effects == target.effects
+    True
+    """
+    if not isinstance(stack, TextEffectStack) or not isinstance(
+        source, TextEffectStack
+    ):
+        raise TypeError('with_non_stroke_effects requires TextEffectStack')
+    if stack.overall_opacity == source.overall_opacity:
+        return stack
+    return replace(stack, overall_opacity=source.overall_opacity)

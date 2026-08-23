@@ -9,7 +9,12 @@ from PIL import Image
 
 from .logger import logger as LOGGER
 from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
-from .textblock import TextBlock, FontFormat
+from .textblock import (
+    FontFormat,
+    TextBlock,
+    normalize_textblock_effect_payload,
+)
+from .fontformat import warn_ignored_legacy_effects
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -181,6 +186,18 @@ class ProjImgTrans:
 
     def load_from_dict(self, proj_dict: dict):
         self.set_current_img(None)
+        effect_notices = set()
+
+        def load_blocks(records: List[dict]) -> List[TextBlock]:
+            blocks = []
+            for record in records:
+                normalized, notices = normalize_textblock_effect_payload(
+                    record
+                )
+                effect_notices.update(notices)
+                blocks.append(TextBlock(**normalized))
+            return blocks
+
         try:
             self.pages = {}
             self._pagename2idx = {}
@@ -191,7 +208,7 @@ class ProjImgTrans:
             found_pages = find_all_imgs(img_dir=self.directory, abs_path=False, sort=True)
             for ii, imname in enumerate(found_pages):
                 if imname in page_dict:
-                    self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
+                    self.pages[imname] = load_blocks(page_dict[imname])
                     not_found_pages.remove(imname)
                 else:
                     self.pages[imname] = []
@@ -199,9 +216,10 @@ class ProjImgTrans:
                 self._pagename2idx[imname] = ii
                 self._idx2pagename[ii] = imname
             for imname in not_found_pages:
-                self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
+                self.not_found_pages[imname] = load_blocks(page_dict[imname])
         except Exception as e:
             raise ProjectNotSupportedException(e)
+        warn_ignored_legacy_effects(effect_notices, 'project')
         
         if 'image_info' in proj_dict:
             self._image_info = proj_dict['image_info']
@@ -628,6 +646,7 @@ class ProjImgTrans:
         body_xml_str = doc._body._element.xml
 
         pages = {}
+        effect_notices = set()
         bub_index = 0
         for tbl in re.findall(r'<w:tbl>(.*?)</w:tbl>', body_xml_str, re.DOTALL):
             for tr in re.findall(r'<w:tr(.*?)>(.*?)</w:tr>', tbl, re.DOTALL):
@@ -654,11 +673,16 @@ class ProjImgTrans:
                     imgkey = meta_dict.pop("imgkey")
                     if not imgkey in pages:
                         pages[imgkey] = []
-                    pages[imgkey].append(TextBlock(**meta_dict))
+                    normalized, notices = normalize_textblock_effect_payload(
+                        meta_dict
+                    )
+                    effect_notices.update(notices)
+                    pages[imgkey].append(TextBlock(**normalized))
                     
                     if fin_page_signal is not None:
                         fin_page_signal.emit()
 
+        warn_ignored_legacy_effects(effect_notices, 'document import')
         self.merge_from_proj_dict(pages)
         if delete_tmp_folder:
             shutil.rmtree(tmp_bubble_folder)

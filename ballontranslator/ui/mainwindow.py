@@ -14,6 +14,12 @@ from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, Q
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
+from ballontranslator.utils.text_effects import (
+    SolidPaint,
+    primary_stroke,
+    with_non_stroke_effects,
+    with_primary_stroke,
+)
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
@@ -1709,13 +1715,31 @@ class MainWindow(mainwindow_cls):
                     elif blk._detected_font_size > 0 and not enable_detect:
                         blk.font_size = blk._detected_font_size
                     if override_fnt_stroke:
-                        blk.stroke_width = gf.stroke_width
+                        global_stroke = primary_stroke(gf.text_effects)
+                        width = (
+                            global_stroke.width
+                            if global_stroke is not None
+                            else 0.0
+                        )
+                        blk.fontformat.text_effects = with_primary_stroke(
+                            blk.fontformat.text_effects,
+                            width=width,
+                        )
                     elif enable_ocr:
                         blk.recalulate_stroke_width()
                     if override_fnt_color:
                         blk.set_font_colors(fg_colors=gf.frgb)
                     if override_fnt_scolor:
-                        blk.set_font_colors(bg_colors=gf.srgb)
+                        global_stroke = primary_stroke(gf.text_effects)
+                        paint = (
+                            global_stroke.paint
+                            if global_stroke is not None
+                            else SolidPaint()
+                        )
+                        blk.fontformat.text_effects = with_primary_stroke(
+                            blk.fontformat.text_effects,
+                            paint=paint,
+                        )
                     if override_writing_mode:
                         blk.vertical = gf.vertical
                     if override_alignment:
@@ -1726,11 +1750,10 @@ class MainWindow(mainwindow_cls):
                         elif not blk.src_is_vertical:
                             blk.recalulate_alignment()
                     if override_effect:
-                        blk.opacity = gf.opacity
-                        blk.shadow_color = gf.shadow_color
-                        blk.shadow_radius = gf.shadow_radius
-                        blk.shadow_strength = gf.shadow_strength
-                        blk.shadow_offset = gf.shadow_offset
+                        blk.fontformat.text_effects = with_non_stroke_effects(
+                            blk.fontformat.text_effects,
+                            gf.text_effects,
+                        )
                     if override_font_family or blk.font_family is None:
                         blk.font_family = gf.font_family
                         if blk.rich_text:
@@ -1744,7 +1767,12 @@ class MainWindow(mainwindow_cls):
                     blk.fontformat.standard_vertical_roman_alignment = (
                         gf.standard_vertical_roman_alignment
                     )
-                    sw = blk.stroke_width
+                    primary = primary_stroke(blk.fontformat.text_effects)
+                    sw = (
+                        primary.width
+                        if primary is not None and not primary.is_neutral()
+                        else 0.0
+                    )
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
 
