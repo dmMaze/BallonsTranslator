@@ -193,6 +193,7 @@ class FontRegistry:
     faces_by_key: Dict[str, tuple[FontEntry, FontFace]] = field(
         default_factory=dict
     )
+    export_family_by_key: Dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.rebuild_index()
@@ -200,6 +201,7 @@ class FontRegistry:
     def rebuild_index(self) -> None:
         self.entries_by_key = {}
         self.faces_by_key = {}
+        storage_names_by_qt_key: Dict[str, Set[str]] = defaultdict(set)
         for entry in [*self.system_entries, *self.custom_entries]:
             keys = {entry.canonical_family, entry.display_family, entry.qt_family, *entry.aliases}
             entry_keys = {normalize_key(key) for key in {entry.canonical_family, entry.display_family, entry.qt_family} if key}
@@ -212,6 +214,18 @@ class FontRegistry:
                 for normalized in normalized_face_keys:
                     face_key_counts[normalized] += 1
                 keys.update(face_keys)
+                if face.qt_family:
+                    storage_names_by_qt_key[
+                        normalize_key(face.qt_family)
+                    ].add(
+                        face.storage_family
+                        if entry.is_pseudo_group
+                        else entry.canonical_family
+                    )
+            if not entry.faces and entry.qt_family:
+                storage_names_by_qt_key[
+                    normalize_key(entry.qt_family)
+                ].add(entry.canonical_family)
             for face, normalized_face_keys in face_keys_by_face:
                 for normalized in normalized_face_keys:
                     if normalized not in entry_keys and face_key_counts[normalized] == 1:
@@ -219,6 +233,11 @@ class FontRegistry:
             for key in keys:
                 if key:
                     self.entries_by_key[normalize_key(key)] = entry
+        self.export_family_by_key = {
+            key: next(iter(storage_names))
+            for key, storage_names in storage_names_by_qt_key.items()
+            if len(storage_names) == 1
+        }
 
     def entries(self, only_custom: bool = False) -> List[FontEntry]:
         if only_custom:
@@ -250,6 +269,25 @@ class FontRegistry:
         qt_family = face.qt_family if face is not None else entry.qt_family
         canonical = face.storage_family if entry.is_pseudo_group and face is not None else entry.canonical_family
         return ResolvedFont(family, canonical, qt_family, entry=entry, face=face)
+
+    def family_for_export(self, family: str) -> str:
+        """Return an unambiguous persisted name for a rendered family."""
+        key = normalize_key(family)
+        storage_family = self.export_family_by_key.get(key)
+        if storage_family is not None:
+            return storage_family
+        face_match = self.faces_by_key.get(key)
+        if face_match is not None:
+            entry, face = face_match
+            return (
+                face.storage_family
+                if entry.is_pseudo_group
+                else entry.canonical_family
+            )
+        entry = self.entries_by_key.get(key)
+        if entry is not None and not entry.is_pseudo_group:
+            return entry.canonical_family
+        return family
 
 
 def normalize_key(value: str) -> str:

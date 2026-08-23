@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -76,6 +77,27 @@ class FontFamilyResolutionTests(unittest.TestCase):
 
         self.assertEqual(aliases, {})
         self.assertEqual(font_family_for_qt(family), family)
+
+    def test_html_family_precheck_uses_indexed_css_names(self):
+        class MembershipOnlyDict(dict):
+            def __iter__(self):
+                raise AssertionError('registry keys must not be scanned')
+
+        registry = SimpleNamespace(
+            entries_by_key=MembershipOnlyDict({
+                'a & b, display': object(),
+            })
+        )
+        html = (
+            "<span style=\"font-family:'A &amp; B, Display', serif\">"
+            'text</span>'
+        )
+
+        with patch.object(shared, 'FONT_REGISTRY', registry):
+            self.assertTrue(html_uses_project_font_family(html))
+            self.assertFalse(html_uses_project_font_family(
+                "<span style=\"font-family:'Unknown'\">text</span>"
+            ))
 
     def test_comma_family_remains_one_qt_family(self):
         family = 'Synthetic, Comma Family'
@@ -191,6 +213,30 @@ class FontFamilyResolutionTests(unittest.TestCase):
 
         self.assertIn("font-family:'Batang'", restored)
         self.assertNotIn("font-family:'바탕'", restored)
+
+    def test_html_export_uses_index_and_preserves_entity_escaping(self):
+        face = FontFace(
+            'Canonical & Name', 'Canonical & Name', 'A & B, Display',
+            'Regular', 400,
+        )
+        registry = FontRegistry(custom_entries=[FontEntry(
+            'Canonical & Name', 'Canonical & Name', 'A & B, Display',
+            'custom', faces=[face], weights=[400],
+        )])
+        registry.entries = lambda *_args: (_ for _ in ()).throw(
+            AssertionError('registry entries must not be scanned')
+        )
+        html = (
+            "<span style=\"font-family:'A &amp; B, Display', serif\">"
+            'x</span>'
+        )
+
+        with patch.object(shared, 'FONT_REGISTRY', registry):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn(
+            "font-family:'Canonical &amp; Name', serif", restored
+        )
 
     def test_internal_qt_alias_exports_registry_canonical_name(self):
         qt_family = '[localized-vendor]Synthetic Font'

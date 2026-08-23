@@ -1,21 +1,63 @@
 """Qt font-family compatibility at the text-engine boundary."""
 
 from hashlib import sha1
+from html import escape, unescape
 import re
 from typing import Callable, Iterable, Sequence
 
 from qtpy.QtGui import QFont, QTextCursor, QTextDocument
 
 from ballontranslator.utils import shared
+from ballontranslator.utils.font_registry import normalize_key
 from ballontranslator.utils.fontformat import font_weight_from_qt
 
 
 _QT_FAMILY_BY_PROJECT_NAME: dict[str, str] = {}
 _PROJECT_FAMILY_BY_QT_NAME: dict[str, str] = {}
 _FONT_FAMILY_DECLARATION = re.compile(
-    r'font-family\s*:[^;>]*',
+    r'font-family\s*:'
+    r'(?:&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);|[^;>])*',
     re.IGNORECASE,
 )
+
+
+def _font_families_from_declaration(declaration: str) -> tuple[str, ...]:
+    """Return CSS family names without splitting quoted commas.
+
+    >>> _font_families_from_declaration("font-family:'A, Display', serif")
+    ('A, Display', 'serif')
+    """
+    value = declaration.split(':', 1)[-1]
+    families = []
+    chunk = []
+    quote = None
+    escaped = False
+    for character in value:
+        if escaped:
+            chunk.append(character)
+            escaped = False
+        elif character == '\\':
+            escaped = True
+        elif quote is not None:
+            if character == quote:
+                quote = None
+            else:
+                chunk.append(character)
+        elif character in {'\'', '"'}:
+            quote = character
+        elif character == ',':
+            family = unescape(''.join(chunk).strip())
+            if family:
+                families.append(family)
+            chunk = []
+        else:
+            chunk.append(character)
+    if escaped:
+        chunk.append('\\')
+    family = unescape(''.join(chunk).strip())
+    if family:
+        families.append(family)
+    return tuple(families)
 
 
 def _safe_font_family_alias(family: str, used_names: set[str]) -> str:
@@ -119,19 +161,18 @@ def qfont_with_family(font: QFont, family: str) -> QFont:
 
 def html_uses_project_font_family(html: str) -> bool:
     """Return whether HTML can require internal family normalization."""
-    folded_html = html.casefold()
-    if any(
-        family in folded_html
-        for family in _QT_FAMILY_BY_PROJECT_NAME
-    ):
-        return True
     registry = getattr(shared, 'FONT_REGISTRY', None)
-    if registry is None:
-        return False
-    return any(
-        key in folded_html
-        for key in registry.entries_by_key
-    )
+    registry_keys = registry.entries_by_key if registry is not None else {}
+    project_keys = {
+        normalize_key(family)
+        for family in _QT_FAMILY_BY_PROJECT_NAME
+    }
+    for match in _FONT_FAMILY_DECLARATION.finditer(html):
+        for family in _font_families_from_declaration(match.group(0)):
+            key = normalize_key(family)
+            if key in project_keys or key in registry_keys:
+                return True
+    return False
 
 
 def normalize_document_font_families(document: QTextDocument) -> int:
@@ -175,51 +216,34 @@ def normalize_document_font_families(document: QTextDocument) -> int:
 
 def restore_project_font_families_in_html(html: str) -> str:
     """Hide internal aliases in serialized ``font-family`` declarations."""
-    replacements: dict[str, str] = {}
-    storage_by_qt_key: dict[str, str] = {}
     registry = getattr(shared, 'FONT_REGISTRY', None)
-    if registry is not None:
-        storage_by_qt_name: dict[str, set[str]] = {}
-        qt_names: dict[str, str] = {}
-        for entry in registry.entries():
-            faces = entry.faces or (entry,)
-            for face in faces:
-                qt_family = face.qt_family
-                storage_family = (
-                    face.storage_family
-                    if (
-                        entry.is_pseudo_group
-                        and hasattr(face, 'storage_family')
-                    )
-                    else entry.canonical_family
-                )
-                key = qt_family.casefold()
-                qt_names.setdefault(key, qt_family)
-                storage_by_qt_name.setdefault(key, set()).add(
-                    storage_family
-                )
-        for key, storage_names in storage_by_qt_name.items():
-            if len(storage_names) == 1:
-                storage_family = next(iter(storage_names))
-                storage_by_qt_key[key] = storage_family
-                replacements[qt_names[key]] = storage_family
-    for alias in _QT_FAMILY_BY_PROJECT_NAME.values():
-        project_family = _PROJECT_FAMILY_BY_QT_NAME[alias.casefold()]
-        replacements[alias] = storage_by_qt_key.get(
-            project_family.casefold(), project_family
-        )
-    if not replacements:
-        return html
 
     def restore_declaration(match: re.Match) -> str:
         declaration = match.group(0)
-        for alias in sorted(replacements, key=len, reverse=True):
-            declaration = re.sub(
-                rf'(?<![\w]){re.escape(alias)}(?![\w])',
-                lambda _match, value=replacements[alias]: value,
-                declaration,
-                flags=re.IGNORECASE,
+        for family in _font_families_from_declaration(declaration):
+            project_family = _PROJECT_FAMILY_BY_QT_NAME.get(
+                family.casefold(), family
             )
+            storage_family = (
+                registry.family_for_export(project_family)
+                if registry is not None
+                else project_family
+            )
+            if storage_family == family:
+                continue
+            escaped_storage = escape(storage_family, quote=True)
+            source_names = {
+                family,
+                escape(family, quote=False),
+                escape(family, quote=True),
+            }
+            for source_name in sorted(source_names, key=len, reverse=True):
+                declaration = re.sub(
+                    rf'(?<![\w]){re.escape(source_name)}(?![\w])',
+                    lambda _match, value=escaped_storage: value,
+                    declaration,
+                    flags=re.IGNORECASE,
+                )
         return declaration
 
     return _FONT_FAMILY_DECLARATION.sub(restore_declaration, html)

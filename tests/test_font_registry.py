@@ -3,6 +3,7 @@ from pathlib import Path
 from ballontranslator.utils.font_registry import (
     FontEntry,
     FontFace,
+    FontRegistry,
     _candidate_from_parsed_face,
     _disambiguate_duplicate_weights,
     _sfnt_offsets,
@@ -166,6 +167,24 @@ def test_pseudo_group_saves_the_selected_weight_specific_family() -> None:
 
     assert grouped.storage_family_for_weight(300) == 'Example Sans Light'
     assert grouped.storage_family_for_weight(700) == 'Example Sans Bold'
+
+
+def test_export_index_omits_ambiguous_shared_qt_family() -> None:
+    faces = [
+        FontFace(
+            'Example Light', 'Example Light', 'Qt Example', 'Light', 300,
+        ),
+        FontFace(
+            'Example Bold', 'Example Bold', 'Qt Example', 'Bold', 700,
+        ),
+    ]
+    registry = FontRegistry(custom_entries=[FontEntry(
+        'Example', 'Example', 'Qt Example', 'custom',
+        faces=faces, weights=[300, 700], is_pseudo_group=True,
+    )])
+
+    assert registry.family_for_export('Qt Example') == 'Qt Example'
+    assert registry.family_for_export('Example Bold') == 'Example Bold'
 
 
 def test_invalid_optional_registry_is_ignored(tmp_path: Path) -> None:
