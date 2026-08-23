@@ -332,7 +332,8 @@ class TextShadowGroup(EffectGroupBox):
 
 class TextGradientGroup(EffectGroupBox):
     def __init__(self, on_param_changed: Callable = None):
-        super().__init__(self.tr('Gradient'))
+        super().__init__('')
+        self.setTitle(self.tr('Gradient'))
         self.on_param_changed = on_param_changed
         self.enable_checker.toggled.connect(self._on_enabled_changed)
         self.setSizePolicy(

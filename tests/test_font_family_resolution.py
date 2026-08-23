@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -25,6 +26,9 @@ from ballontranslator.ui.text_engine.pipeline_formatting import (
     _load_text_block_document,
 )
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils import shared
+from ballontranslator.utils.font_registry import FontEntry, FontFace, FontRegistry
+from ballontranslator.utils.fontformat import FontWeight, font_weight_to_qt
 
 
 class FontFamilyResolutionTests(unittest.TestCase):
@@ -98,6 +102,42 @@ class FontFamilyResolutionTests(unittest.TestCase):
         self.assertEqual(font.families(), ['DejaVu Sans'])
         self.assertEqual(font.pointSizeF(), 22)
         self.assertTrue(font.italic())
+
+    def test_registry_resolution_does_not_pin_weight_or_italic_face(self):
+        database = QFontDatabase if QT6 else QFontDatabase()
+        family = 'DejaVu Sans'
+        if family not in database.families():
+            self.skipTest(f'{family} is not installed')
+        entry = FontEntry(
+            family,
+            family,
+            family,
+            'system',
+            weights=[400, 700],
+            faces=[
+                FontFace(family, family, family, 'Book', 400),
+                FontFace(family, family, family, 'Bold', 700),
+            ],
+        )
+        font = QFont(family, 18)
+        font.setWeight(
+            QFont.Weight(font_weight_to_qt(FontWeight.Bold, qt6=QT6))
+        )
+        font.setItalic(True)
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(system_entries=[entry]),
+        ):
+            resolved = qfont_with_family(font, family)
+
+        style_name = QRawFont.fromFont(resolved).styleName().casefold()
+        self.assertIn('bold', style_name)
+        self.assertTrue(
+            'italic' in style_name or 'oblique' in style_name,
+            style_name,
+        )
 
     def test_buding_uses_real_face_through_horizontal_vertical_switch(self):
         family = '[toolbox]BuDing-JF'

@@ -108,20 +108,12 @@ def qfont_with_family(font: QFont, family: str) -> QFont:
     """Copy ``font`` and safely set any project-facing family."""
     result = QFont(font)
     weight = int(font_weight_from_qt(result.weight()))
-    resolution = _registry_resolution(family, weight)
     resolved = font_family_for_qt(family, weight)
     # Qt 5 can retain an HTML font's old family list after setFamily(), while
     # family() can retain its old value after setFamilies(). Set both so the
     # renderer and the persisted/UI-facing accessor agree on one family.
     result.setFamilies([resolved])
     result.setFamily(resolved)
-    style_name = getattr(
-        getattr(resolution, 'face', None),
-        'style_name',
-        '',
-    )
-    if style_name and hasattr(result, 'setStyleName'):
-        result.setStyleName(style_name)
     return result
 
 

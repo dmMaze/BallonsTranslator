@@ -8,6 +8,8 @@ from pathlib import Path
 import struct
 from typing import Any, Dict, Iterable, List, Optional, Set
 
+from .fontformat import font_weight_from_qt
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -523,7 +525,9 @@ def qt_family_weights(qfont_db: Any, family: str) -> List[int]:
     weights = []
     for style in qfont_db.styles(family):
         try:
-            weights.append(int(qfont_db.weight(family, style)))
+            weights.append(
+                int(font_weight_from_qt(qfont_db.weight(family, style)))
+            )
         except Exception:
             continue
     return sorted(set(weights))
@@ -855,7 +859,10 @@ def build_custom_entries(faces: List[FontFace], custom_group_table: Optional[Dic
 
 def _system_entry(qfont_db: Any, family: str) -> FontEntry:
     styles = sorted(qfont_db.styles(family), key=str.casefold)
-    weights = sorted({int(qfont_db.weight(family, style)) for style in styles})
+    weights = sorted({
+        int(font_weight_from_qt(qfont_db.weight(family, style)))
+        for style in styles
+    })
     scalable = any(qfont_db.isScalable(family, style) for style in styles) if styles else qfont_db.isScalable(family)
     warnings = []
     if family in WINDOWS_LEGACY_RASTER_FAMILIES:
@@ -868,7 +875,9 @@ def _system_entry(qfont_db: Any, family: str) -> FontEntry:
             display_family=family,
             qt_family=family,
             style_name=style,
-            weight=int(qfont_db.weight(family, style)),
+            weight=int(
+                font_weight_from_qt(qfont_db.weight(family, style))
+            ),
             aliases={family},
         )
         for style in styles

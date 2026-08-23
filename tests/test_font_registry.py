@@ -5,14 +5,31 @@ from ballontranslator.utils.font_registry import (
     FontFace,
     _candidate_from_parsed_face,
     _disambiguate_duplicate_weights,
+    _system_entry,
     load_custom_group_table,
     load_system_alias_table,
+    qt_family_weights,
 )
 
 
 class _EmptyFontDatabase:
     def styles(self, _family: str) -> list[str]:
         return []
+
+
+class _Qt5FontDatabase:
+    def styles(self, _family: str) -> list[str]:
+        return ['Extra Light', 'Regular', 'Bold']
+
+    def weight(self, _family: str, style: str) -> int:
+        return {
+            'Extra Light': 12,
+            'Regular': 50,
+            'Bold': 75,
+        }[style]
+
+    def isScalable(self, _family: str, _style: str = '') -> bool:
+        return True
 
 
 def _name(label: str, language: str, value: str) -> dict:
@@ -60,6 +77,16 @@ def test_duplicate_vendor_weights_split_only_with_distinct_styles() -> None:
 
     assert [face.weight for face in corrected] == [100, 500, 700]
     assert all('weight_disambiguated_by_style' in face.warnings for face in corrected)
+
+
+def test_qt5_database_weights_are_canonicalized_at_discovery() -> None:
+    database = _Qt5FontDatabase()
+
+    entry = _system_entry(database, 'Example Sans')
+
+    assert qt_family_weights(database, 'Example Sans') == [200, 400, 700]
+    assert entry.weights == [200, 400, 700]
+    assert [face.weight for face in entry.faces] == [700, 200, 400]
 
 
 def test_ambiguous_duplicate_vendor_weights_are_preserved() -> None:
