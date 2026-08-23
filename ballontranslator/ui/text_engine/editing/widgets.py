@@ -12,7 +12,7 @@ from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
 from .context_menu import create_text_edit_context_menu
 from ballontranslator.utils.config import pcfg
-from ...spellcheck import SpellCheckManager, SpellCheckHighlighter
+from ...spellcheck import SpellCheckManager, SpellCheckHighlighter, CJK_PATTERN
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
@@ -271,6 +271,11 @@ class SourceTextEdit(QTextEdit):
                 return
             if not getattr(pcfg, 'spellcheck_enabled', True):
                 return
+            if self.__class__.__name__ == 'SourceTextEdit' and not getattr(pcfg, 'spellcheck_on_source_enabled', False):
+                if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
+                    self.suggestion_popup.hide()
+                self.current_suggestion_word = None
+                return
 
             cursor = self.textCursor()
             if not cursor.hasSelection():
@@ -280,9 +285,9 @@ class SourceTextEdit(QTextEdit):
                 return
 
             selected_text = cursor.selectedText().strip()
-            # Only suggest for a single word
+            # Only suggest for a single alphabetic word, never for CJK characters
             pattern = r'^[^\W\d_]+$'
-            if len(selected_text) > 1 and re.match(pattern, selected_text):
+            if len(selected_text) > 1 and re.match(pattern, selected_text) and not CJK_PATTERN.search(selected_text):
                 if not manager.is_correct(selected_text):
                     self.current_suggestion_word = selected_text
                     

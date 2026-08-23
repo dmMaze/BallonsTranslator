@@ -16,6 +16,9 @@ from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.download_util import download_url_to_file
 from ballontranslator.utils.logger import logger as LOGGER
 
+# Regex pattern matching CJK ideographs, Hiragana, Katakana, and Hangul
+CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f\uac00-\ud7af]')
+
 # Predefined dictionary repository URLs mapping language names to LibreOffice raw URLs.
 DICTIONARY_URLS = {
     "Arabic (ar)": "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic",
@@ -311,7 +314,11 @@ class SpellCheckManager(QObject):
         word_lower = word.lower()
         if word_lower in self.custom_words or word_lower in self.external_words:
             return True
-        
+
+        # Never treat CJK characters (Japanese Kana, Kanji, Korean Hangul) as misspelled
+        if CJK_PATTERN.search(word_lower):
+            return True
+
         # If it contains digits or special chars, ignore it
         if not word_lower.isalpha():
             return True
@@ -333,7 +340,7 @@ class SpellCheckManager(QObject):
         >>> isinstance(manager.get_suggestions("helo"), list)
         True
         """
-        if len(word) > 15:
+        if len(word) > 15 or CJK_PATTERN.search(word):
             return []
 
         if self.spell is None:
@@ -482,15 +489,12 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
 
         # Check if editor is a Source block editor and if spell checking on source is enabled
         editor = self.parent()
-        if editor and not isinstance(editor, QTextEdit):
-            # Fallback if document was passed
-            doc_parent = editor.parent()
-            if doc_parent and isinstance(doc_parent, QTextEdit):
-                editor = doc_parent
-        
-        if editor and isinstance(editor, QTextEdit):
-            editor_class = editor.__class__.__name__
-            if editor_class == 'SourceTextEdit':
+        if editor is not None:
+            if not isinstance(editor, QTextEdit) and hasattr(editor, 'parent'):
+                p = editor.parent()
+                if isinstance(p, QTextEdit):
+                    editor = p
+            if editor.__class__.__name__ == 'SourceTextEdit':
                 if not getattr(pcfg, 'spellcheck_on_source_enabled', False):
                     return
 
@@ -498,7 +502,7 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
         pattern = r'\b[^\W\d_]+\b'
         for match in re.finditer(pattern, text):
             word = match.group(0)
-            if len(word) <= 1:
+            if len(word) <= 1 or CJK_PATTERN.search(word):
                 continue
             
             word_lower = word.lower()
