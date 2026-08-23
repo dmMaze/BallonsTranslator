@@ -14,7 +14,6 @@ from .fontformat import FontWeight, font_weight_from_qt
 LOGGER = logging.getLogger(__name__)
 
 
-FONT_EXTS = {'.ttf', '.otf', '.ttc', '.pfb'}
 NAME_IDS = {
     1: 'family',
     2: 'subfamily',
@@ -191,12 +190,14 @@ class FontRegistry:
     custom_entries: List[FontEntry] = field(default_factory=list)
     system_entries: List[FontEntry] = field(default_factory=list)
     entries_by_key: Dict[str, FontEntry] = field(default_factory=dict)
-    faces_by_key: Dict[str, tuple] = field(default_factory=dict)
+    faces_by_key: Dict[str, tuple[FontEntry, FontFace]] = field(
+        default_factory=dict
+    )
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         self.rebuild_index()
 
-    def rebuild_index(self):
+    def rebuild_index(self) -> None:
         self.entries_by_key = {}
         self.faces_by_key = {}
         for entry in [*self.system_entries, *self.custom_entries]:
@@ -319,7 +320,11 @@ def _sfnt_offsets(data: bytes) -> List[int]:
     return []
 
 
-def _table_offset(data: bytes, sfnt_offset: int, table_tag: bytes) -> Optional[tuple]:
+def _table_offset(
+    data: bytes,
+    sfnt_offset: int,
+    table_tag: bytes,
+) -> Optional[tuple[int, int]]:
     if sfnt_offset + 12 > len(data):
         return None
     num_tables = _read_u16(data, sfnt_offset + 4)
@@ -779,12 +784,19 @@ def collect_custom_faces(font_paths: Iterable[str], qfont_db: Any, locale: str) 
     faces = []
     for font_path_str in font_paths:
         font_path = Path(font_path_str).resolve()
+        if font_path.name.startswith('._'):
+            # macOS AppleDouble sidecars mirror the extension of the real font
+            # but contain only Finder metadata and can never be registered.
+            continue
         font_id = qfont_db.addApplicationFont(str(font_path))
         qt_families = [
             family.strip()
             for family in (qfont_db.applicationFontFamilies(font_id) if font_id >= 0 else [])
             if family and family.strip()
         ]
+        if font_id < 0 or not qt_families:
+            LOGGER.warning('Unable to register custom font %s', font_path)
+            continue
         try:
             parsed_faces = parse_font_names(font_path)
         except Exception as exc:
@@ -1003,13 +1015,14 @@ def build_font_registry(
     font_paths: Iterable[str],
     system_families: Iterable[str],
     locale: str = 'en-US',
-    font_registry_paths: Iterable[str] = (),
+    font_registry_path: Optional[str] = None,
 ) -> FontRegistry:
-    custom_group_table = {}
-    system_alias_table = {}
-    for path in font_registry_paths:
-        custom_group_table.update(load_custom_group_table(path, locale))
-        system_alias_table.update(load_system_alias_table(path, locale))
+    custom_group_table = load_custom_group_table(
+        font_registry_path, locale
+    )
+    system_alias_table = load_system_alias_table(
+        font_registry_path, locale
+    )
     custom_faces = collect_custom_faces(font_paths, qfont_db, locale)
     custom_entries = build_custom_entries(custom_faces, custom_group_table)
     system_entries = [_system_entry(qfont_db, family) for family in sorted(system_families, key=str.casefold)]

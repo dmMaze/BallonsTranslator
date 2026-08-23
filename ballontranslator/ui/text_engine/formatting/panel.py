@@ -4,7 +4,6 @@ from qtpy import QT6
 from qtpy.QtWidgets import (
     QApplication,
     QComboBox,
-    QFontComboBox,
     QFrame,
     QHBoxLayout,
     QLineEdit,
@@ -783,7 +782,9 @@ class FontFormatPanel(Widget):
         self.familybox.setToolTip(self.tr("Font Family"))
         self.familybox.param_changed.connect(self.on_font_family_changed)
         self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        if shared.FONT_FAMILIES:
+        # MainWindow applies registry exclusions once after config setup. Avoid
+        # constructing the full legacy list here and immediately replacing it.
+        if shared.FONT_FAMILIES and shared.FONT_REGISTRY is None:
             self.familybox.update_font_list(
                 shared.get_filtered_font_list(shared.FONT_FAMILIES)
             )

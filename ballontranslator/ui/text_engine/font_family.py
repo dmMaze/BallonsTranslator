@@ -175,10 +175,8 @@ def normalize_document_font_families(document: QTextDocument) -> int:
 
 def restore_project_font_families_in_html(html: str) -> str:
     """Hide internal aliases in serialized ``font-family`` declarations."""
-    replacements = {
-        alias: _PROJECT_FAMILY_BY_QT_NAME[alias.casefold()]
-        for alias in _QT_FAMILY_BY_PROJECT_NAME.values()
-    }
+    replacements: dict[str, str] = {}
+    storage_by_qt_key: dict[str, str] = {}
     registry = getattr(shared, 'FONT_REGISTRY', None)
     if registry is not None:
         storage_by_qt_name: dict[str, set[str]] = {}
@@ -189,7 +187,10 @@ def restore_project_font_families_in_html(html: str) -> str:
                 qt_family = face.qt_family
                 storage_family = (
                     face.storage_family
-                    if hasattr(face, 'storage_family')
+                    if (
+                        entry.is_pseudo_group
+                        and hasattr(face, 'storage_family')
+                    )
                     else entry.canonical_family
                 )
                 key = qt_family.casefold()
@@ -199,9 +200,14 @@ def restore_project_font_families_in_html(html: str) -> str:
                 )
         for key, storage_names in storage_by_qt_name.items():
             if len(storage_names) == 1:
-                replacements.setdefault(
-                    qt_names[key], next(iter(storage_names))
-                )
+                storage_family = next(iter(storage_names))
+                storage_by_qt_key[key] = storage_family
+                replacements[qt_names[key]] = storage_family
+    for alias in _QT_FAMILY_BY_PROJECT_NAME.values():
+        project_family = _PROJECT_FAMILY_BY_QT_NAME[alias.casefold()]
+        replacements[alias] = storage_by_qt_key.get(
+            project_family.casefold(), project_family
+        )
     if not replacements:
         return html
 

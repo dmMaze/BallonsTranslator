@@ -171,6 +171,61 @@ class FontFamilyResolutionTests(unittest.TestCase):
         self.assertIn("font-family:'Example Bold'", restored)
         self.assertNotIn("font-family:'Example'", restored)
 
+    def test_html_exports_canonical_system_alias_name(self):
+        face = FontFace(
+            '바탕', '바탕', '바탕', 'Regular', 400, aliases={'Batang'}
+        )
+        entry = FontEntry(
+            'Batang', '바탕', '바탕', 'system',
+            faces=[face], weights=[400], aliases={'Batang', '바탕'},
+            alias_source='optional-table',
+        )
+        html = "<span style=\"font-family:'바탕'\">x</span>"
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(system_entries=[entry]),
+        ):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn("font-family:'Batang'", restored)
+        self.assertNotIn("font-family:'바탕'", restored)
+
+    def test_internal_qt_alias_exports_registry_canonical_name(self):
+        qt_family = '[localized-vendor]Synthetic Font'
+        internal = register_qt_font_family_aliases(
+            [qt_family], lambda _family: []
+        )[qt_family]
+        face = FontFace(
+            'Canonical Synthetic Font',
+            qt_family,
+            qt_family,
+            'Regular',
+            400,
+        )
+        entry = FontEntry(
+            'Canonical Synthetic Font',
+            qt_family,
+            qt_family,
+            'custom',
+            faces=[face],
+            weights=[400],
+        )
+        html = f"<span style=\"font-family:'{internal}'\">x</span>"
+
+        with patch.object(
+            shared,
+            'FONT_REGISTRY',
+            FontRegistry(custom_entries=[entry]),
+        ):
+            restored = restore_project_font_families_in_html(html)
+
+        self.assertIn(
+            "font-family:'Canonical Synthetic Font'", restored
+        )
+        self.assertNotIn(internal, restored)
+
     def test_buding_uses_real_face_through_horizontal_vertical_switch(self):
         family = '[toolbox]BuDing-JF'
         database = QFontDatabase if QT6 else QFontDatabase()

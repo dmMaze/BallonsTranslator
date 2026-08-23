@@ -22,6 +22,9 @@ def _write_update_dirs(root: Path, marker: str) -> None:
     (root / 'resources' / 'themes.json').write_text(f'{{"{marker}": true}}', encoding='utf8')
     builtin_dir = root / 'config' / 'llm_profile_builtin'
     builtin_dir.mkdir(parents=True)
+    (root / 'config' / 'font_registry_overrides.json').write_text(
+        f'{marker} font overrides', encoding='utf8'
+    )
     (builtin_dir / 'deepseek.yaml').write_text(f'{marker} profile', encoding='utf8')
     (builtin_dir / 'nested').mkdir()
     (builtin_dir / 'nested' / 'extra.yaml').write_text(f'{marker} nested profile', encoding='utf8')
@@ -268,6 +271,12 @@ class UpdaterTests(unittest.TestCase):
                 'new nested profile',
             )
             self.assertEqual((root / 'config' / 'textstyles' / 'user.json').read_text(encoding='utf8'), 'local textstyle')
+            self.assertEqual(
+                (root / 'config' / 'font_registry_overrides.json').read_text(
+                    encoding='utf8'
+                ),
+                'old font overrides',
+            )
             for filename in updater.SOURCE_UPDATE_FILES:
                 self.assertEqual((root / filename).read_text(encoding='utf8'), f'new {filename}')
             self.assertFalse(zip_path.exists())

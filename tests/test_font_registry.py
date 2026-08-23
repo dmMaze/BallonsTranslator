@@ -44,6 +44,18 @@ class _ApplicationFontDatabase(_EmptyFontDatabase):
         return ['Example Type 1']
 
 
+class _RejectedFontDatabase(_EmptyFontDatabase):
+    def __init__(self) -> None:
+        self.paths: list[str] = []
+
+    def addApplicationFont(self, _path: str) -> int:
+        self.paths.append(_path)
+        return -1
+
+    def applicationFontFamilies(self, _font_id: int) -> list[str]:
+        raise AssertionError('families must not be queried for a rejected font')
+
+
 def _name(label: str, language: str, value: str) -> dict:
     return {
         'label': label,
@@ -215,6 +227,32 @@ def test_non_sfnt_font_registered_by_qt_remains_available(
     assert faces[0].qt_family == 'Example Type 1'
 
 
+def test_font_rejected_by_qt_is_not_added_to_registry(
+    tmp_path: Path,
+) -> None:
+    font_path = tmp_path / 'broken.ttf'
+    font_path.write_bytes(b'not a font')
+
+    database = _RejectedFontDatabase()
+    faces = collect_custom_faces([str(font_path)], database, 'en-US')
+
+    assert faces == []
+    assert database.paths == [str(font_path.resolve())]
+
+
+def test_macos_appledouble_sidecar_is_not_registered(
+    tmp_path: Path,
+) -> None:
+    font_path = tmp_path / '._example.ttf'
+    font_path.write_bytes(b'finder metadata')
+
+    database = _RejectedFontDatabase()
+    faces = collect_custom_faces([str(font_path)], database, 'en-US')
+
+    assert faces == []
+    assert database.paths == []
+
+
 def test_optional_display_alias_follows_ui_locale(tmp_path: Path) -> None:
     registry_path = tmp_path / 'font_registry.json'
     registry_path.write_text(
@@ -230,15 +268,9 @@ def test_optional_display_alias_follows_ui_locale(tmp_path: Path) -> None:
     assert english['batang']['display'] == 'Batang'
 
 
-def test_user_registry_overrides_shipped_display(tmp_path: Path) -> None:
-    shipped = tmp_path / 'shipped.json'
-    user = tmp_path / 'user.json'
-    shipped.write_text(
-        '{"system_aliases":[{"canonical":"Batang",'
-        '"display":"Shipped"}]}',
-        encoding='utf-8',
-    )
-    user.write_text(
+def test_registry_build_uses_override_file(tmp_path: Path) -> None:
+    registry_path = tmp_path / 'font_registry_overrides.json'
+    registry_path.write_text(
         '{"system_aliases":[{"canonical":"Batang",'
         '"display":"User"}]}',
         encoding='utf-8',
@@ -248,7 +280,7 @@ def test_user_registry_overrides_shipped_display(tmp_path: Path) -> None:
         _Qt5FontDatabase(),
         [],
         ['Batang'],
-        font_registry_paths=[str(shipped), str(user)],
+        font_registry_path=str(registry_path),
     )
 
     assert registry.entries()[0].display_family == 'User'
