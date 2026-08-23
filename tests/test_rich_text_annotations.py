@@ -111,6 +111,11 @@ from ballontranslator.utils.fontformat import (
     pt2px,
 )
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_effects import (
+    ShadowEffect,
+    StrokeEffect,
+    TextEffectStack,
+)
 
 
 def _format_at(document: QTextDocument, start: int, length: int = 1):
@@ -1934,10 +1939,14 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.vertical = True
         block.translation = '年12月'
         block.fontformat.glyph_slant_angle = 12.0
-        block.fontformat.stroke_width = 0.08
-        block.fontformat.shadow_radius = 0.06
-        block.fontformat.shadow_strength = 0.7
-        block.fontformat.shadow_offset = [0.05, 0.04]
+        block.fontformat.text_effects = TextEffectStack(effects=(
+            StrokeEffect(width=0.08),
+            ShadowEffect(
+                opacity=0.7,
+                blur=0.06,
+                offset=(0.05, 0.04),
+            ),
+        ))
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()
         scene.addItem(item)
@@ -2003,9 +2012,13 @@ class RichTextAnnotationTest(unittest.TestCase):
                 if effect == 'stroke':
                     block.fontformat.stroke_width = 0.2
                 else:
-                    block.fontformat.shadow_radius = 0.04
-                    block.fontformat.shadow_strength = 0.8
-                    block.fontformat.shadow_offset = [0.04, 0.04]
+                    block.fontformat.text_effects = TextEffectStack(effects=(
+                        ShadowEffect(
+                            opacity=0.8,
+                            blur=0.04,
+                            offset=(0.04, 0.04),
+                        ),
+                    ))
                 item = TextBlkItem(block, 0)
                 scene = QGraphicsScene()
                 scene.addItem(item)
@@ -2269,8 +2282,9 @@ class RichTextAnnotationTest(unittest.TestCase):
                 if effect == 'stroke width':
                     block.fontformat.stroke_width = 0.05
                 else:
-                    block.fontformat.shadow_radius = 0.1
-                    block.fontformat.shadow_strength = 0.8
+                    block.fontformat.text_effects = TextEffectStack(effects=(
+                        ShadowEffect(opacity=0.8, blur=0.1),
+                    ))
                 item = TextBlkItem(block, 0)
                 item.setSelected(True)
                 scene = QGraphicsScene()
@@ -2283,9 +2297,13 @@ class RichTextAnnotationTest(unittest.TestCase):
                 if effect == 'stroke width':
                     item.setStrokeWidth(0.2)
                 else:
-                    shadow = item.fontformat.deepcopy()
-                    shadow.shadow_color = [255, 0, 0]
-                    item.setShadow(shadow)
+                    item.set_text_effects(TextEffectStack(effects=(
+                        ShadowEffect(
+                            opacity=0.8,
+                            blur=0.1,
+                            color=(255, 0, 0),
+                        ),
+                    )))
                 self.app.processEvents()
 
                 self.assertFalse(item.isEditing())

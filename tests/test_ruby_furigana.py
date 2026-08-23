@@ -59,6 +59,11 @@ from ballontranslator.utils.fontformat import (
     TextTransformStack,
 )
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_effects import (
+    ShadowEffect,
+    StrokeEffect,
+    TextEffectStack,
+)
 
 
 def _select(document: QTextDocument, start: int, end: int) -> QTextCursor:
@@ -1636,9 +1641,10 @@ class RubyFuriganaTest(unittest.TestCase):
         self.assertNotEqual(neutral_bounds, slanted_bounds)
 
         shadow = item.fontformat.deepcopy()
-        shadow.stroke_width = 0.2
-        shadow.shadow_strength = 1.0
-        shadow.shadow_radius = 0.2
+        shadow.text_effects = TextEffectStack(effects=(
+            StrokeEffect(width=0.2),
+            ShadowEffect(blur=0.2),
+        ))
         shadow.gradient_start_color = [255, 80, 80]
         shadow.gradient_end_color = [60, 100, 255]
         item.set_fontformat(shadow)

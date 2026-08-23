@@ -28,6 +28,8 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
@@ -212,6 +214,14 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         preset.update_style.assert_called_once_with(self.panel.global_format)
 
+        preset.reset_mock()
+        self.assertTrue(self.panel.text_effect_session.add_effect('shadow'))
+        self.assertIsInstance(
+            self.panel.global_format.text_effects.effects[-1], ShadowEffect
+        )
+        self.assertEqual(self.canvas.stack.count(), 0)
+        preset.update_style.assert_called_once_with(self.panel.global_format)
+
     def test_equal_unowned_active_format_is_not_a_global_effect_owner(self):
         before = self.panel.global_format.text_effects
         unowned = self.panel.global_format.deepcopy()
@@ -350,6 +360,114 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
 
+    def test_shadow_numeric_preview_commit_escape_keeps_card(self):
+        before = self._stack(ShadowEffect(offset=(0.1, 0.2), blur=0.05))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.shadow_cards[0]
+        editor = card.offset_x_control.editor
+
+        editor.setText('0.45')
+        editor.textEdited.emit('0.45')
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertEqual(item.effective_text_effects()[0].offset[0], 0.45)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+        editor.returnPressed.emit()
+        committed = item.blk.fontformat.text_effects
+        self.assertEqual(committed[0].offset, (0.45, 0.2))
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertIs(self.panel.texteffect_panel.shadow_cards[0], card)
+
+        blur_editor = card.blur_control.editor
+        blur_editor.setText('0.30')
+        blur_editor.textEdited.emit('0.30')
+        self.assertEqual(item.effective_text_effects()[0].blur, 0.3)
+        QApplication.sendEvent(
+            blur_editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        self.assertEqual(item.effective_text_effects(), committed)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_add_shadow_hollow_type_controls_and_uniqueness(self):
+        item = self._item(TextEffectStack())
+        self.panel.set_textblk_item(item)
+        effect_panel = self.panel.texteffect_panel
+
+        effect_panel.add_effect_actions['shadow'].trigger()
+        self.assertIsInstance(
+            item.blk.fontformat.text_effects[0], ShadowEffect
+        )
+        self.assertEqual(self.canvas.stack.count(), 1)
+        shadow_card = effect_panel.shadow_cards[0]
+        shadow_card.type_selector.setCurrentIndex(
+            shadow_card.type_selector.findData('long')
+        )
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].shadow_type, 'long'
+        )
+        self.assertTrue(shadow_card.blur_control.isHidden())
+        self.assertTrue(shadow_card.spread_control.isHidden())
+        self.assertEqual(self.canvas.stack.count(), 2)
+
+        effect_panel.add_effect_actions['hollow'].trigger()
+        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertIsInstance(
+            item.blk.fontformat.text_effects[1], HollowEffect
+        )
+        self.assertFalse(effect_panel.add_effect_actions['hollow'].isEnabled())
+        self.assertFalse(
+            self.panel.text_effect_session.add_effect('hollow')
+        )
+        self.assertEqual(self.canvas.stack.count(), 3)
+
+        effect_panel.hollow_card.enabled_checkbox.click()
+        self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
+        self.assertEqual(self.canvas.stack.count(), 4)
+        effect_panel.hollow_card.delete_button.click()
+        self.assertFalse(any(
+            isinstance(effect, HollowEffect)
+            for effect in item.blk.fontformat.text_effects
+        ))
+        self.assertEqual(self.canvas.stack.count(), 5)
+
+    def test_shadow_reorder_is_phase_safe_and_mixed_type_does_not_guess(self):
+        top = ShadowEffect(color=(255, 0, 0))
+        inner = ShadowEffect(shadow_type='inner', color=(0, 255, 0))
+        bottom = ShadowEffect(color=(0, 0, 255))
+        first = self._item(self._stack(
+            top, StrokeEffect(width=0.2), inner, bottom
+        ))
+        self.panel.set_textblk_item(first)
+        cards = self.panel.texteffect_panel.shadow_cards
+
+        self.assertFalse(cards[1].move_up_button.isEnabled())
+        cards[2].move_up_button.click()
+        effects = first.blk.fontformat.text_effects.effects
+        self.assertEqual(effects[0].color, (0, 0, 255))
+        self.assertIsInstance(effects[1], StrokeEffect)
+        self.assertEqual(effects[2].shadow_type, 'inner')
+        self.assertEqual(effects[3].color, (255, 0, 0))
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        second = self._item(self._stack(
+            ShadowEffect(shadow_type='inner'),
+            StrokeEffect(width=0.3),
+            ShadowEffect(shadow_type='inner'),
+            ShadowEffect(),
+        ))
+        self.canvas.selected = [first, second]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.shadow_cards[0]
+        self.assertEqual(mixed_card.type_selector.currentIndex(), -1)
+        self.assertFalse(mixed_card.move_up_button.isEnabled())
+        self.assertFalse(mixed_card.move_down_button.isEnabled())
+
     def test_page_change_commits_pending_effect_before_owner_merge(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))
         self.panel.set_textblk_item(item)
@@ -410,11 +528,19 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(
             hasattr(self.panel.textadvancedfmt_panel, 'opacity_box')
         )
+        self.assertFalse(
+            hasattr(self.panel.textadvancedfmt_panel, 'shadow_group')
+        )
         self.assertIsInstance(self.panel.colorPicker, ColorPickerLabel)
         self.assertNotIsInstance(self.panel.colorPicker, NestedColorPickerLabel)
         self.assertNotIn('opacity', handle_ffmt_change)
         self.assertNotIn('srgb', handle_ffmt_change)
         self.assertNotIn('stroke_width', handle_ffmt_change)
+        for name in (
+            'shadow_radius', 'shadow_strength',
+            'shadow_color', 'shadow_offset',
+        ):
+            self.assertNotIn(name, handle_ffmt_change)
         self.assertFalse(
             self.panel.texteffect_panel.mask_brush_button.isEnabled()
         )

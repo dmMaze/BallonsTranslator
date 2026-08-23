@@ -6,6 +6,7 @@ from qtpy.QtCore import QSignalBlocker, QTimer, Signal, QSize, Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -18,9 +19,15 @@ from qtpy.QtWidgets import (
 
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    SHADOW_BLUR_LIMIT,
+    SHADOW_OFFSET_LIMIT,
+    SHADOW_SPREAD_LIMIT,
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
+    effect_phase,
 )
 
 from ...custom_widget import ColorPickerLabel, PanelArea
@@ -193,9 +200,6 @@ class StrokeEffectCard(QFrame):
         button.clicked.connect(self._on_action_clicked)
         return button
 
-    def set_index(self, index: int) -> None:
-        self.index = int(index)
-
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
         self.move_down_button.setEnabled(down)
@@ -292,8 +296,369 @@ class StrokeEffectCard(QFrame):
         )
 
 
+class ShadowEffectCard(QFrame):
+    """Edit one typed Shadow at its complete-stack index.
+
+    >>> ShadowEffectCard.__name__
+    'ShadowEffectCard'
+    """
+
+    value_commit_requested = Signal(int, str, object)
+    value_preview_requested = Signal(int, str, object)
+    parameter_preview_requested = Signal(int, str, object)
+    parameter_commit_requested = Signal(int, str, object)
+    preview_canceled = Signal(int, str)
+    remove_requested = Signal(int)
+    move_requested = Signal(int, int)
+    color_dialog_active_changed = Signal(bool)
+
+    def __init__(self, index: int, parent=None) -> None:
+        super().__init__(parent)
+        self.index = int(index)
+        self.setObjectName('TextEffectParameterPanel')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
+        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
+        self.enabled_checkbox.clicked.connect(self._on_enabled_clicked)
+        self.title_label = QLabel(self.tr('Shadow'), self)
+        self.title_label.setObjectName('TextEffectParameterTitle')
+        self.title_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.move_up_button = self._action_button(
+            'chevron-up.svg', self.tr('Move Up'), -1
+        )
+        self.move_down_button = self._action_button(
+            'chevron-down.svg', self.tr('Move Down'), 1
+        )
+        self.delete_button = self._action_button(
+            'titlebar_close.svg', self.tr('Delete Shadow'), 0
+        )
+        self.delete_button.setObjectName('TextEffectCloseButton')
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(5)
+        header.addWidget(self.enabled_checkbox)
+        header.addWidget(self.title_label)
+        header.addWidget(self.move_up_button)
+        header.addWidget(self.move_down_button)
+        header.addWidget(self.delete_button)
+
+        type_label = QLabel(self.tr('Type'), self)
+        type_label.setObjectName('TextEffectParamLabel')
+        self.type_selector = QComboBox(self)
+        self.type_selector.setObjectName('TextEffectTypeSelector')
+        self.type_selector.setPlaceholderText(self.tr('Mixed'))
+        for label, value in (
+            (self.tr('Drop'), 'drop'),
+            (self.tr('Inner'), 'inner'),
+            (self.tr('Long / Extrude'), 'long'),
+        ):
+            self.type_selector.addItem(label, value)
+        self.type_selector.currentIndexChanged.connect(
+            self._on_type_changed
+        )
+        type_row = QHBoxLayout()
+        type_row.setContentsMargins(0, 0, 0, 0)
+        type_row.addWidget(type_label)
+        type_row.addWidget(self.type_selector)
+
+        self.opacity_control = EffectNumericControl(
+            self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
+            self, decimals=1,
+        )
+        self.offset_x_control = EffectNumericControl(
+            self.tr('X Offset'), 'offset_x', 1.0,
+            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT, '', 0.01,
+            self, decimals=2,
+        )
+        self.offset_y_control = EffectNumericControl(
+            self.tr('Y Offset'), 'offset_y', 1.0,
+            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT, '', 0.01,
+            self, decimals=2,
+        )
+        self.blur_control = EffectNumericControl(
+            self.tr('Blur'), 'blur', 1.0, 0.0,
+            SHADOW_BLUR_LIMIT, '', 0.01,
+            self, decimals=2,
+        )
+        self.spread_control = EffectNumericControl(
+            self.tr('Spread'), 'spread', 1.0, 0.0,
+            SHADOW_SPREAD_LIMIT, '', 0.01,
+            self, decimals=2,
+        )
+        for control in self.iter_controls():
+            control.editor.setProperty('cardEditor', True)
+            control.commit_requested.connect(self._on_control_commit)
+            control.value_preview_requested.connect(self._on_value_preview)
+            control.preview_requested.connect(self._on_parameter_preview)
+            control.drag_commit_requested.connect(self._on_parameter_commit)
+            control.preview_canceled.connect(self._on_preview_canceled)
+            control.value_preview_canceled.connect(
+                self._on_preview_canceled
+            )
+
+        color_label = QLabel(self.tr('Color'), self)
+        color_label.setObjectName('TextEffectParamLabel')
+        self.color_picker = ColorPickerLabel(self, param_name='color')
+        self.color_picker.setObjectName('TextEffectColorPicker')
+        self.color_picker.setFixedSize(22, 22)
+        self.color_picker.setToolTip(self.tr('Shadow Color'))
+        self.color_picker.changingColor.connect(
+            self._on_color_dialog_opened
+        )
+        self.color_picker.colorChanged.connect(self._on_color_changed)
+        self.color_picker.apply_color.connect(self._on_apply_color)
+        color_row = QHBoxLayout()
+        color_row.setContentsMargins(0, 0, 0, 0)
+        color_row.addWidget(color_label)
+        color_row.addWidget(self.color_picker)
+        color_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(8)
+        controls.setVerticalSpacing(4)
+        controls.addLayout(type_row, 0, 0)
+        controls.addLayout(color_row, 0, 1)
+        controls.addWidget(self.opacity_control, 1, 0, 1, 2)
+        controls.addWidget(self.offset_x_control, 2, 0)
+        controls.addWidget(self.offset_y_control, 2, 1)
+        controls.addWidget(self.blur_control, 3, 0)
+        controls.addWidget(self.spread_control, 3, 1)
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(6)
+        layout.addLayout(header)
+        layout.addLayout(controls)
+
+    def _action_button(
+        self, icon_name: str, tooltip: str, direction: int
+    ) -> QToolButton:
+        button = QToolButton(self)
+        button.setObjectName('TextEffectMoveButton')
+        button.setIcon(QIcon(themed_icon_path(icon_name)))
+        button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
+        button.setProperty('move-direction', direction)
+        button.setFixedSize(18, 18)
+        button.clicked.connect(self._on_action_clicked)
+        return button
+
+    def set_move_enabled(self, up: bool, down: bool) -> None:
+        self.move_up_button.setEnabled(up)
+        self.move_down_button.setEnabled(down)
+
+    def set_values(self, shadows: Sequence[ShadowEffect]) -> None:
+        enabled_values = [shadow.enabled for shadow in shadows]
+        enabled = (
+            enabled_values[0]
+            if enabled_values
+            and all(value == enabled_values[0] for value in enabled_values)
+            else None
+        )
+        with QSignalBlocker(self.enabled_checkbox):
+            self.enabled_checkbox.setTristate(enabled is None)
+            if enabled is None:
+                self.enabled_checkbox.setCheckState(
+                    Qt.CheckState.PartiallyChecked
+                )
+            else:
+                self.enabled_checkbox.setChecked(enabled)
+
+        types = [shadow.shadow_type for shadow in shadows]
+        common_type = (
+            types[0]
+            if types and all(value == types[0] for value in types)
+            else None
+        )
+        with QSignalBlocker(self.type_selector):
+            self.type_selector.setCurrentIndex(
+                -1 if common_type is None
+                else self.type_selector.findData(common_type)
+            )
+        show_soft_controls = common_type != 'long'
+        self.blur_control.setVisible(show_soft_controls)
+        self.spread_control.setVisible(show_soft_controls)
+        if common_type == 'inner':
+            self.spread_control.label.setText(self.tr('Choke'))
+        elif common_type is None:
+            self.spread_control.label.setText(self.tr('Spread / Choke'))
+        else:
+            self.spread_control.label.setText(self.tr('Spread'))
+
+        for name, control in (
+            ('opacity', self.opacity_control),
+            ('offset_x', self.offset_x_control),
+            ('offset_y', self.offset_y_control),
+            ('blur', self.blur_control),
+            ('spread', self.spread_control),
+        ):
+            values = [
+                shadow.offset[0]
+                if name == 'offset_x'
+                else shadow.offset[1]
+                if name == 'offset_y'
+                else getattr(shadow, name)
+                for shadow in shadows
+            ]
+            common = (
+                values[0]
+                if values and all(value == values[0] for value in values)
+                else None
+            )
+            control.set_model_value(common, values)
+
+        colors = [shadow.color for shadow in shadows]
+        common_color = (
+            colors[0]
+            if colors and all(color == colors[0] for color in colors)
+            else None
+        )
+        if common_color is None:
+            self.color_picker.color = None
+            self.color_picker.setStyleSheet('')
+            self.color_picker.setToolTip(self.tr('Mixed'))
+        else:
+            self.color_picker.setPickerColor(common_color)
+            self.color_picker.setToolTip(self.tr('Shadow Color'))
+
+    def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
+        return (
+            self.opacity_control,
+            self.offset_x_control,
+            self.offset_y_control,
+            self.blur_control,
+            self.spread_control,
+        )
+
+    def _on_enabled_clicked(self, enabled: bool) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'enabled', bool(enabled)
+        )
+
+    def _on_type_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'shadow_type',
+                self.type_selector.itemData(combo_index),
+            )
+
+    def _on_control_commit(self, name: str, value) -> None:
+        self.value_commit_requested.emit(self.index, name, value)
+
+    def _on_value_preview(self, name: str, value) -> None:
+        self.value_preview_requested.emit(self.index, name, value)
+
+    def _on_parameter_preview(self, name: str, delta) -> None:
+        self.parameter_preview_requested.emit(self.index, name, delta)
+
+    def _on_parameter_commit(self, name: str, delta) -> None:
+        self.parameter_commit_requested.emit(self.index, name, delta)
+
+    def _on_preview_canceled(self, name: str) -> None:
+        self.preview_canceled.emit(self.index, name)
+
+    def _on_action_clicked(self) -> None:
+        button = self.sender()
+        direction = int(button.property('move-direction'))
+        if direction == 0:
+            self.remove_requested.emit(self.index)
+        else:
+            self.move_requested.emit(self.index, direction)
+
+    def _on_color_dialog_opened(self) -> None:
+        self.color_dialog_active_changed.emit(True)
+
+    def _on_color_changed(self, accepted: bool) -> None:
+        self.color_dialog_active_changed.emit(False)
+        if accepted:
+            self.value_commit_requested.emit(
+                self.index, 'color', self.color_picker.rgb()
+            )
+
+    def _on_apply_color(self, _name: str, color: Tuple[int, int, int]) -> None:
+        self.value_commit_requested.emit(self.index, 'color', color)
+
+
+class HollowEffectCard(QFrame):
+    """Edit the single structural Hollow effect.
+
+    >>> HollowEffectCard.__name__
+    'HollowEffectCard'
+    """
+
+    value_commit_requested = Signal(int, str, object)
+    remove_requested = Signal(int)
+
+    def __init__(self, index: int, parent=None) -> None:
+        super().__init__(parent)
+        self.index = int(index)
+        self.setObjectName('TextEffectParameterPanel')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.enabled_checkbox = QCheckBox(self.tr('Enabled'), self)
+        self.enabled_checkbox.setObjectName('TextEffectEnabledCheckBox')
+        self.enabled_checkbox.clicked.connect(self._on_enabled_clicked)
+        self.title_label = QLabel(self.tr('Hollow'), self)
+        self.title_label.setObjectName('TextEffectParameterTitle')
+        self.title_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.delete_button = QToolButton(self)
+        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.delete_button.setIcon(
+            QIcon(themed_icon_path('titlebar_close.svg'))
+        )
+        self.delete_button.setToolTip(self.tr('Delete Hollow'))
+        self.delete_button.setAccessibleName(self.tr('Delete Hollow'))
+        self.delete_button.setFixedSize(18, 18)
+        self.delete_button.clicked.connect(self._on_delete_clicked)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(5)
+        layout.addWidget(self.enabled_checkbox)
+        layout.addWidget(self.title_label)
+        layout.addWidget(self.delete_button)
+
+    def set_values(self, hollows: Sequence[HollowEffect]) -> None:
+        values = [hollow.enabled for hollow in hollows]
+        common = (
+            values[0]
+            if values and all(value == values[0] for value in values)
+            else None
+        )
+        with QSignalBlocker(self.enabled_checkbox):
+            self.enabled_checkbox.setTristate(common is None)
+            if common is None:
+                self.enabled_checkbox.setCheckState(
+                    Qt.CheckState.PartiallyChecked
+                )
+            else:
+                self.enabled_checkbox.setChecked(common)
+
+    def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
+        return ()
+
+    def _on_enabled_clicked(self, enabled: bool) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'enabled', bool(enabled)
+        )
+
+    def _on_delete_clicked(self) -> None:
+        self.remove_requested.emit(self.index)
+
+
 class TextEffectPanel(PanelArea):
-    """Own Overall Opacity and repeatable solid Stroke cards.
+    """Own Overall Opacity and typed effect cards.
 
     >>> TextEffectPanel.__name__
     'TextEffectPanel'
@@ -304,9 +669,9 @@ class TextEffectPanel(PanelArea):
     parameter_preview_requested = Signal(int, str, object)
     parameter_commit_requested = Signal(int, str, object)
     preview_canceled = Signal(int, str)
-    add_stroke_requested = Signal()
-    remove_stroke_requested = Signal(int)
-    move_stroke_requested = Signal(int, int)
+    add_effect_requested = Signal(str)
+    remove_effect_requested = Signal(int)
+    move_effect_requested = Signal(int, int)
     color_dialog_active_changed = Signal(bool)
 
     MAX_CONTENT_HEIGHT = 480
@@ -387,9 +752,16 @@ class TextEffectPanel(PanelArea):
         )
         add_menu = QMenu(self.add_effect_button)
         add_menu.setObjectName('TextEffectAddMenu')
-        stroke_action = add_menu.addAction(self.tr('Stroke'))
-        stroke_action.setData('stroke')
-        stroke_action.triggered.connect(self._on_add_effect_triggered)
+        self.add_effect_actions = {}
+        for label, effect_type in (
+            (self.tr('Stroke'), 'stroke'),
+            (self.tr('Shadow'), 'shadow'),
+            (self.tr('Hollow'), 'hollow'),
+        ):
+            action = add_menu.addAction(label)
+            action.setData(effect_type)
+            action.triggered.connect(self._on_add_effect_triggered)
+            self.add_effect_actions[effect_type] = action
         self.add_effect_button.setMenu(add_menu)
 
         self.mixed_label = QLabel(self.tr('Mixed'), self.scrollContent)
@@ -399,7 +771,10 @@ class TextEffectPanel(PanelArea):
         self.cards_layout = QVBoxLayout()
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.cards_layout.setSpacing(8)
+        self.effect_cards = []
         self.stroke_cards = []
+        self.shadow_cards = []
+        self.hollow_card = None
         self._effect_types = None
 
         layout = QVBoxLayout()
@@ -418,47 +793,55 @@ class TextEffectPanel(PanelArea):
         self._sync_content_height()
         QTimer.singleShot(0, self._sync_content_height)
 
-    def _clear_stroke_cards(self) -> None:
-        for card in self.stroke_cards:
+    def _clear_effect_cards(self) -> None:
+        for card in self.effect_cards:
             self.cards_layout.removeWidget(card)
             card.setParent(None)
             card.deleteLater()
+        self.effect_cards = []
         self.stroke_cards = []
+        self.shadow_cards = []
+        self.hollow_card = None
 
-    def _rebuild_stroke_cards(self, effect_types: Sequence[str]) -> None:
+    def _rebuild_effect_cards(self, effect_types: Sequence[str]) -> None:
         effect_types = tuple(effect_types)
         if effect_types == self._effect_types:
             return
-        self._clear_stroke_cards()
+        self._clear_effect_cards()
         self._effect_types = effect_types
         for index, effect_type in enumerate(effect_types):
-            if effect_type != 'stroke':
+            if effect_type == 'stroke':
+                card = StrokeEffectCard(index, self.scrollContent)
+                self.stroke_cards.append(card)
+            elif effect_type == 'shadow':
+                card = ShadowEffectCard(index, self.scrollContent)
+                self.shadow_cards.append(card)
+            elif effect_type == 'hollow':
+                card = HollowEffectCard(index, self.scrollContent)
+                self.hollow_card = card
+            else:
                 continue
-            card = StrokeEffectCard(index, self.scrollContent)
             card.value_commit_requested.connect(
                 self.value_commit_requested.emit
             )
-            card.value_preview_requested.connect(
-                self.value_preview_requested.emit
-            )
-            card.parameter_preview_requested.connect(
-                self.parameter_preview_requested.emit
-            )
-            card.parameter_commit_requested.connect(
-                self.parameter_commit_requested.emit
-            )
-            card.preview_canceled.connect(self.preview_canceled.emit)
-            card.remove_requested.connect(self.remove_stroke_requested.emit)
-            card.move_requested.connect(self.move_stroke_requested.emit)
-            card.color_dialog_active_changed.connect(
-                self.color_dialog_active_changed.emit
-            )
+            if not isinstance(card, HollowEffectCard):
+                card.value_preview_requested.connect(
+                    self.value_preview_requested.emit
+                )
+                card.parameter_preview_requested.connect(
+                    self.parameter_preview_requested.emit
+                )
+                card.parameter_commit_requested.connect(
+                    self.parameter_commit_requested.emit
+                )
+                card.preview_canceled.connect(self.preview_canceled.emit)
+                card.move_requested.connect(self.move_effect_requested.emit)
+                card.color_dialog_active_changed.connect(
+                    self.color_dialog_active_changed.emit
+                )
+            card.remove_requested.connect(self.remove_effect_requested.emit)
             self.cards_layout.addWidget(card)
-            self.stroke_cards.append(card)
-        for position, card in enumerate(self.stroke_cards):
-            card.set_move_enabled(
-                position > 0, position + 1 < len(self.stroke_cards)
-            )
+            self.effect_cards.append(card)
 
     @staticmethod
     def _effect_sequence(stack: TextEffectStack) -> Tuple[str, ...]:
@@ -493,13 +876,39 @@ class TextEffectPanel(PanelArea):
         self.mixed_label.setVisible(mixed)
         self.add_effect_button.setEnabled(not mixed)
         if mixed:
-            self._rebuild_stroke_cards(())
+            self._rebuild_effect_cards(())
         else:
-            self._rebuild_stroke_cards(common_sequence)
-            for card in self.stroke_cards:
-                card.set_values(
-                    [state.effects[card.index] for state in states]
-                )
+            self._rebuild_effect_cards(common_sequence)
+            phase_sequences = [
+                tuple(effect_phase(effect) for effect in state.effects)
+                for state in states
+            ]
+            phases_match = all(
+                sequence == phase_sequences[0]
+                for sequence in phase_sequences
+            )
+            for card in self.effect_cards:
+                values = [state.effects[card.index] for state in states]
+                card.set_values(values)
+                if isinstance(card, (StrokeEffectCard, ShadowEffectCard)):
+                    if phases_match:
+                        phase = phase_sequences[0][card.index]
+                        phase_indices = [
+                            index
+                            for index, value in enumerate(phase_sequences[0])
+                            if value == phase
+                        ]
+                        position = phase_indices.index(card.index)
+                        card.set_move_enabled(
+                            position > 0,
+                            position + 1 < len(phase_indices),
+                        )
+                    else:
+                        card.set_move_enabled(False, False)
+        self.add_effect_actions['hollow'].setEnabled(
+            not mixed and common_sequence is not None
+            and 'hollow' not in common_sequence
+        )
         self._sync_content_height()
 
     def set_active_format(self, font_format: FontFormat) -> None:
@@ -512,7 +921,7 @@ class TextEffectPanel(PanelArea):
 
     def iter_controls(self) -> Iterator[EffectNumericControl]:
         yield self.overall_opacity_control
-        for card in self.stroke_cards:
+        for card in self.effect_cards:
             yield from card.iter_controls()
 
     def finish_pending_effect_edits(self) -> None:
@@ -564,5 +973,7 @@ class TextEffectPanel(PanelArea):
 
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
-        if action is not None and action.data() == 'stroke':
-            self.add_stroke_requested.emit()
+        if action is not None and action.data() in {
+            'stroke', 'shadow', 'hollow'
+        }:
+            self.add_effect_requested.emit(action.data())

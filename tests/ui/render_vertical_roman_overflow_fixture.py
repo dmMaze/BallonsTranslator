@@ -17,6 +17,11 @@ from qtpy.QtGui import QColor, QFont, QImage, QPainter, QPen
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.utils.text_effects import (
+    ShadowEffect,
+    StrokeEffect,
+    TextEffectStack,
+)
 from ballontranslator.utils.textblock import TEXT_LAYOUT_VERSION, TextBlock
 
 
@@ -39,10 +44,16 @@ def _item(origin: tuple[int, int], *, standard: bool) -> TextBlkItem:
     block.fontformat.font_family = 'Noto Sans CJK SC'
     block.fontformat.font_size = 96
     block.fontformat.frgb = [26, 29, 34]
-    block.fontformat.stroke_width = 0.04
-    block.fontformat.shadow_strength = 0.65
-    block.fontformat.shadow_radius = 0.035
-    block.fontformat.shadow_offset = [0.035, 0.035]
+    block.fontformat.text_effects = TextEffectStack(
+        effects=(
+            ShadowEffect(
+                opacity=0.65,
+                offset=(0.035, 0.035),
+                blur=0.035,
+            ),
+            StrokeEffect(width=0.04),
+        ),
+    )
     item = TextBlkItem(block, 0)
     item.set_ui_guide_suppressed(True)
     return item

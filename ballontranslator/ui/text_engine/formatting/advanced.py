@@ -128,160 +128,6 @@ def _gradient_angle_from_ui(signed_clockwise_angle: float) -> float:
     return float(signed_clockwise_angle) % 360.0
 
 
-class TextShadowGroup(QGroupBox):
-    def __init__(self, on_param_changed: Callable = None, title=None):
-        super().__init__(title or '')
-        self.on_param_changed = on_param_changed
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-
-        self.xoffset_box = SmallSizeComboBox([-2, 2], 'shadow_xoffset', self)
-        self.xoffset_box.setToolTip(self.tr("Set X offset"))
-        self.xoffset_box.param_changed.connect(self.on_offset_changed)
-        self.xoffset_label = SmallSizeControlLabel(
-            self, direction=0, alignment=Qt.AlignmentFlag.AlignCenter
-        )
-        _set_svg_label(self.xoffset_label, 'offset_x.svg')
-        self.xoffset_label.size_ctrl_changed.connect(
-            self.xoffset_box.changeByDelta
-        )
-        self.xoffset_label.btn_released.connect(self.on_offset_changed)
-        self.xoffset_label.reset_requested.connect(self._reset_xoffset)
-        self.yoffset_box = SmallSizeComboBox([-2, 2], 'shadow_yoffset', self)
-        self.yoffset_box.setToolTip(self.tr("Set Y offset"))
-        self.yoffset_box.param_changed.connect(self.on_offset_changed)
-        self.yoffset_label = SmallSizeControlLabel(
-            self, direction=1, alignment=Qt.AlignmentFlag.AlignCenter
-        )
-        _set_svg_label(self.yoffset_label, 'offset_y.svg')
-        self.yoffset_label.size_ctrl_changed.connect(self._change_yoffset)
-        self.yoffset_label.btn_released.connect(self.on_offset_changed)
-        self.yoffset_label.reset_requested.connect(self._reset_yoffset)
-
-        self.color_label = SmallColorPickerLabel(self, param_name='shadow_color')
-        self.strength_box = SmallSizeComboBox([0, 3], 'shadow_strength', self)
-        self.strength_box.setToolTip(self.tr("Set Shadow Strength"))
-        self.strength_box.param_changed.connect(self.on_param_changed)
-        self.strength_label = SmallSizeControlLabel(
-            self,
-            direction=1,
-            text='',
-            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        )
-        _set_svg_label(
-            self.strength_label, 'shadow_strength.svg', 18, 18
-        )
-        self.strength_label.setToolTip(self.tr('Strength'))
-        self.strength_label.reset_requested.connect(
-            self._reset_strength
-        )
-        _word_wrap_label(self.strength_label)
-        self.strength_label.size_ctrl_changed.connect(self._change_strength)
-        self.strength_label.btn_released.connect(self._apply_strength)
-
-        self.radius_box = SmallSizeComboBox([0, 2], 'shadow_radius', self)
-        self.radius_box.setToolTip(self.tr("Set Shadow Radius"))
-        self.radius_box.param_changed.connect(self.on_param_changed)
-        self.radius_label = SmallSizeControlLabel(
-            self,
-            direction=1,
-            text='',
-            alignment=Qt.AlignmentFlag.AlignCenter,
-        )
-        self.radius_label.setObjectName('shadowRadiusLabel')
-        _set_svg_label(self.radius_label, 'shadow_radius.svg')
-        self.radius_label.setToolTip(self.tr('Radius'))
-        self.radius_label.size_ctrl_changed.connect(self.radius_box.changeByDelta)
-        self.radius_label.btn_released.connect(self._apply_radius)
-        self.radius_label.reset_requested.connect(self._reset_radius)
-
-        self.offset_unit = _atomic_unit(
-            self,
-            self.xoffset_label,
-            self.xoffset_box,
-            self.yoffset_label,
-            self.yoffset_box,
-        )
-        self.color_unit = _atomic_unit(self, self.color_label)
-        self.strength_unit = _atomic_unit(
-            self, self.strength_label, self.strength_box
-        )
-        self.radius_unit = _atomic_unit(
-            self, self.radius_label, self.radius_box
-        )
-        _compact_unit(self.color_unit)
-        _compact_unit(
-            self.offset_unit, self.xoffset_box, self.yoffset_box
-        )
-        _compact_unit(self.strength_unit, self.strength_box)
-        _compact_unit(self.radius_unit, self.radius_box)
-        self.atomic_units = (
-            self.color_unit,
-            self.offset_unit,
-            self.strength_unit,
-            self.radius_unit,
-        )
-
-        self.detail_row, self.detail_layout = _adaptive_row(
-            self,
-            self.color_unit,
-            self.offset_unit,
-            self.strength_unit,
-            self.radius_unit,
-        )
-        self.detail_layout.setSpacing(3)
-        self.adaptive_layout = QVBoxLayout(self)
-        self.adaptive_layout.addWidget(self.detail_row)
-
-    def on_offset_changed(self, *args, **kwargs):
-        self.on_param_changed(
-            'shadow_offset',
-            [self.xoffset_box.value(), self.yoffset_box.value()],
-        )
-
-    def _reset_offset_component(self, box: SmallSizeComboBox) -> None:
-        if box.value() == 0.0:
-            return
-        with QSignalBlocker(box):
-            box.setValue(0.0)
-        self.on_offset_changed()
-
-    def _reset_xoffset(self) -> None:
-        self._reset_offset_component(self.xoffset_box)
-
-    def _change_yoffset(self, delta: int) -> None:
-        self.yoffset_box.changeByDelta(-delta)
-
-    def _reset_yoffset(self) -> None:
-        self._reset_offset_component(self.yoffset_box)
-
-    def _change_strength(self, delta: int) -> None:
-        self.strength_box.changeByDelta(delta, multiplier=0.03)
-
-    def _apply_strength(self) -> None:
-        self.on_param_changed(
-            'shadow_strength', self.strength_box.value()
-        )
-
-    def _apply_radius(self) -> None:
-        self.on_param_changed('shadow_radius', self.radius_box.value())
-
-    def _reset_strength(self) -> None:
-        if self.strength_box.value() == 1.0:
-            return
-        with QSignalBlocker(self.strength_box):
-            self.strength_box.setValue(1.0)
-        self.on_param_changed('shadow_strength', 1.0)
-
-    def _reset_radius(self) -> None:
-        if self.radius_box.value() == 0.0:
-            return
-        with QSignalBlocker(self.radius_box):
-            self.radius_box.setValue(0.0)
-        self.on_param_changed('shadow_radius', 0.0)
-
-
 class TextGradientGroup(QGroupBox):
     def __init__(self, on_param_changed: Callable = None):
         super().__init__('')
@@ -668,10 +514,6 @@ class TextAdvancedFormatPanel(PanelArea):
         for unit in self.top_atomic_units:
             self.top_layout.addWidget(unit)
 
-        self.shadow_group = TextShadowGroup(
-            self.on_format_changed, title=self.tr('Shadow')
-        )
-
         self.ruby_group = RubyFuriganaGroup(self.scrollContent)
         self.ruby_group.apply_requested.connect(
             self.ruby_apply_requested.emit
@@ -684,7 +526,6 @@ class TextAdvancedFormatPanel(PanelArea):
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
         vlayout.addWidget(self.ligature_group)
-        vlayout.addWidget(self.shadow_group)
         vlayout.addWidget(self.gradient_group)
         vlayout.addWidget(self.ruby_group)
 
@@ -795,7 +636,6 @@ class TextAdvancedFormatPanel(PanelArea):
                 self.top_layout,
                 *self.ligature_layouts,
                 self.ruby_group.adaptive_layout,
-                self.shadow_group.adaptive_layout,
                 self.gradient_group.adaptive_layout,
             )
         )
@@ -911,12 +751,6 @@ class TextAdvancedFormatPanel(PanelArea):
 
     def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
-
-        self.shadow_group.color_label.setPickerColor(font_format.shadow_color)
-        self.shadow_group.strength_box.setValue(font_format.shadow_strength)
-        self.shadow_group.radius_box.setValue(font_format.shadow_radius)
-        self.shadow_group.xoffset_box.setValue(font_format.shadow_offset[0])
-        self.shadow_group.yoffset_box.setValue(font_format.shadow_offset[1])
 
         self.gradient_group.size_box.setValue(font_format.gradient_size)
         self.gradient_group.angle_box.setValue(

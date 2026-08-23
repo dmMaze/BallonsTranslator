@@ -10,7 +10,7 @@ controls and algorithms.
 ```text
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph's visible-space anchor
-  -> fill, stroke, shadow, gradient
+  -> exterior Shadow, Stroke, foreground/Hollow, interior Shadow
   -> ordered global stack: Projective / Bend / Sine Wave / Grid
   -> QGraphicsItem position and rotation
 ```
@@ -183,17 +183,17 @@ The effective render paths are:
 | Glyph Slant, no nonlinear stage | Custom glyph layout | Identity or matrix | No |
 | Any active nonlinear stage | Native or custom glyph layout | Composite mapper | Once |
 
-For nonlinear output, capture fill, gradient, stroke, and shadow into one
-padded source surface, inverse-map it once, and draw editing UI over the mapped
-destination where necessary. Matrix-only stacks stay on Qt's native path.
-Effect padding changes the source rectangle, not the persistent logical text
-rectangle.
+For nonlinear output, capture the completed typed-effect/Hollow output (and the
+legacy Gradient bridge) into one padded source surface, inverse-map it once,
+and draw editing UI over the mapped destination where necessary. Matrix-only
+stacks stay on Qt's native path. Effect padding changes the source rectangle,
+not the persistent logical text rectangle.
 
-Stroke and shadow use the same bounded, device-scale-aware effect raster
-policy for neutral, Glyph Slant, matrix, and nonlinear paths. Effects and
-delegated Glyph Slant painting disable Qt's redundant outer item cache; the
-effect renderer remains the sole raster-cache owner and can therefore rebuild
-at the current view or export scale.
+Typed Stroke/Shadow/Hollow output uses the same bounded, device-scale-aware
+effect raster policy for neutral, Glyph Slant, matrix, and nonlinear paths.
+Effects and delegated Glyph Slant painting disable Qt's redundant outer item
+cache; the effect renderer remains the sole raster-cache owner and can
+therefore rebuild at the current view or export scale.
 
 ### Cache boundaries
 

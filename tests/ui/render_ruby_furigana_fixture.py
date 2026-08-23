@@ -19,6 +19,11 @@ from qtpy.QtWidgets import QApplication, QGraphicsScene
 from ballontranslator.ui.text_engine.annotations import apply_emphasis, apply_ruby
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.fontformat import TextTransformStack
+from ballontranslator.utils.text_effects import (
+    ShadowEffect,
+    StrokeEffect,
+    TextEffectStack,
+)
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -48,10 +53,16 @@ def _item(
     if fill_color is not None:
         block.fontformat.frgb = fill_color
     if effects:
-        block.fontformat.stroke_width = stroke_width
-        block.fontformat.shadow_strength = 0.8
-        block.fontformat.shadow_radius = 0.1
-        block.fontformat.shadow_offset = [0.08, 0.08]
+        block.fontformat.text_effects = TextEffectStack(
+            effects=(
+                ShadowEffect(
+                    opacity=0.8,
+                    offset=(0.08, 0.08),
+                    blur=0.1,
+                ),
+                StrokeEffect(width=stroke_width),
+            ),
+        )
     block.fontformat.text_transform = TextTransformStack((), 14.0)
     item = TextBlkItem(block, 0)
     cursor = QTextCursor(item.document())

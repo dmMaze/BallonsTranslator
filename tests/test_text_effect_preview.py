@@ -31,6 +31,7 @@ from ballontranslator.utils.fontformat import SineTextTransform, TextTransformSt
 from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
@@ -162,18 +163,23 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertEqual(committed.background_pixmap.cacheKey(), committed_key)
         self.assertAlmostEqual(item.opacity(), 0.3)
 
-    def test_preview_cancel_rebuilds_parked_cache_after_shadow_change(self):
-        canonical = self._stack()
+    def test_preview_cancel_rebuilds_parked_cache_after_text_change(self):
+        stroke = self._stack().effects[0]
+        canonical = TextEffectStack(effects=(
+            ShadowEffect(blur=0.12, opacity=0.8),
+            stroke,
+        ))
         item = self._item(stack=canonical)
         renderer = item.effect_renderer
-        item.fontformat.shadow_radius = 0.12
-        item.fontformat.shadow_strength = 0.8
-        renderer.repaint_background()
         committed = renderer._effect_raster_state
         old_pixmap_key = committed.background_pixmap.cacheKey()
 
-        item.set_text_effects(self._stack(0.24), preview=True)
-        item.fontformat.shadow_color = [120, 80, 40]
+        preview = TextEffectStack(effects=(
+            canonical.effects[0],
+            StrokeEffect(width=0.24),
+        ))
+        item.set_text_effects(preview, preview=True)
+        item.setPlainText('Changed while previewing')
         renderer.repaint_background()
 
         with patch.object(
@@ -511,10 +517,9 @@ class TextEffectPreviewTest(unittest.TestCase):
         )
         canvas.baseLayer.setRect(QRectF(0, 0, 360, 220))
         active = self._item(stack=self._stack())
-        shadow = self._item()
-        shadow.fontformat.shadow_radius = 0.12
-        shadow.fontformat.shadow_strength = 0.8
-        shadow.repaint_background()
+        shadow = self._item(stack=TextEffectStack(effects=(
+            ShadowEffect(blur=0.12, opacity=0.8),
+        )))
         neutral = self._item()
         active.setParentItem(canvas.textLayer)
         shadow.setParentItem(canvas.textLayer)

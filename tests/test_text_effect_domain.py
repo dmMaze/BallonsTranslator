@@ -3,10 +3,16 @@ import unittest
 from unittest.mock import patch
 
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    SHADOW_BLUR_LIMIT,
+    SHADOW_OFFSET_LIMIT,
+    SHADOW_SPREAD_LIMIT,
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
     coerce_text_effect_stack,
+    effect_phase,
     ensure_primary_stroke,
     primary_stroke,
     with_non_stroke_effects,
@@ -26,6 +32,12 @@ class TextEffectDomainTest(unittest.TestCase):
             stroke.width = 0.4
         with self.assertRaises(FrozenInstanceError):
             stack.effects = ()
+
+        shadow = ShadowEffect(color=[4, 5, 6], offset=[0.2, -0.3])
+        self.assertEqual(shadow.color, (4, 5, 6))
+        self.assertEqual(shadow.offset, (0.2, -0.3))
+        with self.assertRaises(FrozenInstanceError):
+            shadow.blur = 0.2
 
     def test_ensure_inserts_default_primary_stroke(self):
         original = TextEffectStack(overall_opacity=0.4)
@@ -93,6 +105,25 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(result.effects, strokes)
         self.assertIs(with_non_stroke_effects(result, source), result)
 
+    def test_non_stroke_override_copies_typed_values_by_phase_boundary(self):
+        first = StrokeEffect(width=0.2)
+        second = StrokeEffect(width=0.7)
+        drop = ShadowEffect(shadow_type='drop', offset=(0.2, 0.3))
+        hollow = HollowEffect()
+        inner = ShadowEffect(shadow_type='inner', blur=0.2)
+        source = TextEffectStack(0.8, (drop, hollow, inner))
+        target = TextEffectStack(0.4, (first, second))
+
+        result = with_non_stroke_effects(target, source)
+
+        self.assertEqual(
+            result.effects, (drop, first, second, hollow, inner)
+        )
+        self.assertEqual(
+            [effect for effect in result if not isinstance(effect, StrokeEffect)],
+            [drop, hollow, inner],
+        )
+
     def test_neutral_state_tracks_opacity_and_active_strokes(self):
         self.assertTrue(TextEffectStack().is_neutral())
         self.assertFalse(TextEffectStack(overall_opacity=0.5).is_neutral())
@@ -109,6 +140,15 @@ class TextEffectDomainTest(unittest.TestCase):
         active = TextEffectStack(effects=(StrokeEffect(),))
         self.assertTrue(active.has_active_effects)
         self.assertFalse(active.is_neutral())
+        self.assertTrue(TextEffectStack(
+            effects=(ShadowEffect(enabled=False), HollowEffect(enabled=False))
+        ).is_neutral())
+        self.assertFalse(TextEffectStack(
+            effects=(ShadowEffect(shadow_type='long'),)
+        ).is_neutral())
+        self.assertFalse(TextEffectStack(
+            effects=(HollowEffect(),)
+        ).is_neutral())
 
     def test_live_values_are_strictly_validated(self):
         invalid_constructors = (
@@ -120,8 +160,18 @@ class TextEffectDomainTest(unittest.TestCase):
             lambda: StrokeEffect(blend_mode='multiply'),
             lambda: StrokeEffect(width=float('inf')),
             lambda: StrokeEffect(paint={'paint_type': 'solid'}),
+            lambda: ShadowEffect(enabled=1),
+            lambda: ShadowEffect(opacity=1.1),
+            lambda: ShadowEffect(blend_mode='multiply'),
+            lambda: ShadowEffect(shadow_type='outer'),
+            lambda: ShadowEffect(color=(0, 1, 256)),
+            lambda: ShadowEffect(offset=(0, float('inf'))),
+            lambda: ShadowEffect(blur=-0.1),
+            lambda: ShadowEffect(spread=-0.1),
+            lambda: HollowEffect(enabled=1),
             lambda: TextEffectStack(overall_opacity=1.1),
             lambda: TextEffectStack(effects=({'effect_type': 'stroke'},)),
+            lambda: TextEffectStack(effects=(HollowEffect(), HollowEffect())),
         )
 
         for constructor in invalid_constructors:
@@ -153,7 +203,7 @@ class TextEffectDomainTest(unittest.TestCase):
                         'color': [1, 2, 3],
                     },
                 },
-                {'effect_type': 'shadow', 'blur': 0.5},
+                {'effect_type': 'glow', 'blur': 0.5},
                 {'effect_type': 'stroke', 'width': -1},
                 {'effect_type': 'stroke', 'future_field': 1},
                 {
@@ -185,6 +235,75 @@ class TextEffectDomainTest(unittest.TestCase):
             ),
         )
         self.assertEqual(warning.call_count, 5)
+
+    def test_payload_keeps_mixed_order_and_isolates_duplicate_hollow(self):
+        payload = {'effects': [
+            {
+                'effect_type': 'shadow',
+                'shadow_type': 'drop',
+                'offset': [0.2, -0.1],
+                'blur': 0.3,
+            },
+            {'effect_type': 'stroke', 'width': 0.2},
+            {'effect_type': 'hollow', 'enabled': True},
+            {'effect_type': 'hollow', 'enabled': False},
+            {
+                'effect_type': 'shadow',
+                'shadow_type': 'inner',
+                'spread': 0.1,
+            },
+        ]}
+
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            stack = coerce_text_effect_stack(payload)
+
+        self.assertEqual(
+            tuple(effect.effect_type for effect in stack.effects),
+            ('shadow', 'stroke', 'hollow', 'shadow'),
+        )
+        self.assertEqual(stack.effects[0].shadow_type, 'drop')
+        self.assertEqual(stack.effects[-1].shadow_type, 'inner')
+        warning.assert_called_once()
+
+    def test_effect_phase_is_fixed_by_typed_value(self):
+        self.assertEqual(effect_phase(ShadowEffect()), 'exterior')
+        self.assertEqual(
+            effect_phase(ShadowEffect(shadow_type='long')), 'exterior'
+        )
+        self.assertEqual(
+            effect_phase(ShadowEffect(shadow_type='inner')), 'interior'
+        )
+        self.assertEqual(effect_phase(StrokeEffect()), 'stroke')
+        self.assertEqual(effect_phase(HollowEffect()), 'foreground')
+
+    def test_shadow_geometry_limits_match_live_and_passive_boundaries(self):
+        boundary = ShadowEffect(
+            offset=(-SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT),
+            blur=SHADOW_BLUR_LIMIT,
+            spread=SHADOW_SPREAD_LIMIT,
+        )
+        self.assertEqual(boundary.offset, (-10.0, 10.0))
+        with self.assertRaises(ValueError):
+            ShadowEffect(offset=(SHADOW_OFFSET_LIMIT + 0.01, 0.0))
+        with self.assertRaises(ValueError):
+            ShadowEffect(blur=SHADOW_BLUR_LIMIT + 0.01)
+        with self.assertRaises(ValueError):
+            ShadowEffect(spread=SHADOW_SPREAD_LIMIT + 0.01)
+
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            stack = coerce_text_effect_stack({'effects': [
+                {
+                    'effect_type': 'shadow',
+                    'offset': [SHADOW_OFFSET_LIMIT + 0.01, 0],
+                },
+                {'effect_type': 'stroke', 'width': 0.2},
+            ]})
+        self.assertEqual(stack.effects, (StrokeEffect(width=0.2),))
+        warning.assert_called_once()
 
     def test_invalid_stack_fields_fall_back_independently(self):
         with patch(
@@ -226,6 +345,39 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(stack.to_serializable_dict(), payload)
         self.assertEqual(coerce_text_effect_stack(payload), stack)
         self.assertIs(coerce_text_effect_stack(stack), stack)
+
+    def test_shadow_and_hollow_serialization_is_stable(self):
+        stack = TextEffectStack(effects=(
+            ShadowEffect(
+                enabled=False,
+                opacity=0.4,
+                shadow_type='long',
+                color=(9, 8, 7),
+                offset=(-0.2, 0.4),
+                blur=0.3,
+                spread=0.1,
+            ),
+            HollowEffect(),
+        ))
+
+        payload = stack.to_serializable_dict()
+
+        self.assertEqual(payload['effects'][0], {
+            'effect_type': 'shadow',
+            'enabled': False,
+            'opacity': 0.4,
+            'blend_mode': 'normal',
+            'shadow_type': 'long',
+            'color': [9, 8, 7],
+            'offset': [-0.2, 0.4],
+            'blur': 0.3,
+            'spread': 0.1,
+        })
+        self.assertEqual(payload['effects'][1], {
+            'effect_type': 'hollow',
+            'enabled': True,
+        })
+        self.assertEqual(coerce_text_effect_stack(payload), stack)
 
 
 if __name__ == '__main__':

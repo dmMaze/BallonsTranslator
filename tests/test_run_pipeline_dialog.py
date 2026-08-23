@@ -65,6 +65,8 @@ from ballontranslator.utils.config import (
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
@@ -1388,11 +1390,20 @@ class RunPipelineDialogTests(unittest.TestCase):
             text_effects=TextEffectStack(
                 0.75,
                 (
+                    ShadowEffect(
+                        shadow_type='drop',
+                        offset=(0.2, 0.1),
+                    ),
                     StrokeEffect(
                         width=0.18,
                         paint=SolidPaint((4, 5, 6)),
                     ),
                     StrokeEffect(width=0.9),
+                    HollowEffect(),
+                    ShadowEffect(
+                        shadow_type='inner',
+                        blur=0.4,
+                    ),
                 ),
             ),
             shadow_radius=3,
@@ -1470,7 +1481,18 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertTrue(block.vertical)
             self.assertEqual(block.font_family, 'Render Font')
             self.assertEqual(block.fontformat.opacity, 0.75)
-            self.assertIs(block.fontformat.text_effects.effects[1], extra)
+            effects = block.fontformat.text_effects.effects
+            self.assertIs(effects[2], extra)
+            self.assertEqual(
+                effects,
+                (
+                    global_format.text_effects.effects[0],
+                    effects[1],
+                    extra,
+                    global_format.text_effects.effects[3],
+                    global_format.text_effects.effects[4],
+                ),
+            )
             self.assertEqual(block.fontformat.shadow_radius, 0.0)
             self.assertEqual(block.fontformat.shadow_strength, 1.0)
             self.assertEqual(block.fontformat.shadow_color, [0, 0, 0])

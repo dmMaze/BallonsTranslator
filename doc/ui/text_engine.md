@@ -11,10 +11,10 @@ Wave, Grid, and Glyph Slant.
 
 ```text
 Project JSON
-  -> TextBlock + FontFormat                 persistent state
+  -> TextBlock + FontFormat.text_effects    persistent state
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
-  -> TextEffectRenderer                     fill, stroke, shadow, gradient
+  -> TextEffectRenderer                     fixed effect phases + fill
   -> TextItemGeometryController             bounds and visual mapping
   -> QGraphicsScene                         interaction, view, export
 ```
@@ -22,7 +22,7 @@ Project JSON
 | Concern | Owner | Main files |
 | --- | --- | --- |
 | Block content, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
-| Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
+| Persistent typography, transforms, and immutable effect stack | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py), [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Shaping and placement | `SceneTextLayout` and its writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
@@ -129,12 +129,26 @@ Never write a source or visual bounding box back into the model. Layout-owned
 placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
-`TextEffectRenderer` owns stroke, shadow, gradient, and their derived padding.
-Paint-only state must not change document content or create undo steps. Keep
-Qt's text control authoritative for shaping, cursor, selection, IME, and normal
-hit testing, adapting coordinates at the layout/geometry boundary when needed.
-Interactive rendering may use bounded fallbacks, but export must report an
-incomplete render instead of silently omitting text.
+`FontFormat.text_effects` is the canonical committed `TextEffectStack`; it is
+an immutable ordered value persisted with the format. `TextEffectRenderer`
+compiles it from one glyph/source alpha in fixed phases: exterior Drop/Long
+Shadow, Stroke, foreground, then interior Inner Shadow. Entry order is retained
+within each phase. Hollow suppresses foreground and Inner output, and removes
+the canonical face from exterior output before Stroke is painted, so the source
+alpha and full Stroke outline remain available. The existing Gradient path is
+a legacy renderer bridge until its typed cutover.
+
+The renderer owns derived padding and separate committed, preview, and export
+raster namespaces. A live preview replaces the complete effective stack but
+does not mutate `FontFormat`, project data, or undo history; commit may promote
+only a matching persistent-quality scratch surface. Reshape interaction omits
+effects without changing stack state and rebuilds once after geometry settles.
+Strict export renders the complete current output at persistent quality in its
+own non-promoted namespace. Paint-only state must not change document content
+or create undo steps. Keep Qt's text control authoritative for shaping, cursor,
+selection, IME, and normal hit testing. Interactive rendering may use bounded
+fallbacks, but export must report incomplete output instead of silently
+omitting text.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render
@@ -167,7 +181,7 @@ Refresh from the first owner whose input changed:
 | --- | --- |
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
-| Stroke, shadow, gradient | Effect renderer |
+| Typed effect stack, Overall Opacity, or legacy Gradient | Effect renderer |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |
 | Item/page lifetime | Every item-owned cache |

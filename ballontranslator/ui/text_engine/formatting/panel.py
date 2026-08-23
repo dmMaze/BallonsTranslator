@@ -818,11 +818,6 @@ class FontFormatPanel(Widget):
         self.text_effect_session = TextEffectEditSession(
             self, self.texteffect_panel
         )
-        color_label = self.textadvancedfmt_panel.shadow_group.color_label
-        color_label.changingColor.connect(self.changingColor)
-        color_label.colorChanged.connect(self.onColorLabelChanged)
-        color_label.apply_color.connect(self.on_apply_color)
-
         color_label = self.textadvancedfmt_panel.gradient_group.start_picker
         color_label.changingColor.connect(self.changingColor)
         color_label.colorChanged.connect(self.onColorLabelChanged)

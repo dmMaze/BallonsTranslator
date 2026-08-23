@@ -21,6 +21,8 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.io_utils import json_dump_nested_obj
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
@@ -248,8 +250,17 @@ class TextEffectPersistenceTest(unittest.TestCase):
         stack = TextEffectStack(
             0.65,
             (
+                ShadowEffect(
+                    shadow_type='drop',
+                    color=(10, 20, 30),
+                    offset=(0.3, -0.2),
+                    blur=0.1,
+                    spread=0.05,
+                ),
                 StrokeEffect(width=0.2, paint=SolidPaint((1, 2, 3))),
                 StrokeEffect(width=0.7, paint=SolidPaint((7, 8, 9))),
+                HollowEffect(enabled=False),
+                ShadowEffect(shadow_type='inner', opacity=0.6),
             ),
         )
         block = TextBlock()
@@ -261,6 +272,30 @@ class TextEffectPersistenceTest(unittest.TestCase):
             restored = TextBlock(**normalized)
 
         self.assertEqual(restored.fontformat.text_effects, stack)
+
+    def test_typed_shadow_and_hollow_round_trip_in_preset_and_global_config(self):
+        old_styles = list(text_styles)
+        old_style_path = pcfg.text_styles_path
+        stack = TextEffectStack(0.7, (
+            ShadowEffect(shadow_type='long', offset=(0.4, 0.2)),
+            HollowEffect(),
+        ))
+        payload = FontFormat(text_effects=stack).to_serializable_dict()
+        with tempfile.TemporaryDirectory() as directory:
+            style_path = os.path.join(directory, 'styles.json')
+            config_path = os.path.join(directory, 'config.json')
+            with open(style_path, 'w', encoding='utf8') as handle:
+                json.dump([dict(payload, _style_name='typed')], handle)
+            with open(config_path, 'w', encoding='utf8') as handle:
+                json.dump({'global_fontformat': payload}, handle)
+            try:
+                load_textstyle_from(style_path)
+                config = ProgramConfig.load(config_path)
+                self.assertEqual(text_styles[0].text_effects, stack)
+                self.assertEqual(config.global_fontformat.text_effects, stack)
+            finally:
+                text_styles[:] = old_styles
+                pcfg.text_styles_path = old_style_path
 
     def test_ocr_stroke_detection_updates_only_primary_width(self):
         second = StrokeEffect(width=0.8, paint=SolidPaint((8, 9, 10)))

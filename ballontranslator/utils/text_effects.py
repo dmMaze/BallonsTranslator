@@ -1,4 +1,4 @@
-"""Immutable text-effect values and pure primary-Stroke operations."""
+"""Immutable typed text-effect values and stack editing helpers."""
 
 from dataclasses import dataclass, field, replace
 import math
@@ -6,6 +6,11 @@ from numbers import Integral, Real
 from typing import Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from .logger import logger as LOGGER
+
+
+SHADOW_OFFSET_LIMIT = 10.0
+SHADOW_BLUR_LIMIT = 10.0
+SHADOW_SPREAD_LIMIT = 10.0
 
 
 def _float_in_range(
@@ -40,6 +45,21 @@ def _color_tuple(value: Sequence[int]) -> Tuple[int, int, int]:
             'solid paint color channels must be integers from 0 to 255'
         )
     return tuple(int(channel) for channel in value)
+
+
+def _offset_tuple(value: Sequence[Real]) -> Tuple[float, float]:
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise TypeError('shadow offset must contain two numeric values')
+    return (
+        _float_in_range(
+            'shadow X offset', value[0],
+            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT,
+        ),
+        _float_in_range(
+            'shadow Y offset', value[1],
+            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT,
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -113,6 +133,119 @@ class StrokeEffect:
 
 
 @dataclass(frozen=True)
+class ShadowEffect:
+    """One immutable Drop, Inner, or Long/Extrude shadow.
+
+    Geometry values are relative to the text's maximum font size.
+
+    >>> ShadowEffect(shadow_type='long', offset=(0.4, -0.2)).offset
+    (0.4, -0.2)
+    """
+
+    enabled: bool = True
+    opacity: float = 1.0
+    blend_mode: str = 'normal'
+    shadow_type: str = 'drop'
+    color: Tuple[int, int, int] = (0, 0, 0)
+    offset: Tuple[float, float] = (0.1, 0.1)
+    blur: float = 0.0
+    spread: float = 0.0
+    effect_type: str = field(init=False, default='shadow')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError('shadow enabled must be a bool')
+        object.__setattr__(
+            self,
+            'opacity',
+            _float_in_range('shadow opacity', self.opacity, 0.0, 1.0),
+        )
+        if self.blend_mode != 'normal':
+            raise ValueError('unsupported shadow blend mode')
+        if self.shadow_type not in {'drop', 'inner', 'long'}:
+            raise ValueError('unsupported shadow type')
+        object.__setattr__(self, 'color', _color_tuple(self.color))
+        object.__setattr__(self, 'offset', _offset_tuple(self.offset))
+        object.__setattr__(
+            self,
+            'blur',
+            _float_in_range(
+                'shadow blur', self.blur, 0.0, SHADOW_BLUR_LIMIT
+            ),
+        )
+        object.__setattr__(
+            self,
+            'spread',
+            _float_in_range(
+                'shadow spread', self.spread, 0.0, SHADOW_SPREAD_LIMIT
+            ),
+        )
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'enabled': self.enabled,
+            'opacity': self.opacity,
+            'blend_mode': self.blend_mode,
+            'shadow_type': self.shadow_type,
+            'color': list(self.color),
+            'offset': list(self.offset),
+            'blur': self.blur,
+            'spread': self.spread,
+        }
+
+    def is_neutral(self) -> bool:
+        return not self.enabled or self.opacity == 0.0
+
+
+@dataclass(frozen=True)
+class HollowEffect:
+    """Suppress the foreground and interior effects while enabled.
+
+    >>> HollowEffect(enabled=False).is_neutral()
+    True
+    """
+
+    enabled: bool = True
+    effect_type: str = field(init=False, default='hollow')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError('hollow enabled must be a bool')
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'enabled': self.enabled,
+        }
+
+    def is_neutral(self) -> bool:
+        return not self.enabled
+
+
+TextEffect = Union[StrokeEffect, ShadowEffect, HollowEffect]
+
+
+def effect_phase(effect: TextEffect) -> str:
+    """Return the fixed compiler phase for one typed effect.
+
+    >>> effect_phase(ShadowEffect(shadow_type='inner'))
+    'interior'
+    """
+    if isinstance(effect, ShadowEffect):
+        return (
+            'interior'
+            if effect.shadow_type == 'inner'
+            else 'exterior'
+        )
+    if isinstance(effect, StrokeEffect):
+        return 'stroke'
+    if isinstance(effect, HollowEffect):
+        return 'foreground'
+    raise TypeError('effect_phase requires a typed text effect')
+
+
+@dataclass(frozen=True)
 class TextEffectStack:
     """Complete immutable style-owned text-effect value.
 
@@ -125,7 +258,7 @@ class TextEffectStack:
     """
 
     overall_opacity: float = 1.0
-    effects: Tuple[StrokeEffect, ...] = ()
+    effects: Tuple[TextEffect, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -136,17 +269,22 @@ class TextEffectStack:
             ),
         )
         effects = tuple(self.effects)
-        if any(not isinstance(effect, StrokeEffect) for effect in effects):
+        if any(
+            not isinstance(effect, (StrokeEffect, ShadowEffect, HollowEffect))
+            for effect in effects
+        ):
             raise TypeError('text effect stack requires typed effect values')
+        if sum(isinstance(effect, HollowEffect) for effect in effects) > 1:
+            raise ValueError('text effect stack accepts at most one Hollow')
         object.__setattr__(self, 'effects', effects)
 
-    def __iter__(self) -> Iterator[StrokeEffect]:
+    def __iter__(self) -> Iterator[TextEffect]:
         return iter(self.effects)
 
     def __len__(self) -> int:
         return len(self.effects)
 
-    def __getitem__(self, index: int) -> StrokeEffect:
+    def __getitem__(self, index: int) -> TextEffect:
         return self.effects[index]
 
     @property
@@ -185,34 +323,49 @@ def _coerce_solid_paint(value: object) -> SolidPaint:
     return SolidPaint(**payload)
 
 
-def coerce_text_effect(value: Union[StrokeEffect, dict]) -> StrokeEffect:
-    """Return a live Stroke or construct one strict typed payload.
+def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
+    """Return a live effect or construct one strict typed payload.
 
     >>> coerce_text_effect({'effect_type': 'stroke', 'width': 0.2}).width
     0.2
     """
-    if isinstance(value, StrokeEffect):
+    if isinstance(value, (StrokeEffect, ShadowEffect, HollowEffect)):
         return value
     if not isinstance(value, dict):
         raise ValueError('text effect must be a value or typed payload')
     payload = dict(value)
-    _unexpected_fields(
-        payload,
-        (
-            'effect_type',
-            'enabled',
-            'opacity',
-            'blend_mode',
-            'width',
-            'paint',
-        ),
-        'text effect',
-    )
-    if payload.pop('effect_type', None) != 'stroke':
-        raise ValueError('unsupported or missing text effect type')
-    if 'paint' in payload:
-        payload['paint'] = _coerce_solid_paint(payload['paint'])
-    return StrokeEffect(**payload)
+    effect_type = payload.get('effect_type')
+    if effect_type == 'stroke':
+        _unexpected_fields(
+            payload,
+            (
+                'effect_type', 'enabled', 'opacity', 'blend_mode', 'width',
+                'paint',
+            ),
+            'Stroke effect',
+        )
+        payload.pop('effect_type')
+        if 'paint' in payload:
+            payload['paint'] = _coerce_solid_paint(payload['paint'])
+        return StrokeEffect(**payload)
+    if effect_type == 'shadow':
+        _unexpected_fields(
+            payload,
+            (
+                'effect_type', 'enabled', 'opacity', 'blend_mode',
+                'shadow_type', 'color', 'offset', 'blur', 'spread',
+            ),
+            'Shadow effect',
+        )
+        payload.pop('effect_type')
+        return ShadowEffect(**payload)
+    if effect_type == 'hollow':
+        _unexpected_fields(
+            payload, ('effect_type', 'enabled'), 'Hollow effect'
+        )
+        payload.pop('effect_type')
+        return HollowEffect(**payload)
+    raise ValueError('unsupported or missing text effect type')
 
 
 def coerce_text_effect_stack(
@@ -265,9 +418,15 @@ def coerce_text_effect_stack(
         )
         raw_effects = ()
     effects = []
+    hollow_loaded = False
     for index, raw_effect in enumerate(raw_effects):
         try:
-            effects.append(coerce_text_effect(raw_effect))
+            effect = coerce_text_effect(raw_effect)
+            if isinstance(effect, HollowEffect):
+                if hollow_loaded:
+                    raise ValueError('text effect stack accepts at most one Hollow')
+                hollow_loaded = True
+            effects.append(effect)
         except (TypeError, ValueError) as error:
             LOGGER.warning(
                 'Ignoring invalid text effect at index %s (%s).',
@@ -297,7 +456,17 @@ def ensure_primary_stroke(stack: TextEffectStack) -> TextEffectStack:
         raise TypeError('ensure_primary_stroke requires TextEffectStack')
     if primary_stroke(stack) is not None:
         return stack
-    return replace(stack, effects=stack.effects + (StrokeEffect(),))
+    insertion = next(
+        (
+            index
+            for index, effect in enumerate(stack.effects)
+            if effect_phase(effect) in {'foreground', 'interior'}
+        ),
+        len(stack.effects),
+    )
+    effects = list(stack.effects)
+    effects.insert(insertion, StrokeEffect())
+    return replace(stack, effects=tuple(effects))
 
 
 def with_primary_stroke(
@@ -321,11 +490,10 @@ def with_primary_stroke(
 def with_non_stroke_effects(
     stack: TextEffectStack, source: TextEffectStack
 ) -> TextEffectStack:
-    """Copy the currently supported non-Stroke style state from ``source``.
+    """Copy non-Stroke style state while retaining every target Stroke.
 
-    Work Package 2 supports only overall opacity outside Stroke. Keeping this
-    operation named prevents run callers from growing index assumptions when
-    later typed effects extend the stack.
+    Source non-Stroke and target Stroke order are each preserved. Strokes are
+    inserted at the fixed compiler boundary without matching effect indices.
 
     >>> target = TextEffectStack(effects=(StrokeEffect(width=0.4),))
     >>> source = TextEffectStack(overall_opacity=0.6)
@@ -336,6 +504,45 @@ def with_non_stroke_effects(
         source, TextEffectStack
     ):
         raise TypeError('with_non_stroke_effects requires TextEffectStack')
-    if stack.overall_opacity == source.overall_opacity:
+    target_strokes = tuple(
+        effect for effect in stack.effects if isinstance(effect, StrokeEffect)
+    )
+    source_non_strokes = [
+        effect
+        for effect in source.effects
+        if not isinstance(effect, StrokeEffect)
+    ]
+    insertion = next(
+        (
+            index
+            for index, effect in enumerate(source_non_strokes)
+            if effect_phase(effect) in {'foreground', 'interior'}
+        ),
+        len(source_non_strokes),
+    )
+    effects = list(source_non_strokes)
+    effects[insertion:insertion] = target_strokes
+    if (
+        stack.overall_opacity == source.overall_opacity
+        and stack.effects == tuple(effects)
+    ):
         return stack
-    return replace(stack, overall_opacity=source.overall_opacity)
+    return replace(
+        stack,
+        overall_opacity=source.overall_opacity,
+        effects=tuple(effects),
+    )
+
+
+def hollow_effect(stack: TextEffectStack) -> Optional[HollowEffect]:
+    """Return the stack's structural Hollow value, if present."""
+    if not isinstance(stack, TextEffectStack):
+        raise TypeError('hollow_effect requires TextEffectStack')
+    return next(
+        (
+            effect
+            for effect in stack.effects
+            if isinstance(effect, HollowEffect)
+        ),
+        None,
+    )

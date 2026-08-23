@@ -497,7 +497,11 @@ class TextBlkItem(QGraphicsTextItem):
 
         font_fmt = blk.fontformat
         if set_format:
-            self.set_fontformat(font_fmt, set_char_format=set_char_fmt, set_stroke_width=False, set_effect=False)
+            self.set_fontformat(
+                font_fmt,
+                set_char_format=set_char_fmt,
+                set_stroke_width=False,
+            )
 
         if not blk.rich_text:
             if blk.translation:
@@ -513,7 +517,6 @@ class TextBlkItem(QGraphicsTextItem):
             self.setTextCursor(cursor)
         if self.fontformat.gradient_enabled:
             self.setGradientEnabled(True)
-        self.setShadow(font_fmt, repaint=False)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
 
@@ -1466,7 +1469,12 @@ class TextBlkItem(QGraphicsTextItem):
         ) = self.line_spacing_values()
         return fontformat
 
-    def set_fontformat(self, ffmat: FontFormat, set_char_format=False, set_stroke_width=True, set_effect=True):
+    def set_fontformat(
+        self,
+        ffmat: FontFormat,
+        set_char_format=False,
+        set_stroke_width=True,
+    ) -> None:
         self.repainting = True
         if self.fontformat.vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
@@ -1536,8 +1544,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_text_effects(ffmat.text_effects)
         self.stroke_qcolor = QColor(*ffmat.stroke_color())
 
-        if set_effect:
-            self.setShadow(ffmat, repaint=False)
         if set_stroke_width:
             self.setStrokeWidth(ffmat.stroke_width, repaint_background=False)
         self.setOpacity(ffmat.opacity)
@@ -1578,7 +1584,7 @@ class TextBlkItem(QGraphicsTextItem):
         if self.fontformat.gradient_enabled:
             self._refresh_gradient_geometry()
             self.update()
-        if set_effect or set_stroke_width:
+        if set_stroke_width:
             self.repaint_background()
 
     def updateBlkFormat(self):
@@ -2089,13 +2095,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
         self._update_effect_padding()
-        if (
-            self.fontformat.stroke_width > 0
-            or (
-                self.fontformat.shadow_radius > 0
-                and self.fontformat.shadow_strength > 0
-            )
-        ):
+        if self.effect_renderer.has_generated_effect_layers():
             repaint_background = True
         if clip_size:
             self.squeezeBoundingRect(True, repaint=False)
@@ -2110,10 +2110,7 @@ class TextBlkItem(QGraphicsTextItem):
         
         cursor, after_kwargs = self._before_set_ffmt(set_selected=set_selected, restore_cursor=restore_cursor)
         self.layout.relayout_on_changed = False
-        if self.fontformat.stroke_width > 0 or (
-            self.fontformat.shadow_radius > 0
-            and self.fontformat.shadow_strength > 0
-        ):
+        if self.effect_renderer.has_generated_effect_layers():
             repaint_background = True
         cfmt = QTextCharFormat()
         cfmt.setFontPointSize(value)
@@ -2182,22 +2179,6 @@ class TextBlkItem(QGraphicsTextItem):
             if cursor.atEnd():
                 break
         return char_fmts
-
-    def setShadow(self, fmt: FontFormat, repaint=True):
-        self.fontformat.shadow_radius = fmt.shadow_radius
-        self.fontformat.shadow_strength = fmt.shadow_strength
-        self.fontformat.shadow_color = fmt.shadow_color
-        self.fontformat.shadow_offset = fmt.shadow_offset
-        self._update_effect_padding()
-        if repaint:
-            self.repaint_background()
-
-    def setBGAttribute(self, attr_name: str, value, repaint=True):
-        setattr(self.fontformat, attr_name, value)
-        self._update_effect_padding()
-        if repaint:
-            self.repaint_background()
-            self.update()
 
     def setGradientAttribute(self, attr_name: str, value):
         self.old_ffmt_values = {}

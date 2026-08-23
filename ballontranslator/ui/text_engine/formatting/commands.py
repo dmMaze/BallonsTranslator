@@ -223,21 +223,11 @@ def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: Font
         blkitem.setLineSpacingType(value)
 
 
-@font_formating(push_undostack=True)
-def ffmt_change_shadow_offset(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setBGAttribute(param_name, value)
-
-
 @font_formating()
 def ffmt_change_gradient_enabled(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     for blkitem, value in zip(blkitems, values):
         blkitem.setGradientAttribute(param_name, value)
 
-
-ffmt_change_shadow_radius = ffmt_change_shadow_offset
-ffmt_change_shadow_strength = ffmt_change_shadow_offset
-ffmt_change_shadow_color = ffmt_change_shadow_offset
 
 ffmt_change_gradient_start_color = ffmt_change_gradient_enabled
 ffmt_change_gradient_end_color = ffmt_change_gradient_enabled
@@ -247,5 +237,8 @@ ffmt_change_gradient_size = ffmt_change_gradient_enabled
 handle_ffmt_change = {
     name: globals().get(f'ffmt_change_{name}', empty_func)
     for name in (*FontFormat.params(), 'rel_font_size')
-    if name not in {'opacity', 'srgb', 'stroke_width'}
+    if name not in {
+        'opacity', 'srgb', 'stroke_width',
+        'shadow_radius', 'shadow_strength', 'shadow_color', 'shadow_offset',
+    }
 }

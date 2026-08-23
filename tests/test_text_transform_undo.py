@@ -102,6 +102,11 @@ from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_effects import (
+    ShadowEffect,
+    StrokeEffect,
+    TextEffectStack,
+)
 
 
 TEST_LINES = (
@@ -2549,10 +2554,14 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 block._bounding_rect = [0, 0, width, height]
                 block.vertical = vertical
                 block.translation = "\n".join(TEST_LINES[:3])
-                block.fontformat.stroke_width = 0.08
-                block.fontformat.shadow_radius = 0.08
-                block.fontformat.shadow_strength = 0.7
-                block.fontformat.shadow_offset = [0.08, 0.06]
+                block.fontformat.text_effects = TextEffectStack(effects=(
+                    StrokeEffect(width=0.08),
+                    ShadowEffect(
+                        opacity=0.7,
+                        blur=0.08,
+                        offset=(0.08, 0.06),
+                    ),
+                ))
                 block.fontformat.gradient_enabled = True
                 block.fontformat.gradient_start_color = [20, 40, 160]
                 block.fontformat.gradient_end_color = [220, 80, 40]
@@ -2724,9 +2733,13 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     if effect == "stroke":
                         block.fontformat.stroke_width = 0.12
                     else:
-                        block.fontformat.shadow_radius = 0.12
-                        block.fontformat.shadow_strength = 0.8
-                        block.fontformat.shadow_offset = [0.1, 0.1]
+                        block.fontformat.text_effects = TextEffectStack(
+                            effects=(ShadowEffect(
+                                opacity=0.8,
+                                blur=0.12,
+                                offset=(0.1, 0.1),
+                            ),)
+                        )
 
                     item = TextBlkItem(block, 0)
                     scene = QGraphicsScene()
@@ -3347,10 +3360,14 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 block._bounding_rect = [0, 0, 600, 300]
                 block.vertical = vertical
                 block.translation = "\n".join(TEST_LINES[:4])
-                block.fontformat.stroke_width = 0.08
-                block.fontformat.shadow_radius = 0.08
-                block.fontformat.shadow_strength = 0.7
-                block.fontformat.shadow_offset = [0.08, 0.06]
+                block.fontformat.text_effects = TextEffectStack(effects=(
+                    StrokeEffect(width=0.08),
+                    ShadowEffect(
+                        opacity=0.7,
+                        blur=0.08,
+                        offset=(0.08, 0.06),
+                    ),
+                ))
                 block.fontformat.gradient_enabled = True
                 block.fontformat.gradient_start_color = [20, 40, 160]
                 block.fontformat.gradient_end_color = [220, 80, 40]
@@ -3500,18 +3517,22 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 self.assertLess(item.padding(), relative_large_padding)
 
                 item.setStrokeWidth(0.0, repaint_background=False)
-                shadow = item.fontformat.deepcopy()
-                shadow.shadow_radius = 0.2
-                shadow.shadow_strength = 0.8
-                shadow.shadow_offset = [0.0, 0.0]
-                item.setShadow(shadow, repaint=False)
+                item.set_text_effects(TextEffectStack(effects=(
+                    ShadowEffect(opacity=0.8, blur=0.2),
+                )))
                 centered_shadow_padding = item.padding()
                 self.assertGreater(centered_shadow_padding, 0.0)
-                shadow.shadow_offset = [0.8, -0.4]
-                item.setShadow(shadow, repaint=False)
+                item.set_text_effects(TextEffectStack(effects=(
+                    ShadowEffect(
+                        opacity=0.8,
+                        blur=0.2,
+                        offset=(0.8, -0.4),
+                    ),
+                )))
                 self.assertGreater(item.padding(), centered_shadow_padding)
-                shadow.shadow_strength = 0.0
-                item.setShadow(shadow, repaint=False)
+                item.set_text_effects(TextEffectStack(effects=(
+                    ShadowEffect(opacity=0.0, blur=0.2),
+                )))
                 self.assertEqual(item.padding(), 0.0)
 
                 item.document().clearUndoRedoStacks()

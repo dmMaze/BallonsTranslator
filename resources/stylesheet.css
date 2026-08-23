@@ -2577,13 +2577,6 @@ QLabel#fontAngleLabel {
     max-height: 22px;
 }
 
-QLabel#shadowRadiusLabel {
-    min-width: 22px;
-    max-width: 22px;
-    min-height: 22px;
-    max-height: 22px;
-}
-
 QLabel#GradientColorArrow {
     background-color: transparent;
 }

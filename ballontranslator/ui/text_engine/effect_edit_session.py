@@ -5,9 +5,13 @@ from typing import Optional, Sequence, Tuple, TYPE_CHECKING
 
 from ballontranslator.utils import config as C
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    TextEffect,
     TextEffectStack,
+    effect_phase,
 )
 
 from .. import shared_widget as SW
@@ -51,9 +55,9 @@ class TextEffectEditSession:
                 self.commit_parameter_delta
             )
             controls.preview_canceled.connect(self.cancel_preview)
-            controls.add_stroke_requested.connect(self.add_stroke)
-            controls.remove_stroke_requested.connect(self.remove_stroke)
-            controls.move_stroke_requested.connect(self.move_stroke)
+            controls.add_effect_requested.connect(self.add_effect)
+            controls.remove_effect_requested.connect(self.remove_effect)
+            controls.move_effect_requested.connect(self.move_effect)
 
     @staticmethod
     def _state_for_item(item: "TextBlkItem") -> TextEffectStack:
@@ -76,7 +80,7 @@ class TextEffectEditSession:
         return values
 
     @staticmethod
-    def _effect_sequence(state: TextEffectStack) -> tuple:
+    def _effect_sequence(state: TextEffectStack) -> Tuple[str, ...]:
         return tuple(effect.effect_type for effect in state.effects)
 
     @classmethod
@@ -102,14 +106,32 @@ class TextEffectEditSession:
         if index < 0 or index >= len(state.effects):
             raise IndexError('text effect index is no longer current')
         effect = state.effects[index]
-        if not isinstance(effect, StrokeEffect):
-            raise ValueError('selected text effect is not a Stroke')
-        if param_name not in {'enabled', 'width', 'opacity', 'paint'}:
-            raise ValueError('unknown Stroke field')
-        if param_name == 'paint' and not isinstance(value, SolidPaint):
-            value = SolidPaint(value)
+        parameters = {}
+        if isinstance(effect, StrokeEffect):
+            if param_name not in {'enabled', 'width', 'opacity', 'paint'}:
+                raise ValueError('unknown Stroke field')
+            if param_name == 'paint' and not isinstance(value, SolidPaint):
+                value = SolidPaint(value)
+            parameters[param_name] = value
+        elif isinstance(effect, ShadowEffect):
+            if param_name in {'offset_x', 'offset_y'}:
+                offset = list(effect.offset)
+                offset[0 if param_name == 'offset_x' else 1] = value
+                parameters['offset'] = tuple(offset)
+            elif param_name in {
+                'enabled', 'opacity', 'shadow_type', 'color', 'blur', 'spread'
+            }:
+                parameters[param_name] = value
+            else:
+                raise ValueError('unknown Shadow field')
+        elif isinstance(effect, HollowEffect):
+            if param_name != 'enabled':
+                raise ValueError('unknown Hollow field')
+            parameters['enabled'] = value
+        else:
+            raise ValueError('selected text effect type is unsupported')
         effects = list(state.effects)
-        effects[index] = replace(effect, **{param_name: value})
+        effects[index] = replace(effect, **parameters)
         return replace(state, effects=tuple(effects))
 
     @staticmethod
@@ -123,8 +145,10 @@ class TextEffectEditSession:
         if index < 0 or index >= len(state.effects):
             raise IndexError('text effect index is no longer current')
         effect = state.effects[index]
-        if not isinstance(effect, StrokeEffect):
-            raise ValueError('selected text effect is not a Stroke')
+        if isinstance(effect, ShadowEffect) and param_name in {
+            'offset_x', 'offset_y'
+        }:
+            return effect.offset[0 if param_name == 'offset_x' else 1]
         return getattr(effect, param_name)
 
     def _set_global_effects(self, state: TextEffectStack) -> None:
@@ -339,25 +363,58 @@ class TextEffectEditSession:
             self.controls.cancel_effect_previews()
         self.cancel_preview()
 
-    def add_stroke(self) -> bool:
+    @staticmethod
+    def _insertion_index(
+        state: TextEffectStack, effect: TextEffect
+    ) -> int:
+        phase = effect_phase(effect)
+        phase_order = {
+            'exterior': 0,
+            'stroke': 1,
+            'foreground': 2,
+            'interior': 3,
+        }
+        rank = phase_order[phase]
+        insertion = len(state.effects)
+        for index, current in enumerate(state.effects):
+            current_rank = phase_order[effect_phase(current)]
+            if current_rank > rank:
+                insertion = index
+                break
+            if current_rank == rank:
+                insertion = index + 1
+        return insertion
+
+    def add_effect(self, effect_type: str) -> bool:
         self._prepare_structure_change()
         before = self._current_states()
         if not self._has_common_stack_shape(before):
             self._sync_effect_ui()
             return False
+        constructors = {
+            'stroke': StrokeEffect,
+            'shadow': ShadowEffect,
+            'hollow': HollowEffect,
+        }
+        constructor = constructors.get(effect_type)
+        if constructor is None or (
+            effect_type == 'hollow'
+            and any(
+                any(isinstance(effect, HollowEffect) for effect in state.effects)
+                for state in before
+            )
+        ):
+            self._sync_effect_ui()
+            return False
         after = []
         for state in before:
             effects = list(state.effects)
-            stroke_indices = [
-                index for index, effect in enumerate(effects)
-                if isinstance(effect, StrokeEffect)
-            ]
-            insertion = stroke_indices[-1] + 1 if stroke_indices else 0
-            effects.insert(insertion, StrokeEffect())
+            effect = constructor()
+            effects.insert(self._insertion_index(state, effect), effect)
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
 
-    def remove_stroke(self, index: int) -> bool:
+    def remove_effect(self, index: int) -> bool:
         self._prepare_structure_change()
         before = self._current_states()
         if (
@@ -365,7 +422,6 @@ class TextEffectEditSession:
             or index < 0
             or any(
                 index >= len(state.effects)
-                or not isinstance(state.effects[index], StrokeEffect)
                 for state in before
             )
         ):
@@ -378,23 +434,39 @@ class TextEffectEditSession:
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
 
-    def move_stroke(self, index: int, direction: int) -> bool:
+    def move_effect(self, index: int, direction: int) -> bool:
         self._prepare_structure_change()
         before = self._current_states()
         if (
             not self._has_common_stack_shape(before)
             or direction not in (-1, 1)
+            or index < 0
+            or any(index >= len(state.effects) for state in before)
         ):
             self._sync_effect_ui()
             return False
-        stroke_indices = [
+        phase_sequences = [
+            tuple(effect_phase(effect) for effect in state.effects)
+            for state in before
+        ]
+        if any(
+            sequence != phase_sequences[0]
+            for sequence in phase_sequences[1:]
+        ):
+            self._sync_effect_ui()
+            return False
+        phase = phase_sequences[0][index]
+        if phase == 'foreground':
+            self._sync_effect_ui()
+            return False
+        phase_indices = [
             effect_index
-            for effect_index, effect in enumerate(before[0].effects)
-            if isinstance(effect, StrokeEffect)
+            for effect_index, current_phase in enumerate(phase_sequences[0])
+            if current_phase == phase
         ]
         try:
-            position = stroke_indices.index(index)
-            destination = stroke_indices[position + direction]
+            position = phase_indices.index(index)
+            destination = phase_indices[position + direction]
         except (IndexError, ValueError):
             self._sync_effect_ui()
             return False

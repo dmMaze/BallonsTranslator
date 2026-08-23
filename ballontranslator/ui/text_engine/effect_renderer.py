@@ -1,4 +1,4 @@
-"""Stroke, shadow, gradient, and transformed-effect rendering."""
+"""Typed text effects, legacy Gradient, and transformed rendering."""
 
 import math
 from typing import Callable, Optional, Tuple
@@ -17,13 +17,16 @@ from qtpy.QtGui import (
     QTextCursor,
     QTextLayout,
 )
-from qtpy.QtWidgets import QStyle, QWidget
+from qtpy.QtWidgets import QStyle, QStyleOptionGraphicsItem, QWidget
 
 from ballontranslator.utils.fontformat import FontFormat, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
+    ShadowEffect,
     StrokeEffect,
     TextEffectStack,
+    hollow_effect,
     primary_stroke,
 )
 from ..misc import ndarray2pixmap, pixmap2ndarray
@@ -33,7 +36,7 @@ from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
 )
-from .rendering.shadow import apply_shadow_effect
+from .rendering.shadow import render_shadow_rgba
 from .rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
@@ -126,6 +129,7 @@ class TextEffectRenderer:
         self._export_active = False
         self.preview = None
         self._render_stroke = None
+        self._outline_only_stroke = False
         self.refreshing_gradient_geometry = False
         self.refreshing_effect_padding = False
         self.has_transient_gradient_ranges = False
@@ -241,18 +245,16 @@ class TextEffectRenderer:
         return self.effective_text_effects().has_active_effects
 
     def has_raster_effects(self) -> bool:
-        """Return whether strict export must cover a rendered raster effect."""
+        """Return whether strict export must own the complete effect output."""
+        return any(self._effect_flags()) or self._renders_completed_foreground()
+
+    def has_generated_effect_layers(self) -> bool:
+        """Return whether font/geometry changes invalidate generated layers."""
         return any(self._effect_flags())
 
     def surface_semantic_state(self) -> tuple:
         """Return effect values that change completed source-surface pixels."""
-        return (
-            self.effective_text_effects().effects,
-            self.fontformat.shadow_radius,
-            self.fontformat.shadow_strength,
-            tuple(self.fontformat.shadow_color),
-            tuple(self.fontformat.shadow_offset),
-        )
+        return self.effective_text_effects().effects
 
     def _uses_preview_cache_namespace(self) -> bool:
         return (
@@ -270,6 +272,39 @@ class TextEffectRenderer:
             for effect in active.effects
             if isinstance(effect, StrokeEffect) and not effect.is_neutral()
         )
+
+    def _active_shadows(
+        self,
+        shadow_type: Optional[str] = None,
+        stack: Optional[TextEffectStack] = None,
+    ) -> Tuple[ShadowEffect, ...]:
+        active = self.effective_text_effects() if stack is None else stack
+        return tuple(
+            effect
+            for effect in active.effects
+            if isinstance(effect, ShadowEffect)
+            and not effect.is_neutral()
+            and (shadow_type is None or effect.shadow_type == shadow_type)
+        )
+
+    def _compiled_shadows(
+        self, shadow_type: Optional[str] = None
+    ) -> Tuple[ShadowEffect, ...]:
+        shadows = self._active_shadows(shadow_type)
+        if not self._hollow_enabled():
+            return shadows
+        return tuple(
+            shadow
+            for shadow in shadows
+            if shadow.shadow_type != 'inner'
+        )
+
+    def _hollow_enabled(
+        self, stack: Optional[TextEffectStack] = None
+    ) -> bool:
+        active = self.effective_text_effects() if stack is None else stack
+        hollow = hollow_effect(active)
+        return hollow is not None and not hollow.is_neutral()
 
     def _effect_cache_input_key(
         self, stack: Optional[TextEffectStack] = None
@@ -292,10 +327,6 @@ class TextEffectRenderer:
             (
                 rect.x(), rect.y(), rect.width(), rect.height()
             ),
-            self.fontformat.shadow_radius,
-            self.fontformat.shadow_strength,
-            tuple(self.fontformat.shadow_color),
-            tuple(self.fontformat.shadow_offset),
         )
 
     @staticmethod
@@ -649,7 +680,10 @@ class TextEffectRenderer:
         """Paint effects around the host item's normal text pass."""
         if (
             (self.reshaping and not self._export_active)
-            or not any(self._effect_flags())
+            or (
+                not any(self._effect_flags())
+                and not self._renders_completed_foreground()
+            )
         ):
             option.state = QStyle.State_None
             base_paint(painter, option, widget)
@@ -660,11 +694,98 @@ class TextEffectRenderer:
         was_in_graphics_paint = self.in_graphics_paint
         self.in_graphics_paint = True
         try:
-            self._draw_effects(painter, option.exposedRect)
-            option.state = QStyle.State_None
-            base_paint(painter, option, widget)
+            interaction_option = QStyleOptionGraphicsItem(option)
+            if any(self._effect_flags()):
+                self._draw_effects(painter, option.exposedRect)
+            replace_foreground = self._hollow_enabled() or (
+                bool(self._active_shadows('inner'))
+                and (
+                    self.export_render
+                    or self._completed_foreground_ready()
+                )
+            )
+            if replace_foreground:
+                self._paint_effect_interaction(
+                    painter, interaction_option, widget, base_paint
+                )
+            else:
+                option.state = QStyle.State_None
+                base_paint(painter, option, widget)
         finally:
             self.in_graphics_paint = was_in_graphics_paint
+
+    def _renders_completed_foreground(self) -> bool:
+        return self._hollow_enabled() or bool(self._active_shadows('inner'))
+
+    def _completed_foreground_ready(self) -> bool:
+        state = self._peek_raster_state()
+        return bool(
+            state is not None
+            and not state.cache_dirty
+            and state.cache_rendered_generation == state.cache_generation
+        )
+
+    def _paint_effect_interaction(
+        self,
+        painter: QPainter,
+        option: QStyleOptionGraphicsItem,
+        widget: QWidget,
+        base_paint,
+    ) -> None:
+        """Paint only selection/caret feedback over a completed foreground.
+
+        The native pass keeps Qt's caret/IME state current. Canonical glyph
+        alpha is removed from a transient layer so only editing feedback is
+        composited over the completed cached surface.
+
+        >>> hasattr(TextEffectRenderer, '_paint_effect_interaction')
+        True
+        """
+        if self.export_render or not self.item.isEditing():
+            return
+        rect = self._visible_effect_rect(painter, option.exposedRect)
+        if rect.isEmpty():
+            return
+        requested_scale = self._paint_device_scale(painter)
+        plan = plan_effect_raster(
+            rect.width(),
+            rect.height(),
+            quality_raster_request(requested_scale),
+        )
+        try:
+            if plan.mode != 'full':
+                raise EffectRasterAllocationError(
+                    'interaction surface exceeds bounded raster policy'
+                )
+            interaction = self._new_effect_pixmap(plan.tier, rect)
+            interaction_painter = QPainter(interaction)
+            if not interaction_painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin effect interaction painter'
+                )
+            try:
+                interaction_painter.translate(-rect.topLeft())
+                base_paint(
+                    interaction_painter,
+                    QStyleOptionGraphicsItem(option),
+                    widget,
+                )
+                interaction_painter.setCompositionMode(
+                    QPainter.CompositionMode.CompositionMode_DestinationOut
+                )
+                self._paint_live_layout(
+                    interaction_painter, self._effect_paint_context()
+                )
+            finally:
+                interaction_painter.end()
+            painter.drawPixmap(rect.topLeft(), interaction)
+        except RASTER_BOUNDARY_FAILURES:
+            painter.save()
+            try:
+                painter.setOpacity(0.0)
+                base_paint(painter, option, widget)
+            finally:
+                painter.restore()
 
     def finalize_neutral_cache(self) -> None:
         """Invalidate transformed pixels after neutral restoration."""
@@ -723,7 +844,10 @@ class TextEffectRenderer:
                 # The later normal fill restores glyph interiors. Keeping this
                 # pass opaque also avoids bindings that suppress textOutline
                 # when the selection foreground itself is transparent.
-                effect_format.setForeground(self.stroke_qcolor)
+                foreground = QColor(self.stroke_qcolor)
+                if self._outline_only_stroke:
+                    foreground.setAlpha(1)
+                effect_format.setForeground(foreground)
                 effect_format.setTextOutline(pen)
 
                 selection = QAbstractTextDocumentLayout.Selection()
@@ -875,6 +999,10 @@ class TextEffectRenderer:
                     QTextCursor.MoveMode.KeepAnchor,
                 )
                 char_format.setTextOutline(stroke_pen)
+                if self._outline_only_stroke:
+                    foreground = QColor(self.stroke_qcolor)
+                    foreground.setAlpha(1)
+                    char_format.setForeground(foreground)
                 # Path-painted glyph extensions consume this flag. Ruby and
                 # emphasis derive half-width native outlines in temporary docs.
                 char_format.setProperty(
@@ -1006,12 +1134,31 @@ class TextEffectRenderer:
             return
         self._paint_cloned_document_stroke(painter)
 
-    def _shadow_metrics(self):
+    def _shadow_metrics(
+        self, shadow: ShadowEffect
+    ) -> Tuple[float, float, float, float]:
         font_size = self.layout.max_font_size(to_px=True)
-        radius = max(0.0, self.fontformat.shadow_radius * font_size)
-        xoffset = self.fontformat.shadow_offset[0] * font_size
-        yoffset = self.fontformat.shadow_offset[1] * font_size
-        return radius, xoffset, yoffset
+        return (
+            shadow.blur * font_size,
+            shadow.spread * font_size,
+            shadow.offset[0] * font_size,
+            shadow.offset[1] * font_size,
+        )
+
+    def _shadowed_bounds(
+        self, source_bounds: QRectF, shadow: ShadowEffect
+    ) -> QRectF:
+        blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
+        if shadow.shadow_type == 'long':
+            return source_bounds.united(
+                source_bounds.translated(xoffset, yoffset)
+            )
+        return source_bounds.translated(xoffset, yoffset).adjusted(
+            -blur - spread,
+            -blur - spread,
+            blur + spread,
+            blur + spread,
+        )
 
     def _logical_ink_bounds(self) -> QRectF:
         if self.document().isEmpty() or not self._has_layout_distortion():
@@ -1019,7 +1166,7 @@ class TextEffectRenderer:
         return self.geometry_controller.layout_ink_bounds()
 
     def _effect_padding(self) -> float:
-        paint_stroke, paint_shadow = self._effect_flags()
+        paint_stroke, _paint_non_stroke = self._effect_flags()
         layout_distorted = self._has_layout_distortion()
         if not layout_distorted:
             return self._conservative_effect_padding()
@@ -1034,12 +1181,12 @@ class TextEffectRenderer:
             stroke_outset if paint_stroke else 0.0,
             stroke_outset if paint_stroke else 0.0,
         )
-        if paint_shadow:
-            radius, xoffset, yoffset = self._shadow_metrics()
-            shadow_bounds = effect_bounds.translated(xoffset, yoffset).adjusted(
-                -radius, -radius, radius, radius
-            )
-            effect_bounds = effect_bounds.united(shadow_bounds)
+        shadow_source_bounds = QRectF(effect_bounds)
+        for shadow in self._compiled_shadows():
+            if shadow.shadow_type != 'inner':
+                effect_bounds = effect_bounds.united(
+                    self._shadowed_bounds(shadow_source_bounds, shadow)
+                )
         effect_bounds = effect_bounds.adjusted(
             -EFFECT_RASTER_GUARD,
             -EFFECT_RASTER_GUARD,
@@ -1068,16 +1215,24 @@ class TextEffectRenderer:
                 / 2
             )
         padding = stroke_outset
-        if (
-            self.fontformat.shadow_radius > 0
-            and self.fontformat.shadow_strength > 0
-        ):
-            radius = self.fontformat.shadow_radius * max_font_size
-            xoffset = abs(self.fontformat.shadow_offset[0] * max_font_size)
-            yoffset = abs(self.fontformat.shadow_offset[1] * max_font_size)
+        exterior_padding = None
+        for shadow in self._compiled_shadows():
+            if shadow.shadow_type == 'inner':
+                continue
+            blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
+            shadow_padding = (
+                stroke_outset
+                + (0.0 if shadow.shadow_type == 'long' else blur + spread)
+                + max(abs(xoffset), abs(yoffset))
+            )
+            exterior_padding = (
+                shadow_padding
+                if exterior_padding is None
+                else max(exterior_padding, shadow_padding)
+            )
+        if exterior_padding is not None:
             padding = max(
-                padding,
-                stroke_outset + radius + max(xoffset, yoffset),
+                padding, exterior_padding + EFFECT_RASTER_GUARD
             )
         return padding
 
@@ -1115,11 +1270,25 @@ class TextEffectRenderer:
             self.refreshing_effect_padding = False
 
     def _effect_flags(self) -> Tuple[bool, bool]:
+        """Return active Stroke and generated/non-foreground phase flags."""
         return (
             bool(self._active_strokes()),
-            self.fontformat.shadow_radius > 0
-            and self.fontformat.shadow_strength > 0,
+            bool(self._compiled_shadows()),
         )
+
+    def _effect_tile_overlap(self) -> float:
+        overlap = self._stroke_outset() + EFFECT_RASTER_GUARD
+        for shadow in self._compiled_shadows():
+            blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
+            if shadow.shadow_type == 'long':
+                reach = max(abs(xoffset), abs(yoffset))
+            else:
+                reach = blur + spread + max(abs(xoffset), abs(yoffset))
+            overlap = max(
+                overlap,
+                reach + self._stroke_outset() + EFFECT_RASTER_GUARD,
+            )
+        return overlap
 
     def _warn_effect_allocation_once(self, error: Exception):
         if self.allocation_warning_generation == self.cache_generation:
@@ -1180,133 +1349,303 @@ class TextEffectRenderer:
         surface_rect: QRectF,
         render_scale: float,
         *,
-        shadow_rect: QRectF = None,
-        shadow_scale: float = None,
         target_stroke: bool = True,
     ) -> QPixmap:
-        """Render one bounded effect surface in item-local coordinates."""
-        paint_stroke, paint_shadow = self._effect_flags()
+        """Render fixed effect phases from one canonical glyph alpha.
+
+        >>> hasattr(TextEffectRenderer, '_render_effect_surface')
+        True
+        """
+        paint_stroke, _paint_non_stroke = self._effect_flags()
+        hollow = self._hollow_enabled()
+        exterior = tuple(
+            shadow
+            for shadow in self._active_shadows()
+            if shadow.shadow_type != 'inner'
+        )
+        interior = self._active_shadows('inner') if not hollow else ()
         target_map = self._new_effect_pixmap(render_scale, surface_rect)
+        canonical = None
+        canonical_alpha = None
+        if interior or (exterior and not paint_stroke) or (hollow and exterior):
+            canonical = self._capture_effect_source(
+                surface_rect, render_scale, include_strokes=False
+            )
+            canonical_alpha = self._pixmap_alpha(canonical)
+        exterior_alpha = canonical_alpha
+        if exterior and paint_stroke:
+            silhouette = self._capture_effect_source(
+                surface_rect, render_scale, include_strokes=True
+            )
+            exterior_alpha = self._pixmap_alpha(silhouette)
 
-        if paint_shadow:
-            shadow_rect = QRectF(surface_rect if shadow_rect is None else shadow_rect)
-            shadow_scale = render_scale if shadow_scale is None else shadow_scale
-            silhouette = self._new_effect_pixmap(shadow_scale, shadow_rect)
-            try:
-                silhouette_painter = QPainter(silhouette)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to begin shadow silhouette painter'
-                ) from error
-            if not silhouette_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin shadow silhouette painter'
-                )
-            previous_capture = self.capturing_surface
-            previous_raster_error = self.surface_raster_error
-            self.capturing_surface = True
-            self.surface_raster_error = None
-            try:
-                silhouette_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
-                silhouette_painter.translate(-shadow_rect.topLeft())
-                self._paint_live_layout(
-                    silhouette_painter, self._effect_paint_context()
-                )
-                if paint_stroke:
-                    self._paint_strokes(
-                        silhouette_painter,
-                        lambda: self.paint_stroke(
-                            silhouette_painter, shadow_scale, shadow_rect
-                        ),
-                    )
-                if self.surface_raster_error is not None:
-                    raise self.surface_raster_error
-            finally:
-                silhouette_painter.end()
-                self.capturing_surface = previous_capture
-                self.surface_raster_error = previous_raster_error
-
-            radius, xoffset, yoffset = self._shadow_metrics()
-            try:
-                shadow_source = pixmap2ndarray(
-                    silhouette, keep_alpha=True
-                )
-                if shadow_source is None:
-                    raise EffectRasterAllocationError(
-                        'unable to access shadow silhouette pixels'
-                    )
-                shadow_map, _ = apply_shadow_effect(
-                    shadow_source,
-                    self.fontformat.shadow_color,
-                    self.fontformat.shadow_strength,
-                    max(0, int(round(radius * shadow_scale))),
-                )
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to allocate blurred shadow surface: '
-                    f'{error}'
-                ) from error
-            if shadow_map is None or shadow_map.isNull():
-                raise EffectRasterAllocationError(
-                    'unable to allocate blurred shadow surface'
-                )
-            try:
-                shadow_map.setDevicePixelRatio(shadow_scale)
-                target_painter = QPainter(target_map)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to begin effect target painter'
-                ) from error
+        try:
+            target_painter = QPainter(target_map)
             if not target_painter.isActive():
                 raise EffectRasterAllocationError(
                     'unable to begin effect target painter'
                 )
-            try:
-                target_painter.setRenderHint(
-                    QPainter.RenderHint.SmoothPixmapTransform
-                )
-                target_painter.drawPixmap(
-                    shadow_rect.topLeft()
-                    - surface_rect.topLeft()
-                    + QPointF(xoffset, yoffset),
-                    shadow_map,
-                )
-            finally:
-                target_painter.end()
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to begin effect target painter'
+            ) from error
 
-        if paint_stroke and target_stroke:
-            try:
-                stroke_painter = QPainter(target_map)
-            except RASTER_BOUNDARY_FAILURES as error:
-                raise EffectRasterAllocationError(
-                    'unable to begin stroke target painter'
-                ) from error
-            if not stroke_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin stroke target painter'
-                )
-            previous_capture = self.capturing_surface
-            previous_raster_error = self.surface_raster_error
-            self.capturing_surface = True
-            self.surface_raster_error = None
-            try:
-                stroke_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
-                stroke_painter.translate(-surface_rect.topLeft())
-                self._paint_strokes(
-                    stroke_painter,
-                    lambda: self.paint_stroke(
-                        stroke_painter, render_scale, surface_rect
+        previous_capture = self.capturing_surface
+        previous_raster_error = self.surface_raster_error
+        self.capturing_surface = True
+        self.surface_raster_error = None
+        try:
+            target_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            # First card in a phase is topmost, so paint each phase backwards.
+            for shadow in reversed(exterior):
+                assert exterior_alpha is not None
+                target_painter.drawPixmap(
+                    QPointF(),
+                    self._shadow_pixmap(
+                        exterior_alpha, shadow, render_scale
                     ),
                 )
-                if self.surface_raster_error is not None:
-                    raise self.surface_raster_error
-            finally:
-                stroke_painter.end()
-                self.capturing_surface = previous_capture
-                self.surface_raster_error = previous_raster_error
+
+            if hollow and exterior:
+                assert canonical is not None
+                target_painter.save()
+                try:
+                    target_painter.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_DestinationOut
+                    )
+                    target_painter.drawPixmap(QPointF(), canonical)
+                finally:
+                    target_painter.restore()
+
+            target_painter.translate(-surface_rect.topLeft())
+            if paint_stroke and target_stroke:
+                if hollow:
+                    self._paint_hollow_strokes(
+                        target_painter,
+                        surface_rect,
+                        render_scale,
+                    )
+                else:
+                    self._paint_strokes(
+                        target_painter,
+                        lambda: self.paint_stroke(
+                            target_painter, render_scale, surface_rect
+                        ),
+                    )
+
+            if interior:
+                assert canonical is not None
+                assert canonical_alpha is not None
+                target_painter.drawPixmap(surface_rect.topLeft(), canonical)
+                target_painter.translate(surface_rect.topLeft())
+                for shadow in reversed(interior):
+                    target_painter.drawPixmap(
+                        QPointF(),
+                        self._shadow_pixmap(
+                            canonical_alpha, shadow, render_scale
+                        ),
+                    )
+                target_painter.translate(-surface_rect.topLeft())
+            if self.surface_raster_error is not None:
+                raise self.surface_raster_error
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render typed effect surface'
+            ) from error
+        finally:
+            end_error = None
+            try:
+                target_painter.end()
+            except RASTER_BOUNDARY_FAILURES as error:
+                end_error = error
+            self.capturing_surface = previous_capture
+            self.surface_raster_error = previous_raster_error
+            if end_error is not None:
+                raise EffectRasterAllocationError(
+                    'unable to finish typed effect painter'
+                ) from end_error
         return target_map
 
-    def repaint_background(self, render_scale: float = 1.0):
+    def _paint_hollow_strokes(
+        self,
+        painter: QPainter,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> None:
+        """Paint centered Stroke bands without their opaque glyph fill.
+
+        >>> hasattr(TextEffectRenderer, '_paint_hollow_strokes')
+        True
+        """
+        previous = self._render_stroke
+        previous_outline_only = self._outline_only_stroke
+        self._outline_only_stroke = True
+        try:
+            for stroke in reversed(self._active_strokes()):
+                self._render_stroke = stroke
+                try:
+                    layer = self._new_effect_pixmap(
+                        render_scale, surface_rect
+                    )
+                    layer_painter = QPainter(layer)
+                    if not layer_painter.isActive():
+                        raise EffectRasterAllocationError(
+                            'unable to begin Hollow Stroke painter'
+                        )
+                    try:
+                        layer_painter.setRenderHints(
+                            _VECTOR_EFFECT_RENDER_HINTS
+                        )
+                        layer_painter.translate(-surface_rect.topLeft())
+                        self.paint_stroke(
+                            layer_painter, render_scale, surface_rect
+                        )
+                    finally:
+                        layer_painter.end()
+
+                    rgba = pixmap2ndarray(layer, keep_alpha=True)
+                    if rgba is None:
+                        raise EffectRasterAllocationError(
+                            'unable to access Hollow Stroke pixels'
+                        )
+                    # The fragment-correct outline pass uses alpha 1 only to
+                    # keep Qt from suppressing textOutline. Remove that
+                    # sentinel before this layer becomes persistent pixels.
+                    rgba[..., 3][rgba[..., 3] <= 1] = 0
+                    if stroke.opacity != 1.0:
+                        product = rgba[..., 3].astype(np.uint16)
+                        product *= int(round(stroke.opacity * 255))
+                        product += 127
+                        product //= 255
+                        rgba[..., 3] = product.astype(np.uint8)
+                    band = ndarray2pixmap(rgba)
+                    if band is None or band.isNull():
+                        raise EffectRasterAllocationError(
+                            'unable to allocate Hollow Stroke band'
+                        )
+                    band.setDevicePixelRatio(render_scale)
+                    painter.drawPixmap(surface_rect.topLeft(), band)
+                except RASTER_BOUNDARY_FAILURES as error:
+                    raise EffectRasterAllocationError(
+                        'unable to render Hollow Stroke band'
+                    ) from error
+        finally:
+            self._outline_only_stroke = previous_outline_only
+            self._render_stroke = previous
+
+    def _capture_effect_source(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+        *,
+        include_strokes: bool,
+    ) -> QPixmap:
+        """Capture the canonical glyph alpha, optionally with Stroke coverage.
+
+        >>> hasattr(TextEffectRenderer, '_capture_effect_source')
+        True
+        """
+        source = self._new_effect_pixmap(render_scale, surface_rect)
+        try:
+            painter = QPainter(source)
+            if not painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin effect source painter'
+                )
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to begin effect source painter'
+            ) from error
+        previous_capture = self.capturing_surface
+        previous_raster_error = self.surface_raster_error
+        self.capturing_surface = True
+        self.surface_raster_error = None
+        try:
+            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            painter.translate(-surface_rect.topLeft())
+            self._paint_live_layout(painter, self._effect_paint_context())
+            if include_strokes:
+                self._paint_strokes(
+                    painter,
+                    lambda: self.paint_stroke(
+                        painter, render_scale, surface_rect
+                    ),
+                )
+            if self.surface_raster_error is not None:
+                raise self.surface_raster_error
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render effect source surface'
+            ) from error
+        finally:
+            end_error = None
+            try:
+                painter.end()
+            except RASTER_BOUNDARY_FAILURES as error:
+                end_error = error
+            self.capturing_surface = previous_capture
+            self.surface_raster_error = previous_raster_error
+            if end_error is not None:
+                raise EffectRasterAllocationError(
+                    'unable to finish effect source painter'
+                ) from end_error
+        return source
+
+    @staticmethod
+    def _pixmap_alpha(pixmap: QPixmap) -> np.ndarray:
+        try:
+            rgba = pixmap2ndarray(pixmap, keep_alpha=True)
+        except RASTER_BOUNDARY_FAILURES as error:
+            raise EffectRasterAllocationError(
+                'unable to access text effect source pixels'
+            ) from error
+        if rgba is None:
+            raise EffectRasterAllocationError(
+                'unable to access text effect source pixels'
+            )
+        return rgba[..., 3].copy()
+
+    def _shadow_pixmap(
+        self,
+        source_alpha: np.ndarray,
+        shadow: ShadowEffect,
+        render_scale: float,
+    ) -> QPixmap:
+        blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
+        try:
+            rgba = render_shadow_rgba(
+                source_alpha,
+                shadow.shadow_type,
+                shadow.color,
+                shadow.opacity,
+                (
+                    xoffset * render_scale,
+                    yoffset * render_scale,
+                ),
+                max(0, int(round(blur * render_scale))),
+                max(0, int(round(spread * render_scale))),
+            )
+            pixmap = ndarray2pixmap(rgba)
+        except RASTER_BOUNDARY_FAILURES as error:
+            raise EffectRasterAllocationError(
+                f'unable to allocate typed shadow surface: {error}'
+            ) from error
+        if pixmap is None or pixmap.isNull():
+            raise EffectRasterAllocationError(
+                'unable to allocate typed shadow surface'
+            )
+        pixmap.setDevicePixelRatio(render_scale)
+        return pixmap
+
+    def repaint_background(self, render_scale: float = 1.0) -> None:
         self.item.refresh_cache_policy()
         empty = self.document().isEmpty()
         if (
@@ -1325,8 +1664,8 @@ class TextEffectRenderer:
             self.repainting = False
         self._update_effect_padding()
 
-        paint_stroke, paint_shadow = self._effect_flags()
-        if not paint_shadow and not paint_stroke or empty:
+        paint_stroke, paint_non_stroke = self._effect_flags()
+        if not paint_non_stroke and not paint_stroke or empty:
             changed = self.background_pixmap is not None
             self.background_pixmap = None
             self.background_pixmap_scale = None
@@ -1397,7 +1736,7 @@ class TextEffectRenderer:
         self.item.update()
 
 
-    def _mark_effect_cache_dirty(self):
+    def _mark_effect_cache_dirty(self) -> None:
         state = self._raster_state()
         state.cache_generation += 1
         state.cache_dirty = True
@@ -1406,25 +1745,6 @@ class TextEffectRenderer:
         # Never combine a previous glyph silhouette with a new fill angle.
         self.background_pixmap = None
         self.background_pixmap_scale = None
-
-    def _tile_shadow_scale(
-        self, shadow_rect: QRectF, requested_scale: float
-    ) -> float:
-        """Bound a shadow-only context while preserving vector stroke tier."""
-        width = max(shadow_rect.width(), 1.0)
-        height = max(shadow_rect.height(), 1.0)
-        scale = min(
-            requested_scale,
-            EFFECT_TILE_MAX_EDGE / width,
-            EFFECT_TILE_MAX_EDGE / height,
-            EFFECT_CACHE_MAX_DIMENSION / width,
-            EFFECT_CACHE_MAX_DIMENSION / height,
-            math.sqrt(EFFECT_CACHE_MAX_PIXELS / (width * height)),
-            math.sqrt((EFFECT_CACHE_MAX_BYTES / 4) / (width * height)),
-        )
-        # QPixmap accepts a fractional DPR. The one-pixel floor keeps even an
-        # extreme blur context representable without an unbounded allocation.
-        return max(scale, 1.0 / max(width, height))
 
     def _visible_effect_rect(
         self, painter: QPainter, exposed_rect: QRectF = None
@@ -1443,29 +1763,26 @@ class TextEffectRenderer:
         painter: QPainter,
         plan: EffectRasterPlan,
         exposed_rect: QRectF = None,
-    ):
+    ) -> None:
         br = self.boundingRect()
         visible = self._visible_effect_rect(painter, exposed_rect)
         if visible.isEmpty():
             return
 
-        paint_stroke, paint_shadow = self._effect_flags()
-        stroke_overlap = (
-            self._stroke_outset() + EFFECT_RASTER_GUARD
-            if paint_stroke
-            else EFFECT_RASTER_GUARD
-        )
+        paint_stroke, paint_non_stroke = self._effect_flags()
+        stroke_overlap = self._stroke_outset() + EFFECT_RASTER_GUARD
         vector_stroke_direct = (
             paint_stroke
+            and not paint_non_stroke
             and 2 * math.ceil(stroke_overlap * plan.tier)
             >= plan.tile_edge
         )
         target_overlap = (
             EFFECT_RASTER_GUARD
             if vector_stroke_direct
-            else stroke_overlap
+            else self._effect_tile_overlap()
         )
-        if vector_stroke_direct and not paint_shadow:
+        if vector_stroke_direct:
             self.tile_cache.clear()
             self.direct_stroke = True
             self.cache_dirty = False
@@ -1476,10 +1793,11 @@ class TextEffectRenderer:
             self.force_tiles = False
             return
         overlap_px = math.ceil(target_overlap * plan.tier)
+        surface_overlap = overlap_px / plan.tier
         core_edge_px = plan.tile_edge - 2 * overlap_px
         if core_edge_px < 1:
             error = EffectRasterAllocationError(
-                'stroke overlap exceeds bounded tile surface'
+                'effect overlap exceeds bounded tile surface'
             )
             if self._raise_or_defer_export_effect_error(error):
                 return
@@ -1517,6 +1835,7 @@ class TextEffectRenderer:
         staging_pixmap = None
         staging_painter = None
         tile_painter = painter
+        raster_failure = None
         try:
             if not self.export_render:
                 staging_plan = plan_effect_raster(
@@ -1553,10 +1872,10 @@ class TextEffectRenderer:
                     if core.isEmpty():
                         continue
                     surface = core.adjusted(
-                        -target_overlap,
-                        -target_overlap,
-                        target_overlap,
-                        target_overlap,
+                        -surface_overlap,
+                        -surface_overlap,
+                        surface_overlap,
+                        surface_overlap,
                     ).intersected(br)
                     key = (
                         self.cache_generation,
@@ -1572,28 +1891,9 @@ class TextEffectRenderer:
                     active_keys.add(key)
                     cached = self.tile_cache.get(key)
                     if cached is None:
-                        shadow_rect = None
-                        shadow_scale = None
-                        if paint_shadow:
-                            radius, xoffset, yoffset = self._shadow_metrics()
-                            shadow_rect = (
-                                core.translated(-xoffset, -yoffset)
-                                .adjusted(
-                                    -radius - stroke_overlap,
-                                    -radius - stroke_overlap,
-                                    radius + stroke_overlap,
-                                    radius + stroke_overlap,
-                                )
-                                .intersected(br)
-                            )
-                            shadow_scale = self._tile_shadow_scale(
-                                shadow_rect, plan.tier
-                            )
                         pixmap = self._render_effect_surface(
                             surface,
                             plan.tier,
-                            shadow_rect=shadow_rect,
-                            shadow_scale=shadow_scale,
                             target_stroke=not vector_stroke_direct,
                         )
                         cached = (QRectF(surface), pixmap)
@@ -1617,16 +1917,35 @@ class TextEffectRenderer:
                         )
                     finally:
                         tile_painter.restore()
-        except EFFECT_RASTER_FAILURES as error:
+        except RASTER_BOUNDARY_FAILURES as error:
+            raster_failure = (
+                error
+                if isinstance(error, EFFECT_RASTER_FAILURES)
+                else EffectRasterAllocationError(
+                    'unable to render tiled effect surface'
+                )
+            )
+            if raster_failure is not error:
+                raster_failure.__cause__ = error
+        finally:
+            if staging_painter is not None:
+                try:
+                    if staging_painter.isActive():
+                        staging_painter.end()
+                except RASTER_BOUNDARY_FAILURES as error:
+                    if raster_failure is None:
+                        raster_failure = EffectRasterAllocationError(
+                            'unable to finish tiled effect painter'
+                        )
+                        raster_failure.__cause__ = error
+
+        if raster_failure is not None:
             self.tile_cache.clear()
             self.direct_stroke = paint_stroke
-            if self._raise_or_defer_export_effect_error(error):
+            if self._raise_or_defer_export_effect_error(raster_failure):
                 return
-            self._warn_effect_allocation_once(error)
+            self._warn_effect_allocation_once(raster_failure)
             return
-        finally:
-            if staging_painter is not None and staging_painter.isActive():
-                staging_painter.end()
 
         if staging_pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -1651,19 +1970,24 @@ class TextEffectRenderer:
         # This path intentionally avoids every intermediate raster allocation.
         # The custom glyph renderer still consumes outline selections, while a
         # native box transform keeps the unclipped cloned-document stroke.
-        self._paint_strokes(
-            painter, lambda: self._paint_source_local_stroke(painter)
-        )
+        previous = self._outline_only_stroke
+        self._outline_only_stroke = self._hollow_enabled()
+        try:
+            self._paint_strokes(
+                painter, lambda: self._paint_source_local_stroke(painter)
+            )
+        finally:
+            self._outline_only_stroke = previous
 
     def _draw_effects(
         self, painter: QPainter, exposed_rect: QRectF = None
-    ):
+    ) -> None:
         painter.save()
         try:
-            paint_stroke, paint_shadow = self._effect_flags()
-            if not paint_stroke and not paint_shadow:
+            paint_stroke, paint_non_stroke = self._effect_flags()
+            if not paint_stroke and not paint_non_stroke:
                 return
-            # A preview can park committed pixels while content or a legacy
+            # A preview can park committed pixels while content or another
             # effect changes. Validate semantics at the final reuse boundary
             # so cancellation cannot revive that stale surface.
             self._invalidate_stale_active_raster_state()
