@@ -156,7 +156,10 @@ canonical rich foreground in the same item-local coordinate space without
 changing the alpha used by Stroke or exterior Shadow. Hollow suppresses the
 canonical face, Gradient Overlay, and Inner output, and removes the canonical
 face from exterior output before Stroke is painted, so the source alpha and
-full Stroke outline remain available. Legacy `gradient_*` fields are
+full Stroke outline remain available. The Text Effect panel projects this
+unique typed value as an icon toggle: first activation inserts it through the
+effect edit session, while later clicks retain it and change `enabled` in one
+undo command. Legacy `gradient_*` fields are
 compatibility-only persistence data and never enter live rendering. A
 non-neutral `TextBlock.text_alpha_mask` clips the completed Normal
 composite after those phases and before Overall Opacity and global Text

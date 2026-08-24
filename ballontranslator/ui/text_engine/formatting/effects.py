@@ -1332,78 +1332,6 @@ class GlowEffectCard(QFrame):
         self.preview_canceled.emit(self.index, 'paint')
 
 
-class HollowEffectCard(QFrame):
-    """Edit the single structural Hollow effect.
-
-    >>> HollowEffectCard.__name__
-    'HollowEffectCard'
-    """
-
-    value_commit_requested = Signal(int, str, object)
-    remove_requested = Signal(int)
-
-    def __init__(self, index: int, parent=None) -> None:
-        super().__init__(parent)
-        self.index = int(index)
-        self.setObjectName('TextEffectParameterPanel')
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.title_icon_label = _effect_icon_label(
-            'text-effect-hollow.svg', self
-        )
-        self.title_label = QLabel(self.tr('Hollow'), self)
-        self.title_label.setObjectName('TextEffectParameterTitle')
-        self.title_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        self.delete_button = QToolButton(self)
-        self.delete_button.setObjectName('TextEffectCloseButton')
-        self.delete_button.setIcon(
-            QIcon(themed_icon_path('titlebar_close.svg'))
-        )
-        self.delete_button.setToolTip(self.tr('Delete Hollow'))
-        self.delete_button.setAccessibleName(self.tr('Delete Hollow'))
-        self.delete_button.setFixedSize(18, 18)
-        self.delete_button.clicked.connect(self._on_delete_clicked)
-
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Hollow'), self.tr('Hide Hollow'), self
-        )
-        self.visibility_button.visibility_requested.connect(
-            self._on_enabled_clicked
-        )
-
-        action_widget = _effect_action_widget(
-            self, (self.visibility_button, self.delete_button)
-        )
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(6)
-        layout.addWidget(self.title_icon_label)
-        layout.addWidget(self.title_label)
-        layout.addWidget(action_widget)
-
-    def set_values(self, hollows: Sequence[HollowEffect]) -> None:
-        values = [hollow.enabled for hollow in hollows]
-        common = (
-            values[0]
-            if values and all(value == values[0] for value in values)
-            else None
-        )
-        self.visibility_button.set_visibility(common)
-
-    def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
-        return ()
-
-    def _on_enabled_clicked(self, enabled: bool) -> None:
-        self.value_commit_requested.emit(
-            self.index, 'enabled', bool(enabled)
-        )
-
-    def _on_delete_clicked(self) -> None:
-        self.remove_requested.emit(self.index)
-
-
 class GradientOverlayEffectCard(QFrame):
     """Edit the single foreground Gradient Overlay effect.
 
@@ -1719,6 +1647,7 @@ class TextEffectPanel(PanelArea):
     parameter_commit_requested = Signal(int, str, object)
     preview_canceled = Signal(int, str)
     add_effect_requested = Signal(str)
+    hollow_enabled_requested = Signal(bool)
     remove_effect_requested = Signal(int)
     move_effect_requested = Signal(int, int)
     color_dialog_active_changed = Signal(bool)
@@ -1791,12 +1720,27 @@ class TextEffectPanel(PanelArea):
             self._on_mask_brush_clicked
         )
 
+        self.hollow_toggle_button = QToolButton(self.scrollContent)
+        self.hollow_toggle_button.setObjectName('TextEffectHollowButton')
+        self.hollow_toggle_button.setIcon(
+            QIcon(themed_icon_path('text-effect-hollow.svg'))
+        )
+        self.hollow_toggle_button.setIconSize(QSize(16, 16))
+        self.hollow_toggle_button.setFixedSize(26, 26)
+        self.hollow_toggle_button.setCheckable(True)
+        self.hollow_toggle_button.setProperty('mixed', False)
+        self.hollow_toggle_button.clicked.connect(
+            self._on_hollow_toggled
+        )
+        self._set_hollow_toggle_state(False)
+
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(6)
         top_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
         top_row.addWidget(self.overall_opacity_control)
         top_row.addWidget(self.mask_brush_button)
+        top_row.addWidget(self.hollow_toggle_button)
 
         self.add_effect_button = QToolButton(self.scrollContent)
         self.add_effect_button.setObjectName('AddTextEffectButton')
@@ -1816,7 +1760,6 @@ class TextEffectPanel(PanelArea):
             (self.tr('Stroke'), 'stroke', 'text-effect-stroke.svg'),
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
             (self.tr('Glow'), 'glow', 'text-effect-glow.svg'),
-            (self.tr('Hollow'), 'hollow', 'text-effect-hollow.svg'),
             (
                 self.tr('Gradient Overlay'),
                 'gradient_overlay',
@@ -1842,7 +1785,6 @@ class TextEffectPanel(PanelArea):
         self.stroke_cards = []
         self.shadow_cards = []
         self.glow_cards = []
-        self.hollow_card = None
         self.gradient_overlay_card = None
         self._effect_types = None
         self.alpha_mask_card = None
@@ -1939,7 +1881,6 @@ class TextEffectPanel(PanelArea):
         self.stroke_cards = []
         self.shadow_cards = []
         self.glow_cards = []
-        self.hollow_card = None
         self.gradient_overlay_card = None
 
     def _rebuild_effect_cards(self, effect_types: Sequence[str]) -> None:
@@ -1959,8 +1900,7 @@ class TextEffectPanel(PanelArea):
                 card = GlowEffectCard(index, self.scrollContent)
                 self.glow_cards.append(card)
             elif effect_type == 'hollow':
-                card = HollowEffectCard(index, self.scrollContent)
-                self.hollow_card = card
+                continue
             elif effect_type == 'gradient_overlay':
                 card = GradientOverlayEffectCard(index, self.scrollContent)
                 self.gradient_overlay_card = card
@@ -2021,6 +1961,24 @@ class TextEffectPanel(PanelArea):
         self.overall_opacity_control.set_model_value(
             common_opacity, opacity_values
         )
+
+        hollow_values = [
+            next(
+                (
+                    effect.enabled
+                    for effect in state.effects
+                    if isinstance(effect, HollowEffect)
+                ),
+                False,
+            )
+            for state in states
+        ]
+        common_hollow = (
+            hollow_values[0]
+            if all(value == hollow_values[0] for value in hollow_values)
+            else None
+        )
+        self._set_hollow_toggle_state(common_hollow)
 
         sequences = [self._effect_sequence(state) for state in states]
         common_sequence = (
@@ -2086,10 +2044,6 @@ class TextEffectPanel(PanelArea):
             if gradient_visibility_changed:
                 self.cards_layout.invalidate()
                 self.content_layout.invalidate()
-        self.add_effect_actions['hollow'].setEnabled(
-            not mixed and common_sequence is not None
-            and 'hollow' not in common_sequence
-        )
         self.add_effect_actions['gradient_overlay'].setEnabled(
             not mixed and common_sequence is not None
             and 'gradient_overlay' not in common_sequence
@@ -2180,9 +2134,33 @@ class TextEffectPanel(PanelArea):
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
         if action is not None and action.data() in {
-            'stroke', 'shadow', 'glow', 'hollow', 'gradient_overlay'
+            'stroke', 'shadow', 'glow', 'gradient_overlay'
         }:
             self.add_effect_requested.emit(action.data())
+
+    def _set_hollow_toggle_state(
+        self, enabled: Optional[bool]
+    ) -> None:
+        mixed = enabled is None
+        blocker = QSignalBlocker(self.hollow_toggle_button)
+        self.hollow_toggle_button.setChecked(enabled is True)
+        del blocker
+        if self.hollow_toggle_button.property('mixed') != mixed:
+            self.hollow_toggle_button.setProperty('mixed', mixed)
+            style = self.hollow_toggle_button.style()
+            style.unpolish(self.hollow_toggle_button)
+            style.polish(self.hollow_toggle_button)
+        if mixed:
+            description = self.tr('Enable Hollow for All Selected Text')
+        elif enabled is True:
+            description = self.tr('Disable Hollow')
+        else:
+            description = self.tr('Enable Hollow')
+        self.hollow_toggle_button.setToolTip(description)
+        self.hollow_toggle_button.setAccessibleName(description)
+
+    def _on_hollow_toggled(self, enabled: bool) -> None:
+        self.hollow_enabled_requested.emit(enabled)
 
     def _on_mask_brush_clicked(self, checked: bool) -> None:
         self.mask_edit_requested.emit(checked)

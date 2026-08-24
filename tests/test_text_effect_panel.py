@@ -321,7 +321,7 @@ class TextEffectPanelTest(unittest.TestCase):
             [0, 1],
         )
 
-    def test_card_and_menu_icons_expose_visibility_actions(self):
+    def test_effect_icons_expose_card_visibility_and_hollow_toggle(self):
         item = self._item(self._stack(
             StrokeEffect(),
             ShadowEffect(enabled=False),
@@ -335,7 +335,6 @@ class TextEffectPanelTest(unittest.TestCase):
             effect_panel.stroke_cards[0],
             effect_panel.shadow_cards[0],
             effect_panel.glow_cards[0],
-            effect_panel.hollow_card,
             effect_panel.gradient_overlay_card,
         )
         for card in cards:
@@ -354,9 +353,11 @@ class TextEffectPanelTest(unittest.TestCase):
             'Hide Glow',
         )
         self.assertEqual(
-            effect_panel.hollow_card.visibility_button.accessibleName(),
-            'Hide Hollow',
+            effect_panel.hollow_toggle_button.accessibleName(),
+            'Disable Hollow',
         )
+        self.assertTrue(effect_panel.hollow_toggle_button.isChecked())
+        self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
             effect_panel.gradient_overlay_card.visibility_button.toolTip(),
             'Hide Gradient Overlay',
@@ -365,6 +366,7 @@ class TextEffectPanelTest(unittest.TestCase):
             not action.icon().isNull()
             for action in effect_panel.add_effect_actions.values()
         ))
+        self.assertNotIn('hollow', effect_panel.add_effect_actions)
 
     def test_mixed_eye_click_enables_all_with_one_command(self):
         enabled = self._item(self._stack(StrokeEffect(enabled=True)))
@@ -390,6 +392,49 @@ class TextEffectPanelTest(unittest.TestCase):
             for item in (enabled, disabled)
         ))
         self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_hollow_toggle_handles_mixed_presence_with_one_command(self):
+        absent = self._item(self._stack(StrokeEffect()))
+        present = self._item(self._stack(
+            StrokeEffect(), HollowEffect(enabled=True)
+        ))
+        self.canvas.selected = [absent, present]
+        self.panel.set_textblk_item(None, multi_select=True)
+        effect_panel = self.panel.texteffect_panel
+        toggle = effect_panel.hollow_toggle_button
+
+        self.assertFalse(toggle.isChecked())
+        self.assertEqual(
+            toggle.accessibleName(),
+            'Enable Hollow for All Selected Text',
+        )
+        self.assertFalse(effect_panel.add_effect_button.isEnabled())
+        toggle.click()
+
+        for item in (absent, present):
+            hollows = [
+                effect
+                for effect in item.blk.fontformat.text_effects
+                if isinstance(effect, HollowEffect)
+            ]
+            self.assertEqual(len(hollows), 1)
+            self.assertTrue(hollows[0].enabled)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertTrue(toggle.isChecked())
+        self.assertEqual(toggle.accessibleName(), 'Disable Hollow')
+
+        self.canvas.stack.undo()
+        self.assertFalse(any(
+            isinstance(effect, HollowEffect)
+            for effect in absent.blk.fontformat.text_effects
+        ))
+        self.assertEqual(
+            toggle.accessibleName(),
+            'Enable Hollow for All Selected Text',
+        )
+        self.canvas.stack.redo()
+        self.assertTrue(toggle.isChecked())
+        self.assertEqual(toggle.accessibleName(), 'Disable Hollow')
 
     def test_stroke_position_common_mixed_and_one_command_undo(self):
         item = self._item(self._stack(StrokeEffect(position='center')))
@@ -1170,7 +1215,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 2)
         self.assertIs(self.panel.texteffect_panel.glow_cards[0], card)
 
-    def test_add_shadow_hollow_type_controls_and_uniqueness(self):
+    def test_shadow_type_and_hollow_toggle_use_one_command_each(self):
         item = self._item(TextEffectStack())
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
@@ -1191,25 +1236,27 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertTrue(shadow_card.spread_control.isHidden())
         self.assertEqual(self.canvas.stack.count(), 2)
 
-        effect_panel.add_effect_actions['hollow'].trigger()
+        effect_panel.hollow_toggle_button.click()
         self.assertEqual(self.canvas.stack.count(), 3)
         self.assertIsInstance(
             item.blk.fontformat.text_effects[1], HollowEffect
         )
-        self.assertFalse(effect_panel.add_effect_actions['hollow'].isEnabled())
-        self.assertFalse(
-            self.panel.text_effect_session.add_effect('hollow')
-        )
-        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertTrue(item.blk.fontformat.text_effects[1].enabled)
+        self.assertTrue(effect_panel.hollow_toggle_button.isChecked())
+        self.assertNotIn('hollow', effect_panel.add_effect_actions)
 
-        effect_panel.hollow_card.visibility_button.click()
+        effect_panel.hollow_toggle_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
         self.assertEqual(self.canvas.stack.count(), 4)
-        effect_panel.hollow_card.delete_button.click()
-        self.assertFalse(any(
-            isinstance(effect, HollowEffect)
+
+        effect_panel.hollow_toggle_button.click()
+        hollows = [
+            effect
             for effect in item.blk.fontformat.text_effects
-        ))
+            if isinstance(effect, HollowEffect)
+        ]
+        self.assertEqual(len(hollows), 1)
+        self.assertTrue(hollows[0].enabled)
         self.assertEqual(self.canvas.stack.count(), 5)
 
     def test_shadow_fill_conversion_and_inline_gradient_one_undo(self):

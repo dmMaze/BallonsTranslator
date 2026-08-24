@@ -62,6 +62,9 @@ class TextEffectEditSession:
             )
             controls.preview_canceled.connect(self.cancel_preview)
             controls.add_effect_requested.connect(self.add_effect)
+            controls.hollow_enabled_requested.connect(
+                self.set_hollow_enabled
+            )
             controls.remove_effect_requested.connect(self.remove_effect)
             controls.move_effect_requested.connect(self.move_effect)
 
@@ -499,12 +502,10 @@ class TextEffectEditSession:
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
             'glow': GlowEffect,
-            'hollow': HollowEffect,
             'gradient_overlay': GradientOverlayEffect,
         }
         constructor = constructors.get(effect_type)
         unique_type = {
-            'hollow': HollowEffect,
             'gradient_overlay': GradientOverlayEffect,
         }.get(effect_type)
         if constructor is None or (
@@ -524,6 +525,43 @@ class TextEffectEditSession:
             effects = list(state.effects)
             effect = constructor()
             effects.insert(self._insertion_index(state, effect), effect)
+            after.append(replace(state, effects=tuple(effects)))
+        return self._commit_complete_states(before, after)
+
+    def set_hollow_enabled(self, enabled: bool) -> bool:
+        """Enable the unique Hollow value, inserting it when first used.
+
+        >>> from types import SimpleNamespace
+        >>> owner = SimpleNamespace(text_effects=TextEffectStack())
+        >>> session = TextEffectEditSession(
+        ...     SimpleNamespace(global_format=owner)
+        ... )
+        >>> session.set_hollow_enabled(True)
+        True
+        >>> owner.text_effects.effects[0].enabled
+        True
+        """
+        self._prepare_structure_change()
+        before = self._current_states()
+        after = []
+        for state in before:
+            effects = list(state.effects)
+            index = next(
+                (
+                    index
+                    for index, effect in enumerate(effects)
+                    if isinstance(effect, HollowEffect)
+                ),
+                None,
+            )
+            if index is None:
+                if enabled:
+                    effect = HollowEffect()
+                    effects.insert(
+                        self._insertion_index(state, effect), effect
+                    )
+            elif effects[index].enabled != enabled:
+                effects[index] = replace(effects[index], enabled=enabled)
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
 

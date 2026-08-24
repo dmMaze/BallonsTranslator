@@ -2574,7 +2574,8 @@ QToolButton#TextTransformCloseButton,
 QToolButton#TextEffectMoveButton,
 QToolButton#TextEffectCloseButton,
 QToolButton#TextEffectVisibilityButton,
-QToolButton#TextEffectBrushButton {
+QToolButton#TextEffectBrushButton,
+QToolButton#TextEffectHollowButton {
     border: none;
     border-radius: 3px;
     background-color: transparent;
@@ -2587,6 +2588,23 @@ QToolButton#TextEffectCloseButton:hover {
 
 QToolButton#TextEffectVisibilityButton:hover {
     background-color: @borderColor;
+}
+
+QToolButton#TextEffectHollowButton {
+    border-radius: 6px;
+}
+
+QToolButton#TextEffectHollowButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QToolButton#TextEffectHollowButton:checked {
+    background-color: rgba(30, 147, 229, 18%);
+}
+
+QToolButton#TextEffectHollowButton[mixed="true"] {
+    border: 1px dashed rgb(30, 147, 229);
+    background-color: rgba(30, 147, 229, 9%);
 }
 
 QToolButton#TextEffectBrushButton:checked {
