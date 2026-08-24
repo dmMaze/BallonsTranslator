@@ -39,7 +39,9 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    GradientStop,
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -237,7 +239,18 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         stacks = (
             TextEffectStack(effects=(
                 ShadowEffect(offset=(0.18, 0.12), blur=0.08, spread=0.04),
-                StrokeEffect(width=0.12, position='outside'),
+                StrokeEffect(
+                    width=0.12,
+                    position='outside',
+                    paint=LinearGradientPaint(
+                        stops=(
+                            GradientStop(0.0, (255, 0, 0), 0.3),
+                            GradientStop(1.0, (0, 0, 255), 1.0),
+                        ),
+                        angle=28.0,
+                        scale=1.7,
+                    ),
+                ),
                 ShadowEffect(
                     shadow_type='inner', offset=(0.08, 0.04), blur=0.06
                 ),
@@ -316,7 +329,11 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
     def test_mask_covers_vertical_annotations_and_distorted_glyphs(self):
         item = self._item(
             TextEffectStack(effects=(
-                StrokeEffect(width=0.12, position='outside'),
+                StrokeEffect(
+                    width=0.12,
+                    position='outside',
+                    paint=LinearGradientPaint(angle=90.0),
+                ),
             )),
             vertical=True,
             text='東京12',
@@ -345,7 +362,11 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
 
         projective = self._item(
             TextEffectStack(effects=(
-                StrokeEffect(width=0.12, position='inside'),
+                StrokeEffect(
+                    width=0.12,
+                    position='inside',
+                    paint=LinearGradientPaint(angle=215.0, scale=1.3),
+                ),
             )),
             text='Projective mask',
         )
@@ -388,8 +409,12 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             view.close()
 
     def test_cache_generation_preview_isolation_and_reshape_rebuild(self):
-        stack = TextEffectStack(effects=(StrokeEffect(width=0.12),))
-        preview = TextEffectStack(effects=(StrokeEffect(width=0.24),))
+        stack = TextEffectStack(effects=(StrokeEffect(
+            width=0.12, paint=LinearGradientPaint()
+        ),))
+        preview = TextEffectStack(effects=(StrokeEffect(
+            width=0.24, paint=LinearGradientPaint(angle=120.0)
+        ),))
         item = self._item(stack, self._partial_mask())
         renderer = item.effect_renderer
         key = renderer._effect_cache_input_key()
@@ -423,7 +448,10 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
     def test_mask_preview_reuses_expensive_stroke_shadow_composite(self):
         stack = TextEffectStack(effects=(
             ShadowEffect(offset=(0.18, 0.12), blur=0.08, spread=0.04),
-            StrokeEffect(width=0.12),
+            StrokeEffect(width=0.12, paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, (255, 0, 0), 0.4),
+                GradientStop(1.0, (0, 0, 255), 1.0),
+            ))),
         ))
         item = self._item(stack, self._partial_mask())
         renderer = item.effect_renderer
@@ -451,7 +479,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
     def test_mask_preview_reuses_pre_mask_tile_for_same_visible_region(self):
         stack = TextEffectStack(effects=(
             ShadowEffect(offset=(0.18, 0.12), blur=0.08),
-            StrokeEffect(width=0.12),
+            StrokeEffect(width=0.12, paint=LinearGradientPaint(angle=45.0)),
         ))
         item = self._item(stack, self._partial_mask())
         renderer = item.effect_renderer

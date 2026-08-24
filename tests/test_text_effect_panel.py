@@ -1,12 +1,14 @@
+import gc
 import os
 import unittest
+import weakref
 from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QEvent, Qt
-from qtpy.QtGui import QKeyEvent
-from qtpy.QtWidgets import QApplication, QWidget
+from qtpy.QtCore import QCoreApplication, QEvent, Qt
+from qtpy.QtGui import QColor, QKeyEvent
+from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QWidget
 
 try:
     from qtpy.QtGui import QUndoStack
@@ -22,13 +24,19 @@ from ballontranslator.ui.text_engine.formatting.commands import (
     handle_ffmt_change,
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
+from ballontranslator.ui.text_engine.formatting.gradient_editor import (
+    GradientStopBar,
+    LinearGradientEditorDialog,
+)
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_effects import (
+    GradientStop,
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -372,6 +380,254 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 2)
 
+    def test_stroke_fill_conversion_and_mixed_selection(self):
+        solid = self._item(self._stack(StrokeEffect(
+            paint=SolidPaint((12, 34, 56))
+        )))
+        self.panel.set_textblk_item(solid)
+        card = self.panel.texteffect_panel.stroke_cards[0]
+        card.fill_type_selector.setCurrentIndex(
+            card.fill_type_selector.findData('linear_gradient')
+        )
+        converted = solid.blk.fontformat.text_effects[0].paint
+        self.assertIsInstance(converted, LinearGradientPaint)
+        self.assertEqual(converted.stops[0].color, (12, 34, 56))
+        self.assertEqual(converted.stops[0].opacity, 1.0)
+        self.assertEqual(converted.stops[1].opacity, 0.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.canvas.stack.undo()
+        self.assertEqual(
+            solid.blk.fontformat.text_effects[0].paint,
+            SolidPaint((12, 34, 56)),
+        )
+        self.canvas.stack.redo()
+        self.assertEqual(
+            solid.blk.fontformat.text_effects[0].paint, converted
+        )
+
+        gradient = self._item(self._stack(StrokeEffect(
+            paint=LinearGradientPaint()
+        )))
+        self.canvas.selected = [solid, gradient]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        self.assertEqual(
+            mixed_card.fill_type_selector.currentData(), 'linear_gradient'
+        )
+        self.assertFalse(mixed_card.paint_button.isEnabled())
+        self.assertEqual(mixed_card.paint_button.text(), 'Mixed')
+        self.assertEqual(
+            mixed_card.paint_button.toolTip(), 'Mixed Gradient Paint'
+        )
+
+        first_solid = self._item(self._stack(StrokeEffect(
+            paint=SolidPaint((1, 2, 3))
+        )))
+        second_solid = self._item(self._stack(StrokeEffect(
+            paint=SolidPaint((4, 5, 6))
+        )))
+        self.canvas.selected = [first_solid, second_solid]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        self.assertEqual(
+            mixed_card.fill_type_selector.currentData(), 'solid'
+        )
+        self.assertTrue(mixed_card.paint_button.isEnabled())
+        self.assertEqual(mixed_card.paint_button.text(), 'Mixed')
+        self.assertEqual(
+            mixed_card.paint_button.accessibleName(),
+            'Choose Shared Stroke Color',
+        )
+        with patch.object(
+            QColorDialog,
+            'getColor',
+            return_value=QColor(20, 30, 40),
+        ):
+            mixed_card.paint_button.click()
+        self.assertTrue(all(
+            target.blk.fontformat.text_effects[0].paint
+            == SolidPaint((20, 30, 40))
+            for target in (first_solid, second_solid)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 2)
+
+        # Heterogeneous paint types choose deterministic defaults for all.
+        hetero_solid = self._item(self._stack(StrokeEffect(
+            paint=SolidPaint((11, 12, 13))
+        )))
+        hetero_gradient = self._item(self._stack(StrokeEffect(
+            paint=LinearGradientPaint(angle=90.0)
+        )))
+        self.canvas.selected = [hetero_solid, hetero_gradient]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        self.assertEqual(mixed_card.fill_type_selector.currentIndex(), -1)
+        self.assertFalse(mixed_card.paint_button.isEnabled())
+        self.assertEqual(
+            mixed_card.paint_button.accessibleName(), 'Mixed Stroke Paint'
+        )
+        mixed_card.fill_type_selector.setCurrentIndex(
+            mixed_card.fill_type_selector.findData('linear_gradient')
+        )
+        self.assertTrue(all(
+            target.blk.fontformat.text_effects[0].paint
+            == LinearGradientPaint()
+            for target in (hetero_solid, hetero_gradient)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 3)
+
+    def test_gradient_editor_stop_operations_and_geometry_preview(self):
+        paint = LinearGradientPaint(stops=(
+            GradientStop(0.0, (0, 0, 0), 1.0),
+            GradientStop(1.0, (200, 100, 0), 0.0),
+        ))
+        bar = GradientStopBar(paint)
+        self.assertEqual(
+            bar.toolTip(),
+            'Click the strip to add a stop; drag a stop to move it',
+        )
+        previews = []
+        bar.paint_changed.connect(previews.append)
+        self.assertTrue(bar.add_stop(0.25))
+        self.assertEqual(len(bar.paint.stops), 3)
+        self.assertEqual(bar.paint.stops[1].color, (50, 25, 0))
+        bar.move_selected(0.4)
+        self.assertEqual(bar.paint.stops[1].position, 0.4)
+        self.assertTrue(bar.remove_selected())
+        self.assertFalse(bar.remove_selected())
+        self.assertGreaterEqual(len(previews), 3)
+
+        dialog = LinearGradientEditorDialog(paint)
+        dialog_previews = []
+        dialog.paint_previewed.connect(dialog_previews.append)
+        dialog.stop_color_picker.setPickerColor((9, 8, 7))
+        dialog.stop_color_picker.colorChanged.emit(True)
+        self.assertEqual(dialog.paint.stops[0].color, (9, 8, 7))
+        dialog.angle_editor.setValue(45.0)
+        dialog.scale_editor.setValue(150.0)
+        dialog.flip_button.click()
+        self.assertEqual(dialog.paint.angle, 225.0)
+        self.assertEqual(dialog.paint.scale, 1.5)
+        self.assertGreaterEqual(len(dialog_previews), 3)
+
+        owned_modal = QWidget(dialog)
+        with patch.object(
+            QApplication, 'activeModalWidget', return_value=owned_modal
+        ):
+            self.assertTrue(dialog._preserve_on_outside_click())
+        dialog.show()
+        QApplication.sendEvent(
+            dialog,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
+        self.assertEqual(dialog.result(), rejected)
+        self.assertFalse(dialog.isVisible())
+        dialog.deleteLater()
+        bar.deleteLater()
+
+    def test_gradient_dialog_preview_cancel_accept_one_undo(self):
+        before = self._stack(StrokeEffect(
+            paint=LinearGradientPaint()
+        ))
+        preview = LinearGradientPaint(
+            stops=(
+                GradientStop(0.0, (255, 0, 0), 1.0),
+                GradientStop(1.0, (0, 0, 255), 0.5),
+            ),
+            angle=30.0,
+        )
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.stroke_cards[0]
+        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+
+        def stage_preview(dialog):
+            dialog.stop_bar.replace_selected(color=(255, 0, 0))
+            dialog.stop_bar.select_stop(1)
+            dialog.stop_bar.replace_selected(
+                color=(0, 0, 255), opacity=0.5
+            )
+            dialog.angle_editor.setValue(30.0)
+            self.assertEqual(dialog.paint, preview)
+
+        dialog = LinearGradientEditorDialog(before[0].paint)
+
+        def preview_then_reject():
+            stage_preview(dialog)
+            self.assertEqual(item.blk.fontformat.text_effects, before)
+            self.assertEqual(item.effective_text_effects()[0].paint, preview)
+            return rejected
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=preview_then_reject):
+            card.paint_button.click()
+        self.assertEqual(item.effective_text_effects(), before)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+        dialog = LinearGradientEditorDialog(before[0].paint)
+
+        def preview_then_accept():
+            stage_preview(dialog)
+            return accepted
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=preview_then_accept):
+            card.paint_button.click()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.canvas.stack.undo()
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+
+    def test_gradient_dialog_releases_filter_and_wrapper_after_card_flow(self):
+        item = self._item(self._stack(StrokeEffect(
+            paint=LinearGradientPaint()
+        )))
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.stroke_cards[0]
+        dialog = LinearGradientEditorDialog(
+            item.fontformat.text_effects[0].paint
+        )
+        dialog_ref = weakref.ref(dialog)
+        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
+
+        def reject_after_show():
+            dialog.show()
+            self.app.processEvents()
+            self.assertTrue(dialog._outside_click_filter_installed)
+            dialog.reject()
+            self.assertFalse(dialog._outside_click_filter_installed)
+            return rejected
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=reject_after_show):
+            card.paint_button.click()
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        self.assertFalse(dialog._outside_click_filter_installed)
+        with self.assertRaises(RuntimeError):
+            dialog.objectName()
+        self.assertIs(dialog_ref(), dialog)
+        del dialog
+        gc.collect()
+        self.assertIsNone(dialog_ref())
+
     def test_multi_selection_maps_common_structure_and_blocks_mixed_indices(self):
         first = self._item(self._stack(StrokeEffect(width=0.1)))
         second = self._item(self._stack(StrokeEffect(width=0.3)))
@@ -427,27 +683,27 @@ class TextEffectPanelTest(unittest.TestCase):
         cards = self.panel.texteffect_panel.stroke_cards
         self.assertEqual(len(cards), 1)
         self.assertEqual(cards[0].width_control.editor.text(), '0.32')
-        self.assertEqual(cards[0].color_picker.rgb(), (40, 50, 60))
+        self.assertEqual(cards[0].fill_type_selector.currentData(), 'solid')
+        self.assertEqual(
+            cards[0].paint_button.accessibleName(), 'Choose Stroke Color'
+        )
+        self.assertEqual(cards[0].paint_button.text(), '')
 
     def test_color_dialog_signal_retains_selected_owner(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.stroke_cards[0]
 
-        card.color_picker.changingColor.emit()
-        self.assertTrue(self.panel.focusOnColorDialog)
-        self.panel.set_textblk_item(None)
-        self.assertIs(self.panel.textblk_item, item)
-        self.assertEqual(self.panel.text_effect_session.items, [item])
+        def choose_color(*_args):
+            self.assertTrue(self.panel.focusOnColorDialog)
+            self.panel.set_textblk_item(None)
+            self.assertIs(self.panel.textblk_item, item)
+            self.assertEqual(self.panel.text_effect_session.items, [item])
+            return QColor(70, 80, 90)
 
-        card.color_picker.colorChanged.emit(False)
+        with patch.object(QColorDialog, 'getColor', side_effect=choose_color):
+            card.paint_button.click()
         self.assertFalse(self.panel.focusOnColorDialog)
-        self.assertIs(self.panel.textblk_item, item)
-        self.assertEqual(self.panel.text_effect_session.items, [item])
-
-        card.color_picker.changingColor.emit()
-        card.color_picker.setPickerColor((70, 80, 90))
-        card.color_picker.colorChanged.emit(True)
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint.color,
             (70, 80, 90),

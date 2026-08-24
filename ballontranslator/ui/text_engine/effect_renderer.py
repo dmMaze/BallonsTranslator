@@ -24,9 +24,11 @@ from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     StrokeEffect,
     TextEffectStack,
+    effect_paint_fallback_color,
     hollow_effect,
     primary_stroke,
 )
@@ -34,6 +36,7 @@ from ..misc import ndarray2pixmap, pixmap2ndarray
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
 from .rendering.alpha_mask import render_text_alpha_mask
+from .rendering.effect_paint import colorize_effect_paint_rgba
 from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
@@ -498,9 +501,11 @@ class TextEffectRenderer:
         # keeps the established pen width and allocation-free paint path.
         return stroke.width * (2.0 if stroke.position != 'center' else 1.0)
 
-    def _all_strokes_centered(self) -> bool:
+    def _all_strokes_vector_compatible(self) -> bool:
         return all(
-            stroke.position == 'center' for stroke in self._active_strokes()
+            stroke.position == 'center'
+            and not isinstance(stroke.paint, LinearGradientPaint)
+            for stroke in self._active_strokes()
         )
 
     def _has_inside_strokes(self) -> bool:
@@ -559,7 +564,7 @@ class TextEffectRenderer:
         stroke = self._current_stroke()
         if stroke is None:
             return self.item.stroke_qcolor
-        return QColor(*stroke.paint.color)
+        return QColor(*effect_paint_fallback_color(stroke.paint))
 
     @property
     def idx(self):
@@ -632,7 +637,9 @@ class TextEffectRenderer:
     def _sync_legacy_primary_stroke_view(self) -> None:
         stroke = primary_stroke(self.effective_text_effects())
         if stroke is not None:
-            self.item.stroke_qcolor = QColor(*stroke.paint.color)
+            self.item.stroke_qcolor = QColor(
+                *effect_paint_fallback_color(stroke.paint)
+            )
 
     @staticmethod
     def _invalidate_raster_state(state: Optional[_EffectRasterState]) -> None:
@@ -1679,7 +1686,11 @@ class TextEffectRenderer:
             bool(strokes),
             bool(self._compiled_shadows())
             or self._mask_requires_surface()
-            or any(stroke.position != 'center' for stroke in strokes),
+            or any(
+                stroke.position != 'center'
+                or isinstance(stroke.paint, LinearGradientPaint)
+                for stroke in strokes
+            ),
         )
 
     def _effect_tile_overlap(self) -> float:
@@ -2105,6 +2116,14 @@ class TextEffectRenderer:
                 product //= 255
                 alpha = product.astype(np.uint8)
             rgba[..., 3] = alpha
+            if isinstance(stroke.paint, LinearGradientPaint):
+                colorize_effect_paint_rgba(
+                    stroke.paint,
+                    rgba,
+                    surface_rect,
+                    self.logical_unpadded_rect(),
+                    render_scale,
+                )
             band = ndarray2pixmap(rgba)
             if band is None or band.isNull():
                 raise EffectRasterAllocationError(
@@ -2143,7 +2162,11 @@ class TextEffectRenderer:
                 if stroke.position not in positions:
                     continue
                 self._render_stroke = stroke
-                if stroke.position == 'center' and not hollow:
+                if (
+                    stroke.position == 'center'
+                    and not isinstance(stroke.paint, LinearGradientPaint)
+                    and not hollow
+                ):
                     painter.save()
                     try:
                         painter.setOpacity(
@@ -2381,7 +2404,8 @@ class TextEffectRenderer:
                         self.force_tiles = True
                         return
                     self.direct_stroke = (
-                        paint_stroke and self._all_strokes_centered()
+                        paint_stroke
+                        and self._all_strokes_vector_compatible()
                     )
                     self._warn_effect_allocation_once(error)
                     return
@@ -2451,7 +2475,7 @@ class TextEffectRenderer:
         vector_stroke_direct = (
             paint_stroke
             and not paint_non_stroke
-            and self._all_strokes_centered()
+            and self._all_strokes_vector_compatible()
             # The vector fallback cannot apply the block-wide alpha mask.
             and self._active_text_alpha_mask() is None
             and 2 * math.ceil(stroke_overlap * plan.tier)
@@ -2483,7 +2507,7 @@ class TextEffectRenderer:
                 return
             self._warn_effect_allocation_once(error)
             self.direct_stroke = (
-                paint_stroke and self._all_strokes_centered()
+                paint_stroke and self._all_strokes_vector_compatible()
             )
             return
         core_edge = core_edge_px / plan.tier
@@ -2624,7 +2648,7 @@ class TextEffectRenderer:
         if raster_failure is not None:
             self.tile_cache.clear()
             self.direct_stroke = (
-                paint_stroke and self._all_strokes_centered()
+                paint_stroke and self._all_strokes_vector_compatible()
             )
             self.cache_dirty = True
             self.cache_rendered_generation = -1
@@ -2650,8 +2674,11 @@ class TextEffectRenderer:
         )
         self.force_tiles = False
 
-    def _draw_direct_stroke(self, painter: QPainter):
-        if not self._effect_flags()[0] or not self._all_strokes_centered():
+    def _draw_direct_stroke(self, painter: QPainter) -> None:
+        if (
+            not self._effect_flags()[0]
+            or not self._all_strokes_vector_compatible()
+        ):
             return
         # This path intentionally avoids every intermediate raster allocation.
         # The custom glyph renderer still consumes outline selections, while a

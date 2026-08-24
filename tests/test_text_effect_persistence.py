@@ -21,7 +21,9 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.io_utils import json_dump_nested_obj
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    GradientStop,
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -150,6 +152,29 @@ class TextEffectPersistenceTest(unittest.TestCase):
         self.assertEqual(disabled_primary['stroke_width'], 0.0)
         self.assertEqual(disabled_primary['srgb'], [0, 0, 0])
 
+        gradient = LinearGradientPaint(stops=(
+            GradientStop(0.0, (12, 34, 56), 0.4),
+            GradientStop(1.0, (210, 220, 230), 1.0),
+        ))
+        gradient_write = FontFormat(text_effects=TextEffectStack(effects=(
+            StrokeEffect(width=0.3, paint=gradient),
+        ))).to_serializable_dict()
+        self.assertEqual(gradient_write['srgb'], [12, 34, 56])
+        self.assertEqual(
+            gradient_write['text_effects']['effects'][0]['paint'][
+                'paint_type'
+            ],
+            'linear_gradient',
+        )
+        transparent_write = FontFormat(text_effects=TextEffectStack(effects=(
+            StrokeEffect(width=0.3, paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, (12, 34, 56), 0.0),
+                GradientStop(1.0, (210, 220, 230), 0.0),
+            ))),
+        ))).to_serializable_dict()
+        self.assertEqual(transparent_write['stroke_width'], 0.0)
+        self.assertEqual(transparent_write['srgb'], [0, 0, 0])
+
     def test_project_flat_migration_orders_fields_and_aggregates_notices(self):
         legacy = {
             'opacity': 0.6,
@@ -260,7 +285,10 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 ),
                 StrokeEffect(
                     width=0.2,
-                    paint=SolidPaint((1, 2, 3)),
+                    paint=LinearGradientPaint(stops=(
+                        GradientStop(0.0, (1, 2, 3), 0.25),
+                        GradientStop(1.0, (4, 5, 6), 1.0),
+                    ), angle=32, scale=1.4),
                     position='outside',
                 ),
                 StrokeEffect(
@@ -287,6 +315,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
         old_style_path = pcfg.text_styles_path
         stack = TextEffectStack(0.7, (
             ShadowEffect(shadow_type='long', offset=(0.4, 0.2)),
+            StrokeEffect(paint=LinearGradientPaint()),
             HollowEffect(),
         ))
         payload = FontFormat(text_effects=stack).to_serializable_dict()
@@ -308,9 +337,15 @@ class TextEffectPersistenceTest(unittest.TestCase):
 
     def test_ocr_stroke_detection_updates_only_primary_width(self):
         second = StrokeEffect(width=0.8, paint=SolidPaint((8, 9, 10)))
+        gradient = LinearGradientPaint(stops=(
+            GradientStop(0.0, (250, 250, 250), 1.0),
+            GradientStop(1.0, (10, 20, 30), 0.0),
+        ))
         block = TextBlock()
         block.fontformat.text_effects = TextEffectStack(effects=(
-            StrokeEffect(width=0.0, paint=SolidPaint((250, 250, 250))),
+            StrokeEffect(
+                width=0.0, paint=gradient, position='outside'
+            ),
             second,
         ))
         block.fontformat.frgb = [0, 0, 0]
@@ -321,7 +356,18 @@ class TextEffectPersistenceTest(unittest.TestCase):
             primary_stroke(block.fontformat.text_effects).width,
             0.35,
         )
+        self.assertIs(primary_stroke(block.fontformat.text_effects).paint, gradient)
+        self.assertEqual(
+            primary_stroke(block.fontformat.text_effects).position,
+            'outside',
+        )
         self.assertIs(block.fontformat.text_effects.effects[1], second)
+
+        block.fontformat.srgb = [7, 6, 5]
+        self.assertEqual(
+            primary_stroke(block.fontformat.text_effects).paint,
+            SolidPaint((7, 6, 5)),
+        )
 
     def test_ocr_color_total_rounds_once_without_persisted_scratch(self):
         block = TextBlock(

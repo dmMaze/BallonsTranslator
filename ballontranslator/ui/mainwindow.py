@@ -16,6 +16,7 @@ from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
 from ballontranslator.utils.text_effects import (
     SolidPaint,
+    effect_paint_fallback_color,
     primary_stroke,
     with_non_stroke_effects,
     with_primary_stroke,
@@ -1734,7 +1735,9 @@ class MainWindow(mainwindow_cls):
                     if override_fnt_scolor:
                         global_stroke = primary_stroke(gf.text_effects)
                         paint = (
-                            global_stroke.paint
+                            SolidPaint(effect_paint_fallback_color(
+                                global_stroke.paint
+                            ))
                             if global_stroke is not None
                             else SolidPaint()
                         )

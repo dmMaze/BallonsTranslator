@@ -65,7 +65,9 @@ from ballontranslator.utils.config import (
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_effects import (
+    GradientStop,
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -1396,7 +1398,10 @@ class RunPipelineDialogTests(unittest.TestCase):
                     ),
                     StrokeEffect(
                         width=0.18,
-                        paint=SolidPaint((4, 5, 6)),
+                        paint=LinearGradientPaint(stops=(
+                            GradientStop(0.0, (4, 5, 6), 1.0),
+                            GradientStop(1.0, (40, 50, 60), 0.0),
+                        )),
                     ),
                     StrokeEffect(width=0.9),
                     HollowEffect(),
@@ -1483,6 +1488,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(block.fontformat.opacity, 0.75)
             effects = block.fontformat.text_effects.effects
             self.assertIs(effects[2], extra)
+            self.assertEqual(effects[1].paint, SolidPaint((4, 5, 6)))
             self.assertEqual(
                 effects,
                 (
@@ -1497,6 +1503,80 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(block.fontformat.shadow_strength, 1.0)
             self.assertEqual(block.fontformat.shadow_color, [0, 0, 0])
             self.assertEqual(block.fontformat.shadow_offset, [0.0, 0.0])
+
+    def test_width_only_run_preserves_gradient_and_inserts_primary_stroke(self):
+        global_format = FontFormat(text_effects=TextEffectStack(effects=(
+            StrokeEffect(width=0.42),
+        )))
+        gradient = LinearGradientPaint(stops=(
+            GradientStop(0.0, (4, 5, 6), 1.0),
+            GradientStop(1.0, (40, 50, 60), 0.0),
+        ))
+        existing = TextBlock()
+        existing.fontformat.text_effects = TextEffectStack(effects=(
+            StrokeEffect(
+                width=0.1,
+                paint=gradient,
+                position='outside',
+            ),
+        ))
+        missing = TextBlock()
+        blocks = [existing, missing]
+        project = SimpleNamespace(
+            num_pages=1,
+            get_blklist_byidx=lambda _: blocks,
+            set_current_img_byidx=lambda _: None,
+            save=lambda: None,
+        )
+        owner = SimpleNamespace(
+            imgtrans_proj=project,
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=global_format,
+            postprocess_translations=lambda _: None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=global_format)
+            ),
+            st_manager=SimpleNamespace(
+                auto_textlayout_flag=False,
+                updateSceneTextitems=lambda: None,
+                textblk_item_list=[],
+            ),
+            pageList=SimpleNamespace(
+                currentIndex=lambda: SimpleNamespace(row=lambda: 0)
+            ),
+            canvas=SimpleNamespace(updateCanvas=lambda: None),
+            saveCurrentPage=lambda *args: None,
+        )
+
+        with patch.multiple(
+            pcfg,
+            let_alignment_flag=0,
+            let_writing_mode_flag=0,
+            let_fntsize_flag=0,
+            let_fntstroke_flag=1,
+            let_fntcolor_flag=0,
+            let_fnt_scolor_flag=0,
+            let_fnteffect_flag=0,
+            let_family_flag=0,
+        ), patch.multiple(
+            pcfg.module,
+            enable_detect=False,
+            enable_ocr=False,
+            enable_translate=False,
+            enable_inpaint=False,
+        ):
+            MainWindow.on_pagtrans_finished(owner, 0)
+
+        existing_stroke = existing.fontformat.text_effects[0]
+        self.assertEqual(existing_stroke.width, 0.42)
+        self.assertEqual(existing_stroke.paint, gradient)
+        self.assertEqual(existing_stroke.position, 'outside')
+        inserted = missing.fontformat.text_effects[0]
+        self.assertEqual(inserted.width, 0.42)
+        self.assertEqual(inserted.paint, SolidPaint())
+        self.assertEqual(inserted.position, 'center')
 
     def test_pipeline_auto_tate_chu_yoko_preserves_plain_text_format(self):
         settings = AutoTateChuYokoConfig(

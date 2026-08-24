@@ -138,14 +138,17 @@ compiles it from one glyph/source alpha in fixed phases: exterior Drop/Long
 Shadow, exterior/center Stroke, foreground, inside Stroke, then interior Inner
 Shadow. Center keeps the native half-in/half-out outline; Outside and Inside
 clip a full-width outline to the corresponding side of canonical glyph alpha.
+Each Stroke owns an immutable solid or linear-gradient paint. Linear-gradient
+coordinates span the complete unpadded logical rectangle, so full surfaces,
+tiles, writing modes, and transformed output share one item-local gradient.
 Entry order is retained within each phase. Hollow suppresses foreground and
 Inner output, and removes the canonical face from exterior output before Stroke
 is painted, so the source alpha and full Stroke outline remain available. The
-existing Gradient path is a legacy renderer bridge until its typed cutover. A
-non-neutral `TextBlock.text_alpha_mask` clips the completed Normal composite
-after those phases and before Overall Opacity and global Text Transform. Its
-points are relative to the unpadded logical origin, may reach effect overflow,
-and never expand persistent or derived bounds.
+existing foreground Gradient path is a legacy renderer bridge until its typed
+cutover. A non-neutral `TextBlock.text_alpha_mask` clips the completed Normal
+composite after those phases and before Overall Opacity and global Text
+Transform. Its points are relative to the unpadded logical origin, may reach
+effect overflow, and never expand persistent or derived bounds.
 
 The renderer owns derived padding and separate committed, preview, and export
 raster namespaces. A live preview replaces the complete effective stack but
@@ -203,7 +206,7 @@ Refresh from the first owner whose input changed:
 | --- | --- |
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
-| Typed effect stack, Overall Opacity, or legacy Gradient | Effect renderer |
+| Typed effect stack/paint, Overall Opacity, or legacy foreground Gradient | Effect renderer |
 | TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |

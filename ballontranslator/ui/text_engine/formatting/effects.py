@@ -2,10 +2,12 @@
 
 from typing import Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
 
-from qtpy.QtCore import QSignalBlocker, QTimer, Signal, QSize, Qt
-from qtpy.QtGui import QIcon
+from qtpy.QtCore import QRectF, QSignalBlocker, QTimer, Signal, QSize, Qt
+from qtpy.QtGui import QColor, QIcon, QPaintEvent, QPainter
 from qtpy.QtWidgets import (
+    QColorDialog,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
@@ -21,6 +23,8 @@ from qtpy.QtWidgets import (
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
+    EffectPaint,
+    LinearGradientPaint,
     HollowEffect,
     SHADOW_BLUR_LIMIT,
     SHADOW_OFFSET_LIMIT,
@@ -36,6 +40,8 @@ from ...custom_widget import ColorPickerLabel, PanelArea
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 from ..transforms.controls import CommittedTransformControl
+from ..rendering.effect_paint import paint_effect_paint_preview
+from .gradient_editor import LinearGradientEditorDialog
 
 if TYPE_CHECKING:
     from ..alpha_mask_edit_session import TextAlphaMaskEditSession
@@ -154,6 +160,77 @@ class EffectNumericControl(CommittedTransformControl):
             self.value_preview_canceled.emit(self.param_name)
 
 
+class EffectPaintButton(QToolButton):
+    """Compact solid swatch or rendered linear-gradient strip.
+
+    >>> issubclass(EffectPaintButton, QToolButton)
+    True
+    """
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._paint: Optional[EffectPaint] = None
+        self._mixed = False
+        self.setObjectName('TextEffectPaintButton')
+        self.setMinimumHeight(24)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+
+    def set_paint(
+        self,
+        paint: Optional[EffectPaint],
+        mixed: bool = False,
+        editable: bool = True,
+    ) -> None:
+        self._paint = paint
+        self._mixed = bool(mixed)
+        self.setIcon(QIcon())
+        if mixed:
+            self.setText(self.tr('Mixed'))
+            self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            if editable:
+                description = self.tr('Choose Shared Stroke Color')
+            elif isinstance(paint, LinearGradientPaint):
+                description = self.tr('Mixed Gradient Paint')
+            else:
+                description = self.tr('Mixed Stroke Paint')
+            self.setToolTip(description)
+            self.setAccessibleName(description)
+            self.setEnabled(editable)
+            self.update()
+            return
+        if paint is None:
+            raise ValueError('non-mixed effect paint button requires paint')
+        self.setText('')
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        description = (
+            self.tr('Edit Gradient')
+            if isinstance(paint, LinearGradientPaint)
+            else self.tr('Choose Stroke Color')
+        )
+        self.setToolTip(description)
+        self.setAccessibleName(description)
+        self.setEnabled(True)
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        if self._paint is None or self._mixed:
+            return
+        rect = QRectF(self.contentsRect()).adjusted(4.0, 3.0, -4.0, -3.0)
+        if rect.width() <= 0.0 or rect.height() <= 0.0:
+            return
+        painter = QPainter(self)
+        paint_effect_paint_preview(
+            painter,
+            rect,
+            self._paint,
+            self.palette(),
+            self.devicePixelRatioF(),
+        )
+
+
 class StrokeEffectCard(QFrame):
     """One Stroke at its complete-stack semantic index.
 
@@ -245,10 +322,28 @@ class StrokeEffectCard(QFrame):
         self.position_selector.currentIndexChanged.connect(
             self._on_position_changed
         )
-        position_row = QHBoxLayout()
+        position_widget = QWidget(self)
+        position_row = QHBoxLayout(position_widget)
         position_row.setContentsMargins(0, 0, 0, 0)
         position_row.addWidget(position_label)
-        position_row.addWidget(self.position_selector)
+        position_row.addWidget(self.position_selector, 1)
+
+        fill_label = QLabel(self.tr('Fill'), self)
+        fill_label.setObjectName('TextEffectParamLabel')
+        self.fill_type_selector = QComboBox(self)
+        self.fill_type_selector.setObjectName('TextEffectFillTypeSelector')
+        self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
+        self.fill_type_selector.setAccessibleName(self.tr('Stroke Fill'))
+        self.fill_type_selector.addItem(self.tr('Solid'), 'solid')
+        self.fill_type_selector.addItem(self.tr('Gradient'), 'linear_gradient')
+        self.fill_type_selector.currentIndexChanged.connect(
+            self._on_fill_type_changed
+        )
+        fill_widget = QWidget(self)
+        fill_row = QHBoxLayout(fill_widget)
+        fill_row.setContentsMargins(0, 0, 0, 0)
+        fill_row.addWidget(fill_label)
+        fill_row.addWidget(self.fill_type_selector, 1)
 
         for control in (self.width_control, self.opacity_control):
             control.editor.setProperty('cardEditor', True)
@@ -265,31 +360,19 @@ class StrokeEffectCard(QFrame):
                 self._on_preview_canceled
             )
 
-        color_label = QLabel(self.tr('Color'), self)
-        color_label.setObjectName('TextEffectParamLabel')
-        self.color_picker = ColorPickerLabel(self, param_name='paint')
-        self.color_picker.setObjectName('TextEffectColorPicker')
-        self.color_picker.setFixedSize(22, 22)
-        self.color_picker.setToolTip(self.tr('Stroke Color'))
-        self.color_picker.changingColor.connect(
-            self._on_color_dialog_opened
-        )
-        self.color_picker.colorChanged.connect(self._on_color_changed)
-        self.color_picker.apply_color.connect(self._on_apply_color)
-        color_row = QHBoxLayout()
-        color_row.setContentsMargins(0, 0, 0, 0)
-        color_row.addWidget(color_label)
-        color_row.addWidget(self.color_picker)
-        color_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.paint_button = EffectPaintButton(self)
+        self.paint_button.clicked.connect(self._on_paint_clicked)
+        self._paint_seed: Optional[EffectPaint] = None
 
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(8)
         controls.setVerticalSpacing(4)
         controls.addWidget(self.width_control, 0, 0)
-        controls.addLayout(color_row, 0, 1)
-        controls.addLayout(position_row, 1, 0)
-        controls.addWidget(self.opacity_control, 1, 1)
+        controls.addWidget(position_widget, 0, 1)
+        controls.addWidget(self.opacity_control, 1, 0)
+        controls.addWidget(fill_widget, 1, 1)
+        controls.addWidget(self.paint_button, 2, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
 
@@ -340,6 +423,23 @@ class StrokeEffectCard(QFrame):
                 else self.position_selector.findData(common_position)
             )
 
+        paints = [stroke.paint for stroke in strokes]
+        common_paint_type = (
+            paints[0].paint_type
+            if paints
+            and all(
+                value.paint_type == paints[0].paint_type
+                for value in paints
+            )
+            else None
+        )
+        with QSignalBlocker(self.fill_type_selector):
+            self.fill_type_selector.setCurrentIndex(
+                -1
+                if common_paint_type is None
+                else self.fill_type_selector.findData(common_paint_type)
+            )
+
         for name, control in (
             ('width', self.width_control),
             ('opacity', self.opacity_control),
@@ -352,19 +452,20 @@ class StrokeEffectCard(QFrame):
             )
             control.set_model_value(common, values)
 
-        colors = [stroke.paint.color for stroke in strokes]
-        common_color = (
-            colors[0]
-            if colors and all(color == colors[0] for color in colors)
+        common_paint = (
+            paints[0]
+            if paints and all(paint == paints[0] for paint in paints)
             else None
         )
-        if common_color is None:
-            self.color_picker.color = None
-            self.color_picker.setStyleSheet('')
-            self.color_picker.setToolTip(self.tr('Mixed'))
-        else:
-            self.color_picker.setPickerColor(common_color)
-            self.color_picker.setToolTip(self.tr('Stroke Color'))
+        mixed_paint = common_paint is None
+        self._paint_seed = common_paint or (
+            paints[0] if paints and common_paint_type is not None else None
+        )
+        self.paint_button.set_paint(
+            self._paint_seed,
+            mixed=mixed_paint,
+            editable=(common_paint_type == 'solid') if mixed_paint else True,
+        )
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
         return (self.width_control, self.opacity_control)
@@ -380,6 +481,14 @@ class StrokeEffectCard(QFrame):
                 self.index,
                 'position',
                 self.position_selector.itemData(combo_index),
+            )
+
+    def _on_fill_type_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'paint_type',
+                self.fill_type_selector.itemData(combo_index),
             )
 
     def _on_control_commit(self, name: str, value) -> None:
@@ -405,22 +514,42 @@ class StrokeEffectCard(QFrame):
         else:
             self.move_requested.emit(self.index, direction)
 
-    def _on_color_dialog_opened(self) -> None:
+    def _on_paint_clicked(self) -> None:
+        paint = self._paint_seed
+        if paint is None:
+            return
         self.color_dialog_active_changed.emit(True)
+        try:
+            if isinstance(paint, SolidPaint):
+                color = QColorDialog.getColor(
+                    QColor(*paint.color), self.window(), self.tr('Stroke Color')
+                )
+                if color.isValid():
+                    self.value_commit_requested.emit(
+                        self.index,
+                        'paint',
+                        SolidPaint((color.red(), color.green(), color.blue())),
+                    )
+                return
 
-    def _on_color_changed(self, accepted: bool) -> None:
-        self.color_dialog_active_changed.emit(False)
-        if accepted:
-            self.value_commit_requested.emit(
-                self.index,
-                'paint',
-                SolidPaint(self.color_picker.rgb()),
-            )
+            dialog = LinearGradientEditorDialog(paint, self.window())
+            dialog.paint_previewed.connect(self._on_gradient_preview)
+            try:
+                result = dialog.exec_()
+                dialog_code = getattr(QDialog, 'DialogCode', QDialog)
+                if result == dialog_code.Accepted:
+                    self.value_commit_requested.emit(
+                        self.index, 'paint', dialog.paint
+                    )
+                else:
+                    self.preview_canceled.emit(self.index, 'paint')
+            finally:
+                dialog.deleteLater()
+        finally:
+            self.color_dialog_active_changed.emit(False)
 
-    def _on_apply_color(self, _name: str, color: Tuple[int, int, int]) -> None:
-        self.value_commit_requested.emit(
-            self.index, 'paint', SolidPaint(color)
-        )
+    def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
+        self.value_preview_requested.emit(self.index, 'paint', paint)
 
 
 class ShadowEffectCard(QFrame):

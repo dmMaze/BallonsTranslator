@@ -21,6 +21,7 @@ from .text_effects import (
     SolidPaint,
     TextEffectStack,
     coerce_text_effect_stack,
+    effect_paint_fallback_color,
     primary_stroke,
     with_primary_stroke,
 )
@@ -755,7 +756,7 @@ class FontFormat(Config):
                         return 0.0
                     return stroke.width
                 return (
-                    list(stroke.paint.color)
+                    list(effect_paint_fallback_color(stroke.paint))
                     if stroke is not None
                     else [0, 0, 0]
                 )
@@ -915,15 +916,13 @@ class FontFormat(Config):
         stroke = primary_stroke(self.text_effects)
         compatible_stroke = (
             stroke is not None
-            and stroke.enabled
-            and stroke.opacity > 0.0
-            and stroke.width > 0.0
+            and not stroke.is_neutral()
         )
         serialized['stroke_width'] = (
             stroke.width if compatible_stroke else 0.0
         )
         serialized['srgb'] = (
-            list(stroke.paint.color)
+            list(effect_paint_fallback_color(stroke.paint))
             if compatible_stroke
             else [0, 0, 0]
         )

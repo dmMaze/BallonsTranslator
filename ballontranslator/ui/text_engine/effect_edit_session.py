@@ -5,13 +5,17 @@ from typing import Optional, Sequence, Tuple, TYPE_CHECKING
 
 from ballontranslator.utils import config as C
 from ballontranslator.utils.text_effects import (
+    EffectPaint,
+    GradientStop,
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextEffect,
     TextEffectStack,
     effect_phase,
+    effect_paint_fallback_color,
 )
 
 from .. import shared_widget as SW
@@ -93,6 +97,40 @@ class TextEffectEditSession:
         )
 
     @staticmethod
+    def _convert_stroke_paint(
+        paint: EffectPaint,
+        paint_type: str,
+        mixed_values: bool,
+    ) -> EffectPaint:
+        """Convert Stroke Fill without inventing a shared mixed value.
+
+        >>> converted = TextEffectEditSession._convert_stroke_paint(
+        ...     SolidPaint((1, 2, 3)), 'linear_gradient', False
+        ... )
+        >>> converted.stops[-1].opacity
+        0.0
+        """
+        if paint_type not in {'solid', 'linear_gradient'}:
+            raise ValueError('unsupported Stroke paint type')
+        if mixed_values:
+            return (
+                SolidPaint()
+                if paint_type == 'solid'
+                else LinearGradientPaint()
+            )
+        if paint_type == 'solid':
+            if isinstance(paint, SolidPaint):
+                return paint
+            return SolidPaint(effect_paint_fallback_color(paint))
+        if isinstance(paint, LinearGradientPaint):
+            return paint
+        color = effect_paint_fallback_color(paint)
+        return LinearGradientPaint(stops=(
+            GradientStop(0.0, color, 1.0),
+            GradientStop(1.0, color, 0.0),
+        ))
+
+    @staticmethod
     def _with_value(
         state: TextEffectStack,
         index: int,
@@ -109,12 +147,23 @@ class TextEffectEditSession:
         parameters = {}
         if isinstance(effect, StrokeEffect):
             if param_name not in {
-                'enabled', 'width', 'opacity', 'paint', 'position'
+                'enabled', 'width', 'opacity', 'paint', 'paint_type',
+                'position',
             }:
                 raise ValueError('unknown Stroke field')
-            if param_name == 'paint' and not isinstance(value, SolidPaint):
-                value = SolidPaint(value)
-            parameters[param_name] = value
+            if param_name == 'paint':
+                if not isinstance(value, (SolidPaint, LinearGradientPaint)):
+                    value = SolidPaint(value)
+                parameters['paint'] = value
+            elif param_name == 'paint_type':
+                paint_type, mixed_values = value
+                parameters['paint'] = (
+                    TextEffectEditSession._convert_stroke_paint(
+                        effect.paint, paint_type, mixed_values
+                    )
+                )
+            else:
+                parameters[param_name] = value
         elif isinstance(effect, ShadowEffect):
             if param_name in {'offset_x', 'offset_y'}:
                 offset = list(effect.offset)
@@ -321,6 +370,16 @@ class TextEffectEditSession:
             self.cancel_preview()
             self._sync_effect_ui()
             return False
+        if param_name == 'paint_type':
+            try:
+                paints = {
+                    state.effects[index].paint for state in before
+                }
+            except (AttributeError, IndexError):
+                self.cancel_preview()
+                self._sync_effect_ui()
+                return False
+            value = (value, len(paints) > 1)
         try:
             after = [
                 self._with_value(state, index, param_name, value)

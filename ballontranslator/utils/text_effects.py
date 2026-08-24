@@ -34,7 +34,7 @@ def _float_in_range(
 
 def _color_tuple(value: Sequence[int]) -> Tuple[int, int, int]:
     if not isinstance(value, (list, tuple)) or len(value) != 3:
-        raise TypeError('solid paint color must contain three integer channels')
+        raise TypeError('paint color must contain three integer channels')
     if any(
         isinstance(channel, bool)
         or not isinstance(channel, Integral)
@@ -42,7 +42,7 @@ def _color_tuple(value: Sequence[int]) -> Tuple[int, int, int]:
         for channel in value
     ):
         raise ValueError(
-            'solid paint color channels must be integers from 0 to 255'
+            'paint color channels must be integers from 0 to 255'
         )
     return tuple(int(channel) for channel in value)
 
@@ -84,8 +84,118 @@ class SolidPaint:
 
 
 @dataclass(frozen=True)
+class GradientStop:
+    """One immutable linear-gradient stop.
+
+    >>> GradientStop(0.5, [12, 34, 56], 0.75).color
+    (12, 34, 56)
+    """
+
+    position: float = 0.0
+    color: Tuple[int, int, int] = (0, 0, 0)
+    opacity: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            'position',
+            _float_in_range(
+                'gradient stop position', self.position, 0.0, 1.0
+            ),
+        )
+        object.__setattr__(self, 'color', _color_tuple(self.color))
+        object.__setattr__(
+            self,
+            'opacity',
+            _float_in_range(
+                'gradient stop opacity', self.opacity, 0.0, 1.0
+            ),
+        )
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'position': self.position,
+            'color': list(self.color),
+            'opacity': self.opacity,
+        }
+
+
+def _default_gradient_stops() -> Tuple[GradientStop, GradientStop]:
+    return (
+        GradientStop(0.0, (0, 0, 0), 1.0),
+        GradientStop(1.0, (255, 255, 255), 1.0),
+    )
+
+
+@dataclass(frozen=True)
+class LinearGradientPaint:
+    """Immutable logical-block linear-gradient paint.
+
+    >>> LinearGradientPaint(angle=450).angle
+    90.0
+    """
+
+    stops: Tuple[GradientStop, ...] = field(
+        default_factory=_default_gradient_stops
+    )
+    angle: float = 0.0
+    scale: float = 1.0
+    paint_type: str = field(init=False, default='linear_gradient')
+
+    def __post_init__(self) -> None:
+        stops = tuple(self.stops)
+        if not 2 <= len(stops) <= 32:
+            raise ValueError('linear gradient requires 2 to 32 stops')
+        if any(not isinstance(stop, GradientStop) for stop in stops):
+            raise TypeError('linear gradient stops require GradientStop values')
+        if any(
+            current.position > following.position
+            for current, following in zip(stops, stops[1:])
+        ):
+            raise ValueError('linear gradient stops must be ordered')
+        object.__setattr__(self, 'stops', stops)
+        angle = _float_in_range(
+            'linear gradient angle', self.angle, -math.inf, math.inf
+        )
+        object.__setattr__(self, 'angle', angle % 360.0)
+        object.__setattr__(
+            self,
+            'scale',
+            _float_in_range(
+                'linear gradient scale', self.scale, 0.1, 4.0
+            ),
+        )
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'paint_type': self.paint_type,
+            'stops': [stop.to_serializable_dict() for stop in self.stops],
+            'angle': self.angle,
+            'scale': self.scale,
+        }
+
+
+EffectPaint = Union[SolidPaint, LinearGradientPaint]
+
+
+def effect_paint_fallback_color(
+    paint: EffectPaint,
+) -> Tuple[int, int, int]:
+    """Return the stable RGB used by legacy solid-only boundaries.
+
+    >>> effect_paint_fallback_color(LinearGradientPaint())
+    (0, 0, 0)
+    """
+    if isinstance(paint, SolidPaint):
+        return paint.color
+    if isinstance(paint, LinearGradientPaint):
+        return paint.stops[0].color
+    raise TypeError('effect paint requires a typed paint value')
+
+
+@dataclass(frozen=True)
 class StrokeEffect:
-    """One immutable positioned solid Stroke effect.
+    """One immutable positioned Stroke effect.
 
     Width is the full band relative to font size. Center splits it across the
     glyph edge; Inside and Outside place it wholly on the corresponding side.
@@ -98,7 +208,7 @@ class StrokeEffect:
     opacity: float = 1.0
     blend_mode: str = 'normal'
     width: float = 0.1
-    paint: SolidPaint = field(default_factory=SolidPaint)
+    paint: EffectPaint = field(default_factory=SolidPaint)
     position: str = 'center'
     effect_type: str = field(init=False, default='stroke')
 
@@ -117,8 +227,8 @@ class StrokeEffect:
             'width',
             _float_in_range('stroke width', self.width, 0.0),
         )
-        if not isinstance(self.paint, SolidPaint):
-            raise TypeError('stroke paint must be SolidPaint')
+        if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
+            raise TypeError('stroke paint must be EffectPaint')
         if self.position not in {'inside', 'center', 'outside'}:
             raise ValueError('unsupported stroke position')
 
@@ -134,7 +244,16 @@ class StrokeEffect:
         }
 
     def is_neutral(self) -> bool:
-        return not self.enabled or self.opacity == 0.0 or self.width == 0.0
+        transparent_paint = (
+            isinstance(self.paint, LinearGradientPaint)
+            and all(stop.opacity == 0.0 for stop in self.paint.stops)
+        )
+        return (
+            not self.enabled
+            or self.opacity == 0.0
+            or self.width == 0.0
+            or transparent_paint
+        )
 
 
 @dataclass(frozen=True)
@@ -316,16 +435,41 @@ def _unexpected_fields(
         raise ValueError(f'unsupported {label} fields: {sorted(unexpected)}')
 
 
-def _coerce_solid_paint(value: object) -> SolidPaint:
-    if isinstance(value, SolidPaint):
+def _coerce_gradient_stop(value: object) -> GradientStop:
+    if isinstance(value, GradientStop):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError('gradient stop must be a value or typed payload')
+    payload = dict(value)
+    _unexpected_fields(
+        payload, ('position', 'color', 'opacity'), 'gradient stop'
+    )
+    return GradientStop(**payload)
+
+
+def _coerce_effect_paint(value: object) -> EffectPaint:
+    if isinstance(value, (SolidPaint, LinearGradientPaint)):
         return value
     if not isinstance(value, dict):
         raise ValueError('stroke paint must be a value or typed payload')
     payload = dict(value)
-    _unexpected_fields(payload, ('paint_type', 'color'), 'solid paint')
-    if payload.pop('paint_type', None) != 'solid':
-        raise ValueError('stroke paint payload requires paint_type solid')
-    return SolidPaint(**payload)
+    paint_type = payload.pop('paint_type', None)
+    if paint_type == 'solid':
+        _unexpected_fields(payload, ('color',), 'solid paint')
+        return SolidPaint(**payload)
+    if paint_type == 'linear_gradient':
+        _unexpected_fields(
+            payload, ('stops', 'angle', 'scale'), 'linear gradient paint'
+        )
+        if 'stops' in payload:
+            stops = payload['stops']
+            if not isinstance(stops, (list, tuple)):
+                raise ValueError('linear gradient stops must be a sequence')
+            payload['stops'] = tuple(
+                _coerce_gradient_stop(stop) for stop in stops
+            )
+        return LinearGradientPaint(**payload)
+    raise ValueError('unsupported or missing stroke paint type')
 
 
 def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
@@ -351,7 +495,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         )
         payload.pop('effect_type')
         if 'paint' in payload:
-            payload['paint'] = _coerce_solid_paint(payload['paint'])
+            payload['paint'] = _coerce_effect_paint(payload['paint'])
         return StrokeEffect(**payload)
     if effect_type == 'shadow':
         _unexpected_fields(

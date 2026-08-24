@@ -3,7 +3,9 @@ import unittest
 from unittest.mock import patch
 
 from ballontranslator.utils.text_effects import (
+    GradientStop,
     HollowEffect,
+    LinearGradientPaint,
     SHADOW_BLUR_LIMIT,
     SHADOW_OFFSET_LIMIT,
     SHADOW_SPREAD_LIMIT,
@@ -13,6 +15,7 @@ from ballontranslator.utils.text_effects import (
     TextEffectStack,
     coerce_text_effect_stack,
     effect_phase,
+    effect_paint_fallback_color,
     ensure_primary_stroke,
     primary_stroke,
     with_non_stroke_effects,
@@ -21,6 +24,59 @@ from ballontranslator.utils.text_effects import (
 
 
 class TextEffectDomainTest(unittest.TestCase):
+    def test_linear_gradient_values_are_immutable_and_strict(self):
+        hard_transition = LinearGradientPaint(
+            stops=(
+                GradientStop(0.0, (1, 2, 3), 0.0),
+                GradientStop(0.5, (4, 5, 6), 0.5),
+                GradientStop(0.5, (7, 8, 9), 1.0),
+                GradientStop(1.0, (10, 11, 12), 1.0),
+            ),
+            angle=-90,
+            scale=4.0,
+        )
+
+        self.assertEqual(hard_transition.angle, 270.0)
+        self.assertEqual(hard_transition.scale, 4.0)
+        self.assertEqual(len(hard_transition.stops), 4)
+        with self.assertRaises(FrozenInstanceError):
+            hard_transition.angle = 0.0
+
+        invalid_values = (
+            lambda: GradientStop(-0.001),
+            lambda: GradientStop(1.001),
+            lambda: GradientStop(float('nan')),
+            lambda: GradientStop(color=(0, 1, 256)),
+            lambda: GradientStop(opacity=-0.001),
+            lambda: GradientStop(opacity=1.001),
+            lambda: LinearGradientPaint(stops=(GradientStop(),)),
+            lambda: LinearGradientPaint(
+                stops=tuple(GradientStop(index / 32) for index in range(33))
+            ),
+            lambda: LinearGradientPaint(stops=(
+                GradientStop(0.8), GradientStop(0.2)
+            )),
+            lambda: LinearGradientPaint(stops=(
+                GradientStop(), {'position': 1.0}
+            )),
+            lambda: LinearGradientPaint(angle=float('inf')),
+            lambda: LinearGradientPaint(scale=0.099),
+            lambda: LinearGradientPaint(scale=4.001),
+        )
+        for constructor in invalid_values:
+            with self.subTest(constructor=constructor):
+                with self.assertRaises((TypeError, ValueError)):
+                    constructor()
+
+        self.assertEqual(LinearGradientPaint(angle=360).angle, 0.0)
+        self.assertEqual(LinearGradientPaint(scale=0.1).scale, 0.1)
+        self.assertIsInstance(LinearGradientPaint(
+            stops=[GradientStop(), GradientStop(1.0)]
+        ).stops, tuple)
+        self.assertEqual(len(LinearGradientPaint(stops=tuple(
+            GradientStop(index / 31) for index in range(32)
+        )).stops), 32)
+
     def test_values_are_deeply_immutable(self):
         paint = SolidPaint([12, 34, 56])
         stroke = StrokeEffect(width=0.2, paint=paint)
@@ -150,6 +206,11 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertTrue(TextEffectStack(
             effects=(StrokeEffect(opacity=0.0),)
         ).is_neutral())
+        transparent_gradient = LinearGradientPaint(stops=(
+            GradientStop(0.0, (255, 0, 0), 0.0),
+            GradientStop(1.0, (0, 0, 255), 0.0),
+        ))
+        self.assertTrue(StrokeEffect(paint=transparent_gradient).is_neutral())
 
         active = TextEffectStack(effects=(StrokeEffect(),))
         self.assertTrue(active.has_active_effects)
@@ -223,7 +284,9 @@ class TextEffectDomainTest(unittest.TestCase):
                 {'effect_type': 'stroke', 'future_field': 1},
                 {
                     'effect_type': 'stroke',
-                    'paint': {'paint_type': 'gradient'},
+                    'paint': {'paint_type': 'linear_gradient', 'stops': [
+                        {'position': 0.0, 'color': [0, 0, 0], 'opacity': 1.0},
+                    ]},
                 },
                 {
                     'effect_type': 'stroke',
@@ -255,6 +318,62 @@ class TextEffectDomainTest(unittest.TestCase):
             ),
         )
         self.assertEqual(warning.call_count, 6)
+
+    def test_gradient_payload_round_trip_and_bad_entry_isolation(self):
+        paint = LinearGradientPaint(
+            stops=(
+                GradientStop(0.0, (1, 2, 3), 0.25),
+                GradientStop(0.4, (4, 5, 6), 0.5),
+                GradientStop(1.0, (7, 8, 9), 1.0),
+            ),
+            angle=405,
+            scale=1.75,
+        )
+        gradient = StrokeEffect(width=0.3, paint=paint)
+        payload = TextEffectStack(effects=(gradient,)).to_serializable_dict()
+
+        self.assertEqual(payload['effects'][0]['paint'], {
+            'paint_type': 'linear_gradient',
+            'stops': [
+                {'position': 0.0, 'color': [1, 2, 3], 'opacity': 0.25},
+                {'position': 0.4, 'color': [4, 5, 6], 'opacity': 0.5},
+                {'position': 1.0, 'color': [7, 8, 9], 'opacity': 1.0},
+            ],
+            'angle': 45.0,
+            'scale': 1.75,
+        })
+        self.assertEqual(coerce_text_effect_stack(payload)[0], gradient)
+
+        malformed = {'effects': [
+            payload['effects'][0],
+            {
+                'effect_type': 'stroke',
+                'paint': {
+                    'paint_type': 'linear_gradient',
+                    'stops': [
+                        {'position': 0.8, 'color': [0, 0, 0], 'opacity': 1.0},
+                        {'position': 0.2, 'color': [255, 255, 255], 'opacity': 1.0},
+                    ],
+                },
+            },
+            {
+                'effect_type': 'stroke',
+                'paint': {'paint_type': 'solid', 'color': [9, 8, 7]},
+            },
+        ]}
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            loaded = coerce_text_effect_stack(malformed)
+        self.assertEqual(loaded.effects, (
+            gradient, StrokeEffect(paint=SolidPaint((9, 8, 7)))
+        ))
+        warning.assert_called_once()
+        self.assertEqual(effect_paint_fallback_color(paint), (1, 2, 3))
+        self.assertEqual(
+            effect_paint_fallback_color(SolidPaint((8, 7, 6))),
+            (8, 7, 6),
+        )
 
     def test_payload_keeps_mixed_order_and_isolates_duplicate_hollow(self):
         payload = {'effects': [

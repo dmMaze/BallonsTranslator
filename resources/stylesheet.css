@@ -2432,6 +2432,43 @@ QFrame#TextAlphaMaskCard QLabel#TextEffectParameterTitle {
     font-weight: 600;
 }
 
+QToolButton#TextEffectPaintButton {
+    min-width: 0px;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    background-color: @transtexteditBackgroundColor;
+}
+
+QToolButton#TextEffectPaintButton:hover {
+    border-color: rgb(30, 147, 229);
+}
+
+QDialog#LinearGradientEditorDialog {
+    background-color: transparent;
+}
+
+QFrame#LinearGradientEditorSurface,
+QFrame#LinearGradientEditorSurface QLabel,
+QWidget#LinearGradientEditorTitleBar {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+}
+
+QFrame#LinearGradientEditorSurface {
+    border: 1px solid @borderColor;
+    border-radius: 10px;
+}
+
+QLabel#LinearGradientEditorTitle {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+QLabel#GradientStopColorPicker {
+    border: 1px solid @borderColor;
+    border-radius: 3px;
+}
+
 QToolButton#AddTextTransformButton,
 QToolButton#AddTextEffectButton {
     min-height: 24px;

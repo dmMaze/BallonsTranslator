@@ -6,7 +6,10 @@ from qtpy.QtGui import QDrag, QFontMetrics, QColor, QPixmap, QPainter, QContextM
 
 
 from ballontranslator.utils.fontformat import FontFormat
-from ballontranslator.utils.text_effects import primary_stroke
+from ballontranslator.utils.text_effects import (
+    effect_paint_fallback_color,
+    primary_stroke,
+)
 from ballontranslator.utils.config import save_text_styles, text_styles
 from ballontranslator.utils import config as C
 from ..font_family import qfont_with_family
@@ -228,7 +231,7 @@ class TextStyleLabel(Widget):
         draw_rect, draw_radius = QRectF(0, 0, d, d), radius
         stroke = primary_stroke(self.fontfmt.text_effects)
         if stroke is not None and not stroke.is_neutral():
-            r, g, b = stroke.paint.color
+            r, g, b = effect_paint_fallback_color(stroke.paint)
             color = QColor(r, g, b, round(255 * stroke.opacity))
             painter.setBrush(color)
             painter.drawRoundedRect(draw_rect, draw_radius, draw_radius)
