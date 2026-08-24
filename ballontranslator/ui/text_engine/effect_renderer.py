@@ -1938,25 +1938,19 @@ class TextEffectRenderer:
             )
             and not hollow
         )
-        if (
-            interior
-            or overlay is not None
-            or completed_foreground
-            or (exterior and not paint_stroke)
-            or (hollow and exterior)
-            or positioned_strokes
-        ):
+        needs_canonical_alpha = bool(
+            interior or exterior or positioned_strokes
+        )
+        if completed_foreground or needs_canonical_alpha:
             canonical = self._capture_effect_source(
                 surface_rect, render_scale
             )
-            canonical_alpha = self._pixmap_alpha(canonical)
+            if needs_canonical_alpha:
+                canonical_alpha = self._pixmap_alpha(canonical)
         exterior_alpha = canonical_alpha
         if exterior and paint_stroke:
-            if canonical is None:
-                canonical = self._capture_effect_source(
-                    surface_rect, render_scale
-                )
-                canonical_alpha = self._pixmap_alpha(canonical)
+            assert canonical is not None
+            assert canonical_alpha is not None
             silhouette = self._stroke_silhouette(
                 canonical,
                 canonical_alpha,

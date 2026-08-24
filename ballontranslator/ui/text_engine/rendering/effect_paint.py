@@ -107,6 +107,10 @@ def colorize_effect_paint_rgba(
     opacities = np.asarray(
         [stop.opacity * 255.0 for stop in paint.stops], dtype=np.float32
     )
+    two_stop = len(paint.stops) == 2
+    opaque_two_stop = two_stop and all(
+        stop.opacity == 1.0 for stop in paint.stops
+    )
     for row_start in range(0, height, 256):
         row_end = min(height, row_start + 256)
         y = (
@@ -121,11 +125,74 @@ def colorize_effect_paint_rgba(
             / length
         )
         np.clip(parameter, 0.0, 1.0, out=parameter)
+        target = rgba[row_start:row_end]
+        # Avoid per-stop masks and a full RGB intermediate while retaining
+        # the generic path's float32 interpolation and integer rounding.
+        if two_stop:
+            span = positions[1] - positions[0]
+            if span <= 0.0:
+                ratio = (parameter >= positions[1]).astype(np.float32)
+            else:
+                ratio = (parameter - positions[0]) / span
+                np.clip(ratio, 0.0, 1.0, out=ratio)
+
+            direct_rgb = (
+                source_atop_opacity is None
+                or (
+                    opaque_two_stop
+                    and source_atop_opacity == 1.0
+                )
+            )
+            if source_atop_opacity is not None and not direct_rgb:
+                if opaque_two_stop:
+                    effective_alpha = np.uint32(np.rint(
+                        np.float32(255.0)
+                        * np.float32(source_atop_opacity)
+                    ))
+                else:
+                    paint_alpha = np.rint(
+                        opacities[0]
+                        + (opacities[1] - opacities[0]) * ratio
+                    ).astype(np.uint8)
+                    effective_alpha = np.rint(
+                        paint_alpha.astype(np.float32)
+                        * source_atop_opacity
+                    ).astype(np.uint8).astype(np.uint32)
+                inverse_alpha = 255 - effective_alpha
+
+            for channel in range(3):
+                values = colors[0, channel] + (
+                    colors[1, channel] - colors[0, channel]
+                ) * ratio
+                paint_values = np.rint(values).astype(np.uint8)
+                if direct_rgb:
+                    target[..., channel] = paint_values
+                    continue
+                product = target[..., channel].astype(np.uint32)
+                product *= inverse_alpha
+                product += (
+                    paint_values.astype(np.uint32) * effective_alpha + 127
+                )
+                product //= 255
+                target[..., channel] = product.astype(np.uint8)
+
+            if source_atop_opacity is not None or opaque_two_stop:
+                continue
+            paint_alpha = np.rint(
+                opacities[0]
+                + (opacities[1] - opacities[0]) * ratio
+            ).astype(np.uint8)
+            product = target[..., 3].astype(np.uint16)
+            product *= paint_alpha.astype(np.uint16)
+            product += 127
+            product //= 255
+            target[..., 3] = product.astype(np.uint8)
+            continue
+
         right = np.ones(parameter.shape, dtype=np.uint8)
         # Advancing on equality preserves equal-position hard transitions.
         for index in range(1, len(paint.stops) - 1):
             right[parameter >= positions[index]] = index + 1
-        target = rgba[row_start:row_end]
         paint_rgb = (
             target[..., :3]
             if source_atop_opacity is None

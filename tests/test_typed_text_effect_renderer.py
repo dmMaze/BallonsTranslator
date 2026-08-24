@@ -401,15 +401,36 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertIs(result, coverage)
         self.assertEqual(coverage[0, 0].tolist(), [128, 0, 128, 64])
 
+        exact = LinearGradientPaint(stops=(
+            GradientStop(0.0, (10, 20, 30), 0.25),
+            GradientStop(1.0, (210, 120, 50), 0.75),
+        ))
+        coverage = np.full((1, 4, 4), 255, dtype=np.uint8)
+        coverage[..., 3] = (255, 128, 64, 1)
+        colorize_effect_paint_rgba(
+            exact,
+            coverage,
+            QRectF(0, 0, 4, 1),
+            QRectF(0, 0, 4, 1),
+            1.0,
+        )
+        np.testing.assert_array_equal(coverage[0], np.array((
+            (35, 32, 32, 80),
+            (85, 58, 38, 56),
+            (135, 82, 42, 36),
+            (185, 108, 48, 1),
+        ), dtype=np.uint8))
+
         hard = LinearGradientPaint(stops=(
             GradientStop(0.5, (255, 0, 0), 1.0),
             GradientStop(0.5, (0, 0, 255), 1.0),
         ))
         raster = rasterize_effect_paint(
-            hard, QRectF(0, 0, 2, 1), QRectF(0, 0, 2, 1), 1.0, 2, 1
+            hard, QRectF(0, 0, 3, 1), QRectF(0, 0, 3, 1), 1.0, 3, 1
         )
         self.assertEqual(raster[0, 0, :3].tolist(), [255, 0, 0])
         self.assertEqual(raster[0, 1, :3].tolist(), [0, 0, 255])
+        self.assertEqual(raster[0, 2, :3].tolist(), [0, 0, 255])
 
         opaque = LinearGradientPaint(stops=(
             GradientStop(0.0, (0, 100, 240), 1.0),
@@ -433,9 +454,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             1.0,
             source_atop_opacity=0.5,
         )
-        self.assertEqual(tinted[0, 0, 3], 127)
-        self.assertGreater(tinted[0, 0, 0], 0)
-        self.assertGreater(tinted[0, 0, 2], 40)
+        self.assertEqual(tinted[0, 0].tolist(), [100, 60, 140, 127])
         half_alpha = LinearGradientPaint(stops=(
             GradientStop(0.0, (0, 100, 240), 0.5),
             GradientStop(1.0, (0, 100, 240), 0.5),
@@ -449,6 +468,56 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             source_atop_opacity=1.0,
         )
         np.testing.assert_array_equal(stop_tinted, tinted)
+
+    def test_canonical_alpha_is_only_extracted_for_alpha_consumers(self):
+        overlay = GradientOverlayEffect(
+            paint=self._constant_gradient((20, 60, 220))
+        )
+        item = self._item(TextEffectStack(effects=(overlay,)))
+        renderer = item.effect_renderer
+        with patch.object(
+            renderer, '_pixmap_alpha', wraps=renderer._pixmap_alpha
+        ) as pixmap_alpha:
+            rendered = renderer._render_pre_mask_effect_surface(
+                renderer.boundingRect(), 1.0
+            )
+        self.assertEqual(pixmap_alpha.call_count, 0)
+        self.assertGreater(np.count_nonzero(
+            pixmap2ndarray(rendered, keep_alpha=True)[..., 3]
+        ), 0)
+
+        center_gradient = self._item(TextEffectStack(effects=(
+            StrokeEffect(
+                width=0.2,
+                position='center',
+                paint=LinearGradientPaint(),
+            ),
+        )))
+        renderer = center_gradient.effect_renderer
+        with patch.object(
+            renderer, '_pixmap_alpha', wraps=renderer._pixmap_alpha
+        ) as pixmap_alpha:
+            renderer._render_pre_mask_effect_surface(
+                renderer.boundingRect(), 1.0
+            )
+        self.assertEqual(pixmap_alpha.call_count, 0)
+
+        consumers = (
+            ShadowEffect(),
+            ShadowEffect(shadow_type='inner'),
+            StrokeEffect(width=0.2, position='outside'),
+        )
+        for effect in consumers:
+            with self.subTest(effect=effect):
+                item = self._item(TextEffectStack(effects=(effect,)))
+                renderer = item.effect_renderer
+                with patch.object(
+                    renderer, '_pixmap_alpha', wraps=renderer._pixmap_alpha
+                ) as pixmap_alpha:
+                    renderer._render_pre_mask_effect_surface(
+                        renderer.boundingRect(), 1.0
+                    )
+                self.assertGreater(pixmap_alpha.call_count, 0)
 
     @staticmethod
     def _constant_gradient(color, stop_opacity=1.0):
