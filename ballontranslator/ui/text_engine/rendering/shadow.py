@@ -82,9 +82,9 @@ def render_glow_alpha(
 
     >>> source = np.zeros((5, 5), dtype=np.uint8)
     >>> source[2, 2] = 255
-    >>> render_glow_alpha(source, 'outer', 0, 1)[2, 1]
+    >>> int(render_glow_alpha(source, 'outer', 0, 1)[2, 1])
     255
-    >>> render_glow_alpha(source, 'outer', 0, 1)[2, 2]
+    >>> int(render_glow_alpha(source, 'outer', 0, 1)[2, 2])
     0
     """
     if glow_type == 'outer':
@@ -100,24 +100,23 @@ def render_glow_alpha(
     raise ValueError('unsupported glow type')
 
 
-def render_shadow_rgba(
+def render_shadow_alpha(
     source_alpha: np.ndarray,
     shadow_type: str,
-    color: Tuple[int, int, int],
     opacity: float,
     offset: Tuple[float, float],
     blur_radius: int,
     spread_radius: int,
 ) -> np.ndarray:
-    """Compile one typed Shadow into a transparent RGBA layer.
+    """Compile one typed Shadow into a paint-independent alpha layer.
 
     The caller supplies pixel-space geometry, so this helper is independent of
     Qt device scale and can be tested without a painter.
 
     >>> alpha = np.zeros((3, 4), dtype=np.uint8)
     >>> alpha[1, 1] = 255
-    >>> render_shadow_rgba(alpha, 'drop', (1, 2, 3), 1, (1, 0), 0, 0)[1, 2].tolist()
-    [1, 2, 3, 255]
+    >>> int(render_shadow_alpha(alpha, 'drop', 1, (1, 0), 0, 0)[1, 2])
+    255
     """
     if shadow_type == 'long':
         mask = _long_shadow_alpha(
@@ -140,7 +139,4 @@ def render_shadow_rgba(
         mask = np.clip(
             mask.astype(np.float32) * opacity, 0, 255
         ).astype(np.uint8)
-    result = np.empty(source_alpha.shape + (4,), dtype=np.uint8)
-    result[..., :3] = np.asarray(color, dtype=np.uint8)
-    result[..., 3] = mask
-    return result
+    return mask

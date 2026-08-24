@@ -202,7 +202,9 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         stacks = (
             TextEffectStack(effects=(
                 ShadowEffect(
-                    color=(0, 255, 0), offset=(-0.35, 0), blur=0.04
+                    paint=SolidPaint((0, 255, 0)),
+                    offset=(-0.35, 0),
+                    blur=0.04,
                 ),
                 GlowEffect(
                     paint=SolidPaint((255, 255, 0)),
@@ -225,7 +227,9 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             )),
             TextEffectStack(effects=(
                 ShadowEffect(
-                    shadow_type='long', color=(0, 255, 0), offset=(-0.5, 0.2)
+                    shadow_type='long',
+                    paint=SolidPaint((0, 255, 0)),
+                    offset=(-0.5, 0.2),
                 ),
                 GlowEffect(size=0.08, spread=0.03),
                 StrokeEffect(

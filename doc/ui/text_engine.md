@@ -143,11 +143,14 @@ clip a full-width outline to the corresponding side of canonical glyph alpha.
 Outside is the default for newly inserted Stroke and pre-stack legacy Stroke
 migration. Explicitly saved positions remain authoritative; typed stacks from
 before the Position field existed retain their original Center behavior.
-Each Stroke or Glow owns an immutable solid or linear-gradient paint. Outer
-Glow derives from the visible Stroke-inclusive silhouette, while Inner Glow
-derives from canonical glyph alpha and is suppressed by Hollow. Linear-gradient
-coordinates span the complete unpadded logical rectangle, so full surfaces,
-tiles, writing modes, and transformed output share one item-local gradient.
+Each Stroke, Shadow, or Glow owns an immutable solid or linear-gradient paint.
+Typed Shadow payloads saved before this shared paint field existed migrate
+their bare RGB color to an equivalent solid paint.
+Outer Glow derives from the visible Stroke-inclusive silhouette, while Inner
+Glow derives from canonical glyph alpha and is suppressed by Hollow. Each
+linear gradient spans the complete unpadded logical rectangle, so full
+surfaces, tiles, writing modes, and transformed output share one item-local
+gradient.
 Entry order is retained within each phase. Gradient Overlay recolors the
 canonical rich foreground in the same item-local coordinate space without
 changing the alpha used by Stroke or exterior Shadow. Hollow suppresses the

@@ -44,7 +44,7 @@ from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
 )
-from .rendering.shadow import render_glow_alpha, render_shadow_rgba
+from .rendering.shadow import render_glow_alpha, render_shadow_alpha
 from .rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
@@ -2428,14 +2428,14 @@ class TextEffectRenderer:
         self,
         source_alpha: np.ndarray,
         shadow: ShadowEffect,
+        surface_rect: QRectF,
         render_scale: float,
     ) -> QPixmap:
         blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
         try:
-            rgba = render_shadow_rgba(
+            alpha = render_shadow_alpha(
                 source_alpha,
                 shadow.shadow_type,
-                shadow.color,
                 shadow.opacity,
                 (
                     xoffset * render_scale,
@@ -2443,6 +2443,15 @@ class TextEffectRenderer:
                 ),
                 max(0, int(round(blur * render_scale))),
                 max(0, int(round(spread * render_scale))),
+            )
+            rgba = np.empty(source_alpha.shape + (4,), dtype=np.uint8)
+            rgba[..., 3] = alpha
+            colorize_effect_paint_rgba(
+                shadow.paint,
+                rgba,
+                surface_rect,
+                self.logical_unpadded_rect(),
+                render_scale,
             )
             pixmap = ndarray2pixmap(rgba)
         except RASTER_BOUNDARY_FAILURES as error:
@@ -2511,7 +2520,9 @@ class TextEffectRenderer:
         render_scale: float,
     ) -> QPixmap:
         if isinstance(effect, ShadowEffect):
-            return self._shadow_pixmap(source_alpha, effect, render_scale)
+            return self._shadow_pixmap(
+                source_alpha, effect, surface_rect, render_scale
+            )
         if isinstance(effect, GlowEffect):
             return self._glow_pixmap(
                 source_alpha, effect, surface_rect, render_scale

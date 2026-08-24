@@ -37,7 +37,7 @@ from ballontranslator.utils.text_effects import (
     effect_phase,
 )
 
-from ...custom_widget import ColorPickerLabel, PanelArea
+from ...custom_widget import PanelArea
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 from ..transforms.controls import CommittedTransformControl
@@ -660,10 +660,11 @@ class ShadowEffectCard(QFrame):
         self.type_selector.currentIndexChanged.connect(
             self._on_type_changed
         )
-        type_row = QHBoxLayout()
+        type_widget = QWidget(self)
+        type_row = QHBoxLayout(type_widget)
         type_row.setContentsMargins(0, 0, 0, 0)
         type_row.addWidget(type_label)
-        type_row.addWidget(self.type_selector)
+        type_row.addWidget(self.type_selector, 1)
 
         self.opacity_control = EffectNumericControl(
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
@@ -700,36 +701,61 @@ class ShadowEffectCard(QFrame):
                 self._on_preview_canceled
             )
 
-        color_label = QLabel(self.tr('Color'), self)
-        color_label.setObjectName('TextEffectParamLabel')
-        self.color_picker = ColorPickerLabel(self, param_name='color')
-        self.color_picker.setObjectName('TextEffectColorPicker')
-        self.color_picker.setFixedSize(22, 22)
-        self.color_picker.setToolTip(self.tr('Shadow Color'))
-        self.color_picker.changingColor.connect(
-            self._on_color_dialog_opened
+        fill_label = QLabel(self.tr('Fill'), self)
+        fill_label.setObjectName('TextEffectParamLabel')
+        self.fill_type_selector = QComboBox(self)
+        self.fill_type_selector.setObjectName('TextEffectFillTypeSelector')
+        self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
+        self.fill_type_selector.setAccessibleName(self.tr('Shadow Fill'))
+        self.fill_type_selector.addItem(self.tr('Solid'), 'solid')
+        self.fill_type_selector.addItem(
+            self.tr('Gradient'), 'linear_gradient'
         )
-        self.color_picker.colorChanged.connect(self._on_color_changed)
-        self.color_picker.apply_color.connect(self._on_apply_color)
-        color_row = QHBoxLayout()
-        color_row.setContentsMargins(0, 0, 0, 0)
-        color_row.addWidget(color_label)
-        color_row.addWidget(self.color_picker)
-        color_row.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.fill_type_selector.currentIndexChanged.connect(
+            self._on_fill_type_changed
+        )
+        fill_widget = QWidget(self)
+        fill_row = QHBoxLayout(fill_widget)
+        fill_row.setContentsMargins(0, 0, 0, 0)
+        fill_row.addWidget(fill_label)
+        fill_row.addWidget(self.fill_type_selector, 1)
+
+        self.paint_button = EffectPaintButton(self)
+        self.paint_button.clicked.connect(self._on_paint_clicked)
+        self._paint_seed: Optional[EffectPaint] = None
+        self.gradient_editor = InlineLinearGradientEditor(
+            LinearGradientPaint(), self
+        )
+        self.gradient_editor.paint_previewed.connect(
+            self._on_gradient_preview
+        )
+        self.gradient_editor.paint_commit_requested.connect(
+            self._on_gradient_commit
+        )
+        self.gradient_editor.paint_preview_canceled.connect(
+            self._on_gradient_cancel
+        )
+        self.gradient_editor.color_dialog_active_changed.connect(
+            self.color_dialog_active_changed.emit
+        )
+        self.gradient_editor.hide()
 
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(8)
         controls.setVerticalSpacing(4)
-        controls.addLayout(type_row, 0, 0)
-        controls.addLayout(color_row, 0, 1)
-        controls.addWidget(self.opacity_control, 1, 0, 1, 2)
-        controls.addWidget(self.offset_x_control, 2, 0)
-        controls.addWidget(self.offset_y_control, 2, 1)
-        controls.addWidget(self.blur_control, 3, 0)
-        controls.addWidget(self.spread_control, 3, 1)
+        controls.addWidget(type_widget, 0, 0)
+        controls.addWidget(self.opacity_control, 0, 1)
+        controls.addWidget(self.offset_x_control, 1, 0)
+        controls.addWidget(self.offset_y_control, 1, 1)
+        controls.addWidget(self.blur_control, 2, 0)
+        controls.addWidget(self.spread_control, 2, 1)
+        controls.addWidget(fill_widget, 3, 0, 1, 2)
+        controls.addWidget(self.paint_button, 4, 0, 1, 2)
+        controls.addWidget(self.gradient_editor, 5, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
+        self._controls_layout = controls
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
@@ -807,19 +833,60 @@ class ShadowEffectCard(QFrame):
             )
             control.set_model_value(common, values)
 
-        colors = [shadow.color for shadow in shadows]
-        common_color = (
-            colors[0]
-            if colors and all(color == colors[0] for color in colors)
+        paints = [shadow.paint for shadow in shadows]
+        common_paint_type = (
+            paints[0].paint_type
+            if paints and all(
+                paint.paint_type == paints[0].paint_type for paint in paints
+            )
             else None
         )
-        if common_color is None:
-            self.color_picker.color = None
-            self.color_picker.setStyleSheet('')
-            self.color_picker.setToolTip(self.tr('Mixed'))
+        with QSignalBlocker(self.fill_type_selector):
+            self.fill_type_selector.setCurrentIndex(
+                -1 if common_paint_type is None
+                else self.fill_type_selector.findData(common_paint_type)
+            )
+        common_paint = (
+            paints[0]
+            if paints and all(paint == paints[0] for paint in paints)
+            else None
+        )
+        mixed_paint = common_paint is None
+        self._paint_seed = common_paint or (
+            paints[0] if paints and common_paint_type is not None else None
+        )
+        editable = common_paint_type == 'solid' if mixed_paint else True
+        if mixed_paint:
+            if editable:
+                description = self.tr('Choose Shared Shadow Color')
+            elif common_paint_type == 'linear_gradient':
+                description = self.tr('Mixed Shadow Gradient Paint')
+            else:
+                description = self.tr('Mixed Shadow Paint')
         else:
-            self.color_picker.setPickerColor(common_color)
-            self.color_picker.setToolTip(self.tr('Shadow Color'))
+            description = (
+                self.tr('Edit Shadow Gradient')
+                if isinstance(common_paint, LinearGradientPaint)
+                else self.tr('Choose Shadow Color')
+            )
+        self.paint_button.set_paint(
+            self._paint_seed,
+            mixed=mixed_paint,
+            editable=editable,
+            description=description,
+        )
+        show_gradient = common_paint_type == 'linear_gradient'
+        visibility_changed = self.gradient_editor.isHidden() == show_gradient
+        self.paint_button.setVisible(not show_gradient)
+        self.gradient_editor.setVisible(show_gradient)
+        if show_gradient and isinstance(self._paint_seed, LinearGradientPaint):
+            self.gradient_editor.set_paint(
+                self._paint_seed, editable=not mixed_paint
+            )
+        if visibility_changed:
+            self._controls_layout.invalidate()
+            self.layout().invalidate()
+            self.updateGeometry()
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
         return (
@@ -841,6 +908,14 @@ class ShadowEffectCard(QFrame):
                 self.index,
                 'shadow_type',
                 self.type_selector.itemData(combo_index),
+            )
+
+    def _on_fill_type_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'paint_type',
+                self.fill_type_selector.itemData(combo_index),
             )
 
     def _on_control_commit(self, name: str, value) -> None:
@@ -866,18 +941,32 @@ class ShadowEffectCard(QFrame):
         else:
             self.move_requested.emit(self.index, direction)
 
-    def _on_color_dialog_opened(self) -> None:
+    def _on_paint_clicked(self) -> None:
+        paint = self._paint_seed
+        if not isinstance(paint, SolidPaint):
+            return
         self.color_dialog_active_changed.emit(True)
-
-    def _on_color_changed(self, accepted: bool) -> None:
-        self.color_dialog_active_changed.emit(False)
-        if accepted:
-            self.value_commit_requested.emit(
-                self.index, 'color', self.color_picker.rgb()
+        try:
+            color = QColorDialog.getColor(
+                QColor(*paint.color), self.window(), self.tr('Shadow Color')
             )
+            if color.isValid():
+                self.value_commit_requested.emit(
+                    self.index,
+                    'paint',
+                    SolidPaint((color.red(), color.green(), color.blue())),
+                )
+        finally:
+            self.color_dialog_active_changed.emit(False)
 
-    def _on_apply_color(self, _name: str, color: Tuple[int, int, int]) -> None:
-        self.value_commit_requested.emit(self.index, 'color', color)
+    def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
+        self.value_preview_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_commit(self, paint: LinearGradientPaint) -> None:
+        self.value_commit_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_cancel(self) -> None:
+        self.preview_canceled.emit(self.index, 'paint')
 
 
 class GlowEffectCard(QFrame):
@@ -1961,7 +2050,12 @@ class TextEffectPanel(PanelArea):
                 gradient_was_hidden = (
                     gradient_editor.isHidden()
                     if isinstance(
-                        card, (StrokeEffectCard, GlowEffectCard)
+                        card,
+                        (
+                            StrokeEffectCard,
+                            ShadowEffectCard,
+                            GlowEffectCard,
+                        ),
                     )
                     else None
                 )

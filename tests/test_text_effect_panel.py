@@ -29,7 +29,10 @@ from ballontranslator.ui.misc import parse_stylesheet
 from ballontranslator.ui.text_engine.formatting.commands import (
     handle_ffmt_change,
 )
-from ballontranslator.ui.text_engine.formatting.effects import StrokeEffectCard
+from ballontranslator.ui.text_engine.formatting.effects import (
+    ShadowEffectCard,
+    StrokeEffectCard,
+)
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.formatting.gradient_editor import (
     GradientStopBar,
@@ -712,36 +715,44 @@ class TextEffectPanelTest(unittest.TestCase):
         }
         try:
             for theme in ('eva-light', 'eva-dark'):
-                with self.subTest(theme=theme):
-                    self.app.setStyleSheet(parse_stylesheet(theme))
-                    host = QWidget()
-                    layout = QVBoxLayout(host)
-                    layout.setContentsMargins(11, 11, 11, 11)
-                    card = StrokeEffectCard(0)
-                    card.set_values([StrokeEffect(
+                for card_type, effect in (
+                    (StrokeEffectCard, StrokeEffect(
                         paint=LinearGradientPaint(angle=35.0, scale=1.25)
-                    )])
-                    layout.addWidget(card)
-                    requested_width = 316
-                    host.resize(
-                        requested_width, card.sizeHint().height() + 22
-                    )
-                    host.show()
-                    self.app.processEvents()
+                    )),
+                    (ShadowEffectCard, ShadowEffect(
+                        paint=LinearGradientPaint(angle=35.0, scale=1.25)
+                    )),
+                ):
+                    with self.subTest(theme=theme, card=card_type.__name__):
+                        self.app.setStyleSheet(parse_stylesheet(theme))
+                        host = QWidget()
+                        layout = QVBoxLayout(host)
+                        layout.setContentsMargins(11, 11, 11, 11)
+                        card = card_type(0)
+                        card.set_values([effect])
+                        layout.addWidget(card)
+                        requested_width = 316
+                        host.resize(
+                            requested_width, card.sizeHint().height() + 22
+                        )
+                        host.show()
+                        self.app.processEvents()
 
-                    self.assertEqual(host.width(), requested_width)
-                    for field in card.gradient_editor._editors():
-                        line_edit = field.lineEdit()
-                        text_width = line_edit.fontMetrics().horizontalAdvance(
-                            field.text()
-                        )
-                        self.assertGreaterEqual(
-                            line_edit.contentsRect().width(),
-                            text_width + 4,
-                            field.text(),
-                        )
-                    host.deleteLater()
-                    self.app.processEvents()
+                        self.assertEqual(host.width(), requested_width)
+                        for field in card.gradient_editor._editors():
+                            line_edit = field.lineEdit()
+                            text_width = (
+                                line_edit.fontMetrics().horizontalAdvance(
+                                    field.text()
+                                )
+                            )
+                            self.assertGreaterEqual(
+                                line_edit.contentsRect().width(),
+                                text_width + 4,
+                                field.text(),
+                            )
+                        host.deleteLater()
+                        self.app.processEvents()
         finally:
             self.app.setStyleSheet(old_stylesheet)
             for name, value in theme_globals.items():
@@ -1019,7 +1030,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 5)
 
         interleaved = self._item(self._stack(
-            ShadowEffect(color=(255, 0, 0)),
+            ShadowEffect(paint=SolidPaint((255, 0, 0))),
             GlowEffect(paint=SolidPaint((0, 0, 255))),
             StrokeEffect(),
         ))
@@ -1201,6 +1212,84 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 5)
 
+    def test_shadow_fill_conversion_and_inline_gradient_one_undo(self):
+        before = self._stack(ShadowEffect(
+            paint=SolidPaint((12, 34, 56))
+        ))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.shadow_cards[0]
+
+        self.assertEqual(card.fill_type_selector.currentData(), 'solid')
+        self.assertTrue(card.gradient_editor.isHidden())
+        self.assertFalse(card.paint_button.isHidden())
+        self.assertEqual(
+            card.paint_button.accessibleName(), 'Choose Shadow Color'
+        )
+        solid_content_height = (
+            self.panel.texteffect_panel.scrollContent.minimumHeight()
+        )
+        card.fill_type_selector.setCurrentIndex(
+            card.fill_type_selector.findData('linear_gradient')
+        )
+        converted = item.blk.fontformat.text_effects[0].paint
+        self.assertIsInstance(converted, LinearGradientPaint)
+        self.assertEqual(converted.stops[0].color, (12, 34, 56))
+        self.assertEqual(converted.stops[0].opacity, 1.0)
+        self.assertEqual(converted.stops[1].opacity, 0.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertFalse(card.gradient_editor.isHidden())
+        self.assertTrue(card.paint_button.isHidden())
+        self.assertGreater(
+            self.panel.texteffect_panel.scrollContent.minimumHeight(),
+            solid_content_height,
+        )
+        self.canvas.stack.undo()
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].paint,
+            SolidPaint((12, 34, 56)),
+        )
+        self.assertEqual(
+            self.panel.texteffect_panel.scrollContent.minimumHeight(),
+            solid_content_height,
+        )
+        self.canvas.stack.redo()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, converted)
+
+        editor = card.gradient_editor
+        editor.angle_editor.setValue(60.0)
+        preview = LinearGradientPaint(stops=converted.stops, angle=60.0)
+        self.assertEqual(item.effective_text_effects()[0].paint, preview)
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, converted)
+        QApplication.sendEvent(
+            editor.angle_editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        self.assertEqual(item.effective_text_effects()[0].paint, converted)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        editor.angle_editor.setValue(60.0)
+        editor.angle_editor.editingFinished.emit()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
+        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertIs(self.panel.texteffect_panel.shadow_cards[0], card)
+
+        different = self._item(self._stack(ShadowEffect(
+            paint=LinearGradientPaint(angle=120.0)
+        )))
+        self.canvas.selected = [item, different]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.shadow_cards[0]
+        self.assertEqual(
+            mixed_card.fill_type_selector.currentData(), 'linear_gradient'
+        )
+        self.assertFalse(mixed_card.gradient_editor.isHidden())
+        self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
+
     def test_gradient_overlay_add_edit_mixed_and_uniqueness(self):
         item = self._item(TextEffectStack())
         self.panel.set_textblk_item(item)
@@ -1298,9 +1387,11 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertIs(self.panel.texteffect_panel.gradient_overlay_card, card)
 
     def test_shadow_reorder_is_phase_safe_and_mixed_type_does_not_guess(self):
-        top = ShadowEffect(color=(255, 0, 0))
-        inner = ShadowEffect(shadow_type='inner', color=(0, 255, 0))
-        bottom = ShadowEffect(color=(0, 0, 255))
+        top = ShadowEffect(paint=SolidPaint((255, 0, 0)))
+        inner = ShadowEffect(
+            shadow_type='inner', paint=SolidPaint((0, 255, 0))
+        )
+        bottom = ShadowEffect(paint=SolidPaint((0, 0, 255)))
         first = self._item(self._stack(
             top, StrokeEffect(width=0.2), inner, bottom
         ))
@@ -1310,10 +1401,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(cards[1].move_up_button.isEnabled())
         cards[2].move_up_button.click()
         effects = first.blk.fontformat.text_effects.effects
-        self.assertEqual(effects[0].color, (0, 0, 255))
+        self.assertEqual(effects[0].paint, SolidPaint((0, 0, 255)))
         self.assertIsInstance(effects[1], StrokeEffect)
         self.assertEqual(effects[2].shadow_type, 'inner')
-        self.assertEqual(effects[3].color, (255, 0, 0))
+        self.assertEqual(effects[3].paint, SolidPaint((255, 0, 0)))
         self.assertEqual(self.canvas.stack.count(), 1)
 
         second = self._item(self._stack(

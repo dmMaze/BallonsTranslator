@@ -319,7 +319,10 @@ class TextEffectPersistenceTest(unittest.TestCase):
             (
                 ShadowEffect(
                     shadow_type='drop',
-                    color=(10, 20, 30),
+                    paint=LinearGradientPaint(stops=(
+                        GradientStop(0.0, (10, 20, 30), 0.4),
+                        GradientStop(1.0, (60, 50, 40), 1.0),
+                    ), angle=25.0),
                     offset=(0.3, -0.2),
                     blur=0.1,
                     spread=0.05,
@@ -373,7 +376,11 @@ class TextEffectPersistenceTest(unittest.TestCase):
         old_styles = list(text_styles)
         old_style_path = pcfg.text_styles_path
         stack = TextEffectStack(0.7, (
-            ShadowEffect(shadow_type='long', offset=(0.4, 0.2)),
+            ShadowEffect(
+                shadow_type='long',
+                offset=(0.4, 0.2),
+                paint=LinearGradientPaint(angle=55.0),
+            ),
             GlowEffect(size=0.3, spread=0.1),
             StrokeEffect(paint=LinearGradientPaint()),
             HollowEffect(),

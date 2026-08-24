@@ -38,7 +38,7 @@ from ballontranslator.ui.text_engine.rendering.effect_paint import (
 )
 from ballontranslator.ui.text_engine.rendering.shadow import (
     render_glow_alpha,
-    render_shadow_rgba,
+    render_shadow_alpha,
 )
 from ballontranslator.utils.fontformat import (
     SineTextTransform,
@@ -89,37 +89,37 @@ class TypedShadowRasterTest(unittest.TestCase):
         alpha = np.zeros((21, 21), dtype=np.uint8)
         alpha[8:13, 8:13] = 255
 
-        hard = render_shadow_rgba(
-            alpha, 'drop', (1, 2, 3), 1.0, (4, -3), 0, 0
+        hard = render_shadow_alpha(
+            alpha, 'drop', 1.0, (4, -3), 0, 0
         )
-        self.assertEqual(hard[5, 12].tolist(), [1, 2, 3, 255])
-        self.assertEqual(hard[8, 8, 3], 0)
+        self.assertEqual(hard[5, 12], 255)
+        self.assertEqual(hard[8, 8], 0)
 
-        soft = render_shadow_rgba(
-            alpha, 'drop', (0, 0, 0), 1.0, (0, 0), 2, 2
-        )[..., 3]
+        soft = render_shadow_alpha(
+            alpha, 'drop', 1.0, (0, 0), 2, 2
+        )
         self.assertGreater(np.count_nonzero(soft), np.count_nonzero(alpha))
         self.assertTrue(np.any((soft > 0) & (soft < 255)))
 
-        inner = render_shadow_rgba(
-            alpha, 'inner', (9, 8, 7), 1.0, (2, 0), 1, 1
-        )[..., 3]
+        inner = render_shadow_alpha(
+            alpha, 'inner', 1.0, (2, 0), 1, 1
+        )
         self.assertEqual(np.count_nonzero(inner[alpha == 0]), 0)
         self.assertGreater(np.count_nonzero(inner), 0)
 
         partial = np.array([[128]], dtype=np.uint8)
-        partial_inner = render_shadow_rgba(
-            partial, 'inner', (0, 0, 0), 1.0, (0, 0), 0, 0
-        )[0, 0, 3]
+        partial_inner = render_shadow_alpha(
+            partial, 'inner', 1.0, (0, 0), 0, 0
+        )[0, 0]
         self.assertEqual(partial_inner, 64)
 
     def test_long_shadow_is_connected_for_large_diagonals(self):
         alpha = np.zeros((40, 40), dtype=np.uint8)
         alpha[5, 5] = 255
 
-        long_alpha = render_shadow_rgba(
-            alpha, 'long', (0, 0, 0), 1.0, (23, 11), 9, 9
-        )[..., 3]
+        long_alpha = render_shadow_alpha(
+            alpha, 'long', 1.0, (23, 11), 9, 9
+        )
 
         self.assertEqual(long_alpha[5, 5], 255)
         self.assertEqual(long_alpha[16, 28], 255)
@@ -136,13 +136,11 @@ class TypedShadowRasterTest(unittest.TestCase):
 
         for shadow_type in ('drop', 'inner'):
             with self.subTest(shadow_type=shadow_type):
-                direct = render_shadow_rgba(
-                    source, shadow_type, (1, 2, 3), 1.0,
-                    (0, 0), 2, 0,
+                direct = render_shadow_alpha(
+                    source, shadow_type, 1.0, (0, 0), 2, 0,
                 )
-                translated = render_shadow_rgba(
-                    padded, shadow_type, (1, 2, 3), 1.0,
-                    (0, 0), 2, 0,
+                translated = render_shadow_alpha(
+                    padded, shadow_type, 1.0, (0, 0), 2, 0,
                 )[padding:padding + 11, padding:padding + 13]
                 np.testing.assert_array_equal(direct, translated)
 
@@ -188,7 +186,6 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         plain = self._item(TextEffectStack())
         inner_stack = TextEffectStack(effects=(ShadowEffect(
             shadow_type='inner',
-            color=(0, 0, 0),
             offset=(0.2, 0.0),
             blur=0.12,
             spread=0.03,
@@ -565,7 +562,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             paint=self._constant_gradient((0, 0, 255))
         )
         shadow = ShadowEffect(
-            color=(0, 255, 0), offset=(0.2, 0.1), blur=0.05
+            paint=SolidPaint((0, 255, 0)),
+            offset=(0.2, 0.1),
+            blur=0.05,
         )
         without_overlay = self._render(self._item(TextEffectStack(effects=(
             shadow,
@@ -606,7 +605,6 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             ),
             ShadowEffect(
                 shadow_type='inner',
-                color=(0, 0, 0),
                 offset=(0.12, 0.0),
             ),
         ))))
@@ -881,8 +879,12 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
     def test_first_shadow_card_paints_on_top_within_exterior_phase(self):
         item = self._item(TextEffectStack(effects=(
-            ShadowEffect(color=(255, 0, 0), offset=(0.0, 0.0)),
-            ShadowEffect(color=(0, 0, 255), offset=(0.0, 0.0)),
+            ShadowEffect(
+                paint=SolidPaint((255, 0, 0)), offset=(0.0, 0.0)
+            ),
+            ShadowEffect(
+                paint=SolidPaint((0, 0, 255)), offset=(0.0, 0.0)
+            ),
         )))
         pixels = pixmap2ndarray(
             item.effect_renderer.background_pixmap, keep_alpha=True
@@ -900,6 +902,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         pixmap = item.effect_renderer._shadow_pixmap(
             source_alpha,
             ShadowEffect(offset=(0.01, 0.0)),
+            item.effect_renderer.boundingRect(),
             1.0,
         )
         alpha = pixmap2ndarray(pixmap, keep_alpha=True)[..., 3]
@@ -907,6 +910,36 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         shifted = alpha[3, 3:5]
         self.assertTrue(np.all(shifted > 0))
         self.assertTrue(np.all(shifted < 255))
+
+    def test_shadow_gradient_color_and_stop_opacity_share_block_coordinates(
+        self,
+    ):
+        item = self._item(TextEffectStack())
+        renderer = item.effect_renderer
+        source_alpha = np.full((1, 4), 255, dtype=np.uint8)
+        rect = QRectF(0, 0, 4, 1)
+        shadow = ShadowEffect(
+            opacity=0.5,
+            offset=(0.0, 0.0),
+            paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, (255, 0, 0), 0.5),
+                GradientStop(1.0, (0, 0, 255), 0.5),
+            )),
+        )
+
+        with patch.object(
+            renderer, 'logical_unpadded_rect', return_value=rect
+        ):
+            pixmap = renderer._shadow_pixmap(
+                source_alpha, shadow, rect, 1.0
+            )
+        pixels = pixmap2ndarray(pixmap, keep_alpha=True)
+
+        self.assertGreater(pixels[0, 0, 0], pixels[0, 0, 2])
+        self.assertGreater(pixels[0, -1, 2], pixels[0, -1, 0])
+        np.testing.assert_array_equal(
+            pixels[..., 3], np.full((1, 4), 64, dtype=np.uint8)
+        )
 
     def test_fractional_exterior_offsets_keep_horizontal_raster_guard(self):
         for shadow_type in ('drop', 'long'):
@@ -917,7 +950,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     item = self._item(TextEffectStack(effects=(
                         ShadowEffect(
                             shadow_type=shadow_type,
-                            color=(0, 0, 255),
+                            paint=SolidPaint((0, 0, 255)),
                             offset=(direction * 0.01, 0.0),
                         ),
                     )))
@@ -1041,7 +1074,6 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(
                 shadow_type='drop',
-                color=(0, 0, 0),
                 offset=(0.45, 0.0),
             ),
             HollowEffect(),
@@ -1374,10 +1406,20 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     def test_shadow_preview_promotes_cache_and_reshape_rebuilds_once(self):
         overlay = GradientOverlayEffect(opacity=0.7)
         before = TextEffectStack(effects=(
-            ShadowEffect(offset=(0.1, 0.1), blur=0.08), overlay,
+            ShadowEffect(
+                offset=(0.1, 0.1),
+                blur=0.08,
+                paint=LinearGradientPaint(angle=15.0),
+            ),
+            overlay,
         ))
         after = TextEffectStack(effects=(
-            ShadowEffect(offset=(0.3, -0.1), blur=0.12), overlay,
+            ShadowEffect(
+                offset=(0.3, -0.1),
+                blur=0.12,
+                paint=LinearGradientPaint(angle=75.0),
+            ),
+            overlay,
         ))
         item = self._item(before)
         renderer = item.effect_renderer
@@ -1533,7 +1575,10 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         stacks = (
             TextEffectStack(effects=(
                 ShadowEffect(
-                    offset=(0.18, 0.12), blur=0.08, spread=0.04
+                    offset=(0.18, 0.12),
+                    blur=0.08,
+                    spread=0.04,
+                    paint=LinearGradientPaint(angle=41.0),
                 ),
                 GlowEffect(
                     paint=LinearGradientPaint(angle=17.0),
@@ -1558,6 +1603,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     offset=(0.08, 0.04),
                     blur=0.06,
                     spread=0.02,
+                    paint=LinearGradientPaint(angle=203.0),
                 ),
                 GlowEffect(
                     glow_type='inner',
@@ -1579,7 +1625,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             )),
             TextEffectStack(effects=(
                 ShadowEffect(
-                    shadow_type='long', offset=(0.30, 0.22)
+                    shadow_type='long',
+                    offset=(0.30, 0.22),
+                    paint=LinearGradientPaint(angle=127.0),
                 ),
                 GlowEffect(size=0.08, spread=0.03),
                 StrokeEffect(width=0.12, position='inside'),

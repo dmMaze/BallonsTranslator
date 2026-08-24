@@ -171,12 +171,24 @@ class TextEffectEditSession:
                 offset = list(effect.offset)
                 offset[0 if param_name == 'offset_x' else 1] = value
                 parameters['offset'] = tuple(offset)
-            elif param_name in {
-                'enabled', 'opacity', 'shadow_type', 'color', 'blur', 'spread'
+            elif param_name not in {
+                'enabled', 'opacity', 'shadow_type', 'paint', 'paint_type',
+                'blur', 'spread',
             }:
-                parameters[param_name] = value
-            else:
                 raise ValueError('unknown Shadow field')
+            elif param_name == 'paint':
+                if not isinstance(value, (SolidPaint, LinearGradientPaint)):
+                    value = SolidPaint(value)
+                parameters['paint'] = value
+            elif param_name == 'paint_type':
+                paint_type, mixed_values = value
+                parameters['paint'] = (
+                    TextEffectEditSession._convert_effect_paint(
+                        effect.paint, paint_type, mixed_values
+                    )
+                )
+            else:
+                parameters[param_name] = value
         elif isinstance(effect, GlowEffect):
             if param_name not in {
                 'enabled', 'opacity', 'glow_type', 'paint', 'paint_type',

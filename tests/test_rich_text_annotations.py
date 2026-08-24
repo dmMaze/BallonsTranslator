@@ -118,6 +118,7 @@ from ballontranslator.utils.text_effects import (
     GradientStop,
     LinearGradientPaint,
     ShadowEffect,
+    SolidPaint,
     StrokeEffect,
     TextEffectStack,
     with_primary_stroke,
@@ -2311,7 +2312,7 @@ class RichTextAnnotationTest(unittest.TestCase):
                         ShadowEffect(
                             opacity=0.8,
                             blur=0.1,
-                            color=(255, 0, 0),
+                            paint=SolidPaint((255, 0, 0)),
                         ),
                     )))
                 self.app.processEvents()

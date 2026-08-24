@@ -264,7 +264,8 @@ class StrokeEffect:
 class ShadowEffect:
     """One immutable Drop, Inner, or Long/Extrude shadow.
 
-    Geometry values are relative to the text's maximum font size.
+    Geometry values are relative to the text's maximum font size. Paint uses
+    the same block-local Solid or Linear Gradient contract as Stroke and Glow.
 
     >>> ShadowEffect(shadow_type='long', offset=(0.4, -0.2)).offset
     (0.4, -0.2)
@@ -274,7 +275,7 @@ class ShadowEffect:
     opacity: float = 1.0
     blend_mode: str = 'normal'
     shadow_type: str = 'drop'
-    color: Tuple[int, int, int] = (0, 0, 0)
+    paint: EffectPaint = field(default_factory=SolidPaint)
     offset: Tuple[float, float] = (0.1, 0.1)
     blur: float = 0.0
     spread: float = 0.0
@@ -292,7 +293,8 @@ class ShadowEffect:
             raise ValueError('unsupported shadow blend mode')
         if self.shadow_type not in {'drop', 'inner', 'long'}:
             raise ValueError('unsupported shadow type')
-        object.__setattr__(self, 'color', _color_tuple(self.color))
+        if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
+            raise TypeError('shadow paint must be EffectPaint')
         object.__setattr__(self, 'offset', _offset_tuple(self.offset))
         object.__setattr__(
             self,
@@ -316,14 +318,18 @@ class ShadowEffect:
             'opacity': self.opacity,
             'blend_mode': self.blend_mode,
             'shadow_type': self.shadow_type,
-            'color': list(self.color),
+            'paint': self.paint.to_serializable_dict(),
             'offset': list(self.offset),
             'blur': self.blur,
             'spread': self.spread,
         }
 
     def is_neutral(self) -> bool:
-        return not self.enabled or self.opacity == 0.0
+        return (
+            not self.enabled
+            or self.opacity == 0.0
+            or _effect_paint_is_transparent(self.paint)
+        )
 
 
 @dataclass(frozen=True)
@@ -657,11 +663,18 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             payload,
             (
                 'effect_type', 'enabled', 'opacity', 'blend_mode',
-                'shadow_type', 'color', 'offset', 'blur', 'spread',
+                'shadow_type', 'paint', 'color', 'offset', 'blur', 'spread',
             ),
             'Shadow effect',
         )
         payload.pop('effect_type')
+        has_legacy_color = 'color' in payload
+        legacy_color = payload.pop('color', None)
+        if 'paint' in payload:
+            payload['paint'] = _coerce_effect_paint(payload['paint'])
+        elif has_legacy_color:
+            # Shadow payloads before gradient Fill stored a bare RGB value.
+            payload['paint'] = SolidPaint(legacy_color)
         return ShadowEffect(**payload)
     if effect_type == 'glow':
         _unexpected_fields(

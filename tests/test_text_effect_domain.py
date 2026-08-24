@@ -91,8 +91,10 @@ class TextEffectDomainTest(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             stack.effects = ()
 
-        shadow = ShadowEffect(color=[4, 5, 6], offset=[0.2, -0.3])
-        self.assertEqual(shadow.color, (4, 5, 6))
+        shadow = ShadowEffect(
+            paint=SolidPaint([4, 5, 6]), offset=[0.2, -0.3]
+        )
+        self.assertEqual(shadow.paint, SolidPaint((4, 5, 6)))
         self.assertEqual(shadow.offset, (0.2, -0.3))
         with self.assertRaises(FrozenInstanceError):
             shadow.blur = 0.2
@@ -355,6 +357,7 @@ class TextEffectDomainTest(unittest.TestCase):
             GradientStop(1.0, (0, 0, 255), 0.0),
         ))
         self.assertTrue(StrokeEffect(paint=transparent_gradient).is_neutral())
+        self.assertTrue(ShadowEffect(paint=transparent_gradient).is_neutral())
 
         active = TextEffectStack(effects=(StrokeEffect(),))
         self.assertTrue(active.has_active_effects)
@@ -383,7 +386,7 @@ class TextEffectDomainTest(unittest.TestCase):
             lambda: ShadowEffect(opacity=1.1),
             lambda: ShadowEffect(blend_mode='multiply'),
             lambda: ShadowEffect(shadow_type='outer'),
-            lambda: ShadowEffect(color=(0, 1, 256)),
+            lambda: ShadowEffect(paint={'paint_type': 'solid'}),
             lambda: ShadowEffect(offset=(0, float('inf'))),
             lambda: ShadowEffect(blur=-0.1),
             lambda: ShadowEffect(spread=-0.1),
@@ -646,12 +649,16 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertIs(coerce_text_effect_stack(stack), stack)
 
     def test_shadow_and_hollow_serialization_is_stable(self):
+        paint = LinearGradientPaint(stops=(
+            GradientStop(0.0, (9, 8, 7), 0.25),
+            GradientStop(1.0, (1, 2, 3), 1.0),
+        ), angle=35.0, scale=1.4)
         stack = TextEffectStack(effects=(
             ShadowEffect(
                 enabled=False,
                 opacity=0.4,
                 shadow_type='long',
-                color=(9, 8, 7),
+                paint=paint,
                 offset=(-0.2, 0.4),
                 blur=0.3,
                 spread=0.1,
@@ -667,7 +674,7 @@ class TextEffectDomainTest(unittest.TestCase):
             'opacity': 0.4,
             'blend_mode': 'normal',
             'shadow_type': 'long',
-            'color': [9, 8, 7],
+            'paint': paint.to_serializable_dict(),
             'offset': [-0.2, 0.4],
             'blur': 0.3,
             'spread': 0.1,
@@ -677,6 +684,26 @@ class TextEffectDomainTest(unittest.TestCase):
             'enabled': True,
         })
         self.assertEqual(coerce_text_effect_stack(payload), stack)
+
+        legacy = {'effects': [{
+            'effect_type': 'shadow',
+            'shadow_type': 'inner',
+            'color': [9, 8, 7],
+        }]}
+        self.assertEqual(
+            coerce_text_effect_stack(legacy).effects,
+            (ShadowEffect(
+                shadow_type='inner', paint=SolidPaint((9, 8, 7))
+            ),),
+        )
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            malformed = coerce_text_effect_stack({'effects': [{
+                'effect_type': 'shadow', 'color': None,
+            }]})
+        self.assertEqual(malformed.effects, ())
+        warning.assert_called_once()
 
 
 if __name__ == '__main__':
