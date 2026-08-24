@@ -3,18 +3,18 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import numpy as np
+
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
-    QBrush,
     QColor,
     QFont,
     QFontInfo,
     QImage,
-    QLinearGradient,
     QPainter,
     QPen,
     QPixmap,
@@ -38,6 +38,7 @@ except ImportError:
 
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.text_engine import horizontal_layout
 from ballontranslator.ui.misc import doc_replace, pixmap2ndarray
 from ballontranslator.ui.text_engine.annotations import (
     AnnotationProperty,
@@ -112,6 +113,9 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
+    GradientStop,
+    LinearGradientPaint,
     ShadowEffect,
     StrokeEffect,
     TextEffectStack,
@@ -2506,12 +2510,9 @@ class RichTextAnnotationTest(unittest.TestCase):
         font.setUnderline(True)
         font.setOverline(True)
         font.setStrikeOut(True)
-        gradient = QLinearGradient(0.0, 0.0, 100.0, 0.0)
-        gradient.setColorAt(0.0, QColor('#e03020'))
-        gradient.setColorAt(1.0, QColor('#2040e0'))
         source = QTextCharFormat()
         source.setFont(font)
-        source.setForeground(QBrush(gradient))
+        source.setForeground(QColor('#e03020'))
         source.setBackground(QColor('#40ff80'))
         source.setTextOutline(QPen(QColor('#102030'), 12.0))
         source.setProperty(
@@ -2619,106 +2620,52 @@ class RichTextAnnotationTest(unittest.TestCase):
             NATIVE_DOCUMENT_CACHE.values(),
         )
 
-    def test_emphasis_native_document_preserves_gradient_and_opacity(self):
-        item = self._make_item(False, text='A     A')
-        item.fontformat.gradient_start_color = [230, 30, 20]
-        item.fontformat.gradient_end_color = [20, 40, 230]
+    def test_typed_gradient_overlay_colors_native_emphasis_composite(self):
+        item = self._make_item(
+            False, bounds=(0, 0, 420, 180), text='A            A'
+        )
+        item.fontformat.font_size = 52.0
+        item.fontformat.frgb = [30, 160, 30]
+        item.set_text_effects(TextEffectStack(effects=(
+            GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, (240, 20, 20)),
+                GradientStop(0.3, (240, 20, 20)),
+                GradientStop(0.3, (20, 30, 240)),
+                GradientStop(1.0, (20, 30, 240)),
+            ))),
+        )))
         item.startEdit()
         cursor = item.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
         item.setTextCursor(cursor)
         item.setEmphasis('filled circle', 'over right')
-        cursor = item.textCursor()
-        cursor.select(QTextCursor.SelectionType.Document)
-        item.setTextCursor(cursor)
-        item.setGradientEnabled(True)
+        item.layout.reLayoutEverything()
+        item.endEdit(keep_focus=False)
 
-        NATIVE_DOCUMENT_CACHE.clear()
-        self.addCleanup(
-            NATIVE_DOCUMENT_CACHE.clear
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.addCleanup(scene.removeItem, item)
+        scene_rect = item.sceneBoundingRect()
+        image = QImage(
+            520, 240, QImage.Format.Format_ARGB32_Premultiplied
         )
-        block = item.document().firstBlock()
-        line = block.layout().lineAt(0)
-        context = QAbstractTextDocumentLayout.PaintContext()
-        marks = tuple(
-            emphasis_rendering._iter_emphasis_marks(
-                block,
-                line,
-                vertical=False,
-                context=context,
-            )
-        )
-        self.assertEqual(len(marks), 2)
-        cached_foreground = _format_at(
-            marks[0].source.document, 0
-        ).foreground()
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        try:
+            with patch.object(
+                horizontal_layout,
+                'draw_emphasis_marks',
+                wraps=draw_emphasis_marks,
+            ) as draw_marks:
+                scene.render(painter, QRectF(image.rect()), scene_rect)
+        finally:
+            painter.end()
 
-        def render(opacity: float) -> QImage:
-            image = QImage(
-                800,
-                300,
-                QImage.Format.Format_ARGB32_Premultiplied,
-            )
-            image.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(image)
-            try:
-                painter.translate(80.0, 120.0)
-                painter.setOpacity(opacity)
-                draw_emphasis_marks(
-                    painter,
-                    block,
-                    line,
-                    context,
-                    vertical=False,
-                )
-            finally:
-                painter.end()
-            return image
-
-        opaque = render(1.0)
-        translucent = render(0.4)
-        self.assertEqual(
-            _format_at(marks[0].source.document, 0).foreground(),
-            cached_foreground,
-        )
-
-        def channel_means(image: QImage, mark) -> tuple[float, float]:
-            bounds = mark.ink_bounds.translated(80.0, 120.0).toAlignedRect()
-            colors = []
-            for y in range(
-                max(0, bounds.top()),
-                min(image.height(), bounds.bottom() + 1),
-            ):
-                for x in range(
-                    max(0, bounds.left()),
-                    min(image.width(), bounds.right() + 1),
-                ):
-                    color = image.pixelColor(x, y)
-                    if color.alpha() > 64:
-                        colors.append(color)
-            self.assertTrue(colors)
-            return (
-                sum(color.red() for color in colors) / len(colors),
-                sum(color.blue() for color in colors) / len(colors),
-            )
-
-        left_red, left_blue = channel_means(opaque, marks[0])
-        right_red, right_blue = channel_means(opaque, marks[1])
-        self.assertGreater(left_red, left_blue)
-        self.assertGreater(left_red, right_red)
-        self.assertGreater(right_blue, left_blue)
-        self.assertLess(
-            max(
-                translucent.pixelColor(x, y).alpha()
-                for y in range(translucent.height())
-                for x in range(translucent.width())
-            ),
-            max(
-                opaque.pixelColor(x, y).alpha()
-                for y in range(opaque.height())
-                for x in range(opaque.width())
-            ),
-        )
+        pixels = pixmap2ndarray(image, keep_alpha=True)
+        visible = pixels[..., 3] > 96
+        self.assertTrue(np.any((pixels[..., 0] > pixels[..., 2]) & visible))
+        self.assertTrue(np.any((pixels[..., 2] > pixels[..., 0]) & visible))
+        self.assertGreater(draw_marks.call_count, 0)
 
     def test_native_emphasis_ink_uses_shared_horizontal_and_vertical_placement(self):
         for vertical in (False, True):
@@ -2847,6 +2794,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.addCleanup(
             NATIVE_DOCUMENT_CACHE.clear
         )
+        item.effect_renderer._mark_effect_cache_dirty()
         item.repaint_background()
 
         outlined = [
@@ -2913,6 +2861,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.addCleanup(
             NATIVE_DOCUMENT_CACHE.clear
         )
+        item.effect_renderer._mark_effect_cache_dirty()
 
         mask_flags = []
         dilation_inputs = []

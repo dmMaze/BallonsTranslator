@@ -641,7 +641,6 @@ class TextItemGeometryController:
     ) -> None:
         """Set logical geometry while keeping paint padding derived."""
         item = self.item
-        old_logical_rect = self.logical_rect()
         if isinstance(rect, list):
             rect = QRectF(*rect)
         else:
@@ -655,12 +654,6 @@ class TextItemGeometryController:
         if self.effective().has_active_stages:
             self.refresh_compiled_geometry()
         self.sync_origin()
-        if (
-            item.fontformat.gradient_enabled
-            and not item.repainting
-            and self.logical_rect() != old_logical_rect
-        ):
-            item._refresh_gradient_geometry()
         if repaint:
             item.repaint_background()
         if update_blk_rect:
@@ -1339,8 +1332,6 @@ class TextItemGeometryController:
             # ink measurement. Rebuild that small committed geometry now so a
             # later preview does not discover and evict stale entries.
             self.layout_renderer.ink_bounds()
-        if item.fontformat.gradient_enabled and not padding_changed:
-            item.effect_renderer._refresh_gradient_geometry()
         return padding_changed
 
     def _finalize_neutral(

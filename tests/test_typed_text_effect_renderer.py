@@ -36,6 +36,7 @@ from ballontranslator.utils.fontformat import (
     TextTransformStack,
 )
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -202,6 +203,141 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )
         self.assertEqual(raster[0, 0, :3].tolist(), [255, 0, 0])
         self.assertEqual(raster[0, 1, :3].tolist(), [0, 0, 255])
+
+        opaque = LinearGradientPaint(stops=(
+            GradientStop(0.0, (0, 100, 240), 1.0),
+            GradientStop(1.0, (0, 100, 240), 1.0),
+        ))
+        canonical = np.array([[[200, 20, 40, 127]]], dtype=np.uint8)
+        recolored = colorize_effect_paint_rgba(
+            opaque,
+            canonical.copy(),
+            rect,
+            rect,
+            1.0,
+            source_atop_opacity=1.0,
+        )
+        self.assertEqual(recolored[0, 0].tolist(), [0, 100, 240, 127])
+        tinted = colorize_effect_paint_rgba(
+            opaque,
+            canonical.copy(),
+            rect,
+            rect,
+            1.0,
+            source_atop_opacity=0.5,
+        )
+        self.assertEqual(tinted[0, 0, 3], 127)
+        self.assertGreater(tinted[0, 0, 0], 0)
+        self.assertGreater(tinted[0, 0, 2], 40)
+        half_alpha = LinearGradientPaint(stops=(
+            GradientStop(0.0, (0, 100, 240), 0.5),
+            GradientStop(1.0, (0, 100, 240), 0.5),
+        ))
+        stop_tinted = colorize_effect_paint_rgba(
+            half_alpha,
+            canonical.copy(),
+            rect,
+            rect,
+            1.0,
+            source_atop_opacity=1.0,
+        )
+        np.testing.assert_array_equal(stop_tinted, tinted)
+
+    @staticmethod
+    def _constant_gradient(color, stop_opacity=1.0):
+        return LinearGradientPaint(stops=(
+            GradientStop(0.0, color, stop_opacity),
+            GradientStop(1.0, color, stop_opacity),
+        ))
+
+    def test_gradient_overlay_replaces_and_tints_canonical_face(self):
+        plain = self._item(TextEffectStack())
+        opaque = self._item(TextEffectStack(effects=(
+            GradientOverlayEffect(
+                paint=self._constant_gradient((0, 0, 255))
+            ),
+        )))
+        partial = self._item(TextEffectStack(effects=(
+            GradientOverlayEffect(
+                opacity=0.5,
+                paint=self._constant_gradient((0, 0, 255)),
+            ),
+        )))
+
+        plain_pixels = self._render(plain)
+        opaque_pixels = self._render(opaque)
+        partial_pixels = self._render(partial)
+        self.assertLessEqual(
+            np.max(np.abs(
+                plain_pixels[..., 3].astype(np.int16)
+                - opaque_pixels[..., 3].astype(np.int16)
+            )),
+            4,
+        )
+        visible = opaque_pixels[..., 3] > 160
+        self.assertTrue(np.any(visible))
+        self.assertGreater(
+            np.mean(opaque_pixels[..., 2][visible]),
+            np.mean(opaque_pixels[..., 0][visible]),
+        )
+        partial_visible = partial_pixels[..., 3] > 160
+        self.assertGreater(np.mean(partial_pixels[..., 0][partial_visible]), 40)
+        self.assertGreater(np.mean(partial_pixels[..., 2][partial_visible]), 40)
+
+    def test_gradient_overlay_phase_hollow_and_shadow_silhouette(self):
+        overlay = GradientOverlayEffect(
+            paint=self._constant_gradient((0, 0, 255))
+        )
+        shadow = ShadowEffect(
+            color=(0, 255, 0), offset=(0.2, 0.1), blur=0.05
+        )
+        without_overlay = self._render(self._item(TextEffectStack(effects=(
+            shadow,
+        ))))
+        with_overlay = self._render(self._item(TextEffectStack(effects=(
+            shadow, overlay,
+        ))))
+        np.testing.assert_array_equal(
+            without_overlay[..., 3], with_overlay[..., 3]
+        )
+
+        hollow = HollowEffect()
+        hollow_plain = self._render(self._item(TextEffectStack(effects=(
+            StrokeEffect(
+                width=0.2,
+                position='outside',
+                paint=SolidPaint((0, 255, 0)),
+            ),
+            hollow,
+        ))))
+        hollow_overlay = self._render(self._item(TextEffectStack(effects=(
+            StrokeEffect(
+                width=0.2,
+                position='outside',
+                paint=SolidPaint((0, 255, 0)),
+            ),
+            hollow,
+            overlay,
+        ))))
+        np.testing.assert_array_equal(hollow_plain, hollow_overlay)
+
+        inside = self._render(self._item(TextEffectStack(effects=(
+            overlay,
+            StrokeEffect(
+                width=0.35,
+                position='inside',
+                paint=SolidPaint((0, 255, 0)),
+            ),
+            ShadowEffect(
+                shadow_type='inner',
+                color=(0, 0, 0),
+                offset=(0.12, 0.0),
+            ),
+        ))))
+        visible_inside = inside[..., 3] > 160
+        self.assertTrue(np.any(
+            (inside[..., 1] > inside[..., 2]) & visible_inside
+        ))
 
     def test_solid_center_stays_native_while_gradient_center_is_generated(self):
         item = self._item(TextEffectStack())
@@ -755,12 +891,13 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     item.set_export_effect_render(False)
 
     def test_shadow_preview_promotes_cache_and_reshape_rebuilds_once(self):
-        before = TextEffectStack(effects=(ShadowEffect(
-            offset=(0.1, 0.1), blur=0.08
-        ),))
-        after = TextEffectStack(effects=(ShadowEffect(
-            offset=(0.3, -0.1), blur=0.12
-        ),))
+        overlay = GradientOverlayEffect(opacity=0.7)
+        before = TextEffectStack(effects=(
+            ShadowEffect(offset=(0.1, 0.1), blur=0.08), overlay,
+        ))
+        after = TextEffectStack(effects=(
+            ShadowEffect(offset=(0.3, -0.1), blur=0.12), overlay,
+        ))
         item = self._item(before)
         renderer = item.effect_renderer
 
@@ -808,6 +945,52 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             self.assertEqual(render.call_count, 1)
             self.assertIs(renderer._effect_raster_state, scratch)
 
+    def test_gradient_overlay_preview_promotes_completed_cache(self):
+        before = TextEffectStack(effects=(GradientOverlayEffect(),))
+        after = TextEffectStack(effects=(GradientOverlayEffect(
+            opacity=0.65,
+            paint=LinearGradientPaint(angle=90.0, scale=1.5),
+        ),))
+        item = self._item(before)
+        renderer = item.effect_renderer
+        with patch.object(
+            renderer,
+            '_render_effect_surface',
+            wraps=renderer._render_effect_surface,
+        ) as render:
+            item.set_text_effects(after, preview=True)
+            scratch = renderer._preview_effect_raster_state
+            self.assertEqual(render.call_count, 1)
+            item.set_text_effects(after)
+            self.assertEqual(render.call_count, 1)
+            self.assertIs(renderer._effect_raster_state, scratch)
+
+    def test_gradient_overlay_allocation_fallback_and_strict_export(self):
+        stack = TextEffectStack(effects=(GradientOverlayEffect(),))
+        item = self._item(stack)
+        with patch(
+            'ballontranslator.ui.text_engine.effect_renderer.'
+            'colorize_effect_paint_rgba',
+            side_effect=BufferError('overlay bridge failure'),
+        ):
+            interactive = self._render(item)
+        self.assertGreater(np.count_nonzero(interactive[..., 3]), 0)
+
+        exported = self._item(stack)
+        exported.set_export_effect_render(True)
+        try:
+            with patch(
+                'ballontranslator.ui.text_engine.effect_renderer.'
+                'colorize_effect_paint_rgba',
+                side_effect=BufferError('strict overlay bridge failure'),
+            ):
+                self._render(exported)
+            self.assertIsInstance(
+                exported.export_effect_error, EffectRasterAllocationError
+            )
+        finally:
+            exported.set_export_effect_render(False)
+
     def test_forced_tiles_match_full_typed_effect_surface(self):
         stacks = (
             TextEffectStack(effects=(
@@ -832,6 +1015,17 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     offset=(0.08, 0.04),
                     blur=0.06,
                     spread=0.02,
+                ),
+                GradientOverlayEffect(
+                    opacity=0.7,
+                    paint=LinearGradientPaint(
+                        stops=(
+                            GradientStop(0.0, (40, 80, 220), 0.4),
+                            GradientStop(1.0, (220, 40, 80), 1.0),
+                        ),
+                        angle=71.0,
+                        scale=0.9,
+                    ),
                 ),
             )),
             TextEffectStack(effects=(

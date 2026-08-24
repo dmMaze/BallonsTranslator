@@ -21,6 +21,7 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.io_utils import json_dump_nested_obj
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -78,6 +79,17 @@ class TextEffectPersistenceTest(unittest.TestCase):
             TextEffectStack(overall_opacity=0.9),
         )
         self.assertEqual(explicit_empty.stroke_width, 0.0)
+
+        overlay = GradientOverlayEffect(opacity=0.7)
+        authoritative_overlay = FontFormat(
+            text_effects=TextEffectStack(effects=(overlay,)),
+            gradient_enabled=True,
+            gradient_start_color=[255, 0, 0],
+            gradient_end_color=[0, 0, 255],
+        )
+        self.assertEqual(
+            authoritative_overlay.text_effects.effects, (overlay,)
+        )
 
         with patch(
             'ballontranslator.utils.text_effects.LOGGER.warning'
@@ -219,6 +231,12 @@ class TextEffectPersistenceTest(unittest.TestCase):
     def test_style_and_global_config_loaders_migrate_once_per_owner(self):
         old_styles = list(text_styles)
         old_style_path = pcfg.text_styles_path
+        overlay_stack = TextEffectStack(effects=(
+            GradientOverlayEffect(
+                opacity=0.65,
+                paint=LinearGradientPaint(angle=35.0, scale=1.2),
+            ),
+        ))
         with tempfile.TemporaryDirectory() as directory:
             style_path = os.path.join(directory, 'styles.json')
             config_path = os.path.join(directory, 'config.json')
@@ -232,6 +250,10 @@ class TextEffectPersistenceTest(unittest.TestCase):
                         'shadow_radius': 0.2,
                     },
                     {'gradient_enabled': True},
+                    {
+                        '_style_name': 'typed overlay',
+                        'text_effects': overlay_stack.to_serializable_dict(),
+                    },
                 ], handle)
             with open(config_path, 'w', encoding='utf8') as handle:
                 json.dump({
@@ -250,9 +272,10 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 ) as style_warning:
                     load_textstyle_from(style_path)
                 self.assertEqual(style_warning.call_count, 2)
-                self.assertEqual(len(text_styles), 2)
+                self.assertEqual(len(text_styles), 3)
                 self.assertEqual(text_styles[0].opacity, 0.6)
                 self.assertEqual(text_styles[0].stroke_width, 0.2)
+                self.assertEqual(text_styles[2].text_effects, overlay_stack)
 
                 with patch(
                     'ballontranslator.utils.fontformat.LOGGER.warning'
@@ -267,6 +290,19 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 self.assertIn('text_effects', saved_styles[0])
                 self.assertIn(
                     'text_effects', saved_config['global_fontformat']
+                )
+                self.assertEqual(
+                    saved_styles[2]['text_effects'],
+                    overlay_stack.to_serializable_dict(),
+                )
+
+                config.global_fontformat.text_effects = overlay_stack
+                saved_config = json.loads(json_dump_program_config(config))
+                with open(config_path, 'w', encoding='utf8') as handle:
+                    json.dump(saved_config, handle)
+                reloaded = ProgramConfig.load(config_path)
+                self.assertEqual(
+                    reloaded.global_fontformat.text_effects, overlay_stack
                 )
             finally:
                 text_styles[:] = old_styles
@@ -297,6 +333,13 @@ class TextEffectPersistenceTest(unittest.TestCase):
                     position='inside',
                 ),
                 HollowEffect(enabled=False),
+                GradientOverlayEffect(
+                    opacity=0.8,
+                    paint=LinearGradientPaint(stops=(
+                        GradientStop(0.0, (90, 80, 70), 0.2),
+                        GradientStop(1.0, (10, 20, 30), 1.0),
+                    ), angle=75.0, scale=0.8),
+                ),
                 ShadowEffect(shadow_type='inner', opacity=0.6),
             ),
         )

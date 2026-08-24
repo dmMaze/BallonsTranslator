@@ -2638,22 +2638,6 @@ QWidget#TextAdvancedFormatUnit {
     background-color: transparent;
 }
 
-QLabel#fontAngleLabel {
-    min-width: 22px;
-    max-width: 22px;
-    min-height: 22px;
-    max-height: 22px;
-}
-
-QLabel#GradientColorArrow {
-    background-color: transparent;
-}
-
-QGroupBox#TextGradientGroup::title {
-    subcontrol-position: top left;
-    padding-left: 24px;
-}
-
 /* Suggestion Popup (Spell Checker) */
 QWidget#suggestion_popup {
     background-color: @emptyContentBackgroundColor;

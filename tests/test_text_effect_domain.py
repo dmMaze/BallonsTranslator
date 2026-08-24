@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -181,18 +182,86 @@ class TextEffectDomainTest(unittest.TestCase):
         drop = ShadowEffect(shadow_type='drop', offset=(0.2, 0.3))
         hollow = HollowEffect()
         inner = ShadowEffect(shadow_type='inner', blur=0.2)
-        source = TextEffectStack(0.8, (drop, hollow, inner))
+        overlay = GradientOverlayEffect(opacity=0.7)
+        source = TextEffectStack(0.8, (drop, hollow, overlay, inner))
         target = TextEffectStack(0.4, (first, second))
 
         result = with_non_stroke_effects(target, source)
 
         self.assertEqual(
-            result.effects, (drop, first, second, hollow, inner)
+            result.effects, (drop, first, second, hollow, overlay, inner)
         )
         self.assertEqual(
             [effect for effect in result if not isinstance(effect, StrokeEffect)],
-            [drop, hollow, inner],
+            [drop, hollow, overlay, inner],
         )
+
+    def test_gradient_overlay_is_strict_unique_and_neutral(self):
+        transparent = LinearGradientPaint(stops=(
+            GradientStop(0.0, (255, 0, 0), 0.0),
+            GradientStop(1.0, (0, 0, 255), 0.0),
+        ))
+        self.assertTrue(GradientOverlayEffect(enabled=False).is_neutral())
+        self.assertTrue(GradientOverlayEffect(opacity=0.0).is_neutral())
+        self.assertTrue(
+            GradientOverlayEffect(paint=transparent).is_neutral()
+        )
+        self.assertEqual(effect_phase(GradientOverlayEffect()), 'foreground')
+        for constructor in (
+            lambda: GradientOverlayEffect(enabled=1),
+            lambda: GradientOverlayEffect(opacity=1.1),
+            lambda: GradientOverlayEffect(blend_mode='multiply'),
+            lambda: GradientOverlayEffect(paint=SolidPaint()),
+            lambda: TextEffectStack(effects=(
+                GradientOverlayEffect(), GradientOverlayEffect()
+            )),
+        ):
+            with self.subTest(constructor=constructor):
+                with self.assertRaises((TypeError, ValueError)):
+                    constructor()
+
+    def test_gradient_overlay_payload_round_trip_and_isolation(self):
+        overlay = GradientOverlayEffect(
+            opacity=0.6,
+            paint=LinearGradientPaint(
+                stops=(
+                    GradientStop(0.0, (1, 2, 3), 0.25),
+                    GradientStop(1.0, (4, 5, 6), 0.75),
+                ),
+                angle=45.0,
+                scale=1.5,
+            ),
+        )
+        payload = TextEffectStack(effects=(
+            StrokeEffect(width=0.2), overlay,
+        )).to_serializable_dict()
+        self.assertEqual(payload['effects'][1], {
+            'effect_type': 'gradient_overlay',
+            'enabled': True,
+            'opacity': 0.6,
+            'blend_mode': 'normal',
+            'paint': overlay.paint.to_serializable_dict(),
+        })
+        self.assertEqual(
+            coerce_text_effect_stack(payload).effects,
+            (StrokeEffect(width=0.2), overlay),
+        )
+
+        malformed = {'effects': [
+            payload['effects'][1],
+            {'effect_type': 'gradient_overlay', 'opacity': 0.4},
+            {'effect_type': 'stroke', 'width': 0.3},
+            {
+                'effect_type': 'gradient_overlay',
+                'paint': {'paint_type': 'solid', 'color': [1, 2, 3]},
+            },
+        ]}
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            loaded = coerce_text_effect_stack(malformed)
+        self.assertEqual(loaded.effects, (overlay, StrokeEffect(width=0.3)))
+        self.assertEqual(warning.call_count, 2)
 
     def test_neutral_state_tracks_opacity_and_active_strokes(self):
         self.assertTrue(TextEffectStack().is_neutral())

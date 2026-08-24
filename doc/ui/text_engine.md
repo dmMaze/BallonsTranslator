@@ -135,17 +135,21 @@ hit testing; adapting only one consumer creates visible drift or broken editing.
 `FontFormat.text_effects` is the canonical committed `TextEffectStack`; it is
 an immutable ordered value persisted with the format. `TextEffectRenderer`
 compiles it from one glyph/source alpha in fixed phases: exterior Drop/Long
-Shadow, exterior/center Stroke, foreground, inside Stroke, then interior Inner
-Shadow. Center keeps the native half-in/half-out outline; Outside and Inside
+Shadow, exterior/center Stroke, canonical foreground plus typed Gradient
+Overlay, inside Stroke, then interior Inner Shadow. Center keeps the native
+half-in/half-out outline; Outside and Inside
 clip a full-width outline to the corresponding side of canonical glyph alpha.
 Each Stroke owns an immutable solid or linear-gradient paint. Linear-gradient
 coordinates span the complete unpadded logical rectangle, so full surfaces,
 tiles, writing modes, and transformed output share one item-local gradient.
-Entry order is retained within each phase. Hollow suppresses foreground and
-Inner output, and removes the canonical face from exterior output before Stroke
-is painted, so the source alpha and full Stroke outline remain available. The
-existing foreground Gradient path is a legacy renderer bridge until its typed
-cutover. A non-neutral `TextBlock.text_alpha_mask` clips the completed Normal
+Entry order is retained within each phase. Gradient Overlay recolors the
+canonical rich foreground in the same item-local coordinate space without
+changing the alpha used by Stroke or exterior Shadow. Hollow suppresses the
+canonical face, Gradient Overlay, and Inner output, and removes the canonical
+face from exterior output before Stroke is painted, so the source alpha and
+full Stroke outline remain available. Legacy `gradient_*` fields are
+compatibility-only persistence data and never enter live rendering. A
+non-neutral `TextBlock.text_alpha_mask` clips the completed Normal
 composite after those phases and before Overall Opacity and global Text
 Transform. Its points are relative to the unpadded logical origin, may reach
 effect overflow, and never expand persistent or derived bounds.
@@ -163,7 +167,7 @@ fallbacks, but export must report incomplete output instead of silently
 omitting text. Mask raster/cache state is item-owned and keyed by an O(1)
 generation; each raster namespace reuses at most two bounded pre-mask surfaces
 for mask-only changes instead of regenerating glyph and effect phases. Only
-the immutable stroke history is persisted. Editing feedback is transient and
+the immutable mask history is persisted. Editing feedback is transient and
 unmasked.
 
 The Canvas-owned mask session freezes the scene-to-source mapper and unpadded
@@ -206,7 +210,7 @@ Refresh from the first owner whose input changed:
 | --- | --- |
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
-| Typed effect stack/paint, Overall Opacity, or legacy foreground Gradient | Effect renderer |
+| Typed effect stack/paint or Overall Opacity | Effect renderer |
 | TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |

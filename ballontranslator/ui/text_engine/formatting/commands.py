@@ -223,17 +223,6 @@ def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: Font
         blkitem.setLineSpacingType(value)
 
 
-@font_formating()
-def ffmt_change_gradient_enabled(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setGradientAttribute(param_name, value)
-
-
-ffmt_change_gradient_start_color = ffmt_change_gradient_enabled
-ffmt_change_gradient_end_color = ffmt_change_gradient_enabled
-ffmt_change_gradient_angle = ffmt_change_gradient_enabled
-ffmt_change_gradient_size = ffmt_change_gradient_enabled
-
 handle_ffmt_change = {
     name: globals().get(f'ffmt_change_{name}', empty_func)
     for name in (*FontFormat.params(), 'rel_font_size')

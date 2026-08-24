@@ -1,9 +1,7 @@
-from pathlib import Path
 from typing import Callable
 
 from qtpy.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -19,7 +17,6 @@ from qtpy.QtCore import (
     QEvent,
     QPoint,
     QRect,
-    QSignalBlocker,
     QSize,
     QTimer,
     Signal,
@@ -28,16 +25,10 @@ from qtpy.QtCore import (
 
 from ...custom_widget import (
     PanelArea,
-    SmallColorPickerLabel,
     SmallComboBox,
     SmallParamLabel,
-    SmallSizeComboBox,
-    SmallSizeControlLabel,
 )
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
-from ...icon_rendering import render_svg_pixmap
-from ballontranslator.utils import shared
-from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import FontFormat
 from ..annotations import (
     FONT_FEATURES_AVAILABLE,
@@ -88,180 +79,6 @@ def _adaptive_row(parent: QWidget, *units: QWidget):
     for unit in units:
         layout.addWidget(unit)
     return row, layout
-
-
-def _set_svg_label(
-    label: QLabel,
-    filename: str,
-    width: int = 22,
-    height: int = 22,
-) -> None:
-    path = str(Path(shared.PROGRAM_PATH) / 'resources' / 'icons' / filename)
-    label.setFixedSize(width, height)
-    label.setPixmap(
-        render_svg_pixmap(
-            path, width, height, label.devicePixelRatioF()
-        )
-    )
-
-
-def _gradient_angle_for_ui(clockwise_angle: float) -> float:
-    """Convert persisted clockwise degrees to signed CW UI degrees.
-
-    >>> _gradient_angle_for_ui(90)
-    90.0
-    >>> _gradient_angle_for_ui(330)
-    -30.0
-    """
-    signed = (float(clockwise_angle) + 180.0) % 360.0 - 180.0
-    return 180.0 if signed == -180.0 else signed
-
-
-def _gradient_angle_from_ui(signed_clockwise_angle: float) -> float:
-    """Convert signed CW UI degrees to persisted clockwise degrees.
-
-    >>> _gradient_angle_from_ui(30)
-    30.0
-    >>> _gradient_angle_from_ui(-90)
-    270.0
-    """
-    return float(signed_clockwise_angle) % 360.0
-
-
-class TextGradientGroup(QGroupBox):
-    def __init__(self, on_param_changed: Callable = None):
-        super().__init__('')
-        self.setObjectName('TextGradientGroup')
-        self.setTitle(self.tr('Gradient'))
-        self.on_param_changed = on_param_changed
-        self.enable_checker = QCheckBox(self)
-        self.enable_checker.setObjectName('EffectTitleChecker')
-        self.enable_checker.setToolTip(self.tr('Enable'))
-        self.enable_checker.toggled.connect(self._on_enabled_changed)
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-
-        self.start_picker = SmallColorPickerLabel(self, param_name='gradient_start_color')
-        self.end_picker = SmallColorPickerLabel(self, param_name='gradient_end_color')
-        self.start_picker.dialog_color_provider = self._start_color
-        self.end_picker.dialog_color_provider = self._end_color
-        self.color_arrow = QLabel('→', self)
-        self.color_arrow.setObjectName('GradientColorArrow')
-        self.color_arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.color_arrow.setText('')
-        _set_svg_label(
-            self.color_arrow, 'gradient_transition.svg', 24, 14
-        )
-
-        self.angle_box = SmallSizeComboBox([-180, 180], 'gradient_angle', self)
-        self.angle_box.setToolTip(self.tr("Set Gradient Angle"))
-        self.angle_box.param_changed.connect(self._on_angle_changed)
-        self.angle_label = SmallSizeControlLabel(
-            self,
-            direction=1,
-            text='',
-            alignment=Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        )
-        self.angle_label.setObjectName('fontAngleLabel')
-        self.angle_label.setToolTip(self.tr('Angle'))
-        _set_svg_label(self.angle_label, 'rotation.svg')
-        _word_wrap_label(self.angle_label)
-        self.angle_label.size_ctrl_changed.connect(self._change_angle)
-        self.angle_label.btn_released.connect(self._apply_angle)
-        self.angle_label.reset_requested.connect(self._reset_angle)
-
-        self.size_box = SmallSizeComboBox([0.5, 2], 'gradient_size', self)
-        self.size_box.setToolTip(self.tr("Set Gradient Size"))
-        self.size_box.param_changed.connect(self.on_param_changed)
-        self.size_label = SmallSizeControlLabel(
-            self,
-            direction=1,
-            text=self.tr('Size'),
-            alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        )
-        _word_wrap_label(self.size_label)
-        self.size_label.size_ctrl_changed.connect(self._change_size)
-        self.size_label.btn_released.connect(self._apply_size)
-        self.size_label.reset_requested.connect(self._reset_size)
-
-        self.color_unit = _atomic_unit(
-            self,
-            self.start_picker,
-            self.color_arrow,
-            self.end_picker,
-        )
-        self.color_unit.layout().setSpacing(1)
-        self.angle_unit = _atomic_unit(self, self.angle_label, self.angle_box)
-        self.size_unit = _atomic_unit(self, self.size_label, self.size_box)
-        self.atomic_units = (
-            self.color_unit,
-            self.angle_unit,
-            self.size_unit,
-        )
-
-        self.color_row, self.color_layout = _adaptive_row(
-            self,
-            self.color_unit,
-            self.angle_unit,
-            self.size_unit,
-        )
-        self.adaptive_layout = QVBoxLayout(self)
-        self.adaptive_layout.addWidget(self.color_row)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        hint = self.enable_checker.sizeHint()
-        self.enable_checker.setGeometry(
-            8,
-            0,
-            hint.width(),
-            hint.height(),
-        )
-
-    def _on_enabled_changed(self, enabled: bool) -> None:
-        self.on_param_changed('gradient_enabled', enabled)
-
-    @staticmethod
-    def _start_color():
-        return getattr(C.active_format, 'gradient_start_color', None)
-
-    @staticmethod
-    def _end_color():
-        return getattr(C.active_format, 'gradient_end_color', None)
-
-    def _change_angle(self, delta: int) -> None:
-        self.angle_box.changeByDelta(-delta, multiplier=1)
-
-    def _apply_angle(self) -> None:
-        self._on_angle_changed('gradient_angle', self.angle_box.value())
-
-    def _on_angle_changed(self, param_name: str, value: float) -> None:
-        self.on_param_changed(param_name, _gradient_angle_from_ui(value))
-
-    def _reset_angle(self) -> None:
-        if self.angle_box.value() == 0.0:
-            return
-        with QSignalBlocker(self.angle_box):
-            self.angle_box.setValue(0.0)
-        self._on_angle_changed('gradient_angle', 0.0)
-
-    def _change_size(self, delta: int) -> None:
-        self.size_box.changeByDelta(delta, multiplier=0.02)
-
-    def _apply_size(self) -> None:
-        self.on_param_changed('gradient_size', self.size_box.value())
-
-    def _reset_size(self) -> None:
-        if self.size_box.value() == 1.0:
-            return
-        with QSignalBlocker(self.size_box):
-            self.size_box.setValue(1.0)
-        self.on_param_changed('gradient_size', 1.0)
-
-    def set_effect_enabled(self, enabled: bool) -> None:
-        with QSignalBlocker(self.enable_checker):
-            self.enable_checker.setChecked(enabled)
 
 
 class RubyFuriganaGroup(QGroupBox):
@@ -521,12 +338,10 @@ class TextAdvancedFormatPanel(PanelArea):
         self.ruby_group.remove_requested.connect(
             self.ruby_remove_requested.emit
         )
-        self.gradient_group = TextGradientGroup(self.on_format_changed)
         vlayout = QVBoxLayout()
         vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
         vlayout.addWidget(self.top_section)
         vlayout.addWidget(self.ligature_group)
-        vlayout.addWidget(self.gradient_group)
         vlayout.addWidget(self.ruby_group)
 
         self.setContentLayout(vlayout)
@@ -636,7 +451,6 @@ class TextAdvancedFormatPanel(PanelArea):
                 self.top_layout,
                 *self.ligature_layouts,
                 self.ruby_group.adaptive_layout,
-                self.gradient_group.adaptive_layout,
             )
         )
         left, _top, right, _bottom = self.vlayout.getContentsMargins()
@@ -751,14 +565,6 @@ class TextAdvancedFormatPanel(PanelArea):
 
     def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
-
-        self.gradient_group.size_box.setValue(font_format.gradient_size)
-        self.gradient_group.angle_box.setValue(
-            _gradient_angle_for_ui(font_format.gradient_angle)
-        )
-        self.gradient_group.set_effect_enabled(font_format.gradient_enabled)
-        self.gradient_group.start_picker.setPickerColor(font_format.gradient_start_color)
-        self.gradient_group.end_picker.setPickerColor(font_format.gradient_end_color)
 
     def set_line_spacing_type(self, spacing_type: int) -> None:
         if not self.linespacing_type_combobox.hasFocus():

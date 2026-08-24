@@ -823,16 +823,6 @@ class FontFormatPanel(Widget):
         )
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.bind_controls(self.texteffect_panel)
-        color_label = self.textadvancedfmt_panel.gradient_group.start_picker
-        color_label.changingColor.connect(self.changingColor)
-        color_label.colorChanged.connect(self.onColorLabelChanged)
-        color_label.apply_color.connect(self.on_apply_color)
-        
-        color_label = self.textadvancedfmt_panel.gradient_group.end_picker
-        color_label.changingColor.connect(self.changingColor)
-        color_label.colorChanged.connect(self.onColorLabelChanged)
-        color_label.apply_color.connect(self.on_apply_color)
-        
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
         self.sourceBtn = TextCheckerLabel(self.tr("Source"))
         self.transBtn = TextCheckerLabel(self.tr("Translation"))

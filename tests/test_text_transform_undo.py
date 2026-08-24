@@ -103,6 +103,9 @@ from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
+    GradientStop,
+    LinearGradientPaint,
     ShadowEffect,
     StrokeEffect,
     TextEffectStack,
@@ -2561,10 +2564,11 @@ class TextTransformRenderingTest(TextTransformTestBase):
                         blur=0.08,
                         offset=(0.08, 0.06),
                     ),
+                    GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+                        GradientStop(0.0, (20, 40, 160)),
+                        GradientStop(1.0, (220, 80, 40)),
+                    ))),
                 ))
-                block.fontformat.gradient_enabled = True
-                block.fontformat.gradient_start_color = [20, 40, 160]
-                block.fontformat.gradient_end_color = [220, 80, 40]
 
                 item = TextBlkItem(block, 0)
                 scene = QGraphicsScene()
@@ -3367,10 +3371,11 @@ class TextTransformRenderingTest(TextTransformTestBase):
                         blur=0.08,
                         offset=(0.08, 0.06),
                     ),
+                    GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+                        GradientStop(0.0, (20, 40, 160)),
+                        GradientStop(1.0, (220, 80, 40)),
+                    ))),
                 ))
-                block.fontformat.gradient_enabled = True
-                block.fontformat.gradient_start_color = [20, 40, 160]
-                block.fontformat.gradient_end_color = [220, 80, 40]
 
                 item = TextBlkItem(block, 0)
                 scene = QGraphicsScene()
@@ -3734,22 +3739,6 @@ class TextTransformGeometryTest(TextTransformTestBase):
             canvas.bind_text_projective_control(item, 0, **callbacks)
 
         refresh_geometry.assert_not_called()
-
-    def test_content_padding_change_refreshes_gradient_once(self):
-        item, _ = self._make_pair(0, TEST_LINES[0], False)
-        item.fontformat.gradient_enabled = True
-        renderer = item.effect_renderer
-        with (
-            patch.object(
-                renderer,
-                '_effect_padding',
-                return_value=renderer.padding() + 10.0,
-            ),
-            patch.object(renderer, '_refresh_gradient_geometry') as refresh,
-        ):
-            item.on_content_changed()
-
-        refresh.assert_called_once_with()
 
     def test_settled_format_geometry_notifies_visual_controllers(self):
         for transform in (

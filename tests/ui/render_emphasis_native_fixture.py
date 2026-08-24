@@ -23,6 +23,9 @@ from ballontranslator.ui.text_engine.annotations import (
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.fontformat import TextTransformStack
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
+    GradientStop,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -68,11 +71,12 @@ def _item(
                 width=0.18,
                 paint=SolidPaint((34, 38, 48)),
             ),
+            GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, tuple(gradient[0])),
+                GradientStop(1.0, tuple(gradient[1])),
+            ))),
         ),
     )
-    block.fontformat.gradient_enabled = True
-    block.fontformat.gradient_start_color = gradient[0]
-    block.fontformat.gradient_end_color = gradient[1]
     block.fontformat.text_transform = TextTransformStack((), 11.0)
     item = TextBlkItem(block, 0)
     cursor = QTextCursor(item.document())

@@ -1,4 +1,4 @@
-"""Typed effects, block alpha masks, legacy Gradient, and text rendering."""
+"""Typed effects, block alpha masks, and completed text rendering."""
 
 import math
 from typing import Callable, Optional, Tuple
@@ -9,7 +9,6 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
-    QLinearGradient,
     QPainter,
     QPen,
     QPixmap,
@@ -19,10 +18,11 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QStyle, QStyleOptionGraphicsItem, QWidget
 
-from ballontranslator.utils.fontformat import FontFormat, pt2px
+from ballontranslator.utils.fontformat import pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
     HollowEffect,
     LinearGradientPaint,
     ShadowEffect,
@@ -58,7 +58,6 @@ from .rendering.raster import (
 )
 
 
-GRADIENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1238
 STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1241
 _STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 # Glyph Slant writes vector paths into effect pixmaps, not native text.
@@ -144,9 +143,7 @@ class TextEffectRenderer:
         self.preview = None
         self._render_stroke = None
         self._outline_only_stroke = False
-        self.refreshing_gradient_geometry = False
         self.refreshing_effect_padding = False
-        self.has_transient_gradient_ranges = False
 
     def _raster_state(self) -> _EffectRasterState:
         if self._export_active:
@@ -339,6 +336,20 @@ class TextEffectRenderer:
             if isinstance(effect, ShadowEffect)
             and not effect.is_neutral()
             and (shadow_type is None or effect.shadow_type == shadow_type)
+        )
+
+    def _active_gradient_overlay(
+        self, stack: Optional[TextEffectStack] = None
+    ) -> Optional[GradientOverlayEffect]:
+        active = self.effective_text_effects() if stack is None else stack
+        return next(
+            (
+                effect
+                for effect in active.effects
+                if isinstance(effect, GradientOverlayEffect)
+                and not effect.is_neutral()
+            ),
+            None,
         )
 
     def _compiled_shadows(
@@ -1070,11 +1081,7 @@ class TextEffectRenderer:
             if any(self._effect_flags()):
                 self._draw_effects(painter, option.exposedRect)
             replace_foreground = self._hollow_enabled() or (
-                (
-                    bool(self._active_shadows('inner'))
-                    or self._active_text_alpha_mask() is not None
-                    or self._has_inside_strokes()
-                )
+                self._renders_completed_foreground()
                 and (
                     self.export_render
                     or self._completed_foreground_ready()
@@ -1096,6 +1103,7 @@ class TextEffectRenderer:
             or bool(self._active_shadows('inner'))
             or self._mask_requires_surface()
             or self._has_inside_strokes()
+            or self._active_gradient_overlay() is not None
         )
 
     def _completed_foreground_ready(self) -> bool:
@@ -1170,7 +1178,6 @@ class TextEffectRenderer:
 
     def finalize_neutral_cache(self) -> None:
         """Invalidate transformed pixels after neutral restoration."""
-        self._refresh_gradient_geometry()
         state = self._peek_raster_state()
         if state is not None:
             state.tile_cache.clear()
@@ -1650,19 +1657,11 @@ class TextEffectRenderer:
         self,
         padding: float,
     ) -> bool:
-        changed = (
+        return (
             self.setPadding(padding)
             if self.padding() != padding
             else False
         )
-        if changed and self.fontformat.gradient_enabled:
-            was_repainting = self.repainting
-            self.repainting = True
-            try:
-                self._refresh_gradient_geometry()
-            finally:
-                self.repainting = was_repainting
-        return changed
 
     def _update_effect_padding(self):
         if self.refreshing_effect_padding or self.layout is None:
@@ -1686,6 +1685,10 @@ class TextEffectRenderer:
             bool(strokes),
             bool(self._compiled_shadows())
             or self._mask_requires_surface()
+            or (
+                not self._hollow_enabled()
+                and self._active_gradient_overlay() is not None
+            )
             or any(
                 stroke.position != 'center'
                 or isinstance(stroke.paint, LinearGradientPaint)
@@ -1846,6 +1849,7 @@ class TextEffectRenderer:
             if shadow.shadow_type != 'inner'
         )
         interior = self._active_shadows('inner') if not hollow else ()
+        overlay = self._active_gradient_overlay() if not hollow else None
         active_strokes = self._active_strokes()
         positioned_strokes = any(
             stroke.position != 'center' for stroke in active_strokes
@@ -1857,10 +1861,16 @@ class TextEffectRenderer:
         canonical = None
         canonical_alpha = None
         completed_foreground = (
-            (alpha_mask is not None or inside_strokes) and not hollow
+            (
+                alpha_mask is not None
+                or inside_strokes
+                or overlay is not None
+            )
+            and not hollow
         )
         if (
             interior
+            or overlay is not None
             or completed_foreground
             or (exterior and not paint_stroke)
             or (hollow and exterior)
@@ -1946,7 +1956,14 @@ class TextEffectRenderer:
             if interior:
                 assert canonical is not None
                 assert canonical_alpha is not None
-                target_painter.drawPixmap(surface_rect.topLeft(), canonical)
+                face = (
+                    canonical
+                    if overlay is None
+                    else self._gradient_overlay_pixmap(
+                        canonical, surface_rect, render_scale, overlay
+                    )
+                )
+                target_painter.drawPixmap(surface_rect.topLeft(), face)
                 if paint_stroke and target_stroke and inside_strokes:
                     self._paint_positioned_strokes(
                         target_painter,
@@ -1966,7 +1983,14 @@ class TextEffectRenderer:
                 target_painter.translate(-surface_rect.topLeft())
             elif completed_foreground:
                 assert canonical is not None
-                target_painter.drawPixmap(surface_rect.topLeft(), canonical)
+                face = (
+                    canonical
+                    if overlay is None
+                    else self._gradient_overlay_pixmap(
+                        canonical, surface_rect, render_scale, overlay
+                    )
+                )
+                target_painter.drawPixmap(surface_rect.topLeft(), face)
                 if paint_stroke and target_stroke and inside_strokes:
                     self._paint_positioned_strokes(
                         target_painter,
@@ -2242,6 +2266,46 @@ class TextEffectRenderer:
                     'unable to finish effect source painter'
                 ) from end_error
         return source
+
+    def _gradient_overlay_pixmap(
+        self,
+        canonical: QPixmap,
+        surface_rect: QRectF,
+        render_scale: float,
+        overlay: GradientOverlayEffect,
+    ) -> QPixmap:
+        """Blend one typed overlay over captured canonical foreground pixels.
+
+        >>> hasattr(TextEffectRenderer, '_gradient_overlay_pixmap')
+        True
+        """
+        try:
+            rgba = pixmap2ndarray(canonical, keep_alpha=True)
+            if rgba is None:
+                raise EffectRasterAllocationError(
+                    'unable to access Gradient Overlay source pixels'
+                )
+            colorize_effect_paint_rgba(
+                overlay.paint,
+                rgba,
+                surface_rect,
+                self.logical_unpadded_rect(),
+                render_scale,
+                source_atop_opacity=overlay.opacity,
+            )
+            result = ndarray2pixmap(rgba)
+            if result is None or result.isNull():
+                raise EffectRasterAllocationError(
+                    'unable to allocate Gradient Overlay surface'
+                )
+            result.setDevicePixelRatio(render_scale)
+            return result
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render Gradient Overlay'
+            ) from error
 
     def _stroke_silhouette(
         self,
@@ -2775,101 +2839,3 @@ class TextEffectRenderer:
         if scale <= 0:
             return 1.0
         return min(max(1.0, scale), EFFECT_CACHE_MAX_SCALE)
-
-    def _refresh_gradient_geometry(self):
-        """Refresh the block-local gradient as non-document layout state."""
-        if self.refreshing_gradient_geometry:
-            return
-        neutral = self._text_transform_is_neutral()
-        if neutral and not self.has_transient_gradient_ranges:
-            return
-        self.refreshing_gradient_geometry = True
-        gradient_format = None
-        if not neutral and self.fontformat.gradient_enabled:
-            gradient_format = QTextCharFormat()
-            gradient_format.setForeground(self.get_text_gradient())
-            gradient_format.setProperty(GRADIENT_LAYOUT_FORMAT_PROPERTY, True)
-        try:
-            formats_changed = False
-            transient_present = False
-            block = self.document().firstBlock()
-            while block.isValid():
-                layout = block.layout()
-                old_ranges = layout.formats()
-                ranges = []
-                removed_transient = False
-                for format_range in old_ranges:
-                    if bool(
-                        format_range.format.property(
-                            GRADIENT_LAYOUT_FORMAT_PROPERTY
-                        )
-                    ):
-                        removed_transient = True
-                    else:
-                        ranges.append(format_range)
-                text_length = block.length() - 1
-                add_transient = gradient_format is not None and text_length > 0
-                if add_transient:
-                    transient_present = True
-                    format_range = QTextLayout.FormatRange()
-                    format_range.start = 0
-                    format_range.length = text_length
-                    format_range.format = gradient_format
-                    ranges.append(format_range)
-                if removed_transient or add_transient:
-                    layout.setFormats(ranges)
-                    formats_changed = True
-                block = block.next()
-            if formats_changed:
-                # setFormats invalidates QTextLine objects. Rebuild them through
-                # the attached custom layout; this changes no document state.
-                self.layout.reLayout()
-                self.update()
-            self.has_transient_gradient_ranges = transient_present
-        finally:
-            self.refreshing_gradient_geometry = False
-
-    def get_text_gradient(
-        self,
-        fontformat: FontFormat = None,
-        *,
-        persistent: bool = False,
-    ):
-        gradient = QLinearGradient()
-        if fontformat is None:
-            fontformat = self.fontformat
-        angle = fontformat.gradient_angle
-        rad = math.radians(angle)
-        dx = math.cos(rad)
-        dy = math.sin(rad)
-
-        # Set gradient points with size adjustment
-        if persistent and not self._text_transform_is_neutral():
-            # The document foreground is the neutral fallback underneath the
-            # active layout-only range. Use the current non-distorting padding
-            # so removing the range reveals the same gradient coordinates.
-            logical_rect = self.logical_unpadded_rect()
-            neutral_padding = self._conservative_effect_padding()
-            rect = QRectF(
-                0.0,
-                0.0,
-                logical_rect.width() + neutral_padding * 2,
-                logical_rect.height() + neutral_padding * 2,
-            )
-        else:
-            rect = (
-                self.boundingRect()
-                if self._text_transform_is_neutral()
-                else self.logical_unpadded_rect()
-            )
-        center = rect.center()
-        radius = max(rect.width(), rect.height()) * fontformat.gradient_size
-        gradient.setStart(center.x() - dx * radius, center.y() - dy * radius)
-        gradient.setFinalStop(center.x() + dx * radius, center.y() + dy * radius)
-
-        # Set gradient colors
-        start_color = QColor(*fontformat.gradient_start_color)
-        end_color = QColor(*fontformat.gradient_end_color)
-        gradient.setColorAt(0, start_color)
-        gradient.setColorAt(1, end_color)
-        return gradient

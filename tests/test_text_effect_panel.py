@@ -34,6 +34,7 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -230,6 +231,17 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 0)
         preset.update_style.assert_called_once_with(self.panel.global_format)
 
+        preset.reset_mock()
+        self.assertTrue(
+            self.panel.text_effect_session.add_effect('gradient_overlay')
+        )
+        self.assertTrue(any(
+            isinstance(effect, GradientOverlayEffect)
+            for effect in self.panel.global_format.text_effects
+        ))
+        self.assertEqual(self.canvas.stack.count(), 0)
+        preset.update_style.assert_called_once_with(self.panel.global_format)
+
     def test_equal_unowned_active_format_is_not_a_global_effect_owner(self):
         before = self.panel.global_format.text_effects
         unowned = self.panel.global_format.deepcopy()
@@ -290,6 +302,7 @@ class TextEffectPanelTest(unittest.TestCase):
             StrokeEffect(),
             ShadowEffect(enabled=False),
             HollowEffect(),
+            GradientOverlayEffect(),
         ))
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
@@ -297,6 +310,7 @@ class TextEffectPanelTest(unittest.TestCase):
             effect_panel.stroke_cards[0],
             effect_panel.shadow_cards[0],
             effect_panel.hollow_card,
+            effect_panel.gradient_overlay_card,
         )
         for card in cards:
             self.assertFalse(card.title_icon_label.pixmap().isNull())
@@ -312,6 +326,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             effect_panel.hollow_card.visibility_button.accessibleName(),
             'Hide Hollow',
+        )
+        self.assertEqual(
+            effect_panel.gradient_overlay_card.visibility_button.toolTip(),
+            'Hide Gradient Overlay',
         )
         self.assertTrue(all(
             not action.icon().isNull()
@@ -592,11 +610,9 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.blk.fontformat.text_effects, before)
 
     def test_gradient_dialog_releases_filter_and_wrapper_after_card_flow(self):
-        item = self._item(self._stack(StrokeEffect(
-            paint=LinearGradientPaint()
-        )))
+        item = self._item(self._stack(GradientOverlayEffect()))
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self.panel.texteffect_panel.gradient_overlay_card
         dialog = LinearGradientEditorDialog(
             item.fontformat.text_effects[0].paint
         )
@@ -786,6 +802,119 @@ class TextEffectPanelTest(unittest.TestCase):
             for effect in item.blk.fontformat.text_effects
         ))
         self.assertEqual(self.canvas.stack.count(), 5)
+
+    def test_gradient_overlay_add_edit_mixed_and_uniqueness(self):
+        item = self._item(TextEffectStack())
+        self.panel.set_textblk_item(item)
+        effect_panel = self.panel.texteffect_panel
+        effect_panel.add_effect_actions['gradient_overlay'].trigger()
+        overlay = item.blk.fontformat.text_effects[0]
+        self.assertIsInstance(overlay, GradientOverlayEffect)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertFalse(
+            effect_panel.add_effect_actions['gradient_overlay'].isEnabled()
+        )
+        self.assertFalse(
+            self.panel.text_effect_session.add_effect('gradient_overlay')
+        )
+
+        card = effect_panel.gradient_overlay_card
+        editor = card.opacity_control.editor
+        editor.setText('55.0%')
+        editor.textEdited.emit('55.0%')
+        self.assertEqual(item.blk.fontformat.text_effects[0], overlay)
+        self.assertAlmostEqual(item.effective_text_effects()[0].opacity, 0.55)
+        editor.returnPressed.emit()
+        self.assertAlmostEqual(
+            item.blk.fontformat.text_effects[0].opacity, 0.55
+        )
+        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertIs(effect_panel.gradient_overlay_card, card)
+
+        card.visibility_button.click()
+        self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
+        self.assertEqual(self.canvas.stack.count(), 3)
+        card.delete_button.click()
+        self.assertFalse(any(
+            isinstance(effect, GradientOverlayEffect)
+            for effect in item.blk.fontformat.text_effects
+        ))
+        self.assertEqual(self.canvas.stack.count(), 4)
+        self.assertTrue(
+            effect_panel.add_effect_actions['gradient_overlay'].isEnabled()
+        )
+
+        common = self._constant_overlay(angle=0.0)
+        different = self._constant_overlay(angle=90.0)
+        first = self._item(self._stack(common))
+        second = self._item(self._stack(different))
+        self.canvas.selected = [first, second]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = effect_panel.gradient_overlay_card
+        self.assertEqual(mixed_card.opacity_control.editor.text(), '100.0%')
+        self.assertEqual(mixed_card.paint_button.text(), 'Mixed')
+        self.assertFalse(mixed_card.paint_button.isEnabled())
+        self.assertEqual(
+            mixed_card.paint_button.toolTip(), 'Mixed Gradient Paint'
+        )
+
+    @staticmethod
+    def _constant_overlay(angle: float = 0.0) -> GradientOverlayEffect:
+        return GradientOverlayEffect(paint=LinearGradientPaint(
+            stops=(
+                GradientStop(0.0, (255, 0, 0), 1.0),
+                GradientStop(1.0, (0, 0, 255), 1.0),
+            ),
+            angle=angle,
+        ))
+
+    def test_gradient_overlay_dialog_preview_cancel_accept_one_undo(self):
+        before = self._stack(self._constant_overlay())
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.gradient_overlay_card
+        preview = LinearGradientPaint(
+            stops=before[0].paint.stops, angle=60.0
+        )
+        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+
+        dialog = LinearGradientEditorDialog(before[0].paint)
+        observed = []
+
+        def preview_then_reject():
+            dialog.angle_editor.setValue(60.0)
+            observed.append((
+                item.effective_text_effects()[0].paint,
+                item.blk.fontformat.text_effects,
+            ))
+            return rejected
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=preview_then_reject):
+            card.paint_button.click()
+        self.assertEqual(observed, [(preview, before)])
+        self.assertEqual(item.effective_text_effects(), before)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+        dialog = LinearGradientEditorDialog(before[0].paint)
+
+        def preview_then_accept():
+            dialog.angle_editor.setValue(60.0)
+            return accepted
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=preview_then_accept):
+            card.paint_button.click()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertIs(self.panel.texteffect_panel.gradient_overlay_card, card)
 
     def test_shadow_reorder_is_phase_safe_and_mixed_type_does_not_guess(self):
         top = ShadowEffect(color=(255, 0, 0))

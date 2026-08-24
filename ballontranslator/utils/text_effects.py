@@ -347,7 +347,60 @@ class HollowEffect:
         return not self.enabled
 
 
-TextEffect = Union[StrokeEffect, ShadowEffect, HollowEffect]
+@dataclass(frozen=True)
+class GradientOverlayEffect:
+    """Replace or tint the canonical foreground with a linear gradient.
+
+    >>> GradientOverlayEffect(opacity=0.5).effect_type
+    'gradient_overlay'
+    """
+
+    enabled: bool = True
+    opacity: float = 1.0
+    blend_mode: str = 'normal'
+    paint: LinearGradientPaint = field(default_factory=LinearGradientPaint)
+    effect_type: str = field(init=False, default='gradient_overlay')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError('gradient overlay enabled must be a bool')
+        object.__setattr__(
+            self,
+            'opacity',
+            _float_in_range(
+                'gradient overlay opacity', self.opacity, 0.0, 1.0
+            ),
+        )
+        if self.blend_mode != 'normal':
+            raise ValueError('unsupported gradient overlay blend mode')
+        if not isinstance(self.paint, LinearGradientPaint):
+            raise TypeError(
+                'gradient overlay paint must be LinearGradientPaint'
+            )
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'enabled': self.enabled,
+            'opacity': self.opacity,
+            'blend_mode': self.blend_mode,
+            'paint': self.paint.to_serializable_dict(),
+        }
+
+    def is_neutral(self) -> bool:
+        return (
+            not self.enabled
+            or self.opacity == 0.0
+            or all(stop.opacity == 0.0 for stop in self.paint.stops)
+        )
+
+
+TextEffect = Union[
+    StrokeEffect,
+    ShadowEffect,
+    HollowEffect,
+    GradientOverlayEffect,
+]
 
 
 def effect_phase(effect: TextEffect) -> str:
@@ -364,7 +417,7 @@ def effect_phase(effect: TextEffect) -> str:
         )
     if isinstance(effect, StrokeEffect):
         return 'stroke'
-    if isinstance(effect, HollowEffect):
+    if isinstance(effect, (HollowEffect, GradientOverlayEffect)):
         return 'foreground'
     raise TypeError('effect_phase requires a typed text effect')
 
@@ -394,12 +447,26 @@ class TextEffectStack:
         )
         effects = tuple(self.effects)
         if any(
-            not isinstance(effect, (StrokeEffect, ShadowEffect, HollowEffect))
+            not isinstance(
+                effect,
+                (
+                    StrokeEffect,
+                    ShadowEffect,
+                    HollowEffect,
+                    GradientOverlayEffect,
+                ),
+            )
             for effect in effects
         ):
             raise TypeError('text effect stack requires typed effect values')
         if sum(isinstance(effect, HollowEffect) for effect in effects) > 1:
             raise ValueError('text effect stack accepts at most one Hollow')
+        if sum(
+            isinstance(effect, GradientOverlayEffect) for effect in effects
+        ) > 1:
+            raise ValueError(
+                'text effect stack accepts at most one Gradient Overlay'
+            )
         object.__setattr__(self, 'effects', effects)
 
     def __iter__(self) -> Iterator[TextEffect]:
@@ -451,7 +518,7 @@ def _coerce_effect_paint(value: object) -> EffectPaint:
     if isinstance(value, (SolidPaint, LinearGradientPaint)):
         return value
     if not isinstance(value, dict):
-        raise ValueError('stroke paint must be a value or typed payload')
+        raise ValueError('effect paint must be a value or typed payload')
     payload = dict(value)
     paint_type = payload.pop('paint_type', None)
     if paint_type == 'solid':
@@ -469,7 +536,7 @@ def _coerce_effect_paint(value: object) -> EffectPaint:
                 _coerce_gradient_stop(stop) for stop in stops
             )
         return LinearGradientPaint(**payload)
-    raise ValueError('unsupported or missing stroke paint type')
+    raise ValueError('unsupported or missing effect paint type')
 
 
 def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
@@ -478,7 +545,10 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
     >>> coerce_text_effect({'effect_type': 'stroke', 'width': 0.2}).width
     0.2
     """
-    if isinstance(value, (StrokeEffect, ShadowEffect, HollowEffect)):
+    if isinstance(
+        value,
+        (StrokeEffect, ShadowEffect, HollowEffect, GradientOverlayEffect),
+    ):
         return value
     if not isinstance(value, dict):
         raise ValueError('text effect must be a value or typed payload')
@@ -514,6 +584,16 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         )
         payload.pop('effect_type')
         return HollowEffect(**payload)
+    if effect_type == 'gradient_overlay':
+        _unexpected_fields(
+            payload,
+            ('effect_type', 'enabled', 'opacity', 'blend_mode', 'paint'),
+            'Gradient Overlay effect',
+        )
+        payload.pop('effect_type')
+        if 'paint' in payload:
+            payload['paint'] = _coerce_effect_paint(payload['paint'])
+        return GradientOverlayEffect(**payload)
     raise ValueError('unsupported or missing text effect type')
 
 
@@ -568,6 +648,7 @@ def coerce_text_effect_stack(
         raw_effects = ()
     effects = []
     hollow_loaded = False
+    gradient_overlay_loaded = False
     for index, raw_effect in enumerate(raw_effects):
         try:
             effect = coerce_text_effect(raw_effect)
@@ -575,6 +656,12 @@ def coerce_text_effect_stack(
                 if hollow_loaded:
                     raise ValueError('text effect stack accepts at most one Hollow')
                 hollow_loaded = True
+            if isinstance(effect, GradientOverlayEffect):
+                if gradient_overlay_loaded:
+                    raise ValueError(
+                        'text effect stack accepts at most one Gradient Overlay'
+                    )
+                gradient_overlay_loaded = True
             effects.append(effect)
         except (TypeError, ValueError) as error:
             LOGGER.warning(

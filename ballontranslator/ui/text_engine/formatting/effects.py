@@ -24,6 +24,7 @@ from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     EffectPaint,
+    GradientOverlayEffect,
     LinearGradientPaint,
     HollowEffect,
     SHADOW_BLUR_LIMIT,
@@ -926,6 +927,188 @@ class HollowEffectCard(QFrame):
         self.remove_requested.emit(self.index)
 
 
+class GradientOverlayEffectCard(QFrame):
+    """Edit the single foreground Gradient Overlay effect.
+
+    >>> GradientOverlayEffectCard.__name__
+    'GradientOverlayEffectCard'
+    """
+
+    value_commit_requested = Signal(int, str, object)
+    value_preview_requested = Signal(int, str, object)
+    parameter_preview_requested = Signal(int, str, object)
+    parameter_commit_requested = Signal(int, str, object)
+    preview_canceled = Signal(int, str)
+    remove_requested = Signal(int)
+    color_dialog_active_changed = Signal(bool)
+
+    def __init__(self, index: int, parent=None) -> None:
+        super().__init__(parent)
+        self.index = int(index)
+        self.setObjectName('TextEffectParameterPanel')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.title_icon_label = _effect_icon_label(
+            'text-effect-gradient.svg', self
+        )
+        self.title_label = QLabel(self.tr('Gradient Overlay'), self)
+        self.title_label.setObjectName('TextEffectParameterTitle')
+        self.title_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.visibility_button = EffectVisibilityButton(
+            self.tr('Show Gradient Overlay'),
+            self.tr('Hide Gradient Overlay'),
+            self,
+        )
+        self.visibility_button.visibility_requested.connect(
+            self._on_enabled_clicked
+        )
+        self.delete_button = QToolButton(self)
+        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.delete_button.setIcon(
+            QIcon(themed_icon_path('titlebar_close.svg'))
+        )
+        self.delete_button.setToolTip(self.tr('Delete Gradient Overlay'))
+        self.delete_button.setAccessibleName(
+            self.tr('Delete Gradient Overlay')
+        )
+        self.delete_button.setFixedSize(18, 18)
+        self.delete_button.clicked.connect(self._on_delete_clicked)
+
+        action_widget = _effect_action_widget(
+            self, (self.visibility_button, self.delete_button)
+        )
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
+        header.addWidget(self.title_label)
+        header.addWidget(action_widget)
+
+        self.opacity_control = EffectNumericControl(
+            self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
+            self, decimals=1,
+        )
+        self.opacity_control.editor.setProperty('cardEditor', True)
+        self.opacity_control.commit_requested.connect(
+            self._on_control_commit
+        )
+        self.opacity_control.value_preview_requested.connect(
+            self._on_value_preview
+        )
+        self.opacity_control.preview_requested.connect(
+            self._on_parameter_preview
+        )
+        self.opacity_control.drag_commit_requested.connect(
+            self._on_parameter_commit
+        )
+        self.opacity_control.preview_canceled.connect(
+            self._on_preview_canceled
+        )
+        self.opacity_control.value_preview_canceled.connect(
+            self._on_preview_canceled
+        )
+
+        self.paint_button = EffectPaintButton(self)
+        self.paint_button.clicked.connect(self._on_paint_clicked)
+        self._paint_seed: Optional[LinearGradientPaint] = None
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(6)
+        layout.addLayout(header)
+        layout.addWidget(self.opacity_control)
+        layout.addWidget(self.paint_button)
+
+    def set_values(
+        self, overlays: Sequence[GradientOverlayEffect]
+    ) -> None:
+        enabled_values = [overlay.enabled for overlay in overlays]
+        enabled = (
+            enabled_values[0]
+            if enabled_values
+            and all(value == enabled_values[0] for value in enabled_values)
+            else None
+        )
+        self.visibility_button.set_visibility(enabled)
+        opacity_values = [overlay.opacity for overlay in overlays]
+        common_opacity = (
+            opacity_values[0]
+            if opacity_values
+            and all(value == opacity_values[0] for value in opacity_values)
+            else None
+        )
+        self.opacity_control.set_model_value(common_opacity, opacity_values)
+        paints = [overlay.paint for overlay in overlays]
+        common_paint = (
+            paints[0]
+            if paints and all(paint == paints[0] for paint in paints)
+            else None
+        )
+        self._paint_seed = common_paint
+        self.paint_button.set_paint(
+            common_paint or (paints[0] if paints else None),
+            mixed=common_paint is None,
+            editable=common_paint is not None,
+        )
+
+    def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
+        return (self.opacity_control,)
+
+    def _on_enabled_clicked(self, enabled: bool) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'enabled', bool(enabled)
+        )
+
+    def _on_control_commit(self, name: str, value) -> None:
+        self.value_commit_requested.emit(self.index, name, value)
+
+    def _on_value_preview(self, name: str, value) -> None:
+        self.value_preview_requested.emit(self.index, name, value)
+
+    def _on_parameter_preview(self, name: str, delta) -> None:
+        self.parameter_preview_requested.emit(self.index, name, delta)
+
+    def _on_parameter_commit(self, name: str, delta) -> None:
+        self.parameter_commit_requested.emit(self.index, name, delta)
+
+    def _on_preview_canceled(self, name: str) -> None:
+        self.preview_canceled.emit(self.index, name)
+
+    def _on_delete_clicked(self) -> None:
+        self.remove_requested.emit(self.index)
+
+    def _on_paint_clicked(self) -> None:
+        if self._paint_seed is None:
+            return
+        self.color_dialog_active_changed.emit(True)
+        try:
+            dialog = LinearGradientEditorDialog(
+                self._paint_seed, self.window()
+            )
+            dialog.paint_previewed.connect(self._on_gradient_preview)
+            try:
+                result = dialog.exec_()
+                dialog_code = getattr(QDialog, 'DialogCode', QDialog)
+                if result == dialog_code.Accepted:
+                    self.value_commit_requested.emit(
+                        self.index, 'paint', dialog.paint
+                    )
+                else:
+                    self.preview_canceled.emit(self.index, 'paint')
+            finally:
+                dialog.deleteLater()
+        finally:
+            self.color_dialog_active_changed.emit(False)
+
+    def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
+        self.value_preview_requested.emit(self.index, 'paint', paint)
+
+
 class AlphaMaskCard(QFrame):
     """Pinned controls for the selected TextBlock-owned mask.
 
@@ -1163,6 +1346,11 @@ class TextEffectPanel(PanelArea):
             (self.tr('Stroke'), 'stroke', 'text-effect-stroke.svg'),
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
             (self.tr('Hollow'), 'hollow', 'text-effect-hollow.svg'),
+            (
+                self.tr('Gradient Overlay'),
+                'gradient_overlay',
+                'text-effect-gradient.svg',
+            ),
         ):
             action = add_menu.addAction(
                 QIcon(themed_icon_path(icon_name)), label
@@ -1183,6 +1371,7 @@ class TextEffectPanel(PanelArea):
         self.stroke_cards = []
         self.shadow_cards = []
         self.hollow_card = None
+        self.gradient_overlay_card = None
         self._effect_types = None
         self.alpha_mask_card = None
         self._mask_items = ()
@@ -1278,6 +1467,7 @@ class TextEffectPanel(PanelArea):
         self.stroke_cards = []
         self.shadow_cards = []
         self.hollow_card = None
+        self.gradient_overlay_card = None
 
     def _rebuild_effect_cards(self, effect_types: Sequence[str]) -> None:
         effect_types = tuple(effect_types)
@@ -1295,12 +1485,22 @@ class TextEffectPanel(PanelArea):
             elif effect_type == 'hollow':
                 card = HollowEffectCard(index, self.scrollContent)
                 self.hollow_card = card
+            elif effect_type == 'gradient_overlay':
+                card = GradientOverlayEffectCard(index, self.scrollContent)
+                self.gradient_overlay_card = card
             else:
                 continue
             card.value_commit_requested.connect(
                 self.value_commit_requested.emit
             )
-            if not isinstance(card, HollowEffectCard):
+            if isinstance(
+                card,
+                (
+                    StrokeEffectCard,
+                    ShadowEffectCard,
+                    GradientOverlayEffectCard,
+                ),
+            ):
                 card.value_preview_requested.connect(
                     self.value_preview_requested.emit
                 )
@@ -1311,10 +1511,11 @@ class TextEffectPanel(PanelArea):
                     self.parameter_commit_requested.emit
                 )
                 card.preview_canceled.connect(self.preview_canceled.emit)
-                card.move_requested.connect(self.move_effect_requested.emit)
                 card.color_dialog_active_changed.connect(
                     self.color_dialog_active_changed.emit
                 )
+            if isinstance(card, (StrokeEffectCard, ShadowEffectCard)):
+                card.move_requested.connect(self.move_effect_requested.emit)
             card.remove_requested.connect(self.remove_effect_requested.emit)
             self.cards_layout.addWidget(card)
             self.effect_cards.append(card)
@@ -1384,6 +1585,10 @@ class TextEffectPanel(PanelArea):
         self.add_effect_actions['hollow'].setEnabled(
             not mixed and common_sequence is not None
             and 'hollow' not in common_sequence
+        )
+        self.add_effect_actions['gradient_overlay'].setEnabled(
+            not mixed and common_sequence is not None
+            and 'gradient_overlay' not in common_sequence
         )
         self._sync_content_height()
 
@@ -1459,7 +1664,7 @@ class TextEffectPanel(PanelArea):
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
         if action is not None and action.data() in {
-            'stroke', 'shadow', 'hollow'
+            'stroke', 'shadow', 'hollow', 'gradient_overlay'
         }:
             self.add_effect_requested.emit(action.data())
 

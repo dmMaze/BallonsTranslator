@@ -6,6 +6,7 @@ from typing import Optional, Sequence, Tuple, TYPE_CHECKING
 from ballontranslator.utils import config as C
 from ballontranslator.utils.text_effects import (
     EffectPaint,
+    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -179,6 +180,16 @@ class TextEffectEditSession:
             if param_name != 'enabled':
                 raise ValueError('unknown Hollow field')
             parameters['enabled'] = value
+        elif isinstance(effect, GradientOverlayEffect):
+            if param_name not in {'enabled', 'opacity', 'paint'}:
+                raise ValueError('unknown Gradient Overlay field')
+            if param_name == 'paint' and not isinstance(
+                value, LinearGradientPaint
+            ):
+                raise TypeError(
+                    'Gradient Overlay paint must be LinearGradientPaint'
+                )
+            parameters[param_name] = value
         else:
             raise ValueError('selected text effect type is unsupported')
         effects = list(state.effects)
@@ -456,12 +467,20 @@ class TextEffectEditSession:
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
             'hollow': HollowEffect,
+            'gradient_overlay': GradientOverlayEffect,
         }
         constructor = constructors.get(effect_type)
+        unique_type = {
+            'hollow': HollowEffect,
+            'gradient_overlay': GradientOverlayEffect,
+        }.get(effect_type)
         if constructor is None or (
-            effect_type == 'hollow'
+            unique_type is not None
             and any(
-                any(isinstance(effect, HollowEffect) for effect in state.effects)
+                any(
+                    isinstance(effect, unique_type)
+                    for effect in state.effects
+                )
                 for state in before
             )
         ):

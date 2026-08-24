@@ -60,6 +60,9 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
+    GradientStop,
+    LinearGradientPaint,
     ShadowEffect,
     StrokeEffect,
     TextEffectStack,
@@ -1644,11 +1647,12 @@ class RubyFuriganaTest(unittest.TestCase):
         shadow.text_effects = TextEffectStack(effects=(
             StrokeEffect(width=0.2),
             ShadowEffect(blur=0.2),
+            GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, (255, 80, 80)),
+                GradientStop(1.0, (60, 100, 255)),
+            ))),
         ))
-        shadow.gradient_start_color = [255, 80, 80]
-        shadow.gradient_end_color = [60, 100, 255]
         item.set_fontformat(shadow)
-        item.setGradientEnabled(True)
         item.setOpacity(0.65)
         scene = QGraphicsScene()
         scene.addItem(item)

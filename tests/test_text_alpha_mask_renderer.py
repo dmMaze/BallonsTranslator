@@ -39,6 +39,7 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -206,6 +207,9 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                     width=0.18,
                     position='outside',
                     paint=SolidPaint((0, 0, 255)),
+                ),
+                GradientOverlayEffect(
+                    paint=LinearGradientPaint(angle=90.0)
                 ),
             )),
             TextEffectStack(effects=(

@@ -435,11 +435,9 @@ class TextBlkItem(QGraphicsTextItem):
                     self.push_undo_stack.emit(new_steps, self.is_formatting)
 
         if not (self.hasFocus() and self.pre_editing):
-            # Text edits can change glyph overhang, effect extents, and the
-            # logical gradient envelope without changing the FontFormat.
-            padding_changed = self._update_effect_padding()
-            if self.fontformat.gradient_enabled and not padding_changed:
-                self._refresh_gradient_geometry()
+            # Text edits can change glyph overhang and effect extents without
+            # changing the FontFormat.
+            self._update_effect_padding()
             if self.repaint_on_changed:
                 if not self.repainting:
                     self.repaint_background()
@@ -457,15 +455,6 @@ class TextBlkItem(QGraphicsTextItem):
 
     def _update_effect_padding(self):
         return self.effect_renderer._update_effect_padding()
-
-    def _refresh_gradient_geometry(self):
-        self.effect_renderer._refresh_gradient_geometry()
-
-    def get_text_gradient(self, fontformat=None, persistent=False):
-        return self.effect_renderer.get_text_gradient(
-            fontformat,
-            persistent=persistent,
-        )
 
     def docSizeChanged(self):
         # A padding change routes through setRect(), which synchronizes the
@@ -516,8 +505,6 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.setCharFormat(cfmt)
             cursor.setBlockCharFormat(cfmt)
             self.setTextCursor(cursor)
-        if self.fontformat.gradient_enabled:
-            self.setGradientEnabled(True)
         self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
         self.repaint_background()
 
@@ -931,8 +918,6 @@ class TextBlkItem(QGraphicsTextItem):
                 )
                 cursor.setCharFormat(insertion_format)
             self.setTextCursor(cursor)
-        if self.fontformat.gradient_enabled:
-            self._refresh_gradient_geometry()
         if valid_layout:
             self.visual_geometry_changed.emit()
 
@@ -1523,11 +1508,7 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.document().setDefaultFont(font)
         format.setFont(font)
-        if ffmat.gradient_enabled:
-            gradient = self.get_text_gradient(ffmat, persistent=True)
-            format.setForeground(gradient)
-        else:
-            format.setForeground(QColor(*ffmat.foreground_color()))
+        format.setForeground(QColor(*ffmat.foreground_color()))
         format.setFontWeight(fweight)
         format.setFontItalic(ffmat.italic)
         format.setFontUnderline(ffmat.underline)
@@ -1586,22 +1567,12 @@ class TextBlkItem(QGraphicsTextItem):
             if fallback_changed:
                 self.layout.reLayout()
         
-        # Preserve gradient properties
-        self.fontformat.gradient_enabled = ffmat.gradient_enabled
-        self.fontformat.gradient_start_color = ffmat.gradient_start_color
-        self.fontformat.gradient_end_color = ffmat.gradient_end_color
-        self.fontformat.gradient_angle = ffmat.gradient_angle
-        self.fontformat.gradient_size = ffmat.gradient_size
-        
         # Apply while the canonical model still contains the previous
         # transform; merging first would skip live geometry recompilation.
         self.set_text_transform(ffmat.text_transform)
         self.fontformat.merge(ffmat)
 
         self.repainting = False
-        if self.fontformat.gradient_enabled:
-            self._refresh_gradient_geometry()
-            self.update()
         if set_stroke_width:
             self.repaint_background()
 
@@ -1941,21 +1912,6 @@ class TextBlkItem(QGraphicsTextItem):
         finally:
             self.is_formatting = False
 
-    def setGradientEnabled(self, value: bool, repaint_background: bool = True, set_selected: bool = False, restore_cursor: bool = False):
-        self.fontformat.gradient_enabled = value
-        cursor, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
-        cfmt = QTextCharFormat()
-        if value:
-            gradient = self.get_text_gradient(persistent=True)
-            cfmt.setForeground(gradient)
-        else:
-            cfmt.setForeground(QColor(*[int(c) for c in self.fontformat.frgb]))
-
-        self.set_cursor_cfmt(cursor, cfmt, True)
-        self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
-        self._refresh_gradient_geometry()
-
-
     def _set_line_spacing_pair(
         self,
         value: float,
@@ -2197,13 +2153,6 @@ class TextBlkItem(QGraphicsTextItem):
             if cursor.atEnd():
                 break
         return char_fmts
-
-    def setGradientAttribute(self, attr_name: str, value):
-        self.old_ffmt_values = {}
-        self.old_ffmt_values[attr_name] = self.fontformat[attr_name]
-        setattr(self.fontformat, attr_name, value)
-        self.setGradientEnabled(self.fontformat.gradient_enabled)
-        self.old_ffmt_values = None
 
     def setOpacity(self, opacity: float):
         self.set_text_effects(
