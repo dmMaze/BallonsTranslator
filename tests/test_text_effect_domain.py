@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     HollowEffect,
@@ -180,20 +181,24 @@ class TextEffectDomainTest(unittest.TestCase):
         first = StrokeEffect(width=0.2)
         second = StrokeEffect(width=0.7)
         drop = ShadowEffect(shadow_type='drop', offset=(0.2, 0.3))
+        glow = GlowEffect(size=0.2)
         hollow = HollowEffect()
         inner = ShadowEffect(shadow_type='inner', blur=0.2)
         overlay = GradientOverlayEffect(opacity=0.7)
-        source = TextEffectStack(0.8, (drop, hollow, overlay, inner))
+        source = TextEffectStack(
+            0.8, (drop, glow, hollow, overlay, inner)
+        )
         target = TextEffectStack(0.4, (first, second))
 
         result = with_non_stroke_effects(target, source)
 
         self.assertEqual(
-            result.effects, (drop, first, second, hollow, overlay, inner)
+            result.effects,
+            (drop, glow, first, second, hollow, overlay, inner),
         )
         self.assertEqual(
             [effect for effect in result if not isinstance(effect, StrokeEffect)],
-            [drop, hollow, overlay, inner],
+            [drop, glow, hollow, overlay, inner],
         )
 
     def test_gradient_overlay_is_strict_unique_and_neutral(self):
@@ -262,6 +267,66 @@ class TextEffectDomainTest(unittest.TestCase):
             loaded = coerce_text_effect_stack(malformed)
         self.assertEqual(loaded.effects, (overlay, StrokeEffect(width=0.3)))
         self.assertEqual(warning.call_count, 2)
+
+    def test_glow_is_strict_repeatable_neutral_and_serializable(self):
+        transparent = LinearGradientPaint(stops=(
+            GradientStop(0.0, (255, 0, 0), 0.0),
+            GradientStop(1.0, (0, 0, 255), 0.0),
+        ))
+        outer = GlowEffect(
+            opacity=0.6,
+            paint=LinearGradientPaint(angle=45.0, scale=1.5),
+            size=SHADOW_BLUR_LIMIT,
+            spread=SHADOW_SPREAD_LIMIT,
+        )
+        inner = GlowEffect(
+            glow_type='inner', paint=SolidPaint((4, 5, 6)), size=0.3
+        )
+        stack = TextEffectStack(effects=(outer, inner))
+
+        self.assertEqual(effect_phase(outer), 'exterior')
+        self.assertEqual(effect_phase(inner), 'interior')
+        self.assertEqual(
+            coerce_text_effect_stack(stack.to_serializable_dict()), stack
+        )
+        self.assertTrue(GlowEffect(enabled=False).is_neutral())
+        self.assertTrue(GlowEffect(opacity=0.0).is_neutral())
+        self.assertTrue(GlowEffect(size=0.0, spread=0.0).is_neutral())
+        self.assertTrue(GlowEffect(paint=transparent).is_neutral())
+        self.assertFalse(GlowEffect(size=0.0, spread=0.1).is_neutral())
+
+        invalid_values = (
+            lambda: GlowEffect(enabled=1),
+            lambda: GlowEffect(opacity=1.01),
+            lambda: GlowEffect(blend_mode='multiply'),
+            lambda: GlowEffect(glow_type='future'),
+            lambda: GlowEffect(paint=object()),
+            lambda: GlowEffect(size=-0.01),
+            lambda: GlowEffect(size=SHADOW_BLUR_LIMIT + 0.01),
+            lambda: GlowEffect(spread=-0.01),
+            lambda: GlowEffect(spread=SHADOW_SPREAD_LIMIT + 0.01),
+        )
+        for constructor in invalid_values:
+            with self.subTest(constructor=constructor):
+                with self.assertRaises((TypeError, ValueError)):
+                    constructor()
+
+    def test_bad_glow_payload_drops_only_that_entry(self):
+        valid = GlowEffect(glow_type='inner', size=0.4, spread=0.2)
+        payload = TextEffectStack(effects=(
+            StrokeEffect(width=0.2), valid,
+        )).to_serializable_dict()
+        payload['effects'].insert(1, {
+            'effect_type': 'glow',
+            'size': SHADOW_BLUR_LIMIT + 0.01,
+        })
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            loaded = coerce_text_effect_stack(payload)
+
+        self.assertEqual(loaded.effects, (StrokeEffect(width=0.2), valid))
+        warning.assert_called_once()
 
     def test_neutral_state_tracks_opacity_and_active_strokes(self):
         self.assertTrue(TextEffectStack().is_neutral())

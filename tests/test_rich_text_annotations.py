@@ -113,6 +113,7 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     LinearGradientPaint,
@@ -2633,6 +2634,14 @@ class RichTextAnnotationTest(unittest.TestCase):
                 GradientStop(0.3, (20, 30, 240)),
                 GradientStop(1.0, (20, 30, 240)),
             ))),
+            GlowEffect(
+                glow_type='inner',
+                paint=LinearGradientPaint(stops=(
+                    GradientStop(0.0, (240, 20, 20)),
+                    GradientStop(1.0, (20, 30, 240)),
+                )),
+                size=0.05,
+            ),
         )))
         item.startEdit()
         cursor = item.textCursor()

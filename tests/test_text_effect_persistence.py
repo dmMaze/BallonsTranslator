@@ -21,6 +21,7 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.io_utils import json_dump_nested_obj
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     HollowEffect,
@@ -319,6 +320,11 @@ class TextEffectPersistenceTest(unittest.TestCase):
                     blur=0.1,
                     spread=0.05,
                 ),
+                GlowEffect(
+                    paint=LinearGradientPaint(angle=15.0),
+                    size=0.16,
+                    spread=0.04,
+                ),
                 StrokeEffect(
                     width=0.2,
                     paint=LinearGradientPaint(stops=(
@@ -340,6 +346,12 @@ class TextEffectPersistenceTest(unittest.TestCase):
                         GradientStop(1.0, (10, 20, 30), 1.0),
                     ), angle=75.0, scale=0.8),
                 ),
+                GlowEffect(
+                    glow_type='inner',
+                    paint=SolidPaint((240, 230, 120)),
+                    size=0.12,
+                    spread=0.03,
+                ),
                 ShadowEffect(shadow_type='inner', opacity=0.6),
             ),
         )
@@ -358,6 +370,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
         old_style_path = pcfg.text_styles_path
         stack = TextEffectStack(0.7, (
             ShadowEffect(shadow_type='long', offset=(0.4, 0.2)),
+            GlowEffect(size=0.3, spread=0.1),
             StrokeEffect(paint=LinearGradientPaint()),
             HollowEffect(),
         ))

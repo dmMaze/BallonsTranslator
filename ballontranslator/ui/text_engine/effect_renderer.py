@@ -22,12 +22,15 @@ from ballontranslator.utils.fontformat import pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     HollowEffect,
     LinearGradientPaint,
     ShadowEffect,
     StrokeEffect,
+    TextEffect,
     TextEffectStack,
+    effect_phase,
     effect_paint_fallback_color,
     hollow_effect,
     primary_stroke,
@@ -41,7 +44,7 @@ from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
 )
-from .rendering.shadow import render_shadow_rgba
+from .rendering.shadow import render_glow_alpha, render_shadow_rgba
 from .rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
@@ -324,20 +327,6 @@ class TextEffectRenderer:
             if isinstance(effect, StrokeEffect) and not effect.is_neutral()
         )
 
-    def _active_shadows(
-        self,
-        shadow_type: Optional[str] = None,
-        stack: Optional[TextEffectStack] = None,
-    ) -> Tuple[ShadowEffect, ...]:
-        active = self.effective_text_effects() if stack is None else stack
-        return tuple(
-            effect
-            for effect in active.effects
-            if isinstance(effect, ShadowEffect)
-            and not effect.is_neutral()
-            and (shadow_type is None or effect.shadow_type == shadow_type)
-        )
-
     def _active_gradient_overlay(
         self, stack: Optional[TextEffectStack] = None
     ) -> Optional[GradientOverlayEffect]:
@@ -352,16 +341,28 @@ class TextEffectRenderer:
             None,
         )
 
-    def _compiled_shadows(
-        self, shadow_type: Optional[str] = None
-    ) -> Tuple[ShadowEffect, ...]:
-        shadows = self._active_shadows(shadow_type)
-        if not self._hollow_enabled():
-            return shadows
+    def _compiled_phase_effects(
+        self, phase: str
+    ) -> Tuple[TextEffect, ...]:
+        """Compile active Shadow/Glow nodes in retained stack order.
+
+        Hollow suppresses the complete interior phase without changing the
+        persisted stack.
+
+        >>> hasattr(TextEffectRenderer, '_compiled_phase_effects')
+        True
+        """
+        if phase not in {'exterior', 'interior'}:
+            raise ValueError('generated phase must be exterior or interior')
+        if phase == 'interior' and self._hollow_enabled():
+            return ()
+        active = self.effective_text_effects()
         return tuple(
-            shadow
-            for shadow in shadows
-            if shadow.shadow_type != 'inner'
+            effect
+            for effect in active.effects
+            if isinstance(effect, (ShadowEffect, GlowEffect))
+            and not effect.is_neutral()
+            and effect_phase(effect) == phase
         )
 
     def _hollow_enabled(
@@ -1100,7 +1101,7 @@ class TextEffectRenderer:
     def _renders_completed_foreground(self) -> bool:
         return (
             self._hollow_enabled()
-            or bool(self._active_shadows('inner'))
+            or bool(self._compiled_phase_effects('interior'))
             or self._mask_requires_surface()
             or self._has_inside_strokes()
             or self._active_gradient_overlay() is not None
@@ -1568,6 +1569,25 @@ class TextEffectRenderer:
             blur + spread,
         )
 
+    def _glow_metrics(self, glow: GlowEffect) -> Tuple[float, float]:
+        font_size = self.layout.max_font_size(to_px=True)
+        return glow.size * font_size, glow.spread * font_size
+
+    def _exterior_effect_bounds(
+        self, source_bounds: QRectF, effect: TextEffect
+    ) -> QRectF:
+        if isinstance(effect, ShadowEffect):
+            return self._shadowed_bounds(source_bounds, effect)
+        if isinstance(effect, GlowEffect) and effect.glow_type == 'outer':
+            size, spread = self._glow_metrics(effect)
+            return source_bounds.adjusted(
+                -size - spread,
+                -size - spread,
+                size + spread,
+                size + spread,
+            )
+        raise TypeError('exterior bounds require Shadow or Outer Glow')
+
     def _logical_ink_bounds(self) -> QRectF:
         if self.document().isEmpty() or not self._has_layout_distortion():
             return QRectF()
@@ -1589,16 +1609,13 @@ class TextEffectRenderer:
             stroke_outset if paint_stroke else 0.0,
             stroke_outset if paint_stroke else 0.0,
         )
-        shadow_source_bounds = QRectF(effect_bounds)
-        for shadow in self._compiled_shadows():
-            if shadow.shadow_type != 'inner':
-                effect_bounds = effect_bounds.united(
-                    self._shadowed_bounds(shadow_source_bounds, shadow)
-                )
-        if stroke_outset > 0.0 or any(
-            shadow.shadow_type != 'inner'
-            for shadow in self._compiled_shadows()
-        ):
+        exterior_source_bounds = QRectF(effect_bounds)
+        exterior = self._compiled_phase_effects('exterior')
+        for effect in exterior:
+            effect_bounds = effect_bounds.united(
+                self._exterior_effect_bounds(exterior_source_bounds, effect)
+            )
+        if stroke_outset > 0.0 or exterior:
             effect_bounds = effect_bounds.adjusted(
                 -EFFECT_RASTER_GUARD,
                 -EFFECT_RASTER_GUARD,
@@ -1633,19 +1650,25 @@ class TextEffectRenderer:
             )
         padding = stroke_outset
         exterior_padding = None
-        for shadow in self._compiled_shadows():
-            if shadow.shadow_type == 'inner':
-                continue
-            blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
-            shadow_padding = (
-                stroke_outset
-                + (0.0 if shadow.shadow_type == 'long' else blur + spread)
-                + max(abs(xoffset), abs(yoffset))
-            )
+        for effect in self._compiled_phase_effects('exterior'):
+            if isinstance(effect, ShadowEffect):
+                blur, spread, xoffset, yoffset = self._shadow_metrics(effect)
+                effect_padding = (
+                    stroke_outset
+                    + (
+                        0.0
+                        if effect.shadow_type == 'long'
+                        else blur + spread
+                    )
+                    + max(abs(xoffset), abs(yoffset))
+                )
+            else:
+                size, spread = self._glow_metrics(effect)
+                effect_padding = stroke_outset + size + spread
             exterior_padding = (
-                shadow_padding
+                effect_padding
                 if exterior_padding is None
-                else max(exterior_padding, shadow_padding)
+                else max(exterior_padding, effect_padding)
             )
         if exterior_padding is not None:
             padding = max(
@@ -1683,7 +1706,8 @@ class TextEffectRenderer:
         strokes = self._active_strokes()
         return (
             bool(strokes),
-            bool(self._compiled_shadows())
+            bool(self._compiled_phase_effects('exterior'))
+            or bool(self._compiled_phase_effects('interior'))
             or self._mask_requires_surface()
             or (
                 not self._hollow_enabled()
@@ -1699,15 +1723,32 @@ class TextEffectRenderer:
     def _effect_tile_overlap(self) -> float:
         stroke_reach = self._stroke_generation_reach()
         overlap = stroke_reach + EFFECT_RASTER_GUARD
-        for shadow in self._compiled_shadows():
-            blur, spread, xoffset, yoffset = self._shadow_metrics(shadow)
-            if shadow.shadow_type == 'long':
-                reach = max(abs(xoffset), abs(yoffset))
+        for effect in (
+            self._compiled_phase_effects('exterior')
+            + self._compiled_phase_effects('interior')
+        ):
+            if isinstance(effect, ShadowEffect):
+                blur, spread, xoffset, yoffset = self._shadow_metrics(effect)
+                if effect.shadow_type == 'long':
+                    reach = max(abs(xoffset), abs(yoffset))
+                else:
+                    reach = (
+                        blur + spread + max(abs(xoffset), abs(yoffset))
+                    )
+                source_reach = (
+                    stroke_reach
+                    if effect.shadow_type != 'inner'
+                    else 0.0
+                )
             else:
-                reach = blur + spread + max(abs(xoffset), abs(yoffset))
+                size, spread = self._glow_metrics(effect)
+                reach = size + spread
+                source_reach = (
+                    stroke_reach if effect.glow_type == 'outer' else 0.0
+                )
             overlap = max(
                 overlap,
-                reach + stroke_reach + EFFECT_RASTER_GUARD,
+                reach + source_reach + EFFECT_RASTER_GUARD,
             )
         return overlap
 
@@ -1843,12 +1884,8 @@ class TextEffectRenderer:
         paint_stroke, _paint_non_stroke = self._effect_flags()
         hollow = self._hollow_enabled()
         alpha_mask = self._active_text_alpha_mask()
-        exterior = tuple(
-            shadow
-            for shadow in self._active_shadows()
-            if shadow.shadow_type != 'inner'
-        )
-        interior = self._active_shadows('inner') if not hollow else ()
+        exterior = self._compiled_phase_effects('exterior')
+        interior = self._compiled_phase_effects('interior')
         overlay = self._active_gradient_overlay() if not hollow else None
         active_strokes = self._active_strokes()
         positioned_strokes = any(
@@ -1915,12 +1952,12 @@ class TextEffectRenderer:
         try:
             target_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
             # First card in a phase is topmost, so paint each phase backwards.
-            for shadow in reversed(exterior):
+            for effect in reversed(exterior):
                 assert exterior_alpha is not None
                 target_painter.drawPixmap(
                     QPointF(),
-                    self._shadow_pixmap(
-                        exterior_alpha, shadow, render_scale
+                    self._generated_effect_pixmap(
+                        exterior_alpha, effect, surface_rect, render_scale
                     ),
                 )
 
@@ -1973,11 +2010,11 @@ class TextEffectRenderer:
                         ('inside',),
                     )
                 target_painter.translate(surface_rect.topLeft())
-                for shadow in reversed(interior):
+                for effect in reversed(interior):
                     target_painter.drawPixmap(
                         QPointF(),
-                        self._shadow_pixmap(
-                            canonical_alpha, shadow, render_scale
+                        self._generated_effect_pixmap(
+                            canonical_alpha, effect, surface_rect, render_scale
                         ),
                     )
                 target_painter.translate(-surface_rect.topLeft())
@@ -2391,6 +2428,68 @@ class TextEffectRenderer:
             )
         pixmap.setDevicePixelRatio(render_scale)
         return pixmap
+
+    def _glow_pixmap(
+        self,
+        source_alpha: np.ndarray,
+        glow: GlowEffect,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> QPixmap:
+        """Render one typed Glow from the phase's shared source alpha.
+
+        >>> hasattr(TextEffectRenderer, '_glow_pixmap')
+        True
+        """
+        size, spread = self._glow_metrics(glow)
+        try:
+            alpha = render_glow_alpha(
+                source_alpha,
+                glow.glow_type,
+                max(0, int(round(size * render_scale))),
+                max(0, int(round(spread * render_scale))),
+            )
+            if glow.opacity != 1.0:
+                product = alpha.astype(np.uint16)
+                product *= int(round(glow.opacity * 255.0))
+                product += 127
+                product //= 255
+                alpha = product.astype(np.uint8)
+            rgba = np.empty(source_alpha.shape + (4,), dtype=np.uint8)
+            rgba[..., 3] = alpha
+            colorize_effect_paint_rgba(
+                glow.paint,
+                rgba,
+                surface_rect,
+                self.logical_unpadded_rect(),
+                render_scale,
+            )
+            pixmap = ndarray2pixmap(rgba)
+        except RASTER_BOUNDARY_FAILURES as error:
+            raise EffectRasterAllocationError(
+                f'unable to allocate typed Glow surface: {error}'
+            ) from error
+        if pixmap is None or pixmap.isNull():
+            raise EffectRasterAllocationError(
+                'unable to allocate typed Glow surface'
+            )
+        pixmap.setDevicePixelRatio(render_scale)
+        return pixmap
+
+    def _generated_effect_pixmap(
+        self,
+        source_alpha: np.ndarray,
+        effect: TextEffect,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> QPixmap:
+        if isinstance(effect, ShadowEffect):
+            return self._shadow_pixmap(source_alpha, effect, render_scale)
+        if isinstance(effect, GlowEffect):
+            return self._glow_pixmap(
+                source_alpha, effect, surface_rect, render_scale
+            )
+        raise TypeError('generated effect must be Shadow or Glow')
 
     def repaint_background(self, render_scale: float = 1.0) -> None:
         self.item.refresh_cache_policy()

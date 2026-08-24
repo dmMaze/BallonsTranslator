@@ -34,6 +34,7 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     HollowEffect,
@@ -232,6 +233,15 @@ class TextEffectPanelTest(unittest.TestCase):
         preset.update_style.assert_called_once_with(self.panel.global_format)
 
         preset.reset_mock()
+        self.assertTrue(self.panel.text_effect_session.add_effect('glow'))
+        self.assertTrue(any(
+            isinstance(effect, GlowEffect)
+            for effect in self.panel.global_format.text_effects
+        ))
+        self.assertEqual(self.canvas.stack.count(), 0)
+        preset.update_style.assert_called_once_with(self.panel.global_format)
+
+        preset.reset_mock()
         self.assertTrue(
             self.panel.text_effect_session.add_effect('gradient_overlay')
         )
@@ -301,6 +311,7 @@ class TextEffectPanelTest(unittest.TestCase):
         item = self._item(self._stack(
             StrokeEffect(),
             ShadowEffect(enabled=False),
+            GlowEffect(),
             HollowEffect(),
             GradientOverlayEffect(),
         ))
@@ -309,6 +320,7 @@ class TextEffectPanelTest(unittest.TestCase):
         cards = (
             effect_panel.stroke_cards[0],
             effect_panel.shadow_cards[0],
+            effect_panel.glow_cards[0],
             effect_panel.hollow_card,
             effect_panel.gradient_overlay_card,
         )
@@ -322,6 +334,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             effect_panel.shadow_cards[0].visibility_button.toolTip(),
             'Show Shadow',
+        )
+        self.assertEqual(
+            effect_panel.glow_cards[0].visibility_button.toolTip(),
+            'Hide Glow',
         )
         self.assertEqual(
             effect_panel.hollow_card.visibility_button.accessibleName(),
@@ -644,6 +660,43 @@ class TextEffectPanelTest(unittest.TestCase):
         gc.collect()
         self.assertIsNone(dialog_ref())
 
+    def test_glow_gradient_dialog_releases_filter_and_wrapper(self):
+        item = self._item(self._stack(GlowEffect(
+            paint=LinearGradientPaint()
+        )))
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.glow_cards[0]
+        dialog = LinearGradientEditorDialog(
+            item.fontformat.text_effects[0].paint
+        )
+        dialog_ref = weakref.ref(dialog)
+        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
+
+        def reject_after_show():
+            dialog.show()
+            self.app.processEvents()
+            self.assertTrue(dialog._outside_click_filter_installed)
+            dialog.reject()
+            self.assertFalse(dialog._outside_click_filter_installed)
+            return rejected
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=reject_after_show):
+            card.paint_button.click()
+
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        self.assertFalse(dialog._outside_click_filter_installed)
+        with self.assertRaises(RuntimeError):
+            dialog.objectName()
+        self.assertIs(dialog_ref(), dialog)
+        del dialog
+        gc.collect()
+        self.assertIsNone(dialog_ref())
+
     def test_multi_selection_maps_common_structure_and_blocks_mixed_indices(self):
         first = self._item(self._stack(StrokeEffect(width=0.1)))
         second = self._item(self._stack(StrokeEffect(width=0.3)))
@@ -760,6 +813,219 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         self.assertEqual(item.effective_text_effects(), committed)
         self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_glow_numeric_preview_commit_escape_keeps_card(self):
+        before = self._stack(GlowEffect(size=0.12, spread=0.03))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.glow_cards[0]
+        editor = card.size_control.editor
+
+        editor.setText('0.45')
+        editor.textEdited.emit('0.45')
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertEqual(item.effective_text_effects()[0].size, 0.45)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+        editor.returnPressed.emit()
+        committed = item.blk.fontformat.text_effects
+        self.assertEqual(committed[0].size, 0.45)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertIs(self.panel.texteffect_panel.glow_cards[0], card)
+
+        spread_editor = card.spread_control.editor
+        spread_editor.setText('0.30')
+        spread_editor.textEdited.emit('0.30')
+        self.assertEqual(item.effective_text_effects()[0].spread, 0.3)
+        QApplication.sendEvent(
+            spread_editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        self.assertEqual(item.effective_text_effects(), committed)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_glow_add_type_reorder_eye_delete_and_mixed_fill(self):
+        item = self._item(TextEffectStack())
+        self.panel.set_textblk_item(item)
+        effect_panel = self.panel.texteffect_panel
+        effect_panel.add_effect_actions['glow'].trigger()
+        effect_panel.add_effect_actions['glow'].trigger()
+        self.assertEqual(len(effect_panel.glow_cards), 2)
+        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertTrue(all(
+            isinstance(effect, GlowEffect)
+            for effect in item.blk.fontformat.text_effects
+        ))
+
+        second = effect_panel.glow_cards[1]
+        second.type_selector.setCurrentIndex(
+            second.type_selector.findData('inner')
+        )
+        self.assertEqual(
+            item.blk.fontformat.text_effects[1].glow_type, 'inner'
+        )
+        self.assertEqual(second.spread_control.label.text(), 'Choke')
+        second.visibility_button.click()
+        self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
+        second.delete_button.click()
+        self.assertEqual(len(item.blk.fontformat.text_effects), 1)
+        self.assertEqual(self.canvas.stack.count(), 5)
+
+        interleaved = self._item(self._stack(
+            ShadowEffect(color=(255, 0, 0)),
+            GlowEffect(paint=SolidPaint((0, 0, 255))),
+            StrokeEffect(),
+        ))
+        self.panel.set_textblk_item(interleaved)
+        self.panel.texteffect_panel.glow_cards[0].move_up_button.click()
+        self.assertIsInstance(
+            interleaved.blk.fontformat.text_effects[0], GlowEffect
+        )
+        self.assertIsInstance(
+            interleaved.blk.fontformat.text_effects[1], ShadowEffect
+        )
+        self.assertEqual(self.canvas.stack.count(), 6)
+
+        first_solid = self._item(self._stack(GlowEffect(
+            paint=SolidPaint((1, 2, 3))
+        )))
+        second_solid = self._item(self._stack(GlowEffect(
+            paint=SolidPaint((4, 5, 6))
+        )))
+        self.canvas.selected = [first_solid, second_solid]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        self.assertEqual(mixed_card.fill_type_selector.currentData(), 'solid')
+        self.assertTrue(mixed_card.paint_button.isEnabled())
+        self.assertEqual(
+            mixed_card.paint_button.accessibleName(),
+            'Choose Shared Glow Color',
+        )
+        with patch.object(
+            QColorDialog, 'getColor', return_value=QColor(20, 30, 40)
+        ):
+            mixed_card.paint_button.click()
+        self.assertTrue(all(
+            target.blk.fontformat.text_effects[0].paint
+            == SolidPaint((20, 30, 40))
+            for target in (first_solid, second_solid)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 7)
+
+        first_gradient = self._item(self._stack(GlowEffect(
+            paint=LinearGradientPaint(angle=10.0)
+        )))
+        second_gradient = self._item(self._stack(GlowEffect(
+            paint=LinearGradientPaint(angle=90.0)
+        )))
+        self.canvas.selected = [first_gradient, second_gradient]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        self.assertEqual(
+            mixed_card.fill_type_selector.currentData(), 'linear_gradient'
+        )
+        self.assertFalse(mixed_card.paint_button.isEnabled())
+        self.assertEqual(
+            mixed_card.paint_button.toolTip(), 'Mixed Glow Gradient Paint'
+        )
+
+        outer_type = self._item(self._stack(GlowEffect(glow_type='outer')))
+        inner_type = self._item(self._stack(GlowEffect(glow_type='inner')))
+        self.canvas.selected = [outer_type, inner_type]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        self.assertEqual(mixed_card.type_selector.currentIndex(), -1)
+        self.assertEqual(
+            mixed_card.spread_control.label.text(), 'Spread / Choke'
+        )
+        mixed_card.type_selector.setCurrentIndex(
+            mixed_card.type_selector.findData('outer')
+        )
+        self.assertTrue(all(
+            target.blk.fontformat.text_effects[0].glow_type == 'outer'
+            for target in (outer_type, inner_type)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 8)
+
+        solid_type = self._item(self._stack(GlowEffect(
+            paint=SolidPaint((9, 8, 7))
+        )))
+        gradient_type = self._item(self._stack(GlowEffect(
+            paint=LinearGradientPaint(angle=35.0)
+        )))
+        self.canvas.selected = [solid_type, gradient_type]
+        self.panel.set_textblk_item(None, multi_select=True)
+        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        self.assertEqual(mixed_card.fill_type_selector.currentIndex(), -1)
+        self.assertFalse(mixed_card.paint_button.isEnabled())
+        mixed_card.fill_type_selector.setCurrentIndex(
+            mixed_card.fill_type_selector.findData('linear_gradient')
+        )
+        self.assertTrue(all(
+            target.blk.fontformat.text_effects[0].paint
+            == LinearGradientPaint()
+            for target in (solid_type, gradient_type)
+        ))
+        self.assertEqual(self.canvas.stack.count(), 9)
+
+    def test_glow_fill_conversion_and_gradient_dialog_one_undo(self):
+        before = self._stack(GlowEffect(
+            paint=SolidPaint((12, 34, 56))
+        ))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.glow_cards[0]
+        card.fill_type_selector.setCurrentIndex(
+            card.fill_type_selector.findData('linear_gradient')
+        )
+        converted = item.blk.fontformat.text_effects[0].paint
+        self.assertIsInstance(converted, LinearGradientPaint)
+        self.assertEqual(converted.stops[0].color, (12, 34, 56))
+        self.assertEqual(converted.stops[0].opacity, 1.0)
+        self.assertEqual(converted.stops[1].opacity, 0.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        preview = LinearGradientPaint(
+            stops=converted.stops, angle=60.0
+        )
+        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
+        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+        dialog = LinearGradientEditorDialog(converted)
+
+        def preview_then_reject():
+            dialog.angle_editor.setValue(60.0)
+            self.assertEqual(item.effective_text_effects()[0].paint, preview)
+            self.assertEqual(item.blk.fontformat.text_effects[0].paint, converted)
+            return rejected
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=preview_then_reject):
+            card.paint_button.click()
+        self.assertEqual(item.effective_text_effects()[0].paint, converted)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        dialog = LinearGradientEditorDialog(converted)
+
+        def preview_then_accept():
+            dialog.angle_editor.setValue(60.0)
+            return accepted
+
+        with patch(
+            'ballontranslator.ui.text_engine.formatting.effects.'
+            'LinearGradientEditorDialog',
+            return_value=dialog,
+        ), patch.object(dialog, 'exec_', side_effect=preview_then_accept):
+            card.paint_button.click()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
+        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertIs(self.panel.texteffect_panel.glow_cards[0], card)
 
     def test_add_shadow_hollow_type_controls_and_uniqueness(self):
         item = self._item(TextEffectStack())

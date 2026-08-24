@@ -135,11 +135,14 @@ hit testing; adapting only one consumer creates visible drift or broken editing.
 `FontFormat.text_effects` is the canonical committed `TextEffectStack`; it is
 an immutable ordered value persisted with the format. `TextEffectRenderer`
 compiles it from one glyph/source alpha in fixed phases: exterior Drop/Long
-Shadow, exterior/center Stroke, canonical foreground plus typed Gradient
-Overlay, inside Stroke, then interior Inner Shadow. Center keeps the native
+Shadow and Outer Glow, exterior/center Stroke, canonical foreground plus typed
+Gradient Overlay, inside Stroke, then interior Inner Shadow and Inner Glow.
+Shadow and Glow retain their shared-phase stack order. Center keeps the native
 half-in/half-out outline; Outside and Inside
 clip a full-width outline to the corresponding side of canonical glyph alpha.
-Each Stroke owns an immutable solid or linear-gradient paint. Linear-gradient
+Each Stroke or Glow owns an immutable solid or linear-gradient paint. Outer
+Glow derives from the visible Stroke-inclusive silhouette, while Inner Glow
+derives from canonical glyph alpha and is suppressed by Hollow. Linear-gradient
 coordinates span the complete unpadded logical rectangle, so full surfaces,
 tiles, writing modes, and transformed output share one item-local gradient.
 Entry order is retained within each phase. Gradient Overlay recolors the

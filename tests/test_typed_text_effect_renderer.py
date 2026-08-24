@@ -20,6 +20,7 @@ from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.raster import (
+    EFFECT_RASTER_GUARD,
     EffectRasterPlan,
     EffectRasterAllocationError,
 )
@@ -29,6 +30,7 @@ from ballontranslator.ui.text_engine.rendering.effect_paint import (
     rasterize_effect_paint,
 )
 from ballontranslator.ui.text_engine.rendering.shadow import (
+    render_glow_alpha,
     render_shadow_rgba,
 )
 from ballontranslator.utils.fontformat import (
@@ -36,6 +38,7 @@ from ballontranslator.utils.fontformat import (
     TextTransformStack,
 )
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     HollowEffect,
@@ -49,6 +52,32 @@ from ballontranslator.utils.textblock import TextBlock
 
 
 class TypedShadowRasterTest(unittest.TestCase):
+    def test_outer_and_inner_glow_alpha_clip_to_their_semantic_side(self):
+        alpha = np.zeros((21, 21), dtype=np.uint8)
+        alpha[7:14, 7:14] = 255
+
+        outer = render_glow_alpha(alpha, 'outer', 2, 1)
+        inner = render_glow_alpha(alpha, 'inner', 2, 1)
+
+        self.assertGreater(np.count_nonzero(outer), 0)
+        self.assertEqual(np.count_nonzero(outer[alpha > 0]), 0)
+        self.assertGreater(np.count_nonzero(inner), 0)
+        self.assertEqual(np.count_nonzero(inner[alpha == 0]), 0)
+        with self.assertRaises(ValueError):
+            render_glow_alpha(alpha, 'future', 1, 0)
+
+        padding = 8
+        padded = np.pad(alpha, padding)
+        for glow_type in ('outer', 'inner'):
+            with self.subTest(glow_type=glow_type):
+                translated = render_glow_alpha(
+                    padded, glow_type, 2, 1
+                )[padding:padding + 21, padding:padding + 21]
+                np.testing.assert_array_equal(
+                    render_glow_alpha(alpha, glow_type, 2, 1),
+                    translated,
+                )
+
     def test_drop_blur_spread_and_inner_clipping(self):
         alpha = np.zeros((21, 21), dtype=np.uint8)
         alpha[8:13, 8:13] = 255
@@ -167,6 +196,177 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertTrue(np.any(inner_pixels[..., 0][foreground] < 180))
         vertical = self._item(inner_stack, vertical=True)
         self.assertGreater(np.count_nonzero(self._render(vertical)[..., 3]), 0)
+
+    def test_glow_phases_source_hollow_padding_and_opacity(self):
+        outer = GlowEffect(
+            paint=SolidPaint((0, 0, 255)), size=0.12, spread=0.04
+        )
+        inner = GlowEffect(
+            glow_type='inner',
+            paint=SolidPaint((0, 255, 0)),
+            size=0.12,
+            spread=0.03,
+        )
+        item = self._item(TextEffectStack(effects=(
+            outer,
+            StrokeEffect(
+                width=0.18,
+                position='outside',
+                paint=SolidPaint((255, 0, 0)),
+            ),
+            GradientOverlayEffect(
+                paint=self._constant_gradient((220, 80, 20))
+            ),
+            inner,
+        )))
+        item.setPlainText('\N{FULL BLOCK}')
+        item.layout.reLayoutEverything()
+        item.repaint_background()
+        pixels = self._render(item)
+        self.assertTrue(np.any(
+            (pixels[..., 2] > pixels[..., 0]) & (pixels[..., 3] > 20)
+        ))
+        self.assertTrue(np.any(
+            (pixels[..., 1] > pixels[..., 0]) & (pixels[..., 3] > 20)
+        ))
+
+        renderer = item.effect_renderer
+        bounds = renderer.boundingRect()
+        canonical = renderer._capture_effect_source(bounds, 1.0)
+        canonical_alpha = renderer._pixmap_alpha(canonical)
+        silhouette = renderer._stroke_silhouette(
+            canonical, canonical_alpha, bounds, 1.0
+        )
+        silhouette_alpha = renderer._pixmap_alpha(silhouette)
+        self.assertGreater(
+            int(silhouette_alpha.sum()), int(canonical_alpha.sum())
+        )
+        with patch.object(
+            renderer, '_glow_pixmap', wraps=renderer._glow_pixmap
+        ) as glow_pixmap:
+            renderer._render_pre_mask_effect_surface(bounds, 1.0)
+        outer_call = next(
+            call for call in glow_pixmap.call_args_list
+            if call.args[1].glow_type == 'outer'
+        )
+        np.testing.assert_array_equal(
+            outer_call.args[0], silhouette_alpha
+        )
+
+        inner_only = self._item(TextEffectStack(effects=(inner,)))
+        self.assertEqual(inner_only.padding(), 0.0)
+        outer_only = self._item(TextEffectStack(effects=(outer,)))
+        font_size = outer_only.layout.max_font_size(to_px=True)
+        self.assertAlmostEqual(
+            outer_only.effect_renderer._conservative_effect_padding(),
+            (outer.size + outer.spread) * font_size + EFFECT_RASTER_GUARD,
+        )
+
+        hollow_inner = self._item(TextEffectStack(effects=(
+            HollowEffect(), inner,
+        )))
+        self.assertIsNone(hollow_inner.effect_renderer._effect_raster_state)
+        self.assertEqual(np.count_nonzero(self._render(hollow_inner)[..., 3]), 0)
+        hollow_outer = self._item(TextEffectStack(effects=(
+            outer, HollowEffect(),
+        )))
+        self.assertGreater(
+            np.count_nonzero(self._render(hollow_outer)[..., 3]), 0
+        )
+
+        half = self._item(TextEffectStack(
+            overall_opacity=0.5, effects=(outer,)
+        ))
+        opaque_alpha = self._render(outer_only)[..., 3].sum()
+        half_alpha = self._render(half)[..., 3].sum()
+        self.assertLess(half_alpha, opaque_alpha * 0.65)
+        self.assertGreater(half_alpha, opaque_alpha * 0.35)
+
+    def test_glow_pixmap_applies_coverage_and_each_opacity_once(self):
+        source_alpha = np.array([[0, 255]], dtype=np.uint8)
+        generated_alpha = np.array([[255, 0]], dtype=np.uint8)
+        half_paint = LinearGradientPaint(stops=(
+            GradientStop(0.0, (20, 40, 60), 0.5),
+            GradientStop(1.0, (20, 40, 60), 0.5),
+        ))
+        cases = (
+            (GlowEffect(opacity=0.5), 128),
+            (GlowEffect(paint=half_paint), 128),
+            (GlowEffect(opacity=0.5, paint=half_paint), 64),
+        )
+        item = self._item(TextEffectStack())
+        renderer = item.effect_renderer
+
+        for glow, expected_alpha in cases:
+            with self.subTest(glow=glow), patch(
+                'ballontranslator.ui.text_engine.effect_renderer.'
+                'render_glow_alpha',
+                return_value=generated_alpha.copy(),
+            ) as render_alpha:
+                pixmap = renderer._glow_pixmap(
+                    source_alpha, glow, QRectF(0, 0, 2, 1), 1.0
+                )
+                pixels = pixmap2ndarray(pixmap, keep_alpha=True)
+
+            self.assertEqual(int(pixels[0, 0, 3]), expected_alpha)
+            self.assertEqual(int(pixels[0, 1, 3]), 0)
+            np.testing.assert_array_equal(
+                render_alpha.call_args.args[0], source_alpha
+            )
+            self.assertEqual(render_alpha.call_args.args[1], 'outer')
+
+    def test_shadow_and_glow_share_retained_phase_order(self):
+        effects = (
+            ShadowEffect(spread=0.1),
+            GlowEffect(size=0.1, spread=0.05),
+            GlowEffect(glow_type='inner', size=0.1),
+            ShadowEffect(shadow_type='inner', blur=0.1),
+        )
+        item = self._item(TextEffectStack(effects=effects))
+        renderer = item.effect_renderer
+        calls = []
+        original = renderer._generated_effect_pixmap
+
+        def record(source_alpha, effect, surface_rect, render_scale):
+            calls.append(effect)
+            return original(
+                source_alpha, effect, surface_rect, render_scale
+            )
+
+        with patch.object(
+            renderer, '_generated_effect_pixmap', side_effect=record
+        ):
+            renderer._render_pre_mask_effect_surface(
+                renderer.boundingRect(), 1.0
+            )
+
+        self.assertEqual(tuple(calls), (
+            effects[1], effects[0], effects[3], effects[2]
+        ))
+
+    def test_outer_glow_uses_each_positioned_stroke_silhouette(self):
+        for position in ('inside', 'center', 'outside'):
+            with self.subTest(position=position):
+                item = self._item(TextEffectStack(effects=(
+                    GlowEffect(size=0.08),
+                    StrokeEffect(width=0.16, position=position),
+                )))
+                renderer = item.effect_renderer
+                bounds = renderer.boundingRect()
+                canonical = renderer._capture_effect_source(bounds, 1.0)
+                canonical_alpha = renderer._pixmap_alpha(canonical)
+                expected = renderer._pixmap_alpha(
+                    renderer._stroke_silhouette(
+                        canonical, canonical_alpha, bounds, 1.0
+                    )
+                )
+                with patch.object(
+                    renderer, '_glow_pixmap', wraps=renderer._glow_pixmap
+                ) as glow_pixmap:
+                    renderer._render_pre_mask_effect_surface(bounds, 1.0)
+                np.testing.assert_array_equal(
+                    glow_pixmap.call_args.args[0], expected
+                )
 
     def test_gradient_preview_matches_renderer_straight_rgba(self):
         paint = LinearGradientPaint(
@@ -965,6 +1165,63 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             self.assertEqual(render.call_count, 1)
             self.assertIs(renderer._effect_raster_state, scratch)
 
+    def test_glow_preview_promotes_cache_and_reshape_rebuilds_once(self):
+        before = TextEffectStack(effects=(GlowEffect(size=0.08),))
+        after = TextEffectStack(effects=(GlowEffect(
+            paint=LinearGradientPaint(angle=60.0),
+            size=0.16,
+            spread=0.04,
+        ),))
+        item = self._item(before)
+        renderer = item.effect_renderer
+        with patch.object(
+            renderer,
+            '_render_effect_surface',
+            wraps=renderer._render_effect_surface,
+        ) as render:
+            item.set_text_effects(after, preview=True)
+            scratch = renderer._preview_effect_raster_state
+            self.assertEqual(render.call_count, 1)
+            item.set_text_effects(after)
+            self.assertEqual(render.call_count, 1)
+            self.assertIs(renderer._effect_raster_state, scratch)
+
+            item.startReshape()
+            item.setRect(QRectF(0, 0, 300, 170))
+            item.repaint_background()
+            item.setRect(QRectF(0, 0, 290, 160))
+            item.repaint_background()
+            self.assertEqual(render.call_count, 1)
+            item.endReshape()
+            self.assertEqual(render.call_count, 2)
+
+    def test_glow_allocation_fallback_and_strict_export(self):
+        stack = TextEffectStack(effects=(GlowEffect(size=0.2),))
+        interactive = self._item(TextEffectStack())
+        with patch(
+            'ballontranslator.ui.text_engine.effect_renderer.'
+            'render_glow_alpha',
+            side_effect=BufferError('Glow bridge failure'),
+        ):
+            interactive.set_text_effects(stack)
+            pixels = self._render(interactive)
+        self.assertGreater(np.count_nonzero(pixels[..., 3]), 0)
+
+        exported = self._item(stack)
+        exported.set_export_effect_render(True)
+        try:
+            with patch(
+                'ballontranslator.ui.text_engine.effect_renderer.'
+                'render_glow_alpha',
+                side_effect=BufferError('strict Glow bridge failure'),
+            ):
+                self._render(exported)
+            self.assertIsInstance(
+                exported.export_effect_error, EffectRasterAllocationError
+            )
+        finally:
+            exported.set_export_effect_render(False)
+
     def test_gradient_overlay_allocation_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(GradientOverlayEffect(),))
         item = self._item(stack)
@@ -997,6 +1254,11 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ShadowEffect(
                     offset=(0.18, 0.12), blur=0.08, spread=0.04
                 ),
+                GlowEffect(
+                    paint=LinearGradientPaint(angle=17.0),
+                    size=0.08,
+                    spread=0.03,
+                ),
                 StrokeEffect(
                     width=0.12,
                     position='outside',
@@ -1016,6 +1278,12 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     blur=0.06,
                     spread=0.02,
                 ),
+                GlowEffect(
+                    glow_type='inner',
+                    paint=LinearGradientPaint(angle=113.0),
+                    size=0.06,
+                    spread=0.02,
+                ),
                 GradientOverlayEffect(
                     opacity=0.7,
                     paint=LinearGradientPaint(
@@ -1032,6 +1300,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ShadowEffect(
                     shadow_type='long', offset=(0.30, 0.22)
                 ),
+                GlowEffect(size=0.08, spread=0.03),
                 StrokeEffect(width=0.12, position='inside'),
                 HollowEffect(),
             )),

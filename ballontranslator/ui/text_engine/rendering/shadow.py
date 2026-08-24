@@ -62,6 +62,44 @@ def _long_shadow_alpha(
     return cv2.dilate(source_alpha, kernel, anchor=endpoint)
 
 
+def _alpha_intersection(
+    first: np.ndarray, second: np.ndarray
+) -> np.ndarray:
+    product = first.astype(np.uint16)
+    np.multiply(product, second.astype(np.uint16), out=product)
+    product += 127
+    product //= 255
+    return product.astype(np.uint8)
+
+
+def render_glow_alpha(
+    source_alpha: np.ndarray,
+    glow_type: str,
+    size_radius: int,
+    spread_radius: int,
+) -> np.ndarray:
+    """Generate one Outer or Inner Glow coverage mask.
+
+    >>> source = np.zeros((5, 5), dtype=np.uint8)
+    >>> source[2, 2] = 255
+    >>> render_glow_alpha(source, 'outer', 0, 1)[2, 1]
+    255
+    >>> render_glow_alpha(source, 'outer', 0, 1)[2, 2]
+    0
+    """
+    if glow_type == 'outer':
+        expanded = _blur(
+            _dilate(source_alpha, spread_radius), size_radius
+        )
+        return _alpha_intersection(expanded, 255 - source_alpha)
+    if glow_type == 'inner':
+        edge = 255 - _blur(source_alpha, size_radius)
+        return _alpha_intersection(
+            _dilate(edge, spread_radius), source_alpha
+        )
+    raise ValueError('unsupported glow type')
+
+
 def render_shadow_rgba(
     source_alpha: np.ndarray,
     shadow_type: str,
@@ -95,11 +133,7 @@ def render_shadow_rgba(
         shifted = _translate(_blur(source_alpha, blur_radius), offset)
         mask = cv2.subtract(255, shifted)
         mask = _dilate(mask, spread_radius)
-        product = mask.astype(np.uint16)
-        np.multiply(product, source_alpha, out=product)
-        product += 127
-        product //= 255
-        mask = product.astype(np.uint8)
+        mask = _alpha_intersection(mask, source_alpha)
     else:
         raise ValueError('unsupported shadow type')
     if opacity != 1.0:

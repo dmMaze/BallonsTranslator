@@ -65,6 +65,7 @@ from ballontranslator.utils.config import (
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -1396,6 +1397,7 @@ class RunPipelineDialogTests(unittest.TestCase):
                         shadow_type='drop',
                         offset=(0.2, 0.1),
                     ),
+                    GlowEffect(size=0.2, spread=0.05),
                     StrokeEffect(
                         width=0.18,
                         paint=LinearGradientPaint(stops=(
@@ -1405,6 +1407,7 @@ class RunPipelineDialogTests(unittest.TestCase):
                     ),
                     StrokeEffect(width=0.9),
                     HollowEffect(),
+                    GlowEffect(glow_type='inner', size=0.1),
                     ShadowEffect(
                         shadow_type='inner',
                         blur=0.4,
@@ -1487,16 +1490,18 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(block.font_family, 'Render Font')
             self.assertEqual(block.fontformat.opacity, 0.75)
             effects = block.fontformat.text_effects.effects
-            self.assertIs(effects[2], extra)
-            self.assertEqual(effects[1].paint, SolidPaint((4, 5, 6)))
+            self.assertIs(effects[3], extra)
+            self.assertEqual(effects[2].paint, SolidPaint((4, 5, 6)))
             self.assertEqual(
                 effects,
                 (
                     global_format.text_effects.effects[0],
-                    effects[1],
+                    global_format.text_effects.effects[1],
+                    effects[2],
                     extra,
-                    global_format.text_effects.effects[3],
                     global_format.text_effects.effects[4],
+                    global_format.text_effects.effects[5],
+                    global_format.text_effects.effects[6],
                 ),
             )
             self.assertEqual(block.fontformat.shadow_radius, 0.0)

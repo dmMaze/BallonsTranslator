@@ -10,7 +10,7 @@ controls and algorithms.
 ```text
 QTextDocument + SceneTextLayout
   -> Glyph Slant around each shaped glyph's visible-space anchor
-  -> exterior Shadow, Stroke, foreground/Hollow, interior Shadow
+  -> exterior Shadow/Glow, Stroke, foreground/Hollow, interior Shadow/Glow
   -> ordered global stack: Projective / Bend / Sine Wave / Grid
   -> QGraphicsItem position and rotation
 ```

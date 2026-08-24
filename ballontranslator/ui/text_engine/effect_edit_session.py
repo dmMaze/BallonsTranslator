@@ -6,6 +6,7 @@ from typing import Optional, Sequence, Tuple, TYPE_CHECKING
 from ballontranslator.utils import config as C
 from ballontranslator.utils.text_effects import (
     EffectPaint,
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     HollowEffect,
@@ -98,21 +99,21 @@ class TextEffectEditSession:
         )
 
     @staticmethod
-    def _convert_stroke_paint(
+    def _convert_effect_paint(
         paint: EffectPaint,
         paint_type: str,
         mixed_values: bool,
     ) -> EffectPaint:
-        """Convert Stroke Fill without inventing a shared mixed value.
+        """Convert effect Fill without inventing a shared mixed value.
 
-        >>> converted = TextEffectEditSession._convert_stroke_paint(
+        >>> converted = TextEffectEditSession._convert_effect_paint(
         ...     SolidPaint((1, 2, 3)), 'linear_gradient', False
         ... )
         >>> converted.stops[-1].opacity
         0.0
         """
         if paint_type not in {'solid', 'linear_gradient'}:
-            raise ValueError('unsupported Stroke paint type')
+            raise ValueError('unsupported effect paint type')
         if mixed_values:
             return (
                 SolidPaint()
@@ -159,7 +160,7 @@ class TextEffectEditSession:
             elif param_name == 'paint_type':
                 paint_type, mixed_values = value
                 parameters['paint'] = (
-                    TextEffectEditSession._convert_stroke_paint(
+                    TextEffectEditSession._convert_effect_paint(
                         effect.paint, paint_type, mixed_values
                     )
                 )
@@ -176,6 +177,25 @@ class TextEffectEditSession:
                 parameters[param_name] = value
             else:
                 raise ValueError('unknown Shadow field')
+        elif isinstance(effect, GlowEffect):
+            if param_name not in {
+                'enabled', 'opacity', 'glow_type', 'paint', 'paint_type',
+                'size', 'spread',
+            }:
+                raise ValueError('unknown Glow field')
+            if param_name == 'paint':
+                if not isinstance(value, (SolidPaint, LinearGradientPaint)):
+                    value = SolidPaint(value)
+                parameters['paint'] = value
+            elif param_name == 'paint_type':
+                paint_type, mixed_values = value
+                parameters['paint'] = (
+                    TextEffectEditSession._convert_effect_paint(
+                        effect.paint, paint_type, mixed_values
+                    )
+                )
+            else:
+                parameters[param_name] = value
         elif isinstance(effect, HollowEffect):
             if param_name != 'enabled':
                 raise ValueError('unknown Hollow field')
@@ -466,6 +486,7 @@ class TextEffectEditSession:
         constructors = {
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
+            'glow': GlowEffect,
             'hollow': HollowEffect,
             'gradient_overlay': GradientOverlayEffect,
         }

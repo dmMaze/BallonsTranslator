@@ -103,6 +103,7 @@ from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     LinearGradientPaint,
@@ -2564,10 +2565,12 @@ class TextTransformRenderingTest(TextTransformTestBase):
                         blur=0.08,
                         offset=(0.08, 0.06),
                     ),
+                    GlowEffect(size=0.06, spread=0.02),
                     GradientOverlayEffect(paint=LinearGradientPaint(stops=(
                         GradientStop(0.0, (20, 40, 160)),
                         GradientStop(1.0, (220, 80, 40)),
                     ))),
+                    GlowEffect(glow_type='inner', size=0.05),
                 ))
 
                 item = TextBlkItem(block, 0)

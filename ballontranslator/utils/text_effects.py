@@ -178,6 +178,13 @@ class LinearGradientPaint:
 EffectPaint = Union[SolidPaint, LinearGradientPaint]
 
 
+def _effect_paint_is_transparent(paint: EffectPaint) -> bool:
+    return (
+        isinstance(paint, LinearGradientPaint)
+        and all(stop.opacity == 0.0 for stop in paint.stops)
+    )
+
+
 def effect_paint_fallback_color(
     paint: EffectPaint,
 ) -> Tuple[int, int, int]:
@@ -244,15 +251,11 @@ class StrokeEffect:
         }
 
     def is_neutral(self) -> bool:
-        transparent_paint = (
-            isinstance(self.paint, LinearGradientPaint)
-            and all(stop.opacity == 0.0 for stop in self.paint.stops)
-        )
         return (
             not self.enabled
             or self.opacity == 0.0
             or self.width == 0.0
-            or transparent_paint
+            or _effect_paint_is_transparent(self.paint)
         )
 
 
@@ -320,6 +323,75 @@ class ShadowEffect:
 
     def is_neutral(self) -> bool:
         return not self.enabled or self.opacity == 0.0
+
+
+@dataclass(frozen=True)
+class GlowEffect:
+    """One immutable Outer or Inner Glow.
+
+    Geometry values are relative to the text's maximum font size.
+
+    >>> GlowEffect(glow_type='inner', size=0.4).effect_type
+    'glow'
+    """
+
+    enabled: bool = True
+    opacity: float = 1.0
+    blend_mode: str = 'normal'
+    glow_type: str = 'outer'
+    paint: EffectPaint = field(
+        default_factory=lambda: SolidPaint((255, 255, 255))
+    )
+    size: float = 0.2
+    spread: float = 0.0
+    effect_type: str = field(init=False, default='glow')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError('glow enabled must be a bool')
+        object.__setattr__(
+            self,
+            'opacity',
+            _float_in_range('glow opacity', self.opacity, 0.0, 1.0),
+        )
+        if self.blend_mode != 'normal':
+            raise ValueError('unsupported glow blend mode')
+        if self.glow_type not in {'outer', 'inner'}:
+            raise ValueError('unsupported glow type')
+        if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
+            raise TypeError('glow paint must be EffectPaint')
+        object.__setattr__(
+            self,
+            'size',
+            _float_in_range('glow size', self.size, 0.0, SHADOW_BLUR_LIMIT),
+        )
+        object.__setattr__(
+            self,
+            'spread',
+            _float_in_range(
+                'glow spread', self.spread, 0.0, SHADOW_SPREAD_LIMIT
+            ),
+        )
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'enabled': self.enabled,
+            'opacity': self.opacity,
+            'blend_mode': self.blend_mode,
+            'glow_type': self.glow_type,
+            'paint': self.paint.to_serializable_dict(),
+            'size': self.size,
+            'spread': self.spread,
+        }
+
+    def is_neutral(self) -> bool:
+        return (
+            not self.enabled
+            or self.opacity == 0.0
+            or (self.size == 0.0 and self.spread == 0.0)
+            or _effect_paint_is_transparent(self.paint)
+        )
 
 
 @dataclass(frozen=True)
@@ -391,13 +463,14 @@ class GradientOverlayEffect:
         return (
             not self.enabled
             or self.opacity == 0.0
-            or all(stop.opacity == 0.0 for stop in self.paint.stops)
+            or _effect_paint_is_transparent(self.paint)
         )
 
 
 TextEffect = Union[
     StrokeEffect,
     ShadowEffect,
+    GlowEffect,
     HollowEffect,
     GradientOverlayEffect,
 ]
@@ -415,6 +488,8 @@ def effect_phase(effect: TextEffect) -> str:
             if effect.shadow_type == 'inner'
             else 'exterior'
         )
+    if isinstance(effect, GlowEffect):
+        return 'interior' if effect.glow_type == 'inner' else 'exterior'
     if isinstance(effect, StrokeEffect):
         return 'stroke'
     if isinstance(effect, (HollowEffect, GradientOverlayEffect)):
@@ -452,6 +527,7 @@ class TextEffectStack:
                 (
                     StrokeEffect,
                     ShadowEffect,
+                    GlowEffect,
                     HollowEffect,
                     GradientOverlayEffect,
                 ),
@@ -547,7 +623,13 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
     """
     if isinstance(
         value,
-        (StrokeEffect, ShadowEffect, HollowEffect, GradientOverlayEffect),
+        (
+            StrokeEffect,
+            ShadowEffect,
+            GlowEffect,
+            HollowEffect,
+            GradientOverlayEffect,
+        ),
     ):
         return value
     if not isinstance(value, dict):
@@ -578,6 +660,19 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         )
         payload.pop('effect_type')
         return ShadowEffect(**payload)
+    if effect_type == 'glow':
+        _unexpected_fields(
+            payload,
+            (
+                'effect_type', 'enabled', 'opacity', 'blend_mode',
+                'glow_type', 'paint', 'size', 'spread',
+            ),
+            'Glow effect',
+        )
+        payload.pop('effect_type')
+        if 'paint' in payload:
+            payload['paint'] = _coerce_effect_paint(payload['paint'])
+        return GlowEffect(**payload)
     if effect_type == 'hollow':
         _unexpected_fields(
             payload, ('effect_type', 'enabled'), 'Hollow effect'

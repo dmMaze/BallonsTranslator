@@ -39,6 +39,7 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     GradientOverlayEffect,
     GradientStop,
     HollowEffect,
@@ -203,6 +204,11 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                 ShadowEffect(
                     color=(0, 255, 0), offset=(-0.35, 0), blur=0.04
                 ),
+                GlowEffect(
+                    paint=SolidPaint((255, 255, 0)),
+                    size=0.08,
+                    spread=0.03,
+                ),
                 StrokeEffect(
                     width=0.18,
                     position='outside',
@@ -211,11 +217,17 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                 GradientOverlayEffect(
                     paint=LinearGradientPaint(angle=90.0)
                 ),
+                GlowEffect(
+                    glow_type='inner',
+                    paint=SolidPaint((255, 255, 0)),
+                    size=0.06,
+                ),
             )),
             TextEffectStack(effects=(
                 ShadowEffect(
                     shadow_type='long', color=(0, 255, 0), offset=(-0.5, 0.2)
                 ),
+                GlowEffect(size=0.08, spread=0.03),
                 StrokeEffect(
                     width=0.18,
                     position='inside',

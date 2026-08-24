@@ -24,6 +24,7 @@ from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     EffectPaint,
+    GlowEffect,
     GradientOverlayEffect,
     LinearGradientPaint,
     HollowEffect,
@@ -183,6 +184,7 @@ class EffectPaintButton(QToolButton):
         paint: Optional[EffectPaint],
         mixed: bool = False,
         editable: bool = True,
+        description: Optional[str] = None,
     ) -> None:
         self._paint = paint
         self._mixed = bool(mixed)
@@ -190,12 +192,13 @@ class EffectPaintButton(QToolButton):
         if mixed:
             self.setText(self.tr('Mixed'))
             self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            if editable:
-                description = self.tr('Choose Shared Stroke Color')
-            elif isinstance(paint, LinearGradientPaint):
-                description = self.tr('Mixed Gradient Paint')
-            else:
-                description = self.tr('Mixed Stroke Paint')
+            if description is None:
+                if editable:
+                    description = self.tr('Choose Shared Stroke Color')
+                elif isinstance(paint, LinearGradientPaint):
+                    description = self.tr('Mixed Gradient Paint')
+                else:
+                    description = self.tr('Mixed Stroke Paint')
             self.setToolTip(description)
             self.setAccessibleName(description)
             self.setEnabled(editable)
@@ -205,11 +208,12 @@ class EffectPaintButton(QToolButton):
             raise ValueError('non-mixed effect paint button requires paint')
         self.setText('')
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        description = (
-            self.tr('Edit Gradient')
-            if isinstance(paint, LinearGradientPaint)
-            else self.tr('Choose Stroke Color')
-        )
+        if description is None:
+            description = (
+                self.tr('Edit Gradient')
+                if isinstance(paint, LinearGradientPaint)
+                else self.tr('Choose Stroke Color')
+            )
         self.setToolTip(description)
         self.setAccessibleName(description)
         self.setEnabled(True)
@@ -855,6 +859,347 @@ class ShadowEffectCard(QFrame):
         self.value_commit_requested.emit(self.index, 'color', color)
 
 
+class GlowEffectCard(QFrame):
+    """Edit one typed Glow at its complete-stack index.
+
+    >>> GlowEffectCard.__name__
+    'GlowEffectCard'
+    """
+
+    value_commit_requested = Signal(int, str, object)
+    value_preview_requested = Signal(int, str, object)
+    parameter_preview_requested = Signal(int, str, object)
+    parameter_commit_requested = Signal(int, str, object)
+    preview_canceled = Signal(int, str)
+    remove_requested = Signal(int)
+    move_requested = Signal(int, int)
+    color_dialog_active_changed = Signal(bool)
+
+    def __init__(self, index: int, parent=None) -> None:
+        super().__init__(parent)
+        self.index = int(index)
+        self.setObjectName('TextEffectParameterPanel')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        self.title_icon_label = _effect_icon_label(
+            'text-effect-glow.svg', self
+        )
+        self.title_label = QLabel(self.tr('Glow'), self)
+        self.title_label.setObjectName('TextEffectParameterTitle')
+        self.title_label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.move_up_button = self._action_button(
+            'chevron-up.svg', self.tr('Move Up'), -1
+        )
+        self.move_down_button = self._action_button(
+            'chevron-down.svg', self.tr('Move Down'), 1
+        )
+        self.delete_button = self._action_button(
+            'titlebar_close.svg', self.tr('Delete Glow'), 0
+        )
+        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.visibility_button = EffectVisibilityButton(
+            self.tr('Show Glow'), self.tr('Hide Glow'), self
+        )
+        self.visibility_button.visibility_requested.connect(
+            self._on_enabled_clicked
+        )
+
+        action_widget = _effect_action_widget(
+            self,
+            (
+                self.visibility_button,
+                self.move_up_button,
+                self.move_down_button,
+                self.delete_button,
+            ),
+        )
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
+        header.addWidget(self.title_label)
+        header.addWidget(action_widget)
+
+        type_label = QLabel(self.tr('Type'), self)
+        type_label.setObjectName('TextEffectParamLabel')
+        self.type_selector = QComboBox(self)
+        self.type_selector.setObjectName('TextEffectTypeSelector')
+        self.type_selector.setPlaceholderText(self.tr('Mixed'))
+        self.type_selector.addItem(self.tr('Outer'), 'outer')
+        self.type_selector.addItem(self.tr('Inner'), 'inner')
+        self.type_selector.currentIndexChanged.connect(
+            self._on_type_changed
+        )
+        type_widget = QWidget(self)
+        type_row = QHBoxLayout(type_widget)
+        type_row.setContentsMargins(0, 0, 0, 0)
+        type_row.addWidget(type_label)
+        type_row.addWidget(self.type_selector, 1)
+
+        self.opacity_control = EffectNumericControl(
+            self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
+            self, decimals=1,
+        )
+        self.size_control = EffectNumericControl(
+            self.tr('Size'), 'size', 1.0, 0.0,
+            SHADOW_BLUR_LIMIT, '', 0.01, self, decimals=2,
+        )
+        self.spread_control = EffectNumericControl(
+            self.tr('Spread'), 'spread', 1.0, 0.0,
+            SHADOW_SPREAD_LIMIT, '', 0.01, self, decimals=2,
+        )
+        for control in self.iter_controls():
+            control.editor.setProperty('cardEditor', True)
+            control.commit_requested.connect(self._on_control_commit)
+            control.value_preview_requested.connect(self._on_value_preview)
+            control.preview_requested.connect(self._on_parameter_preview)
+            control.drag_commit_requested.connect(
+                self._on_parameter_commit
+            )
+            control.preview_canceled.connect(self._on_preview_canceled)
+            control.value_preview_canceled.connect(
+                self._on_preview_canceled
+            )
+
+        fill_label = QLabel(self.tr('Fill'), self)
+        fill_label.setObjectName('TextEffectParamLabel')
+        self.fill_type_selector = QComboBox(self)
+        self.fill_type_selector.setObjectName('TextEffectFillTypeSelector')
+        self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
+        self.fill_type_selector.setAccessibleName(self.tr('Glow Fill'))
+        self.fill_type_selector.addItem(self.tr('Solid'), 'solid')
+        self.fill_type_selector.addItem(
+            self.tr('Gradient'), 'linear_gradient'
+        )
+        self.fill_type_selector.currentIndexChanged.connect(
+            self._on_fill_type_changed
+        )
+        fill_widget = QWidget(self)
+        fill_row = QHBoxLayout(fill_widget)
+        fill_row.setContentsMargins(0, 0, 0, 0)
+        fill_row.addWidget(fill_label)
+        fill_row.addWidget(self.fill_type_selector, 1)
+
+        self.paint_button = EffectPaintButton(self)
+        self.paint_button.clicked.connect(self._on_paint_clicked)
+        self._paint_seed: Optional[EffectPaint] = None
+
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(8)
+        controls.setVerticalSpacing(4)
+        controls.addWidget(type_widget, 0, 0)
+        controls.addWidget(self.opacity_control, 0, 1)
+        controls.addWidget(self.size_control, 1, 0)
+        controls.addWidget(self.spread_control, 1, 1)
+        controls.addWidget(fill_widget, 2, 0, 1, 2)
+        controls.addWidget(self.paint_button, 3, 0, 1, 2)
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(6)
+        layout.addLayout(header)
+        layout.addLayout(controls)
+
+    def _action_button(
+        self, icon_name: str, tooltip: str, direction: int
+    ) -> QToolButton:
+        button = QToolButton(self)
+        button.setObjectName('TextEffectMoveButton')
+        button.setIcon(QIcon(themed_icon_path(icon_name)))
+        button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
+        button.setProperty('move-direction', direction)
+        button.setFixedSize(18, 18)
+        button.clicked.connect(self._on_action_clicked)
+        return button
+
+    def set_move_enabled(self, up: bool, down: bool) -> None:
+        self.move_up_button.setEnabled(up)
+        self.move_down_button.setEnabled(down)
+
+    def set_values(self, glows: Sequence[GlowEffect]) -> None:
+        enabled_values = [glow.enabled for glow in glows]
+        enabled = (
+            enabled_values[0]
+            if enabled_values
+            and all(value == enabled_values[0] for value in enabled_values)
+            else None
+        )
+        self.visibility_button.set_visibility(enabled)
+
+        types = [glow.glow_type for glow in glows]
+        common_type = (
+            types[0]
+            if types and all(value == types[0] for value in types)
+            else None
+        )
+        with QSignalBlocker(self.type_selector):
+            self.type_selector.setCurrentIndex(
+                -1 if common_type is None
+                else self.type_selector.findData(common_type)
+            )
+        if common_type == 'inner':
+            self.spread_control.label.setText(self.tr('Choke'))
+        elif common_type is None:
+            self.spread_control.label.setText(self.tr('Spread / Choke'))
+        else:
+            self.spread_control.label.setText(self.tr('Spread'))
+
+        for name, control in (
+            ('opacity', self.opacity_control),
+            ('size', self.size_control),
+            ('spread', self.spread_control),
+        ):
+            values = [getattr(glow, name) for glow in glows]
+            common = (
+                values[0]
+                if values and all(value == values[0] for value in values)
+                else None
+            )
+            control.set_model_value(common, values)
+
+        paints = [glow.paint for glow in glows]
+        common_paint_type = (
+            paints[0].paint_type
+            if paints and all(
+                paint.paint_type == paints[0].paint_type for paint in paints
+            )
+            else None
+        )
+        with QSignalBlocker(self.fill_type_selector):
+            self.fill_type_selector.setCurrentIndex(
+                -1 if common_paint_type is None
+                else self.fill_type_selector.findData(common_paint_type)
+            )
+        common_paint = (
+            paints[0]
+            if paints and all(paint == paints[0] for paint in paints)
+            else None
+        )
+        mixed_paint = common_paint is None
+        self._paint_seed = common_paint or (
+            paints[0] if paints and common_paint_type is not None else None
+        )
+        editable = (
+            common_paint_type == 'solid' if mixed_paint else True
+        )
+        if mixed_paint:
+            if editable:
+                description = self.tr('Choose Shared Glow Color')
+            elif common_paint_type == 'linear_gradient':
+                description = self.tr('Mixed Glow Gradient Paint')
+            else:
+                description = self.tr('Mixed Glow Paint')
+        else:
+            description = (
+                self.tr('Edit Glow Gradient')
+                if isinstance(common_paint, LinearGradientPaint)
+                else self.tr('Choose Glow Color')
+            )
+        self.paint_button.set_paint(
+            self._paint_seed,
+            mixed=mixed_paint,
+            editable=editable,
+            description=description,
+        )
+
+    def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
+        return (
+            self.opacity_control,
+            self.size_control,
+            self.spread_control,
+        )
+
+    def _on_enabled_clicked(self, enabled: bool) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'enabled', bool(enabled)
+        )
+
+    def _on_type_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'glow_type',
+                self.type_selector.itemData(combo_index),
+            )
+
+    def _on_fill_type_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'paint_type',
+                self.fill_type_selector.itemData(combo_index),
+            )
+
+    def _on_control_commit(self, name: str, value) -> None:
+        self.value_commit_requested.emit(self.index, name, value)
+
+    def _on_value_preview(self, name: str, value) -> None:
+        self.value_preview_requested.emit(self.index, name, value)
+
+    def _on_parameter_preview(self, name: str, delta) -> None:
+        self.parameter_preview_requested.emit(self.index, name, delta)
+
+    def _on_parameter_commit(self, name: str, delta) -> None:
+        self.parameter_commit_requested.emit(self.index, name, delta)
+
+    def _on_preview_canceled(self, name: str) -> None:
+        self.preview_canceled.emit(self.index, name)
+
+    def _on_action_clicked(self) -> None:
+        button = self.sender()
+        direction = int(button.property('move-direction'))
+        if direction == 0:
+            self.remove_requested.emit(self.index)
+        else:
+            self.move_requested.emit(self.index, direction)
+
+    def _on_paint_clicked(self) -> None:
+        paint = self._paint_seed
+        if paint is None:
+            return
+        self.color_dialog_active_changed.emit(True)
+        try:
+            if isinstance(paint, SolidPaint):
+                color = QColorDialog.getColor(
+                    QColor(*paint.color), self.window(), self.tr('Glow Color')
+                )
+                if color.isValid():
+                    self.value_commit_requested.emit(
+                        self.index,
+                        'paint',
+                        SolidPaint((color.red(), color.green(), color.blue())),
+                    )
+                return
+
+            dialog = LinearGradientEditorDialog(paint, self.window())
+            dialog.paint_previewed.connect(self._on_gradient_preview)
+            try:
+                result = dialog.exec_()
+                dialog_code = getattr(QDialog, 'DialogCode', QDialog)
+                if result == dialog_code.Accepted:
+                    self.value_commit_requested.emit(
+                        self.index, 'paint', dialog.paint
+                    )
+                else:
+                    self.preview_canceled.emit(self.index, 'paint')
+            finally:
+                dialog.deleteLater()
+        finally:
+            self.color_dialog_active_changed.emit(False)
+
+    def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
+        self.value_preview_requested.emit(self.index, 'paint', paint)
+
+
 class HollowEffectCard(QFrame):
     """Edit the single structural Hollow effect.
 
@@ -1345,6 +1690,7 @@ class TextEffectPanel(PanelArea):
         for label, effect_type, icon_name in (
             (self.tr('Stroke'), 'stroke', 'text-effect-stroke.svg'),
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
+            (self.tr('Glow'), 'glow', 'text-effect-glow.svg'),
             (self.tr('Hollow'), 'hollow', 'text-effect-hollow.svg'),
             (
                 self.tr('Gradient Overlay'),
@@ -1370,6 +1716,7 @@ class TextEffectPanel(PanelArea):
         self.effect_cards = []
         self.stroke_cards = []
         self.shadow_cards = []
+        self.glow_cards = []
         self.hollow_card = None
         self.gradient_overlay_card = None
         self._effect_types = None
@@ -1466,6 +1813,7 @@ class TextEffectPanel(PanelArea):
         self.effect_cards = []
         self.stroke_cards = []
         self.shadow_cards = []
+        self.glow_cards = []
         self.hollow_card = None
         self.gradient_overlay_card = None
 
@@ -1482,6 +1830,9 @@ class TextEffectPanel(PanelArea):
             elif effect_type == 'shadow':
                 card = ShadowEffectCard(index, self.scrollContent)
                 self.shadow_cards.append(card)
+            elif effect_type == 'glow':
+                card = GlowEffectCard(index, self.scrollContent)
+                self.glow_cards.append(card)
             elif effect_type == 'hollow':
                 card = HollowEffectCard(index, self.scrollContent)
                 self.hollow_card = card
@@ -1498,6 +1849,7 @@ class TextEffectPanel(PanelArea):
                 (
                     StrokeEffectCard,
                     ShadowEffectCard,
+                    GlowEffectCard,
                     GradientOverlayEffectCard,
                 ),
             ):
@@ -1514,7 +1866,9 @@ class TextEffectPanel(PanelArea):
                 card.color_dialog_active_changed.connect(
                     self.color_dialog_active_changed.emit
                 )
-            if isinstance(card, (StrokeEffectCard, ShadowEffectCard)):
+            if isinstance(
+                card, (StrokeEffectCard, ShadowEffectCard, GlowEffectCard)
+            ):
                 card.move_requested.connect(self.move_effect_requested.emit)
             card.remove_requested.connect(self.remove_effect_requested.emit)
             self.cards_layout.addWidget(card)
@@ -1567,7 +1921,10 @@ class TextEffectPanel(PanelArea):
             for card in self.effect_cards:
                 values = [state.effects[card.index] for state in states]
                 card.set_values(values)
-                if isinstance(card, (StrokeEffectCard, ShadowEffectCard)):
+                if isinstance(
+                    card,
+                    (StrokeEffectCard, ShadowEffectCard, GlowEffectCard),
+                ):
                     if phases_match:
                         phase = phase_sequences[0][card.index]
                         phase_indices = [
@@ -1664,7 +2021,7 @@ class TextEffectPanel(PanelArea):
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
         if action is not None and action.data() in {
-            'stroke', 'shadow', 'hollow', 'gradient_overlay'
+            'stroke', 'shadow', 'glow', 'hollow', 'gradient_overlay'
         }:
             self.add_effect_requested.emit(action.data())
 
