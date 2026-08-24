@@ -67,7 +67,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
         self.assertEqual(legacy.text_effects.overall_opacity, 0.7)
         self.assertEqual(stroke.width, 0.2)
         self.assertEqual(stroke.paint, SolidPaint((1, 2, 3)))
-        self.assertEqual(stroke.position, 'center')
+        self.assertEqual(stroke.position, 'outside')
 
         explicit_empty = FontFormat(
             text_effects={'overall_opacity': 0.9, 'effects': []},
@@ -220,6 +220,10 @@ class TextEffectPersistenceTest(unittest.TestCase):
         self.assertEqual(blocks[0].opacity, 0.6)
         self.assertEqual(blocks[0].stroke_width, 0.3)
         self.assertEqual(blocks[0].bg_colors, [4, 5, 6])
+        self.assertEqual(
+            primary_stroke(blocks[0].fontformat.text_effects).position,
+            'outside',
+        )
         self.assertEqual(
             blocks[1].fontformat.text_effects,
             blocks[0].fontformat.text_effects,

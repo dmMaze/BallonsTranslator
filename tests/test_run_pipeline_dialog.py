@@ -1581,7 +1581,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         inserted = missing.fontformat.text_effects[0]
         self.assertEqual(inserted.width, 0.42)
         self.assertEqual(inserted.paint, SolidPaint())
-        self.assertEqual(inserted.position, 'center')
+        self.assertEqual(inserted.position, 'outside')
 
     def test_pipeline_auto_tate_chu_yoko_preserves_plain_text_format(self):
         settings = AutoTateChuYokoConfig(

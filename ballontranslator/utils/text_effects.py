@@ -206,6 +206,7 @@ class StrokeEffect:
 
     Width is the full band relative to font size. Center splits it across the
     glyph edge; Inside and Outside place it wholly on the corresponding side.
+    Newly created strokes default to Outside.
 
     >>> StrokeEffect(width=0.2).effect_type
     'stroke'
@@ -216,7 +217,7 @@ class StrokeEffect:
     blend_mode: str = 'normal'
     width: float = 0.1
     paint: EffectPaint = field(default_factory=SolidPaint)
-    position: str = 'center'
+    position: str = 'outside'
     effect_type: str = field(init=False, default='stroke')
 
     def __post_init__(self) -> None:
@@ -648,6 +649,8 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         payload.pop('effect_type')
         if 'paint' in payload:
             payload['paint'] = _coerce_effect_paint(payload['paint'])
+        # Typed stacks saved before Stroke Position existed were centered.
+        payload.setdefault('position', 'center')
         return StrokeEffect(**payload)
     if effect_type == 'shadow':
         _unexpected_fields(

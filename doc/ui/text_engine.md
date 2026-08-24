@@ -140,6 +140,9 @@ Gradient Overlay, inside Stroke, then interior Inner Shadow and Inner Glow.
 Shadow and Glow retain their shared-phase stack order. Center keeps the native
 half-in/half-out outline; Outside and Inside
 clip a full-width outline to the corresponding side of canonical glyph alpha.
+Outside is the default for newly inserted Stroke and pre-stack legacy Stroke
+migration. Explicitly saved positions remain authoritative; typed stacks from
+before the Position field existed retain their original Center behavior.
 Each Stroke or Glow owns an immutable solid or linear-gradient paint. Outer
 Glow derives from the visible Stroke-inclusive silhouette, while Inner Glow
 derives from canonical glyph alpha and is suppressed by Hollow. Linear-gradient

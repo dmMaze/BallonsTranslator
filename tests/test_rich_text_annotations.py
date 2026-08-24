@@ -120,6 +120,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     StrokeEffect,
     TextEffectStack,
+    with_primary_stroke,
 )
 
 
@@ -2153,6 +2154,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.fontformat.font_family = 'Source Han Sans'
         block.fontformat.font_size = 7.0
         block.fontformat.stroke_width = 0.2
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         block.fontformat.frgb = [255, 0, 0]
         block.fontformat.srgb = [0, 0, 255]
         item = TextBlkItem(block, 0)
@@ -2327,6 +2332,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.translation = '!'
         block.fontformat.font_size = 48
         block.fontformat.stroke_width = 0.4
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         item = TextBlkItem(block, 0)
 
         item.startEdit()
@@ -2791,6 +2800,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.translation = 'A'
         block.fontformat.font_size = 40.0
         block.fontformat.stroke_width = 0.25
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         item = TextBlkItem(block, 0)
         item.startEdit()
         cursor = item.textCursor()
@@ -2838,6 +2851,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.vertical = True
         block.fontformat.font_size = 48.0
         block.fontformat.stroke_width = 0.2
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         block.fontformat.text_transform = TextTransformStack((), 11.0)
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()

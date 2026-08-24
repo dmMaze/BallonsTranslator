@@ -234,11 +234,13 @@ class TextEffectPreviewTest(unittest.TestCase):
                 width=0.1,
                 opacity=0.25,
                 paint=SolidPaint((255, 0, 0)),
+                position='center',
             ),
             StrokeEffect(
                 width=0.3,
                 opacity=0.75,
                 paint=SolidPaint((0, 0, 255)),
+                position='center',
             ),
         ))
         item = self._item(stack=stack)

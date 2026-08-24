@@ -692,7 +692,11 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         self.assertFalse(renderer._completed_foreground_ready())
 
         hollow = self._item(TextEffectStack(effects=(
-            StrokeEffect(width=0.2, paint=SolidPaint((0, 0, 255))),
+            StrokeEffect(
+                width=0.2,
+                paint=SolidPaint((0, 0, 255)),
+                position='center',
+            ),
             HollowEffect(),
         )))
         with patch(

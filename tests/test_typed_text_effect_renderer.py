@@ -550,11 +550,14 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item = self._item(TextEffectStack())
         renderer = item.effect_renderer
         solid = TextEffectStack(effects=(StrokeEffect(
-            width=0.2, paint=SolidPaint((0, 0, 255))
+            width=0.2,
+            paint=SolidPaint((0, 0, 255)),
+            position='center',
         ),))
         gradient = TextEffectStack(effects=(StrokeEffect(
             width=0.2,
             paint=LinearGradientPaint(),
+            position='center',
         ),))
 
         with patch.object(
@@ -600,7 +603,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         normal = rendered['center']
         flipped_item = self._item(TextEffectStack(effects=(StrokeEffect(
-            width=0.28, paint=gradient(180)
+            width=0.28,
+            paint=gradient(180),
+            position='center',
         ),)))
         flipped_item.setPlainText('\N{FULL BLOCK}')
         flipped_item.layout.reLayoutEverything()
@@ -693,7 +698,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         plain.layout.reLayoutEverything()
         plain_pixels = self._render(plain)
 
-        np.testing.assert_array_equal(default_pixels, center_pixels)
+        np.testing.assert_array_equal(default_pixels, outside_pixels)
+        self.assertEqual(default.fontformat.text_effects[0].position, 'outside')
         self.assertEqual(inside.padding(), 0.0)
         self.assertAlmostEqual(
             outside.effect_renderer._conservative_effect_padding(),
@@ -1546,7 +1552,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
     def test_hollow_bridge_failures_use_safe_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(
-            StrokeEffect(width=0.2), HollowEffect()
+            StrokeEffect(width=0.2, position='center'), HollowEffect()
         ))
         for error in (
             RuntimeError('runtime bridge failure'),
@@ -1583,7 +1589,11 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item = self._item(TextEffectStack())
         renderer = item.effect_renderer
         stack = TextEffectStack(effects=(
-            StrokeEffect(width=0.2, paint=SolidPaint((0, 0, 255))),
+            StrokeEffect(
+                width=0.2,
+                paint=SolidPaint((0, 0, 255)),
+                position='center',
+            ),
             ShadowEffect(blur=0.2),
             HollowEffect(),
         ))

@@ -66,6 +66,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     StrokeEffect,
     TextEffectStack,
+    with_primary_stroke,
 )
 
 
@@ -1491,6 +1492,10 @@ class RubyFuriganaTest(unittest.TestCase):
         block.vertical = True
         block.fontformat.font_size = 64.0
         block.fontformat.stroke_width = 0.25
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         block.fontformat.text_transform = TextTransformStack((), 11.0)
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()

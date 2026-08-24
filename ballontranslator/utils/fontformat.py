@@ -663,7 +663,12 @@ def _migrate_legacy_text_effects(
             'Ignoring invalid legacy Stroke color (%s); using black.', error
         )
         paint = SolidPaint()
-    return with_primary_stroke(stack, width=width, paint=paint)
+    return with_primary_stroke(
+        stack,
+        width=width,
+        paint=paint,
+        position='outside',
+    )
 
 
 def normalize_fontformat_effect_payload(

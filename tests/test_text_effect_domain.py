@@ -105,18 +105,25 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertIsNone(primary_stroke(original))
         self.assertEqual(result.overall_opacity, 0.4)
         self.assertEqual(result.effects, (StrokeEffect(),))
-        self.assertEqual(result.effects[0].position, 'center')
+        self.assertEqual(result.effects[0].position, 'outside')
 
-    def test_stroke_position_is_strict_and_keeps_positional_paint_compatibility(self):
+    def test_stroke_position_defaults_outside_and_keeps_positional_paint(self):
         paint = SolidPaint((1, 2, 3))
         positional = StrokeEffect(True, 1.0, 'normal', 0.2, paint)
 
         self.assertIs(positional.paint, paint)
-        self.assertEqual(positional.position, 'center')
+        self.assertEqual(positional.position, 'outside')
         for position in ('inside', 'center', 'outside'):
             self.assertEqual(StrokeEffect(position=position).position, position)
         with self.assertRaises(ValueError):
             StrokeEffect(position='future')
+
+    def test_typed_stroke_without_position_keeps_center_compatibility(self):
+        stack = coerce_text_effect_stack({
+            'effects': [{'effect_type': 'stroke', 'width': 0.2}],
+        })
+
+        self.assertEqual(stack.effects[0].position, 'center')
 
     def test_ensure_and_equal_update_are_no_ops_for_existing_stroke(self):
         stack = TextEffectStack(effects=(StrokeEffect(width=0.3),))
@@ -265,7 +272,10 @@ class TextEffectDomainTest(unittest.TestCase):
             'ballontranslator.utils.text_effects.LOGGER.warning'
         ) as warning:
             loaded = coerce_text_effect_stack(malformed)
-        self.assertEqual(loaded.effects, (overlay, StrokeEffect(width=0.3)))
+        self.assertEqual(loaded.effects, (
+            overlay,
+            StrokeEffect(width=0.3, position='center'),
+        ))
         self.assertEqual(warning.call_count, 2)
 
     def test_glow_is_strict_repeatable_neutral_and_serializable(self):
@@ -443,7 +453,11 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(
             stack.effects,
             (
-                StrokeEffect(width=0.2, paint=SolidPaint((1, 2, 3))),
+                StrokeEffect(
+                    width=0.2,
+                    paint=SolidPaint((1, 2, 3)),
+                    position='center',
+                ),
                 StrokeEffect(
                     width=0.4,
                     paint=SolidPaint((4, 5, 6)),
@@ -500,7 +514,11 @@ class TextEffectDomainTest(unittest.TestCase):
         ) as warning:
             loaded = coerce_text_effect_stack(malformed)
         self.assertEqual(loaded.effects, (
-            gradient, StrokeEffect(paint=SolidPaint((9, 8, 7)))
+            gradient,
+            StrokeEffect(
+                paint=SolidPaint((9, 8, 7)),
+                position='center',
+            ),
         ))
         warning.assert_called_once()
         self.assertEqual(effect_paint_fallback_color(paint), (1, 2, 3))
@@ -575,7 +593,10 @@ class TextEffectDomainTest(unittest.TestCase):
                 },
                 {'effect_type': 'stroke', 'width': 0.2},
             ]})
-        self.assertEqual(stack.effects, (StrokeEffect(width=0.2),))
+        self.assertEqual(
+            stack.effects,
+            (StrokeEffect(width=0.2, position='center'),),
+        )
         warning.assert_called_once()
 
     def test_invalid_stack_fields_fall_back_independently(self):
@@ -589,7 +610,10 @@ class TextEffectDomainTest(unittest.TestCase):
 
         self.assertEqual(
             stack,
-            TextEffectStack(effects=(StrokeEffect(width=0.2),)),
+            TextEffectStack(effects=(StrokeEffect(
+                width=0.2,
+                position='center',
+            ),)),
         )
         self.assertEqual(warning.call_count, 1)
 
