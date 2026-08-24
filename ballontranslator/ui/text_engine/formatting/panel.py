@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Optional
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -1289,11 +1289,11 @@ class FontFormatPanel(Widget):
         if self.global_mode():
             self.set_globalfmt_title()
 
-    def set_textblk_item(self, textblk_item: TextBlkItem = None, multi_select:bool=False):
-        # A selection transition settles pending transform/effect text edits.
-        # Commit against the old target list before replacing it.
-        self.text_transform_session.finish_pending_edits()
-        self.text_effect_session.finish_pending_edits()
+    def set_textblk_item(
+        self,
+        textblk_item: Optional[TextBlkItem] = None,
+        multi_select: bool = False,
+    ) -> None:
         if textblk_item is not None:
             transform_items = [textblk_item]
         elif multi_select:
@@ -1318,8 +1318,13 @@ class FontFormatPanel(Widget):
                 # the retained local item when comparing effective owners.
                 transform_items = [self.textblk_item]
 
-        self.text_transform_session.replace_targets(transform_items)
-        self.text_effect_session.replace_targets(transform_items)
+        if not preserve_local_owner:
+            # A real selection transition settles edits against the old target
+            # list. A transient clear from a nested color dialog is not one.
+            self.text_transform_session.finish_pending_edits()
+            self.text_effect_session.finish_pending_edits()
+            self.text_transform_session.replace_targets(transform_items)
+            self.text_effect_session.replace_targets(transform_items)
 
         if textblk_item is None:
             if not preserve_local_owner:
@@ -1351,7 +1356,7 @@ class FontFormatPanel(Widget):
                     update_effect_panel=not transform_items,
                 )
                 self.set_globalfmt_title()
-            if transform_items:
+            if transform_items and not preserve_local_owner:
                 self.texttransform_panel.set_transform_items(transform_items)
                 self.texteffect_panel.set_effect_items(transform_items)
             

@@ -1,14 +1,19 @@
-import gc
 import os
 import unittest
-import weakref
 from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QCoreApplication, QEvent, Qt
-from qtpy.QtGui import QColor, QKeyEvent
-from qtpy.QtWidgets import QApplication, QColorDialog, QDialog, QWidget
+from qtpy.QtCore import QEvent, QPoint, QPointF, Qt
+from qtpy.QtGui import QColor, QKeyEvent, QKeySequence, QMouseEvent
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import (
+    QApplication,
+    QColorDialog,
+    QShortcut,
+    QVBoxLayout,
+    QWidget,
+)
 
 try:
     from qtpy.QtGui import QUndoStack
@@ -20,19 +25,25 @@ from ballontranslator.ui.custom_widget import (
     ColorPickerLabel,
     NestedColorPickerLabel,
 )
+from ballontranslator.ui.misc import parse_stylesheet
 from ballontranslator.ui.text_engine.formatting.commands import (
     handle_ffmt_change,
 )
+from ballontranslator.ui.text_engine.formatting.effects import StrokeEffectCard
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.formatting.gradient_editor import (
     GradientStopBar,
-    LinearGradientEditorDialog,
+    InlineLinearGradientEditor,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.fontformat import (
+    FontFormat,
+    ProjectiveTextTransform,
+    TextTransformStack,
+)
 from ballontranslator.utils.text_effects import (
     GlowEffect,
     GradientOverlayEffect,
@@ -420,6 +431,11 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.panel.set_textblk_item(solid)
         card = self.panel.texteffect_panel.stroke_cards[0]
+        self.assertTrue(card.gradient_editor.isHidden())
+        self.assertFalse(card.paint_button.isHidden())
+        solid_content_height = (
+            self.panel.texteffect_panel.scrollContent.minimumHeight()
+        )
         card.fill_type_selector.setCurrentIndex(
             card.fill_type_selector.findData('linear_gradient')
         )
@@ -428,11 +444,21 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(converted.stops[0].color, (12, 34, 56))
         self.assertEqual(converted.stops[0].opacity, 1.0)
         self.assertEqual(converted.stops[1].opacity, 0.0)
+        self.assertFalse(card.gradient_editor.isHidden())
+        self.assertTrue(card.paint_button.isHidden())
+        self.assertGreater(
+            self.panel.texteffect_panel.scrollContent.minimumHeight(),
+            solid_content_height,
+        )
         self.assertEqual(self.canvas.stack.count(), 1)
         self.canvas.stack.undo()
         self.assertEqual(
             solid.blk.fontformat.text_effects[0].paint,
             SolidPaint((12, 34, 56)),
+        )
+        self.assertEqual(
+            self.panel.texteffect_panel.scrollContent.minimumHeight(),
+            solid_content_height,
         )
         self.canvas.stack.redo()
         self.assertEqual(
@@ -448,11 +474,9 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
-        self.assertFalse(mixed_card.paint_button.isEnabled())
-        self.assertEqual(mixed_card.paint_button.text(), 'Mixed')
-        self.assertEqual(
-            mixed_card.paint_button.toolTip(), 'Mixed Gradient Paint'
-        )
+        self.assertTrue(mixed_card.paint_button.isHidden())
+        self.assertFalse(mixed_card.gradient_editor.isHidden())
+        self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
 
         first_solid = self._item(self._stack(StrokeEffect(
             paint=SolidPaint((1, 2, 3))
@@ -510,192 +534,311 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 3)
 
-    def test_gradient_editor_stop_operations_and_geometry_preview(self):
+    def test_inline_gradient_stop_actions_numeric_preview_commit_cancel(self):
         paint = LinearGradientPaint(stops=(
             GradientStop(0.0, (0, 0, 0), 1.0),
             GradientStop(1.0, (200, 100, 0), 0.0),
         ))
-        bar = GradientStopBar(paint)
+        editor = InlineLinearGradientEditor(paint)
+        bar = editor.stop_bar
         self.assertEqual(
             bar.toolTip(),
             'Click the strip to add a stop; drag a stop to move it',
         )
         previews = []
-        bar.paint_changed.connect(previews.append)
-        self.assertTrue(bar.add_stop(0.25))
+        commits = []
+        cancels = Mock()
+        editor.paint_previewed.connect(previews.append)
+        editor.paint_commit_requested.connect(commits.append)
+        editor.paint_preview_canceled.connect(cancels)
+
+        bar.select_stop(1)
+        self.assertEqual(previews, [])
+        self.assertEqual(commits, [])
+        editor.add_stop_button.click()
         self.assertEqual(len(bar.paint.stops), 3)
-        self.assertEqual(bar.paint.stops[1].color, (50, 25, 0))
-        bar.move_selected(0.4)
-        self.assertEqual(bar.paint.stops[1].position, 0.4)
-        self.assertTrue(bar.remove_selected())
-        self.assertFalse(bar.remove_selected())
-        self.assertGreaterEqual(len(previews), 3)
+        self.assertEqual(len(commits), 1)
+        editor.remove_stop_button.click()
+        self.assertEqual(len(editor.paint.stops), 2)
+        self.assertEqual(len(commits), 2)
 
-        dialog = LinearGradientEditorDialog(paint)
-        dialog_previews = []
-        dialog.paint_previewed.connect(dialog_previews.append)
-        dialog.stop_color_picker.setPickerColor((9, 8, 7))
-        dialog.stop_color_picker.colorChanged.emit(True)
-        self.assertEqual(dialog.paint.stops[0].color, (9, 8, 7))
-        dialog.angle_editor.setValue(45.0)
-        dialog.scale_editor.setValue(150.0)
-        dialog.flip_button.click()
-        self.assertEqual(dialog.paint.angle, 225.0)
-        self.assertEqual(dialog.paint.scale, 1.5)
-        self.assertGreaterEqual(len(dialog_previews), 3)
+        editor.angle_editor.setValue(45.0)
+        self.assertEqual(editor.paint.angle, 45.0)
+        self.assertEqual(len(commits), 2)
+        editor.angle_editor.editingFinished.emit()
+        self.assertEqual(len(commits), 3)
 
-        owned_modal = QWidget(dialog)
-        with patch.object(
-            QApplication, 'activeModalWidget', return_value=owned_modal
-        ):
-            self.assertTrue(dialog._preserve_on_outside_click())
-        dialog.show()
+        editor.angle_editor.setValue(90.0)
         QApplication.sendEvent(
-            dialog,
+            editor.angle_editor,
             QKeyEvent(
                 QEvent.Type.KeyPress,
                 Qt.Key.Key_Escape,
                 Qt.KeyboardModifier.NoModifier,
             ),
         )
-        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
-        self.assertEqual(dialog.result(), rejected)
-        self.assertFalse(dialog.isVisible())
-        dialog.deleteLater()
-        bar.deleteLater()
+        self.assertEqual(editor.paint.angle, 45.0)
+        self.assertEqual(cancels.call_count, 1)
+        self.assertEqual(len(commits), 3)
 
-    def test_gradient_dialog_preview_cancel_accept_one_undo(self):
+        before_color = editor.paint
+        editor._on_stop_color_preview(QColor(9, 8, 7))
+        self.assertEqual(editor._selected_stop().color, (9, 8, 7))
+        editor._on_stop_color_rejected()
+        self.assertEqual(editor.paint, before_color)
+        self.assertEqual(cancels.call_count, 2)
+        editor._on_stop_color_preview(QColor(9, 8, 7))
+        editor._on_stop_color_accepted()
+        self.assertEqual(editor._selected_stop().color, (9, 8, 7))
+        self.assertEqual(len(commits), 4)
+
+        editor.angle_editor.selectAll()
+        QTest.keyClicks(editor.angle_editor, '123')
+        self.assertEqual(editor.angle_editor.value(), 123.0)
+        QTest.keyClick(editor.angle_editor, Qt.Key.Key_Return)
+        self.assertEqual(editor.paint.angle, 123.0)
+        self.assertEqual(len(commits), 5)
+        editor.deleteLater()
+
+    def test_inline_gradient_drag_preview_release_one_undo_and_card_reuse(self):
         before = self._stack(StrokeEffect(
             paint=LinearGradientPaint()
         ))
-        preview = LinearGradientPaint(
-            stops=(
-                GradientStop(0.0, (255, 0, 0), 1.0),
-                GradientStop(1.0, (0, 0, 255), 0.5),
-            ),
-            angle=30.0,
-        )
         item = self._item(before)
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.stroke_cards[0]
-        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
-        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
+        editor = card.gradient_editor
+        self.assertFalse(editor.isHidden())
+        self.assertTrue(card.paint_button.isHidden())
+        self.assertEqual(card.findChildren(QColorDialog), [])
 
-        def stage_preview(dialog):
-            dialog.stop_bar.replace_selected(color=(255, 0, 0))
-            dialog.stop_bar.select_stop(1)
-            dialog.stop_bar.replace_selected(
-                color=(0, 0, 255), opacity=0.5
+        bar = editor.stop_bar
+        bar.resize(300, 42)
+        bar.show()
+        QApplication.sendEvent(bar, QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            QPointF(7, 31),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        QApplication.sendEvent(bar, QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(90, 31),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertNotEqual(item.effective_text_effects(), before)
+        self.assertEqual(self.canvas.stack.count(), 0)
+        QApplication.sendEvent(bar, QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            QPointF(90, 31),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        committed = item.blk.fontformat.text_effects
+        self.assertNotEqual(committed, before)
+        self.canvas.stack.undo()
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+
+    def test_inline_gradient_escape_owns_active_app_shortcut(self):
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        editor = InlineLinearGradientEditor(LinearGradientPaint())
+        layout.addWidget(editor)
+        shortcut = QShortcut(QKeySequence('Escape'), host)
+        shortcut_hits = Mock()
+        shortcut.activated.connect(shortcut_hits)
+        host.show()
+        self.app.processEvents()
+
+        editor.angle_editor.setFocus()
+        editor.angle_editor.setValue(75.0)
+        QTest.keyClick(editor.angle_editor, Qt.Key.Key_Escape)
+        self.assertEqual(editor.paint.angle, 0.0)
+        self.assertEqual(shortcut_hits.call_count, 0)
+
+        bar = editor.stop_bar
+        QTest.mousePress(
+            bar,
+            Qt.MouseButton.LeftButton,
+            pos=QPoint(bar.width() // 2, 12),
+        )
+        self.assertEqual(len(editor.paint.stops), 3)
+        QTest.keyClick(bar, Qt.Key.Key_Escape)
+        self.assertEqual(len(editor.paint.stops), 2)
+        self.assertEqual(shortcut_hits.call_count, 0)
+        host.deleteLater()
+
+    def test_inline_gradient_position_bounds_and_mixed_accessibility(self):
+        paint = LinearGradientPaint(stops=(
+            GradientStop(0.5, (0, 0, 0), 1.0),
+            GradientStop(0.5, (255, 255, 255), 1.0),
+        ))
+        editor = InlineLinearGradientEditor(paint)
+        previews = Mock()
+        commits = Mock()
+        editor.paint_previewed.connect(previews)
+        editor.paint_commit_requested.connect(commits)
+
+        editor.stop_position_editor.stepBy(1)
+        self.assertEqual(editor.stop_position_editor.value(), 50.0)
+        self.assertEqual(editor.paint, paint)
+        self.assertEqual(previews.call_count, 0)
+        self.assertEqual(commits.call_count, 0)
+
+        editor.set_paint(paint, editable=False)
+        self.assertIn('Mixed', editor.stop_bar.accessibleName())
+        self.assertEqual(editor.stop_bar.toolTip(), 'Mixed Gradient')
+        editor.set_paint(paint, editable=True)
+        self.assertEqual(editor.stop_bar.accessibleName(), 'Gradient Stops')
+        editor.deleteLater()
+
+    def test_inline_gradient_numeric_suffixes_fit_narrow_card(self):
+        old_stylesheet = self.app.styleSheet()
+        theme_globals = {
+            name: getattr(shared, name)
+            for name in (
+                'FOREGROUND_FONTCOLOR',
+                'SLIDERHANDLE_COLOR',
+                'BORDER_COLOR',
+                'WIDGET_BACKGROUND_COLOR',
             )
-            dialog.angle_editor.setValue(30.0)
-            self.assertEqual(dialog.paint, preview)
+        }
+        try:
+            for theme in ('eva-light', 'eva-dark'):
+                with self.subTest(theme=theme):
+                    self.app.setStyleSheet(parse_stylesheet(theme))
+                    host = QWidget()
+                    layout = QVBoxLayout(host)
+                    layout.setContentsMargins(11, 11, 11, 11)
+                    card = StrokeEffectCard(0)
+                    card.set_values([StrokeEffect(
+                        paint=LinearGradientPaint(angle=35.0, scale=1.25)
+                    )])
+                    layout.addWidget(card)
+                    requested_width = 316
+                    host.resize(
+                        requested_width, card.sizeHint().height() + 22
+                    )
+                    host.show()
+                    self.app.processEvents()
 
-        dialog = LinearGradientEditorDialog(before[0].paint)
+                    self.assertEqual(host.width(), requested_width)
+                    for field in card.gradient_editor._editors():
+                        line_edit = field.lineEdit()
+                        text_width = line_edit.fontMetrics().horizontalAdvance(
+                            field.text()
+                        )
+                        self.assertGreaterEqual(
+                            line_edit.contentsRect().width(),
+                            text_width + 4,
+                            field.text(),
+                        )
+                    host.deleteLater()
+                    self.app.processEvents()
+        finally:
+            self.app.setStyleSheet(old_stylesheet)
+            for name, value in theme_globals.items():
+                setattr(shared, name, value)
+
+    def test_inline_gradient_color_dialog_preview_reject_accept(self):
+        before = self._stack(StrokeEffect(paint=LinearGradientPaint()))
+        item = self._item(before)
+        item.set_text_transform(TextTransformStack((
+            ProjectiveTextTransform(),
+        )))
+        self.canvas.selected = [item]
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.stroke_cards[0]
+        editor = card.gradient_editor
+        transform_session = self.panel.text_transform_session
+        transform_session.preview_parameter_delta(
+            0, 'horizontal_scale', 0.25
+        )
+        self.assertAlmostEqual(
+            item._effective_text_transform()[0].horizontal_scale, 1.25
+        )
+        created_dialogs = []
+        real_dialog_class = QColorDialog
+
+        def create_dialog(*args, **kwargs):
+            dialog = real_dialog_class(*args, **kwargs)
+            created_dialogs.append(dialog)
+            return dialog
+
+        def assert_active_preview(color: QColor) -> None:
+            dialog = created_dialogs[-1]
+            dialog.currentColorChanged.emit(color)
+            self.assertTrue(self.panel.focusOnColorDialog)
+            self.panel.set_textblk_item(None)
+            self.assertEqual(self.canvas.selected, [item])
+            self.assertEqual(self.panel.text_effect_session.items, [item])
+            self.assertIs(self.panel.textblk_item, item)
+            self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+            self.assertIsNotNone(transform_session.drag_before)
+            self.assertAlmostEqual(
+                item._effective_text_transform()[0].horizontal_scale, 1.25
+            )
+            self.assertEqual(item.blk.fontformat.text_effects, before)
+            self.assertEqual(
+                item.effective_text_effects()[0].paint.stops[0].color,
+                (color.red(), color.green(), color.blue()),
+            )
+            self.assertEqual(self.canvas.stack.count(), 0)
 
         def preview_then_reject():
-            stage_preview(dialog)
-            self.assertEqual(item.blk.fontformat.text_effects, before)
-            self.assertEqual(item.effective_text_effects()[0].paint, preview)
-            return rejected
+            assert_active_preview(QColor(9, 8, 7))
+            created_dialogs[-1].reject()
+            return 0
 
         with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=preview_then_reject):
-            card.paint_button.click()
+            'ballontranslator.ui.text_engine.formatting.gradient_editor.'
+            'QColorDialog',
+            side_effect=create_dialog,
+        ), patch.object(
+            real_dialog_class, 'exec_', side_effect=preview_then_reject
+        ):
+            editor.stop_color_picker.click()
+
+        self.assertFalse(self.panel.focusOnColorDialog)
         self.assertEqual(item.effective_text_effects(), before)
         self.assertEqual(self.canvas.stack.count(), 0)
-
-        dialog = LinearGradientEditorDialog(before[0].paint)
+        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
 
         def preview_then_accept():
-            stage_preview(dialog)
-            return accepted
+            assert_active_preview(QColor(20, 30, 40))
+            created_dialogs[-1].accept()
+            return 1
 
         with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=preview_then_accept):
-            card.paint_button.click()
-        self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
+            'ballontranslator.ui.text_engine.formatting.gradient_editor.'
+            'QColorDialog',
+            side_effect=create_dialog,
+        ), patch.object(
+            real_dialog_class, 'exec_', side_effect=preview_then_accept
+        ):
+            editor.stop_color_picker.click()
+
+        self.assertFalse(self.panel.focusOnColorDialog)
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].paint.stops[0].color,
+            (20, 30, 40),
+        )
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
         self.canvas.stack.undo()
         self.assertEqual(item.blk.fontformat.text_effects, before)
-
-    def test_gradient_dialog_releases_filter_and_wrapper_after_card_flow(self):
-        item = self._item(self._stack(GradientOverlayEffect()))
-        self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.gradient_overlay_card
-        dialog = LinearGradientEditorDialog(
-            item.fontformat.text_effects[0].paint
+        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        transform_session.cancel_preview()
+        self.assertAlmostEqual(
+            item._effective_text_transform()[0].horizontal_scale, 1.0
         )
-        dialog_ref = weakref.ref(dialog)
-        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
-
-        def reject_after_show():
-            dialog.show()
-            self.app.processEvents()
-            self.assertTrue(dialog._outside_click_filter_installed)
-            dialog.reject()
-            self.assertFalse(dialog._outside_click_filter_installed)
-            return rejected
-
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=reject_after_show):
-            card.paint_button.click()
-
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        self.app.processEvents()
-        self.assertFalse(dialog._outside_click_filter_installed)
-        with self.assertRaises(RuntimeError):
-            dialog.objectName()
-        self.assertIs(dialog_ref(), dialog)
-        del dialog
-        gc.collect()
-        self.assertIsNone(dialog_ref())
-
-    def test_glow_gradient_dialog_releases_filter_and_wrapper(self):
-        item = self._item(self._stack(GlowEffect(
-            paint=LinearGradientPaint()
-        )))
-        self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.glow_cards[0]
-        dialog = LinearGradientEditorDialog(
-            item.fontformat.text_effects[0].paint
-        )
-        dialog_ref = weakref.ref(dialog)
-        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
-
-        def reject_after_show():
-            dialog.show()
-            self.app.processEvents()
-            self.assertTrue(dialog._outside_click_filter_installed)
-            dialog.reject()
-            self.assertFalse(dialog._outside_click_filter_installed)
-            return rejected
-
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=reject_after_show):
-            card.paint_button.click()
-
-        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        self.app.processEvents()
-        self.assertFalse(dialog._outside_click_filter_installed)
-        with self.assertRaises(RuntimeError):
-            dialog.objectName()
-        self.assertIs(dialog_ref(), dialog)
-        del dialog
-        gc.collect()
-        self.assertIsNone(dialog_ref())
 
     def test_multi_selection_maps_common_structure_and_blocks_mixed_indices(self):
         first = self._item(self._stack(StrokeEffect(width=0.1)))
@@ -928,10 +1071,9 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
-        self.assertFalse(mixed_card.paint_button.isEnabled())
-        self.assertEqual(
-            mixed_card.paint_button.toolTip(), 'Mixed Glow Gradient Paint'
-        )
+        self.assertTrue(mixed_card.paint_button.isHidden())
+        self.assertFalse(mixed_card.gradient_editor.isHidden())
+        self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
 
         outer_type = self._item(self._stack(GlowEffect(glow_type='outer')))
         inner_type = self._item(self._stack(GlowEffect(glow_type='inner')))
@@ -972,13 +1114,15 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 9)
 
-    def test_glow_fill_conversion_and_gradient_dialog_one_undo(self):
+    def test_glow_fill_conversion_and_inline_gradient_one_undo(self):
         before = self._stack(GlowEffect(
             paint=SolidPaint((12, 34, 56))
         ))
         item = self._item(before)
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.glow_cards[0]
+        self.assertTrue(card.gradient_editor.isHidden())
+        self.assertFalse(card.paint_button.isHidden())
         card.fill_type_selector.setCurrentIndex(
             card.fill_type_selector.findData('linear_gradient')
         )
@@ -988,41 +1132,29 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(converted.stops[0].opacity, 1.0)
         self.assertEqual(converted.stops[1].opacity, 0.0)
         self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertFalse(card.gradient_editor.isHidden())
+        self.assertTrue(card.paint_button.isHidden())
 
-        preview = LinearGradientPaint(
-            stops=converted.stops, angle=60.0
+        editor = card.gradient_editor
+        self.assertFalse(editor.isHidden())
+        self.assertTrue(card.paint_button.isHidden())
+        editor.angle_editor.setValue(60.0)
+        preview = LinearGradientPaint(stops=converted.stops, angle=60.0)
+        self.assertEqual(item.effective_text_effects()[0].paint, preview)
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint, converted)
+        QApplication.sendEvent(
+            editor.angle_editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
         )
-        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
-        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
-        dialog = LinearGradientEditorDialog(converted)
-
-        def preview_then_reject():
-            dialog.angle_editor.setValue(60.0)
-            self.assertEqual(item.effective_text_effects()[0].paint, preview)
-            self.assertEqual(item.blk.fontformat.text_effects[0].paint, converted)
-            return rejected
-
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=preview_then_reject):
-            card.paint_button.click()
         self.assertEqual(item.effective_text_effects()[0].paint, converted)
         self.assertEqual(self.canvas.stack.count(), 1)
 
-        dialog = LinearGradientEditorDialog(converted)
-
-        def preview_then_accept():
-            dialog.angle_editor.setValue(60.0)
-            return accepted
-
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=preview_then_accept):
-            card.paint_button.click()
+        editor.angle_editor.setValue(60.0)
+        editor.angle_editor.editingFinished.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 2)
         self.assertIs(self.panel.texteffect_panel.glow_cards[0], card)
@@ -1118,11 +1250,13 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(None, multi_select=True)
         mixed_card = effect_panel.gradient_overlay_card
         self.assertEqual(mixed_card.opacity_control.editor.text(), '100.0%')
-        self.assertEqual(mixed_card.paint_button.text(), 'Mixed')
-        self.assertFalse(mixed_card.paint_button.isEnabled())
-        self.assertEqual(
-            mixed_card.paint_button.toolTip(), 'Mixed Gradient Paint'
-        )
+        self.assertFalse(mixed_card.gradient_editor.isHidden())
+        self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
+
+        self.canvas.selected = [first]
+        self.panel.set_textblk_item(None, multi_select=True)
+        self.assertIs(effect_panel.gradient_overlay_card, mixed_card)
+        self.assertTrue(mixed_card.gradient_editor.angle_editor.isEnabled())
 
     @staticmethod
     def _constant_overlay(angle: float = 0.0) -> GradientOverlayEffect:
@@ -1134,50 +1268,31 @@ class TextEffectPanelTest(unittest.TestCase):
             angle=angle,
         ))
 
-    def test_gradient_overlay_dialog_preview_cancel_accept_one_undo(self):
+    def test_gradient_overlay_inline_preview_cancel_commit_one_undo(self):
         before = self._stack(self._constant_overlay())
         item = self._item(before)
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.gradient_overlay_card
+        editor = card.gradient_editor
         preview = LinearGradientPaint(
             stops=before[0].paint.stops, angle=60.0
         )
-        rejected = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Rejected')
-        accepted = getattr(getattr(QDialog, 'DialogCode', QDialog), 'Accepted')
-
-        dialog = LinearGradientEditorDialog(before[0].paint)
-        observed = []
-
-        def preview_then_reject():
-            dialog.angle_editor.setValue(60.0)
-            observed.append((
-                item.effective_text_effects()[0].paint,
-                item.blk.fontformat.text_effects,
-            ))
-            return rejected
-
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=preview_then_reject):
-            card.paint_button.click()
-        self.assertEqual(observed, [(preview, before)])
+        editor.angle_editor.setValue(60.0)
+        self.assertEqual(item.effective_text_effects()[0].paint, preview)
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        QApplication.sendEvent(
+            editor.angle_editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
         self.assertEqual(item.effective_text_effects(), before)
         self.assertEqual(self.canvas.stack.count(), 0)
 
-        dialog = LinearGradientEditorDialog(before[0].paint)
-
-        def preview_then_accept():
-            dialog.angle_editor.setValue(60.0)
-            return accepted
-
-        with patch(
-            'ballontranslator.ui.text_engine.formatting.effects.'
-            'LinearGradientEditorDialog',
-            return_value=dialog,
-        ), patch.object(dialog, 'exec_', side_effect=preview_then_accept):
-            card.paint_button.click()
+        editor.angle_editor.setValue(60.0)
+        editor.angle_editor.editingFinished.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIs(self.panel.texteffect_panel.gradient_overlay_card, card)
@@ -1229,6 +1344,32 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIsNone(self.panel.textblk_item)
         self.assertEqual(self.panel.text_effect_session.items, [])
+
+    def test_page_change_commits_pending_inline_gradient(self):
+        item = self._item(self._stack(self._constant_overlay()))
+        self.panel.set_textblk_item(item)
+        editor = self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
+        editor.angle_editor.setValue(75.0)
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 0.0)
+
+        self.panel.resolve_text_transform_edits_for_page_change()
+
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 75.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_history_change_cancels_pending_inline_gradient(self):
+        before = self._stack(self._constant_overlay())
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        editor = self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
+        editor.angle_editor.setValue(75.0)
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 75.0)
+
+        self.panel.resolve_text_transform_edits_for_history_change()
+
+        self.assertEqual(item.effective_text_effects(), before)
+        self.assertEqual(editor.paint, before[0].paint)
+        self.assertEqual(self.canvas.stack.count(), 0)
 
     def test_scene_change_cancels_preview_and_finishes_on_global_effects(self):
         global_effects = self._stack(StrokeEffect(width=0.88))

@@ -7,7 +7,6 @@ from qtpy.QtGui import QColor, QIcon, QPaintEvent, QPainter
 from qtpy.QtWidgets import (
     QColorDialog,
     QComboBox,
-    QDialog,
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
@@ -43,7 +42,7 @@ from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 from ..transforms.controls import CommittedTransformControl
 from ..rendering.effect_paint import paint_effect_paint_preview
-from .gradient_editor import LinearGradientEditorDialog
+from .gradient_editor import InlineLinearGradientEditor
 
 if TYPE_CHECKING:
     from ..alpha_mask_edit_session import TextAlphaMaskEditSession
@@ -368,6 +367,22 @@ class StrokeEffectCard(QFrame):
         self.paint_button = EffectPaintButton(self)
         self.paint_button.clicked.connect(self._on_paint_clicked)
         self._paint_seed: Optional[EffectPaint] = None
+        self.gradient_editor = InlineLinearGradientEditor(
+            LinearGradientPaint(), self
+        )
+        self.gradient_editor.paint_previewed.connect(
+            self._on_gradient_preview
+        )
+        self.gradient_editor.paint_commit_requested.connect(
+            self._on_gradient_commit
+        )
+        self.gradient_editor.paint_preview_canceled.connect(
+            self._on_gradient_cancel
+        )
+        self.gradient_editor.color_dialog_active_changed.connect(
+            self.color_dialog_active_changed.emit
+        )
+        self.gradient_editor.hide()
 
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
@@ -378,8 +393,10 @@ class StrokeEffectCard(QFrame):
         controls.addWidget(self.opacity_control, 1, 0)
         controls.addWidget(fill_widget, 1, 1)
         controls.addWidget(self.paint_button, 2, 0, 1, 2)
+        controls.addWidget(self.gradient_editor, 3, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
+        self._controls_layout = controls
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
@@ -471,6 +488,20 @@ class StrokeEffectCard(QFrame):
             mixed=mixed_paint,
             editable=(common_paint_type == 'solid') if mixed_paint else True,
         )
+        show_gradient = common_paint_type == 'linear_gradient'
+        visibility_changed = (
+            self.gradient_editor.isHidden() == show_gradient
+        )
+        self.paint_button.setVisible(not show_gradient)
+        self.gradient_editor.setVisible(show_gradient)
+        if show_gradient and isinstance(self._paint_seed, LinearGradientPaint):
+            self.gradient_editor.set_paint(
+                self._paint_seed, editable=not mixed_paint
+            )
+        if visibility_changed:
+            self._controls_layout.invalidate()
+            self.layout().invalidate()
+            self.updateGeometry()
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
         return (self.width_control, self.opacity_control)
@@ -521,40 +552,30 @@ class StrokeEffectCard(QFrame):
 
     def _on_paint_clicked(self) -> None:
         paint = self._paint_seed
-        if paint is None:
+        if not isinstance(paint, SolidPaint):
             return
         self.color_dialog_active_changed.emit(True)
         try:
-            if isinstance(paint, SolidPaint):
-                color = QColorDialog.getColor(
-                    QColor(*paint.color), self.window(), self.tr('Stroke Color')
+            color = QColorDialog.getColor(
+                QColor(*paint.color), self.window(), self.tr('Stroke Color')
+            )
+            if color.isValid():
+                self.value_commit_requested.emit(
+                    self.index,
+                    'paint',
+                    SolidPaint((color.red(), color.green(), color.blue())),
                 )
-                if color.isValid():
-                    self.value_commit_requested.emit(
-                        self.index,
-                        'paint',
-                        SolidPaint((color.red(), color.green(), color.blue())),
-                    )
-                return
-
-            dialog = LinearGradientEditorDialog(paint, self.window())
-            dialog.paint_previewed.connect(self._on_gradient_preview)
-            try:
-                result = dialog.exec_()
-                dialog_code = getattr(QDialog, 'DialogCode', QDialog)
-                if result == dialog_code.Accepted:
-                    self.value_commit_requested.emit(
-                        self.index, 'paint', dialog.paint
-                    )
-                else:
-                    self.preview_canceled.emit(self.index, 'paint')
-            finally:
-                dialog.deleteLater()
         finally:
             self.color_dialog_active_changed.emit(False)
 
     def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
         self.value_preview_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_commit(self, paint: LinearGradientPaint) -> None:
+        self.value_commit_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_cancel(self) -> None:
+        self.preview_canceled.emit(self.index, 'paint')
 
 
 class ShadowEffectCard(QFrame):
@@ -988,6 +1009,22 @@ class GlowEffectCard(QFrame):
         self.paint_button = EffectPaintButton(self)
         self.paint_button.clicked.connect(self._on_paint_clicked)
         self._paint_seed: Optional[EffectPaint] = None
+        self.gradient_editor = InlineLinearGradientEditor(
+            LinearGradientPaint(), self
+        )
+        self.gradient_editor.paint_previewed.connect(
+            self._on_gradient_preview
+        )
+        self.gradient_editor.paint_commit_requested.connect(
+            self._on_gradient_commit
+        )
+        self.gradient_editor.paint_preview_canceled.connect(
+            self._on_gradient_cancel
+        )
+        self.gradient_editor.color_dialog_active_changed.connect(
+            self.color_dialog_active_changed.emit
+        )
+        self.gradient_editor.hide()
 
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
@@ -999,8 +1036,10 @@ class GlowEffectCard(QFrame):
         controls.addWidget(self.spread_control, 1, 1)
         controls.addWidget(fill_widget, 2, 0, 1, 2)
         controls.addWidget(self.paint_button, 3, 0, 1, 2)
+        controls.addWidget(self.gradient_editor, 4, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
+        self._controls_layout = controls
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
@@ -1110,6 +1149,20 @@ class GlowEffectCard(QFrame):
             editable=editable,
             description=description,
         )
+        show_gradient = common_paint_type == 'linear_gradient'
+        visibility_changed = (
+            self.gradient_editor.isHidden() == show_gradient
+        )
+        self.paint_button.setVisible(not show_gradient)
+        self.gradient_editor.setVisible(show_gradient)
+        if show_gradient and isinstance(self._paint_seed, LinearGradientPaint):
+            self.gradient_editor.set_paint(
+                self._paint_seed, editable=not mixed_paint
+            )
+        if visibility_changed:
+            self._controls_layout.invalidate()
+            self.layout().invalidate()
+            self.updateGeometry()
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
         return (
@@ -1164,40 +1217,30 @@ class GlowEffectCard(QFrame):
 
     def _on_paint_clicked(self) -> None:
         paint = self._paint_seed
-        if paint is None:
+        if not isinstance(paint, SolidPaint):
             return
         self.color_dialog_active_changed.emit(True)
         try:
-            if isinstance(paint, SolidPaint):
-                color = QColorDialog.getColor(
-                    QColor(*paint.color), self.window(), self.tr('Glow Color')
+            color = QColorDialog.getColor(
+                QColor(*paint.color), self.window(), self.tr('Glow Color')
+            )
+            if color.isValid():
+                self.value_commit_requested.emit(
+                    self.index,
+                    'paint',
+                    SolidPaint((color.red(), color.green(), color.blue())),
                 )
-                if color.isValid():
-                    self.value_commit_requested.emit(
-                        self.index,
-                        'paint',
-                        SolidPaint((color.red(), color.green(), color.blue())),
-                    )
-                return
-
-            dialog = LinearGradientEditorDialog(paint, self.window())
-            dialog.paint_previewed.connect(self._on_gradient_preview)
-            try:
-                result = dialog.exec_()
-                dialog_code = getattr(QDialog, 'DialogCode', QDialog)
-                if result == dialog_code.Accepted:
-                    self.value_commit_requested.emit(
-                        self.index, 'paint', dialog.paint
-                    )
-                else:
-                    self.preview_canceled.emit(self.index, 'paint')
-            finally:
-                dialog.deleteLater()
         finally:
             self.color_dialog_active_changed.emit(False)
 
     def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
         self.value_preview_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_commit(self, paint: LinearGradientPaint) -> None:
+        self.value_commit_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_cancel(self) -> None:
+        self.preview_canceled.emit(self.index, 'paint')
 
 
 class HollowEffectCard(QFrame):
@@ -1358,16 +1401,28 @@ class GradientOverlayEffectCard(QFrame):
             self._on_preview_canceled
         )
 
-        self.paint_button = EffectPaintButton(self)
-        self.paint_button.clicked.connect(self._on_paint_clicked)
-        self._paint_seed: Optional[LinearGradientPaint] = None
+        self.gradient_editor = InlineLinearGradientEditor(
+            LinearGradientPaint(), self
+        )
+        self.gradient_editor.paint_previewed.connect(
+            self._on_gradient_preview
+        )
+        self.gradient_editor.paint_commit_requested.connect(
+            self._on_gradient_commit
+        )
+        self.gradient_editor.paint_preview_canceled.connect(
+            self._on_gradient_cancel
+        )
+        self.gradient_editor.color_dialog_active_changed.connect(
+            self.color_dialog_active_changed.emit
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(6)
         layout.addLayout(header)
         layout.addWidget(self.opacity_control)
-        layout.addWidget(self.paint_button)
+        layout.addWidget(self.gradient_editor)
 
     def set_values(
         self, overlays: Sequence[GradientOverlayEffect]
@@ -1394,11 +1449,9 @@ class GradientOverlayEffectCard(QFrame):
             if paints and all(paint == paints[0] for paint in paints)
             else None
         )
-        self._paint_seed = common_paint
-        self.paint_button.set_paint(
-            common_paint or (paints[0] if paints else None),
-            mixed=common_paint is None,
-            editable=common_paint is not None,
+        paint = common_paint or paints[0]
+        self.gradient_editor.set_paint(
+            paint, editable=common_paint is not None
         )
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
@@ -1427,31 +1480,14 @@ class GradientOverlayEffectCard(QFrame):
     def _on_delete_clicked(self) -> None:
         self.remove_requested.emit(self.index)
 
-    def _on_paint_clicked(self) -> None:
-        if self._paint_seed is None:
-            return
-        self.color_dialog_active_changed.emit(True)
-        try:
-            dialog = LinearGradientEditorDialog(
-                self._paint_seed, self.window()
-            )
-            dialog.paint_previewed.connect(self._on_gradient_preview)
-            try:
-                result = dialog.exec_()
-                dialog_code = getattr(QDialog, 'DialogCode', QDialog)
-                if result == dialog_code.Accepted:
-                    self.value_commit_requested.emit(
-                        self.index, 'paint', dialog.paint
-                    )
-                else:
-                    self.preview_canceled.emit(self.index, 'paint')
-            finally:
-                dialog.deleteLater()
-        finally:
-            self.color_dialog_active_changed.emit(False)
-
     def _on_gradient_preview(self, paint: LinearGradientPaint) -> None:
         self.value_preview_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_commit(self, paint: LinearGradientPaint) -> None:
+        self.value_commit_requested.emit(self.index, 'paint', paint)
+
+    def _on_gradient_cancel(self) -> None:
+        self.preview_canceled.emit(self.index, 'paint')
 
 
 class AlphaMaskCard(QFrame):
@@ -1910,6 +1946,7 @@ class TextEffectPanel(PanelArea):
             self._rebuild_effect_cards(())
         else:
             self._rebuild_effect_cards(common_sequence)
+            gradient_visibility_changed = False
             phase_sequences = [
                 tuple(effect_phase(effect) for effect in state.effects)
                 for state in states
@@ -1920,7 +1957,20 @@ class TextEffectPanel(PanelArea):
             )
             for card in self.effect_cards:
                 values = [state.effects[card.index] for state in states]
+                gradient_editor = getattr(card, 'gradient_editor', None)
+                gradient_was_hidden = (
+                    gradient_editor.isHidden()
+                    if isinstance(
+                        card, (StrokeEffectCard, GlowEffectCard)
+                    )
+                    else None
+                )
                 card.set_values(values)
+                if (
+                    gradient_was_hidden is not None
+                    and gradient_editor.isHidden() != gradient_was_hidden
+                ):
+                    gradient_visibility_changed = True
                 if isinstance(
                     card,
                     (StrokeEffectCard, ShadowEffectCard, GlowEffectCard),
@@ -1939,6 +1989,9 @@ class TextEffectPanel(PanelArea):
                         )
                     else:
                         card.set_move_enabled(False, False)
+            if gradient_visibility_changed:
+                self.cards_layout.invalidate()
+                self.content_layout.invalidate()
         self.add_effect_actions['hollow'].setEnabled(
             not mixed and common_sequence is not None
             and 'hollow' not in common_sequence
@@ -1971,17 +2024,29 @@ class TextEffectPanel(PanelArea):
         for card in self.effect_cards:
             yield from card.iter_controls()
 
+    def iter_gradient_editors(self) -> Iterator[InlineLinearGradientEditor]:
+        for card in self.effect_cards:
+            editor = getattr(card, 'gradient_editor', None)
+            if isinstance(editor, InlineLinearGradientEditor):
+                yield editor
+
     def finish_pending_effect_edits(self) -> None:
         for control in self.iter_controls():
             control.commit_pending()
+        for editor in tuple(self.iter_gradient_editors()):
+            editor.commit_pending()
 
     def cancel_pending_effect_edits(self) -> None:
         for control in self.iter_controls():
             control.cancel_pending()
+        for editor in tuple(self.iter_gradient_editors()):
+            editor.cancel_pending()
 
     def cancel_effect_previews(self) -> None:
         for control in self.iter_controls():
             control.cancel_preview()
+        for editor in tuple(self.iter_gradient_editors()):
+            editor.cancel_pending()
 
     def _sync_content_height(self) -> None:
         if not hasattr(self, 'content_layout'):
