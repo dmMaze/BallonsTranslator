@@ -1124,58 +1124,91 @@ class TextEffectRenderer:
     ) -> None:
         """Paint only selection/caret feedback over a completed foreground.
 
-        The native pass keeps Qt's caret/IME state current. Canonical glyph
-        alpha is removed from a transient layer so only editing feedback is
-        composited over the completed cached surface.
+        A zero-opacity native pass keeps Qt's caret/IME state current and
+        captures its selection formats. Ordinary foreground is then muted
+        while those selections are replayed over the completed surface; the
+        geometry owner paints the deferred caret last.
 
         >>> hasattr(TextEffectRenderer, '_paint_effect_interaction')
         True
         """
         if self.export_render or not self.item.isEditing():
             return
-        rect = self._visible_effect_rect(painter, option.exposedRect)
-        if rect.isEmpty():
-            return
-        requested_scale = self._paint_device_scale(painter)
-        plan = plan_effect_raster(
-            rect.width(),
-            rect.height(),
-            quality_raster_request(requested_scale),
-        )
+        layout = self.item.layout
+        previous_defer_cursor = layout.defer_cursor_paint
+        previous_observer = layout.paint_context_observer
+        deferred_cursor_position = -1
+        captured_context: Optional[
+            QAbstractTextDocumentLayout.PaintContext
+        ] = None
+
+        def capture_context(
+            context: QAbstractTextDocumentLayout.PaintContext,
+        ) -> None:
+            nonlocal captured_context
+            if previous_observer is not None:
+                previous_observer(context)
+            captured_context = self._editing_feedback_context(context)
+
+        layout.defer_cursor_paint = True
+        layout.paint_context_observer = capture_context
         try:
-            if plan.mode != 'full':
-                raise EffectRasterAllocationError(
-                    'interaction surface exceeds bounded raster policy'
-                )
-            interaction = self._new_effect_pixmap(plan.tier, rect)
-            interaction_painter = QPainter(interaction)
-            if not interaction_painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin effect interaction painter'
-                )
-            try:
-                interaction_painter.translate(-rect.topLeft())
-                base_paint(
-                    interaction_painter,
-                    QStyleOptionGraphicsItem(option),
-                    widget,
-                )
-                interaction_painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_DestinationOut
-                )
-                self._paint_live_layout(
-                    interaction_painter, self._effect_paint_context()
-                )
-            finally:
-                interaction_painter.end()
-            painter.drawPixmap(rect.topLeft(), interaction)
-        except RASTER_BOUNDARY_FAILURES:
             painter.save()
             try:
                 painter.setOpacity(0.0)
                 base_paint(painter, option, widget)
+                deferred_cursor_position = layout.deferred_cursor_position
             finally:
                 painter.restore()
+            layout.paint_context_observer = None
+            if captured_context is not None:
+                self._paint_live_layout(painter, captured_context)
+        finally:
+            layout.deferred_cursor_position = deferred_cursor_position
+            layout.defer_cursor_paint = previous_defer_cursor
+            layout.paint_context_observer = previous_observer
+        if not self.geometry_controller.uses_surface_warp():
+            self.geometry_controller.paint_deferred_cursor(
+                painter, None, export_render=False
+            )
+
+    def _editing_feedback_context(
+        self,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> QAbstractTextDocumentLayout.PaintContext:
+        """Keep Qt selections while suppressing ordinary foreground paint.
+
+        >>> callable(TextEffectRenderer._editing_feedback_context)
+        True
+        """
+        selections = [
+            (QTextCursor(selection.cursor), QTextCharFormat(selection.format))
+            for selection in context.selections
+        ]
+        clip = QRectF(context.clip)
+        palette = context.palette
+        feedback = QAbstractTextDocumentLayout.PaintContext()
+        feedback.clip = clip
+        feedback.cursorPosition = -1
+        feedback.palette = palette
+
+        muted = QAbstractTextDocumentLayout.Selection()
+        muted.cursor = QTextCursor(self.document())
+        muted.cursor.select(QTextCursor.SelectionType.Document)
+        muted_format = QTextCharFormat()
+        transparent = QColor(0, 0, 0, 0)
+        muted_format.setForeground(transparent)
+        muted_format.setBackground(transparent)
+        muted_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
+        muted.format = muted_format
+        feedback_selections = [muted]
+        for cursor, char_format in selections:
+            copied = QAbstractTextDocumentLayout.Selection()
+            copied.cursor = cursor
+            copied.format = char_format
+            feedback_selections.append(copied)
+        feedback.selections = feedback_selections
+        return feedback
 
     def finalize_neutral_cache(self) -> None:
         """Invalidate transformed pixels after neutral restoration."""

@@ -7,15 +7,22 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import cv2
 import numpy as np
 
-from qtpy.QtCore import QRectF
+from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import (
     QColor,
     QImage,
     QPainter,
+    QPalette,
     QTextCharFormat,
     QTextCursor,
 )
-from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
+from qtpy.QtWidgets import (
+    QApplication,
+    QGraphicsScene,
+    QGraphicsView,
+    QStyle,
+    QStyleOptionGraphicsItem,
+)
 
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.item import TextBlkItem
@@ -989,7 +996,44 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
         item.setTextCursor(cursor)
 
-        self.assertGreater(np.count_nonzero(self._render(item)[..., 3]), 0)
+        feedback_pixels = self._render(item)
+        self.assertGreater(np.count_nonzero(feedback_pixels[..., 3]), 0)
+        highlighted_text = view.palette().color(
+            QPalette.ColorRole.HighlightedText
+        )
+        highlighted_rgb = np.array([
+            highlighted_text.red(),
+            highlighted_text.green(),
+            highlighted_text.blue(),
+        ])
+        hollow_highlighted_text = np.count_nonzero(
+            np.all(
+                feedback_pixels[..., :3] == highlighted_rgb,
+                axis=2,
+            )
+            & (feedback_pixels[..., 3] > 0)
+        )
+        plain = self._item(TextEffectStack())
+        plain_scene = QGraphicsScene()
+        plain_view = QGraphicsView(plain_scene)
+        plain_scene.addItem(plain)
+        plain_view.show()
+        plain.startEdit()
+        plain_view.setFocus()
+        plain.setFocus()
+        self.app.processEvents()
+        plain_cursor = plain.textCursor()
+        plain_cursor.setPosition(0)
+        plain_cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+        plain.setTextCursor(plain_cursor)
+        plain_pixels = self._render(plain)
+        plain_highlighted_text = np.count_nonzero(
+            np.all(plain_pixels[..., :3] == highlighted_rgb, axis=2)
+            & (plain_pixels[..., 3] > 0)
+        )
+        self.assertGreater(plain_highlighted_text, 0)
+        self.assertEqual(hollow_highlighted_text, plain_highlighted_text)
+        plain_view.close()
         clipped = QImage(
             160, 100, QImage.Format.Format_ARGB32_Premultiplied
         )
@@ -1007,22 +1051,184 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 QRectF(0, 0, 80, 50),
             )
         clipped_painter.end()
-        render_scale, interaction_rect = allocate.call_args.args
-        self.assertEqual(render_scale, 2.0)
-        self.assertLessEqual(interaction_rect.width(), 80.0)
-        self.assertLessEqual(interaction_rect.height(), 50.0)
-        self.assertLess(
-            interaction_rect.width(), renderer.boundingRect().width()
+        self.assertEqual(allocate.call_count, 0)
+        self.assertGreater(
+            np.count_nonzero(
+                pixmap2ndarray(clipped, keep_alpha=True)[..., 3]
+            ),
+            0,
         )
 
         item.set_text_transform(TextTransformStack((SineTextTransform(),)))
-        self.assertGreater(np.count_nonzero(self._render(item)[..., 3]), 0)
+        with patch.object(
+            item.geometry_controller,
+            'paint_deferred_cursor',
+            wraps=item.geometry_controller.paint_deferred_cursor,
+        ) as paint_cursor:
+            self.assertGreater(
+                np.count_nonzero(self._render(item)[..., 3]), 0
+            )
+        self.assertGreater(paint_cursor.call_count, 0)
+        self.assertTrue(all(
+            call.args[1] is not None
+            for call in paint_cursor.call_args_list
+        ))
 
         item.set_export_effect_render(True)
         try:
             self.assertEqual(np.count_nonzero(self._render(item)[..., 3]), 0)
         finally:
             item.set_export_effect_render(False)
+
+    def test_hollow_interaction_defers_caret_and_hides_native_item_frame(self):
+        item = self._item(TextEffectStack(effects=(
+            ShadowEffect(
+                shadow_type='drop',
+                offset=(0.5, 0.3),
+                blur=0.2,
+            ),
+            HollowEffect(),
+        )))
+        self.assertGreater(item.padding(), 0.0)
+        item.startEdit()
+        renderer = item.effect_renderer
+        option = QStyleOptionGraphicsItem()
+        option.exposedRect = item.boundingRect()
+        option.state = QStyle.StateFlag.State_Selected
+        image = QImage(
+            420, 260, QImage.Format.Format_ARGB32_Premultiplied
+        )
+        image.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(image)
+        observed = []
+
+        def base_paint(source_painter, source_option, _widget):
+            observed.append((
+                source_option.state,
+                item.layout.defer_cursor_paint,
+                source_painter.opacity(),
+            ))
+            item.layout.deferred_cursor_position = 3
+
+        try:
+            with patch.object(
+                item.geometry_controller, 'paint_deferred_cursor'
+            ) as paint_cursor:
+                renderer.paint_item(painter, option, None, base_paint)
+        finally:
+            painter.end()
+            item.endEdit()
+
+        self.assertEqual(observed, [(
+            QStyle.StateFlag.State_Selected,
+            True,
+            0.0,
+        )])
+        self.assertEqual(item.layout.deferred_cursor_position, 3)
+        paint_cursor.assert_called_once()
+        self.assertIsNone(paint_cursor.call_args.args[1])
+
+    def test_vertical_hollow_selection_keeps_native_feedback(self):
+        item = self._item(
+            TextEffectStack(effects=(HollowEffect(),)),
+            vertical=True,
+        )
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        scene.addItem(item)
+        view.show()
+        item.startEdit()
+        view.setFocus()
+        item.setFocus()
+        self.app.processEvents()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+
+        pixels = self._render(item)
+        selection_background = view.palette().color(
+            QPalette.ColorRole.Highlight
+        )
+        selection_rgb = np.array([
+            selection_background.red(),
+            selection_background.green(),
+            selection_background.blue(),
+        ])
+        self.assertGreater(
+            np.count_nonzero(
+                np.all(pixels[..., :3] == selection_rgb, axis=2)
+                & (pixels[..., 3] > 0)
+            ),
+            0,
+        )
+        self.assertGreater(
+            np.count_nonzero(
+                (pixels[..., 0] > 180)
+                & (pixels[..., 1] < 80)
+                & (pixels[..., 2] < 80)
+                & (pixels[..., 3] > 0)
+            ),
+            0,
+        )
+        view.close()
+
+    def test_deferred_cursor_is_visible_over_neutral_effect_surface(self):
+        item = self._item(TextEffectStack(effects=(HollowEffect(),)))
+        cursor_rect = QRectF(20, 20, 3, 18)
+        image = QImage(
+            80, 60, QImage.Format.Format_ARGB32_Premultiplied
+        )
+        background = QColor(10, 20, 30, 255)
+        image.fill(background)
+        item.layout.deferred_cursor_position = 0
+        painter = QPainter(image)
+        try:
+            with patch.object(
+                item.layout,
+                'source_cursor_rect',
+                return_value=cursor_rect,
+            ):
+                item.geometry_controller.paint_deferred_cursor(
+                    painter, None, export_render=False
+                )
+        finally:
+            painter.end()
+
+        self.assertNotEqual(image.pixelColor(21, 25), background)
+        self.assertEqual(image.pixelColor(5, 5), background)
+
+    def test_effect_padding_does_not_expand_neutral_interaction_shape(self):
+        item = self._item(TextEffectStack(effects=(
+            ShadowEffect(
+                shadow_type='drop',
+                offset=(0.5, 0.3),
+                blur=0.2,
+            ),
+            HollowEffect(),
+        )))
+        source_rect = item.geometry_controller.source_rect()
+        logical_rect = item.logical_unpadded_rect()
+        padded_corner = QPointF(
+            source_rect.left() + 1.0,
+            source_rect.bottom() - 1.0,
+        )
+
+        self.assertGreater(item.padding(), 0.0)
+        self.assertTrue(item.boundingRect().contains(padded_corner))
+        self.assertFalse(logical_rect.contains(padded_corner))
+        self.assertFalse(item.shape().contains(padded_corner))
+        self.assertFalse(item.contains(padded_corner))
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.assertNotIn(
+            item,
+            scene.items(item.mapToScene(padded_corner)),
+        )
+        self.assertIn(
+            item,
+            scene.items(item.mapToScene(logical_rect.center())),
+        )
 
     def test_inner_failure_falls_back_to_base_and_export_remains_strict(self):
         item = self._item(TextEffectStack())

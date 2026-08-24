@@ -279,9 +279,8 @@ class TextItemGeometryController:
                 )
             return path
         path = QPainterPath()
-        path.addRect(
-            self.source_rect() if self.is_neutral() else self.logical_rect()
-        )
+        # Effect padding is a paint/culling bound, never an input target.
+        path.addRect(self.logical_rect())
         if not ink_bounds.isEmpty():
             ink_path = QPainterPath()
             ink_path.addRect(ink_bounds)
@@ -1012,13 +1011,18 @@ class TextItemGeometryController:
         )
         return remap_key == expected
 
-    def _paint_surface_cursor(
+    def paint_deferred_cursor(
         self,
         painter: QPainter,
-        mapper,
+        mapper: Optional[CompositeTextTransformMapper],
         *,
         export_render: bool,
     ) -> None:
+        """Paint the caret after the completed effect/transform surface.
+
+        >>> callable(TextItemGeometryController.paint_deferred_cursor)
+        True
+        """
         layout = self.item.layout
         if export_render:
             return
@@ -1036,7 +1040,11 @@ class TextItemGeometryController:
             )
         if not isinstance(cursor_rect, (QRectF, QRect)):
             return
-        cursor_path = mapper.map_rect_path(QRectF(cursor_rect))
+        if mapper is None:
+            cursor_path = QPainterPath()
+            cursor_path.addRect(QRectF(cursor_rect))
+        else:
+            cursor_path = mapper.map_rect_path(QRectF(cursor_rect))
         if cursor_path.isEmpty():
             return
         painter.save()
@@ -1144,7 +1152,7 @@ class TextItemGeometryController:
                 self._probe_surface_cursor(
                     painter, option, widget, base_paint
                 )
-            self._paint_surface_cursor(
+            self.paint_deferred_cursor(
                 painter, mapper, export_render=export_render
             )
         except RASTER_BOUNDARY_FAILURES as error:

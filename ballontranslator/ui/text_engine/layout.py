@@ -1,5 +1,5 @@
 from functools import cached_property, lru_cache
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from qtpy.QtCore import QPointF, QRectF, Signal, QSizeF
 from qtpy.QtGui import (
@@ -191,6 +191,12 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.render_failure_handler = None
         self.defer_cursor_paint = False
         self.deferred_cursor_position = -1
+        # Installed only for one native paint call while effects capture Qt's
+        # authoritative selection/IME context; the renderer clears it in
+        # finally before returning to the event loop.
+        self.paint_context_observer: Optional[
+            Callable[[QAbstractTextDocumentLayout.PaintContext], None]
+        ] = None
         self.publishing_size_enlargement = False
         # QWidgetTextControl routes its mouse and drag hit tests through this
         # layout.  Nonlinear visual effects can therefore restore source
@@ -227,6 +233,14 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._is_painting_stroke = False
         self._draw_offset = []
         self.text_padding = 0
+
+    def _observe_paint_context(
+        self,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        observer = self.paint_context_observer
+        if observer is not None:
+            observer(context)
 
     def source_cursor_rect(self, cursor_position: int):
         """Return a layout-owned caret rectangle, or defer to Qt.

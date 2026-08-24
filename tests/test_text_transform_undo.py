@@ -3191,7 +3191,7 @@ class TextTransformRenderingTest(TextTransformTestBase):
         image.fill(QColor(127, 127, 127))
         painter = QPainter(image)
         with patch.object(mapper, 'map_rect_path', capture_rect):
-            item.geometry_controller._paint_surface_cursor(
+            item.geometry_controller.paint_deferred_cursor(
                 painter, mapper, export_render=False
             )
         painter.end()

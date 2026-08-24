@@ -1077,6 +1077,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
+        self._observe_paint_context(context)
         self.deferred_cursor_position = context.cursorPosition
         painter.save()
         painter.setPen(context.palette.color(QPalette.ColorRole.Text))
