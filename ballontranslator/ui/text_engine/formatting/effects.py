@@ -1644,13 +1644,13 @@ class AlphaMaskCard(_EffectCard):
         self.title_icon_label = _effect_icon_label(
             'text-effect-alpha-mask.svg', self
         )
-        self.title_label = QLabel(self.tr('Alpha Mask'), self)
+        self.title_label = QLabel(self.tr('Eraser'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
         self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Alpha Mask'), self.tr('Hide Alpha Mask'), self
+            self.tr('Show Eraser'), self.tr('Hide Eraser'), self
         )
         self.visibility_button.visibility_requested.connect(
             self.enabled_requested.emit
@@ -1660,8 +1660,8 @@ class AlphaMaskCard(_EffectCard):
         self.remove_button.setIcon(
             QIcon(themed_icon_path('titlebar_close.svg'))
         )
-        self.remove_button.setToolTip(self.tr('Remove Alpha Mask'))
-        self.remove_button.setAccessibleName(self.tr('Remove Alpha Mask'))
+        self.remove_button.setToolTip(self.tr('Remove Eraser'))
+        self.remove_button.setAccessibleName(self.tr('Remove Eraser'))
         self.remove_button.setFixedSize(18, 18)
         self.remove_button.clicked.connect(self.remove_requested.emit)
 
@@ -1736,15 +1736,6 @@ class AlphaMaskCard(_EffectCard):
         size_layout.setStretch(0, 1)
         size_layout.setStretch(1, 2)
 
-        controls = QGridLayout()
-        controls.setContentsMargins(0, 0, 0, 0)
-        controls.setHorizontalSpacing(8)
-        controls.setVerticalSpacing(4)
-        controls.addWidget(mode_widget, 0, 0)
-        controls.addWidget(size_widget, 0, 1)
-        controls.setColumnStretch(0, 1)
-        controls.setColumnStretch(1, 1)
-
         self.clear_button = QToolButton(self)
         self.clear_button.setObjectName('TextAlphaMaskClearButton')
         self.clear_button.setText(self.tr('Clear'))
@@ -1753,14 +1744,21 @@ class AlphaMaskCard(_EffectCard):
         )
         self.clear_button.clicked.connect(self.clear_requested.emit)
 
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(8)
+        controls.setVerticalSpacing(4)
+        controls.addWidget(mode_widget, 0, 0)
+        controls.addWidget(size_widget, 0, 1)
+        controls.addWidget(self.clear_button, 0, 2)
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(6)
         layout.addLayout(header)
         layout.addLayout(controls)
-        layout.addWidget(
-            self.clear_button, alignment=Qt.AlignmentFlag.AlignLeft
-        )
 
     def set_values(
         self,
@@ -1889,7 +1887,7 @@ class TextEffectPanel(PanelArea):
             self.tr('Select one text block in text edit mode.')
         )
         self.mask_brush_button.setAccessibleName(
-            self.tr('Alpha Mask Brush')
+            self.tr('Text Eraser')
         )
         self.mask_brush_button.clicked.connect(
             self._on_mask_brush_clicked
@@ -2032,7 +2030,7 @@ class TextEffectPanel(PanelArea):
         self.mask_brush_button.setChecked(active)
         del blocker
         self.mask_brush_button.setToolTip(
-            self.tr('Edit Alpha Mask')
+            self.tr('Edit Text Eraser')
             if eligible
             else self.tr('Select one text block in text edit mode.')
         )

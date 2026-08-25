@@ -454,20 +454,30 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             self.assertIsNotNone(controls.alpha_mask_card)
             mask_card = controls.alpha_mask_card
             self.assertFalse(mask_card.title_icon_label.pixmap().isNull())
+            self.assertEqual(mask_card.title_label.text(), 'Eraser')
+            self.assertEqual(
+                controls.mask_brush_button.accessibleName(), 'Text Eraser'
+            )
+            self.assertEqual(
+                controls.mask_brush_button.toolTip(), 'Edit Text Eraser'
+            )
             self.assertFalse(mask_card.visibility_button.icon().isNull())
             self.assertEqual(
-                mask_card.visibility_button.toolTip(), 'Hide Alpha Mask'
+                mask_card.visibility_button.toolTip(), 'Hide Eraser'
             )
             self.assertEqual(
                 mask_card.visibility_button.accessibleName(),
-                'Hide Alpha Mask',
+                'Hide Eraser',
+            )
+            self.assertEqual(
+                mask_card.remove_button.toolTip(), 'Remove Eraser'
             )
             count = self.canvas.text_undo_stack.count()
             mask_card.visibility_button.click()
             self.assertFalse(self.item.blk.text_alpha_mask.enabled)
             self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
             self.assertEqual(
-                mask_card.visibility_button.toolTip(), 'Show Alpha Mask'
+                mask_card.visibility_button.toolTip(), 'Show Eraser'
             )
             self.canvas.text_undo_stack.undo()
             self.assertTrue(self.item.blk.text_alpha_mask.enabled)

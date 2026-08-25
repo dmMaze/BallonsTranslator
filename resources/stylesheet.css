@@ -2601,18 +2601,12 @@ QToolButton#TextEffectVisibilityButton:hover {
     background-color: @borderColor;
 }
 
-QToolButton#TextEffectBrushButton:hover:enabled {
-    background-color: rgba(30, 147, 229, 20%);
-}
-
+QToolButton#TextEffectBrushButton,
 QToolButton#TextEffectHollowButton {
     border-radius: 6px;
 }
 
-QToolButton#TextEffectHollowButton:hover {
-    background-color: rgba(30, 147, 229, 20%);
-}
-
+QToolButton#TextEffectBrushButton:checked,
 QToolButton#TextEffectHollowButton:checked {
     background-color: rgba(30, 147, 229, 18%);
 }
@@ -2622,13 +2616,15 @@ QToolButton#TextEffectHollowButton[mixed="true"] {
     background-color: rgba(30, 147, 229, 9%);
 }
 
-QToolButton#TextEffectBrushButton:checked {
-    background-color: rgb(30, 147, 229);
+QToolButton#TextEffectBrushButton:enabled:hover,
+QToolButton#TextEffectHollowButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
 }
 
 QFrame#TextAlphaMaskCard QToolButton#TextAlphaMaskClearButton {
     min-height: 22px;
     color: @qwidgetForegroundColor;
+    font-size: 12px;
     border: 1px solid @borderColor;
     border-radius: 4px;
     background-color: transparent;
