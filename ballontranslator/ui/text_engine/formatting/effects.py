@@ -71,7 +71,7 @@ class EffectVisibilityButton(QToolButton):
         self._visibility: Optional[bool] = None
         self.setObjectName('TextEffectVisibilityButton')
         self.setFixedSize(18, 18)
-        self.setIconSize(QSize(14, 14))
+        self.setIconSize(QSize(16, 16))
         self.clicked.connect(self._on_clicked)
         self.set_visibility(None)
 
@@ -177,7 +177,7 @@ def _effect_action_widget(
     layout.setSpacing(4)
     for button in buttons:
         button.setFixedSize(18, 18)
-        button.setIconSize(QSize(12, 12))
+        button.setIconSize(QSize(16, 16))
         layout.addWidget(button)
     widget.setFixedWidth(18 * len(buttons) + 4 * max(0, len(buttons) - 1))
     parent.set_hover_actions(buttons)
@@ -379,9 +379,9 @@ class StrokeEffectCard(_EffectCard):
         header.setSpacing(6)
         header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.visibility_button)
         header.addStretch()
         header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         self.width_control = EffectNumericControl(
             self.tr('Width'), 'width', 1.0, 0.0, 10.0, '', 0.01,
@@ -733,9 +733,9 @@ class ShadowEffectCard(_EffectCard):
         header.setSpacing(6)
         header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.visibility_button)
         header.addStretch()
         header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         type_label = QLabel(self.tr('Type'), self)
         type_label.setObjectName('TextEffectParamLabel')
@@ -1134,9 +1134,9 @@ class GlowEffectCard(_EffectCard):
         header.setSpacing(6)
         header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.visibility_button)
         header.addStretch()
         header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         type_label = QLabel(self.tr('Type'), self)
         type_label.setObjectName('TextEffectParamLabel')
@@ -1504,9 +1504,9 @@ class GradientOverlayEffectCard(_EffectCard):
         header.setSpacing(6)
         header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.visibility_button)
         header.addStretch()
         header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         self.opacity_control = EffectNumericControl(
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
@@ -1672,9 +1672,9 @@ class AlphaMaskCard(_EffectCard):
         header.setSpacing(6)
         header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
-        header.addWidget(self.visibility_button)
         header.addStretch()
         header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         mode_label = QLabel(self.tr('Mode'), self)
         mode_label.setObjectName('TextEffectParamLabel')

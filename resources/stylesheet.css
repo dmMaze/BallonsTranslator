@@ -2592,6 +2592,13 @@ QToolButton#TextEffectHollowButton {
     background-color: transparent;
 }
 
+QToolButton#TextEffectMoveButton,
+QToolButton#TextEffectCloseButton,
+QToolButton#TextEffectVisibilityButton {
+    margin: 0px;
+    padding: 0px;
+}
+
 QToolButton#TextTransformCloseButton:hover,
 QToolButton#TextEffectCloseButton:hover {
     background-color: #FF605C;
