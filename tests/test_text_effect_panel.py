@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QEvent, QPoint, QPointF, Qt
-from qtpy.QtGui import QColor, QKeyEvent, QKeySequence, QMouseEvent
+from qtpy.QtGui import QColor, QFocusEvent, QKeyEvent, QKeySequence, QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication,
@@ -367,6 +367,49 @@ class TextEffectPanelTest(unittest.TestCase):
             for action in effect_panel.add_effect_actions.values()
         ))
         self.assertNotIn('hollow', effect_panel.add_effect_actions)
+
+    def test_card_action_icons_follow_hover_and_keyboard_focus(self):
+        card = StrokeEffectCard(0)
+        try:
+            card.set_move_enabled(False, True)
+            self.assertTrue(card.delete_button.icon().isNull())
+            self.assertFalse(card.move_up_button.isEnabled())
+
+            QApplication.sendEvent(card, QEvent(QEvent.Type.Enter))
+            self.assertFalse(card.delete_button.icon().isNull())
+            self.assertFalse(card.move_up_button.isEnabled())
+            QApplication.sendEvent(card, QEvent(QEvent.Type.Leave))
+            self.assertTrue(card.delete_button.icon().isNull())
+
+            QApplication.sendEvent(card, QEvent(QEvent.Type.Enter))
+            QApplication.sendEvent(
+                card.delete_button,
+                QFocusEvent(
+                    QEvent.Type.FocusIn,
+                    Qt.FocusReason.MouseFocusReason,
+                ),
+            )
+            self.assertFalse(card.delete_button.icon().isNull())
+            QApplication.sendEvent(card, QEvent(QEvent.Type.Leave))
+            self.assertTrue(card.delete_button.icon().isNull())
+
+            QApplication.sendEvent(
+                card.delete_button,
+                QFocusEvent(
+                    QEvent.Type.FocusIn,
+                    Qt.FocusReason.TabFocusReason,
+                ),
+            )
+            self.assertFalse(card.delete_button.icon().isNull())
+            QApplication.sendEvent(card, QEvent(QEvent.Type.Leave))
+            self.assertFalse(card.delete_button.icon().isNull())
+            QApplication.sendEvent(
+                card.delete_button,
+                QFocusEvent(QEvent.Type.FocusOut),
+            )
+            self.assertTrue(card.delete_button.icon().isNull())
+        finally:
+            card.deleteLater()
 
     def test_mixed_eye_click_enables_all_with_one_command(self):
         enabled = self._item(self._stack(StrokeEffect(enabled=True)))
@@ -1432,6 +1475,29 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIs(self.panel.texteffect_panel.gradient_overlay_card, card)
+
+    def test_gradient_label_drag_previews_then_commits_once(self):
+        before = self._stack(self._constant_overlay())
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        gradient = (
+            self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
+        )
+        angle_label = gradient.angle_label
+
+        angle_label.size_ctrl_changed.emit(15)
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 15.0)
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertEqual(self.canvas.stack.count(), 0)
+        angle_label.btn_released.emit()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 15.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        angle_label.size_ctrl_changed.emit(10)
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 25.0)
+        angle_label.drag_canceled.emit()
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 15.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_shadow_reorder_is_phase_safe_and_mixed_type_does_not_guess(self):
         top = ShadowEffect(paint=SolidPaint((255, 0, 0)))

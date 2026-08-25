@@ -28,6 +28,7 @@ from qtpy.QtWidgets import (
 from ballontranslator.utils.text_effects import GradientStop, LinearGradientPaint
 
 from ..rendering.effect_paint import paint_effect_paint_preview
+from ..transforms.controls import TransformDragLabel
 
 
 def _mouse_position(event: QMouseEvent) -> QPointF:
@@ -427,7 +428,7 @@ class InlineLinearGradientEditor(QWidget):
         self._edit_before: Optional[LinearGradientPaint] = None
         self.setObjectName('InlineLinearGradientEditor')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-
+        self._drag_label_editors = {}
         self.stop_bar = GradientStopBar(paint, self)
         self.stop_bar.paint_previewed.connect(self._on_stop_paint_preview)
         self.stop_bar.paint_commit_requested.connect(self._commit_current)
@@ -475,16 +476,43 @@ class InlineLinearGradientEditor(QWidget):
         self.stop_opacity_editor.editingFinished.connect(self._commit_current)
         self.stop_position_editor.editingFinished.connect(self._commit_current)
 
+        color_control = QWidget(self)
+        color_control.setObjectName('TextEffectControl')
+        color_layout = QHBoxLayout(color_control)
+        color_layout.setContentsMargins(0, 0, 0, 0)
+        color_layout.setSpacing(8)
+        color_label = QLabel(self.tr('Color'), self)
+        color_label.setObjectName('TextEffectParamLabel')
+        color_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        color_layout.addWidget(color_label)
+        color_layout.addWidget(self.stop_color_picker, 1)
+        color_layout.setStretch(0, 1)
+        color_layout.setStretch(1, 2)
+        (
+            stop_opacity_control,
+            self.stop_opacity_label,
+        ) = self._drag_value_control(
+            self.tr('Opacity'),
+            self.stop_opacity_editor,
+        )
+        (
+            stop_position_control,
+            self.stop_position_label,
+        ) = self._drag_value_control(
+            self.tr('Position'),
+            self.stop_position_editor,
+        )
         stop_grid = QGridLayout()
         stop_grid.setContentsMargins(0, 0, 0, 0)
         stop_grid.setHorizontalSpacing(8)
         stop_grid.setVerticalSpacing(4)
-        stop_grid.addWidget(QLabel(self.tr('Color'), self), 0, 0)
-        stop_grid.addWidget(self.stop_color_picker, 0, 1)
-        stop_grid.addWidget(QLabel(self.tr('Opacity'), self), 0, 2)
-        stop_grid.addWidget(self.stop_opacity_editor, 0, 3)
-        stop_grid.addWidget(QLabel(self.tr('Position'), self), 1, 0)
-        stop_grid.addWidget(self.stop_position_editor, 1, 1)
+        stop_grid.addWidget(color_control, 0, 0)
+        stop_grid.addWidget(stop_opacity_control, 0, 1)
+        stop_grid.addWidget(stop_position_control, 1, 0)
+        stop_grid.setColumnStretch(0, 1)
+        stop_grid.setColumnStretch(1, 1)
 
         self.angle_editor = self._spinbox(
             0.0, 359.9, 1.0, self.tr('°'), decimals=1
@@ -496,6 +524,12 @@ class InlineLinearGradientEditor(QWidget):
         self.scale_editor.valueChanged.connect(self._on_scale_preview)
         self.angle_editor.editingFinished.connect(self._commit_current)
         self.scale_editor.editingFinished.connect(self._commit_current)
+        angle_control, self.angle_label = self._drag_value_control(
+            self.tr('Angle'), self.angle_editor
+        )
+        scale_control, self.scale_label = self._drag_value_control(
+            self.tr('Scale'), self.scale_editor
+        )
         self.flip_button = QToolButton(self)
         self.flip_button.setText(self.tr('Flip'))
         self.flip_button.setToolTip(self.tr('Flip Gradient'))
@@ -505,10 +539,8 @@ class InlineLinearGradientEditor(QWidget):
         geometry_row = QHBoxLayout()
         geometry_row.setContentsMargins(0, 0, 0, 0)
         geometry_row.setSpacing(4)
-        geometry_row.addWidget(QLabel(self.tr('Angle'), self))
-        geometry_row.addWidget(self.angle_editor)
-        geometry_row.addWidget(QLabel(self.tr('Scale'), self))
-        geometry_row.addWidget(self.scale_editor)
+        geometry_row.addWidget(angle_control, 1)
+        geometry_row.addWidget(scale_control, 1)
         geometry_row.addWidget(self.flip_button)
 
         layout = QVBoxLayout(self)
@@ -554,6 +586,48 @@ class InlineLinearGradientEditor(QWidget):
         )
         return editor
 
+    def _drag_value_control(
+        self, title: str, editor: GradientValueEditor
+    ) -> Tuple[QWidget, TransformDragLabel]:
+        control = QWidget(self)
+        control.setObjectName('TextEffectControl')
+        label = TransformDragLabel(
+            control,
+            direction=0,
+            text=title,
+            alignment=(
+                Qt.AlignmentFlag.AlignRight
+                | Qt.AlignmentFlag.AlignVCenter
+            ),
+        )
+        label.setObjectName('TextEffectParamLabel')
+        label.drag_started.connect(self._on_label_drag_started)
+        label.size_ctrl_changed.connect(self._on_label_dragged)
+        label.btn_released.connect(self._commit_current)
+        label.drag_canceled.connect(self.cancel_pending)
+        self._drag_label_editors[label] = editor
+        layout = QHBoxLayout(control)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        layout.addWidget(label)
+        layout.addWidget(editor, 1)
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 2)
+        return control, label
+
+    def _on_label_drag_started(self) -> None:
+        editor = self._drag_label_editors.get(self.sender())
+        if editor is None:
+            return
+        editor.resolve_text_edit()
+        self._commit_current()
+
+    def _on_label_dragged(self, delta: int) -> None:
+        editor = self._drag_label_editors.get(self.sender())
+        if editor is None or not editor.isEnabled():
+            return
+        editor.setValue(editor.value() + delta * editor.singleStep())
+
     def _editors(self) -> Tuple[GradientValueEditor, ...]:
         return (
             self.stop_opacity_editor,
@@ -582,6 +656,8 @@ class InlineLinearGradientEditor(QWidget):
             editor.resolve_text_edit()
             editor.set_preview_pending(False)
             editor.setEnabled(editable)
+        for label in self._drag_label_editors:
+            label.setEnabled(editable)
         self._sync_all_controls()
 
     def _selected_stop(self) -> GradientStop:

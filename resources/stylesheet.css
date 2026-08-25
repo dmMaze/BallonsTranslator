@@ -2434,13 +2434,15 @@ QFrame#TextAlphaMaskCard QLabel#TextEffectParameterTitle {
 
 QToolButton#TextEffectPaintButton {
     min-width: 0px;
-    border: 1px solid @borderColor;
-    border-radius: 4px;
-    background-color: @transtexteditBackgroundColor;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    background-color: transparent;
 }
 
 QToolButton#TextEffectPaintButton:hover {
-    border-color: rgb(30, 147, 229);
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QWidget#InlineLinearGradientEditor {
@@ -2502,13 +2504,17 @@ QLabel#TextTransformParamLabel,
 QLineEdit#TextTransformParamEditor,
 QComboBox#TextTransformParamEditor,
 QLabel#TextEffectParamLabel,
-QLineEdit#TextEffectParamEditor {
+QLineEdit#TextEffectParamEditor,
+QDoubleSpinBox#TextEffectParamEditor,
+QComboBox#TextEffectParamEditor {
     font-size: 12px;
 }
 
 QLineEdit#TextTransformParamEditor,
 QComboBox#TextTransformParamEditor,
-QLineEdit#TextEffectParamEditor {
+QLineEdit#TextEffectParamEditor,
+QDoubleSpinBox#TextEffectParamEditor,
+QComboBox#TextEffectParamEditor {
     min-height: 20px;
     max-height: 20px;
     height: 20px;
@@ -2553,12 +2559,17 @@ QLineEdit#TextTransformParamEditor:focus,
 QComboBox#TextTransformParamEditor:hover,
 QComboBox#TextTransformParamEditor:focus,
 QLineEdit#TextEffectParamEditor:hover,
-QLineEdit#TextEffectParamEditor:focus {
+QLineEdit#TextEffectParamEditor:focus,
+QDoubleSpinBox#TextEffectParamEditor:hover,
+QDoubleSpinBox#TextEffectParamEditor:focus,
+QComboBox#TextEffectParamEditor:hover,
+QComboBox#TextEffectParamEditor:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
-QComboBox#TextTransformParamEditor::drop-down {
+QComboBox#TextTransformParamEditor::drop-down,
+QComboBox#TextEffectParamEditor::drop-down {
     border: none;
     background-color: transparent;
 }
@@ -2590,6 +2601,10 @@ QToolButton#TextEffectVisibilityButton:hover {
     background-color: @borderColor;
 }
 
+QToolButton#TextEffectBrushButton:hover:enabled {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
 QToolButton#TextEffectHollowButton {
     border-radius: 6px;
 }
@@ -2609,14 +2624,6 @@ QToolButton#TextEffectHollowButton[mixed="true"] {
 
 QToolButton#TextEffectBrushButton:checked {
     background-color: rgb(30, 147, 229);
-}
-
-QFrame#TextAlphaMaskCard QComboBox#TextAlphaMaskModeSelector,
-QFrame#TextAlphaMaskCard QDoubleSpinBox#TextAlphaMaskSizeEditor {
-    color: @qwidgetForegroundColor;
-    background-color: transparent;
-    border: none;
-    border-bottom: 1px solid @borderColor;
 }
 
 QFrame#TextAlphaMaskCard QToolButton#TextAlphaMaskClearButton {

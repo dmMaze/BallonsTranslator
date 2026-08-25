@@ -476,6 +476,12 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             mask_card.mode_selector.setCurrentIndex(1)
             mask_card.diameter_editor.setValue(48.0)
             self.assertEqual(self.canvas.text_undo_stack.count(), count)
+            mask_card.size_label.drag_started.emit()
+            mask_card.size_label.size_ctrl_changed.emit(4)
+            self.assertEqual(self.session.diameter, 52.0)
+            mask_card.size_label.drag_canceled.emit()
+            self.assertEqual(self.session.diameter, 48.0)
+            self.assertEqual(self.canvas.text_undo_stack.count(), count)
 
             controls.color_dialog_active_changed.emit(True)
             self.assertFalse(self.session.active)
