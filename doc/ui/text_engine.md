@@ -3,9 +3,10 @@
 Start here before changing text layout, editing, effects, geometry, or export.
 The code and tests are authoritative; this guide records ownership and the
 cross-file contracts that are easy to break. Continue with
-[Text layout](text_layout.md) for writing-mode behavior and with
-[Composable text transforms](text_transforms.md) for Projective, Bend, Sine
-Wave, Grid, and Glyph Slant.
+[Text layout](text_layout.md) for writing-mode behavior,
+[Text effects](text_effects.md) for the effect stack, masks, and raster
+lifecycle, and [Composable text transforms](text_transforms.md) for
+Projective, Bend, Sine Wave, Grid, and Glyph Slant.
 
 ## Architecture and ownership
 
@@ -132,74 +133,32 @@ Never write a source or visual bounding box back into the model. Layout-owned
 placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
-`FontFormat.text_effects` is the canonical committed `TextEffectStack`; it is
-an immutable ordered value persisted with the format. `TextEffectRenderer`
-compiles it from one glyph/source alpha in fixed phases: exterior Drop/Long
-Shadow and Outer Glow, exterior/center Stroke, canonical foreground plus typed
-Gradient Overlay, inside Stroke, then interior Inner Shadow and Inner Glow.
-Shadow and Glow retain their shared-phase stack order. Center keeps the native
-half-in/half-out outline; Outside and Inside
-clip a full-width outline to the corresponding side of canonical glyph alpha.
-Outside is the default for newly inserted Stroke and pre-stack legacy Stroke
-migration. Explicitly saved positions remain authoritative; typed stacks from
-before the Position field existed retain their original Center behavior.
-Each Stroke, Shadow, or Glow owns an immutable solid or linear-gradient paint.
-Typed Shadow payloads saved before this shared paint field existed migrate
-their bare RGB color to an equivalent solid paint.
-Outer Glow derives from the visible Stroke-inclusive silhouette, while Inner
-Glow derives from canonical glyph alpha and is suppressed by Hollow. Each
-linear gradient spans the complete unpadded logical rectangle, so full
-surfaces, tiles, writing modes, and transformed output share one item-local
-gradient.
-Entry order is retained within each phase. Gradient Overlay recolors the
-canonical rich foreground in the same item-local coordinate space without
-changing the alpha used by Stroke or exterior Shadow. Hollow suppresses the
-canonical face, Gradient Overlay, and Inner output, and removes the canonical
-face from exterior output before Stroke is painted, so the source alpha and
-full Stroke outline remain available. The Text Effect panel projects this
-unique typed value as an icon toggle: first activation inserts it through the
-effect edit session, while later clicks retain it and change `enabled` in one
-undo command. Legacy `gradient_*` fields are
-compatibility-only persistence data and never enter live rendering. A
-non-neutral `TextBlock.text_alpha_mask` clips the completed Normal
-composite after those phases and before Overall Opacity and global Text
-Transform. Its points are relative to the unpadded logical origin, may reach
-effect overflow, and never expand persistent or derived bounds.
+`FontFormat.text_effects` owns the canonical immutable style stack;
+`TextBlock.text_alpha_mask` separately owns item-specific structural alpha.
+`TextEffectRenderer` composes the stack in fixed phases around one canonical
+glyph source, applies the block mask to the completed Normal surface, and hands
+that padded source to the geometry owner. See [Text effects](text_effects.md)
+for phase order, migration, preview/undo, mask editing, cache boundaries, and
+extension rules.
 
-The renderer owns derived padding and separate committed, preview, and export
-raster namespaces. A live preview replaces the complete effective stack but
-does not mutate `FontFormat`, project data, or undo history. Pixel-changing
-effect-stack previews use a bounded 0.5x physical scratch surface and never
-promote; commit rebuilds at persistent quality. Other preview output may
-promote only when its scratch surface already matches persistent quality.
-Reshape interaction omits effects without changing stack state and rebuilds
-once after geometry settles.
-Strict export renders the complete current output at persistent quality in its
-own non-promoted namespace. Paint-only state must not change document content
-or create undo steps. Keep Qt's text control authoritative for shaping, cursor,
-selection, IME, and normal hit testing. Interactive rendering may use bounded
-fallbacks, but export must report incomplete output instead of silently
-omitting text. Mask raster/cache state is item-owned and keyed by an O(1)
-generation; each raster namespace reuses at most two bounded pre-mask surfaces
-for mask-only changes instead of regenerating glyph and effect phases. Only
-the immutable mask history is persisted. Each namespace also retains at most
-two canonical glyph sources and positioned Stroke coverage planes across
-paint-only previews; coverage reuse excludes Stroke paint and opacity but
-includes source geometry, render scale, width, and position. Editing feedback
-is transient and unmasked. Effect padding expands paint bounds only; ordinary
-shape and hit testing remain on the logical box plus layout-owned ink
-overhang. Selection is composited after the completed effect surface, and the
-caret is deferred and painted last so neither becomes part of Hollow or
-another raster effect.
+Effect padding expands source paint bounds only. Ordinary shape and hit testing
+remain on the logical box plus layout-owned ink overhang. Qt stays authoritative
+for shaping, cursor, selection, IME, and normal hit testing; selection and the
+deferred caret paint after the completed effect surface, so raster effects and
+Hollow cannot alter editing feedback.
 
-The Canvas-owned mask session freezes the scene-to-source mapper and unpadded
-logical origin for each stroke. Raw samples remain session-owned until release;
-only the derived preview mask and pixels enter the renderer. One completed
-stroke then replaces the immutable block mask through one canvas undo command.
-Escape and scene/selection/tool teardown discard an
-incomplete stroke. The first activation inserts an empty mask as its own undo
-step. Mask preview pixels use the existing scratch namespace, while export
-always reads the committed block mask and hides the control overlay.
+The renderer keeps committed, preview, and export raster namespaces separate.
+Pixel-changing previews use a bounded non-promotable 0.5x scratch surface,
+while commit and strict export rebuild at the requested quality. Reshape omits
+effects during pointer motion and rebuilds once geometry settles. All derived
+pixmaps, alpha planes, padding, and cache keys remain runtime-only and
+item-owned.
+
+The Canvas-owned mask session freezes source mapping for each brush stroke,
+publishes only a derived complete-mask preview, and commits one immutable mask
+replacement through canvas undo. Incomplete strokes are discarded on Escape or
+scene/selection/tool teardown; export always reads committed mask state and
+hides editing controls.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render
