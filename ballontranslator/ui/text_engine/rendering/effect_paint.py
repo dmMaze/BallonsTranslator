@@ -1,6 +1,7 @@
 """Rasterize immutable text-effect paints with shared visual semantics."""
 
 import math
+import threading
 from typing import Optional
 
 import numpy as np
@@ -13,8 +14,51 @@ from ballontranslator.utils.text_effects import (
     LinearGradientPaint,
     SolidPaint,
 )
+from ballontranslator.utils.logger import logger as LOGGER
 
 from ...misc import ndarray2pixmap
+
+
+_numba_colorize_linear_gradient_rgba = None
+
+
+def start_effect_paint_numba_warmup() -> threading.Thread:
+    """Load or compile gradient kernels outside the Qt event thread.
+
+    >>> callable(start_effect_paint_numba_warmup)
+    True
+    """
+    def warmup() -> None:
+        global _numba_colorize_linear_gradient_rgba
+        try:
+            from .effect_paint_numba import (
+                colorize_linear_gradient_rgba,
+                warm_effect_paint_numba_cache,
+            )
+            warm_effect_paint_numba_cache()
+            _numba_colorize_linear_gradient_rgba = (
+                colorize_linear_gradient_rgba
+            )
+            LOGGER.info('Text effect gradient acceleration is ready.')
+        except Exception as error:
+            LOGGER.warning(
+                f'Text effect gradient acceleration is unavailable: {error}'
+            )
+
+    thread = threading.Thread(
+        target=warmup,
+        name='EffectPaintNumbaWarmup',
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def _compiled_colorize_linear_gradient_rgba(*args, **kwargs) -> bool:
+    """Use the warmed backend without depending on startup timing."""
+    if _numba_colorize_linear_gradient_rgba is None:
+        return False
+    return _numba_colorize_linear_gradient_rgba(*args, **kwargs)
 
 
 def colorize_effect_paint_rgba(
@@ -93,11 +137,6 @@ def colorize_effect_paint_rgba(
     radians = math.radians(paint.angle)
     direction_x = math.cos(radians)
     direction_y = math.sin(radians)
-    x = (
-        surface_rect.left()
-        + (np.arange(width, dtype=np.float32) + 0.5) / render_scale
-        - center.x()
-    )
     positions = np.asarray(
         [stop.position for stop in paint.stops], dtype=np.float32
     )
@@ -106,6 +145,27 @@ def colorize_effect_paint_rgba(
     )
     opacities = np.asarray(
         [stop.opacity * 255.0 for stop in paint.stops], dtype=np.float32
+    )
+    if _compiled_colorize_linear_gradient_rgba(
+        rgba,
+        surface_rect.left(),
+        surface_rect.top(),
+        center.x(),
+        center.y(),
+        render_scale,
+        direction_x,
+        direction_y,
+        length,
+        positions,
+        colors,
+        opacities,
+        source_atop_opacity,
+    ):
+        return rgba
+    x = (
+        surface_rect.left()
+        + (np.arange(width, dtype=np.float32) + 0.5) / render_scale
+        - center.x()
     )
     two_stop = len(paint.stops) == 2
     opaque_two_stop = two_stop and all(

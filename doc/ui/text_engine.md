@@ -235,7 +235,11 @@ Keep refreshers idempotent, rebuild derived layout state as one settled
 generation, and keep caches bounded and releasable. The neutral path should
 stay native and cheap; allocate specialized renderers only while their feature
 is active. Batch previews and transient formatting so they refresh once when
-settled.
+settled. Linear-gradient rasterization keeps its byte-identical NumPy path as
+the working fallback and quality oracle. Only the background warmup loads and
+publishes its cached compiled kernel; pre-warm painting stays on NumPy without
+importing Numba on the Qt thread. Both paths use the same item-local coordinates
+and rounding.
 
 ## Change workflow
 
