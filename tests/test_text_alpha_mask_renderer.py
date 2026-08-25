@@ -80,12 +80,12 @@ class TextAlphaMaskRasterTest(unittest.TestCase):
         # The negative item-local sample remains valid inside effect overflow.
         self.assertEqual(first[30, 10], 0)
 
-    def test_raster_is_translation_invariant_at_two_scales(self):
+    def test_raster_is_translation_invariant_at_preview_and_settled_scales(self):
         mask = TextAlphaMask(strokes=(
             AlphaBrushStroke('erase', 9, ((-4.5, 3.25), (44.5, 28.75))),
             AlphaBrushStroke('restore', 3, ((20.25, 16.5),)),
         ))
-        for scale in (1.0, 2.0):
+        for scale in (0.5, 1.0, 2.0):
             with self.subTest(scale=scale):
                 full = _mask_pixels(mask, QRectF(-16, -12, 80, 64), scale)
                 crop = _mask_pixels(mask, QRectF(0, 0, 32, 32), scale)

@@ -5,7 +5,7 @@ from typing import Callable, Optional, Tuple
 
 import cv2
 import numpy as np
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
@@ -486,6 +486,11 @@ class TextEffectRenderer:
         ):
             return None
         return state
+
+    def _raster_request(self, requested_scale: float) -> float:
+        if not self._export_active and self._effect_preview_changes_pixels():
+            return 0.5
+        return quality_raster_request(requested_scale)
 
     def _invalidate_stale_active_raster_state(self) -> bool:
         state = self._peek_raster_state()
@@ -1401,7 +1406,8 @@ class TextEffectRenderer:
                 f'unable to allocate effect surface {pixel_width}x{pixel_height}'
             )
         try:
-            pixmap.setDevicePixelRatio(render_scale)
+            if render_scale >= 1.0:
+                pixmap.setDevicePixelRatio(render_scale)
             pixmap.fill(Qt.GlobalColor.transparent)
         except RASTER_BOUNDARY_FAILURES as error:
             raise EffectRasterAllocationError(
@@ -1409,6 +1415,27 @@ class TextEffectRenderer:
                 f'{pixel_width}x{pixel_height}'
             ) from error
         return pixmap
+
+    @staticmethod
+    def _prepare_effect_surface_painter(
+        painter: QPainter, render_scale: float
+    ) -> None:
+        """Map logical item coordinates onto a sub-unit preview surface."""
+        if render_scale < 1.0:
+            painter.scale(render_scale, render_scale)
+
+    @staticmethod
+    def _draw_surface_pixmap(
+        painter: QPainter,
+        destination: QRectF,
+        pixmap: QPixmap,
+        render_scale: float,
+    ) -> None:
+        """Draw physical surface pixels into their explicit logical bounds."""
+        if render_scale < 1.0:
+            painter.drawPixmap(destination, pixmap, QRectF(pixmap.rect()))
+        else:
+            painter.drawPixmap(destination.topLeft(), pixmap)
 
     def _paint_cloned_document_stroke(self, painter: QPainter) -> None:
         """Paint stroke through the BASE cloned-document path."""
@@ -1491,6 +1518,9 @@ class TextEffectRenderer:
                 )
             try:
                 source_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+                self._prepare_effect_surface_painter(
+                    source_painter, render_scale
+                )
                 source_painter.translate(-rect.topLeft())
                 fragment_context = self._effect_paint_context()
                 fragment_context.selections = selections
@@ -1542,8 +1572,11 @@ class TextEffectRenderer:
             raise EffectRasterAllocationError(
                 'unable to allocate vertical stroke result'
             )
-        stroke_pixmap.setDevicePixelRatio(render_scale)
-        painter.drawPixmap(rect.topLeft(), stroke_pixmap)
+        if render_scale >= 1.0:
+            stroke_pixmap.setDevicePixelRatio(render_scale)
+        self._draw_surface_pixmap(
+            painter, rect, stroke_pixmap, render_scale
+        )
         # Half-font annotations own native outlines, not the base mask's
         # full-font morphology radius.
         self.geometry_controller.draw_layout_annotations(
@@ -1878,7 +1911,13 @@ class TextEffectRenderer:
                 raise EffectRasterAllocationError(
                     'unable to begin masked effect painter'
                 )
-            painter.drawPixmap(QPointF(), target_map)
+            self._prepare_effect_surface_painter(painter, render_scale)
+            local_rect = QRectF(
+                0.0, 0.0, surface_rect.width(), surface_rect.height()
+            )
+            self._draw_surface_pixmap(
+                painter, local_rect, target_map, render_scale
+            )
             painter.translate(-surface_rect.topLeft())
             self._apply_text_alpha_mask(
                 painter,
@@ -1978,14 +2017,22 @@ class TextEffectRenderer:
         self.surface_raster_error = None
         try:
             target_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            self._prepare_effect_surface_painter(
+                target_painter, render_scale
+            )
+            local_rect = QRectF(
+                0.0, 0.0, surface_rect.width(), surface_rect.height()
+            )
             # First card in a phase is topmost, so paint each phase backwards.
             for effect in reversed(exterior):
                 assert exterior_alpha is not None
-                target_painter.drawPixmap(
-                    QPointF(),
+                self._draw_surface_pixmap(
+                    target_painter,
+                    local_rect,
                     self._generated_effect_pixmap(
                         exterior_alpha, effect, surface_rect, render_scale
                     ),
+                    render_scale,
                 )
 
             if hollow and exterior:
@@ -1995,7 +2042,9 @@ class TextEffectRenderer:
                     target_painter.setCompositionMode(
                         QPainter.CompositionMode.CompositionMode_DestinationOut
                     )
-                    target_painter.drawPixmap(QPointF(), canonical)
+                    self._draw_surface_pixmap(
+                        target_painter, local_rect, canonical, render_scale
+                    )
                 finally:
                     target_painter.restore()
 
@@ -2027,7 +2076,9 @@ class TextEffectRenderer:
                         canonical, surface_rect, render_scale, overlay
                     )
                 )
-                target_painter.drawPixmap(surface_rect.topLeft(), face)
+                self._draw_surface_pixmap(
+                    target_painter, surface_rect, face, render_scale
+                )
                 if paint_stroke and target_stroke and inside_strokes:
                     self._paint_positioned_strokes(
                         target_painter,
@@ -2038,11 +2089,13 @@ class TextEffectRenderer:
                     )
                 target_painter.translate(surface_rect.topLeft())
                 for effect in reversed(interior):
-                    target_painter.drawPixmap(
-                        QPointF(),
+                    self._draw_surface_pixmap(
+                        target_painter,
+                        local_rect,
                         self._generated_effect_pixmap(
                             canonical_alpha, effect, surface_rect, render_scale
                         ),
+                        render_scale,
                     )
                 target_painter.translate(-surface_rect.topLeft())
             elif completed_foreground:
@@ -2054,7 +2107,9 @@ class TextEffectRenderer:
                         canonical, surface_rect, render_scale, overlay
                     )
                 )
-                target_painter.drawPixmap(surface_rect.topLeft(), face)
+                self._draw_surface_pixmap(
+                    target_painter, surface_rect, face, render_scale
+                )
                 if paint_stroke and target_stroke and inside_strokes:
                     self._paint_positioned_strokes(
                         target_painter,
@@ -2110,7 +2165,14 @@ class TextEffectRenderer:
                 painter.setCompositionMode(
                     QPainter.CompositionMode.CompositionMode_DestinationIn
                 )
-                painter.drawImage(surface_rect.topLeft(), alpha)
+                if render_scale < 1.0:
+                    painter.drawImage(
+                        surface_rect,
+                        alpha,
+                        QRectF(alpha.rect()),
+                    )
+                else:
+                    painter.drawImage(surface_rect.topLeft(), alpha)
             finally:
                 painter.restore()
         except RASTER_BOUNDARY_FAILURES as error:
@@ -2166,6 +2228,9 @@ class TextEffectRenderer:
                 )
             try:
                 layer_painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+                self._prepare_effect_surface_painter(
+                    layer_painter, render_scale
+                )
                 layer_painter.translate(-surface_rect.topLeft())
                 self.paint_stroke(
                     layer_painter, render_scale, surface_rect
@@ -2217,7 +2282,8 @@ class TextEffectRenderer:
                 raise EffectRasterAllocationError(
                     'unable to allocate positioned Stroke band'
                 )
-            band.setDevicePixelRatio(render_scale)
+            if render_scale >= 1.0:
+                band.setDevicePixelRatio(render_scale)
             return band
         except RASTER_BOUNDARY_FAILURES as error:
             if isinstance(error, EffectRasterAllocationError):
@@ -2266,14 +2332,16 @@ class TextEffectRenderer:
                     finally:
                         painter.restore()
                     continue
-                painter.drawPixmap(
-                    surface_rect.topLeft(),
+                self._draw_surface_pixmap(
+                    painter,
+                    surface_rect,
                     self._positioned_stroke_band(
                         surface_rect,
                         render_scale,
                         stroke,
                         canonical_alpha,
                     ),
+                    render_scale,
                 )
         finally:
             self._render_stroke = previous
@@ -2307,6 +2375,7 @@ class TextEffectRenderer:
         self.surface_raster_error = None
         try:
             painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
             self._paint_live_layout(painter, self._effect_paint_context())
             if self.surface_raster_error is not None:
@@ -2362,7 +2431,8 @@ class TextEffectRenderer:
                 raise EffectRasterAllocationError(
                     'unable to allocate Gradient Overlay surface'
                 )
-            result.setDevicePixelRatio(render_scale)
+            if render_scale >= 1.0:
+                result.setDevicePixelRatio(render_scale)
             return result
         except RASTER_BOUNDARY_FAILURES as error:
             if isinstance(error, EffectRasterAllocationError):
@@ -2392,6 +2462,9 @@ class TextEffectRenderer:
                 )
             try:
                 painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+                self._prepare_effect_surface_painter(
+                    painter, render_scale
+                )
                 painter.translate(-surface_rect.topLeft())
                 self._paint_positioned_strokes(
                     painter,
@@ -2462,7 +2535,8 @@ class TextEffectRenderer:
             raise EffectRasterAllocationError(
                 'unable to allocate typed shadow surface'
             )
-        pixmap.setDevicePixelRatio(render_scale)
+        if render_scale >= 1.0:
+            pixmap.setDevicePixelRatio(render_scale)
         return pixmap
 
     def _glow_pixmap(
@@ -2509,7 +2583,8 @@ class TextEffectRenderer:
             raise EffectRasterAllocationError(
                 'unable to allocate typed Glow surface'
             )
-        pixmap.setDevicePixelRatio(render_scale)
+        if render_scale >= 1.0:
+            pixmap.setDevicePixelRatio(render_scale)
         return pixmap
 
     def _generated_effect_pixmap(
@@ -2568,7 +2643,7 @@ class TextEffectRenderer:
             plan = plan_effect_raster(
                 br.width(),
                 br.height(),
-                quality_raster_request(render_scale),
+                self._raster_request(render_scale),
             )
             if plan.mode == 'tiles':
                 self.background_pixmap = None
@@ -2583,7 +2658,7 @@ class TextEffectRenderer:
                 # A higher tier may fail despite satisfying the deterministic
                 # caps. Retry the smallest full tier before degrading.
                 retry = plan_effect_raster(br.width(), br.height(), 1.0)
-                if plan.tier != 1.0 and retry.mode == 'full':
+                if plan.tier > 1.0 and retry.mode == 'full':
                     try:
                         target_map = self._render_effect_surface(br, 1.0)
                         plan = retry
@@ -2763,6 +2838,9 @@ class TextEffectRenderer:
                     raise EffectRasterAllocationError(
                         'unable to begin visible effect staging painter'
                     )
+                self._prepare_effect_surface_painter(
+                    staging_painter, plan.tier
+                )
                 staging_painter.translate(-visible.topLeft())
                 tile_painter = staging_painter
             tile_painter.setRenderHint(
@@ -2819,8 +2897,8 @@ class TextEffectRenderer:
                         tile_painter.setClipRect(
                             core, Qt.ClipOperation.IntersectClip
                         )
-                        tile_painter.drawPixmap(
-                            cached[0].topLeft(), cached[1]
+                        self._draw_surface_pixmap(
+                            tile_painter, cached[0], cached[1], plan.tier
                         )
                     finally:
                         tile_painter.restore()
@@ -2860,7 +2938,9 @@ class TextEffectRenderer:
 
         if staging_pixmap is not None:
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            painter.drawPixmap(visible.topLeft(), staging_pixmap)
+            self._draw_surface_pixmap(
+                painter, visible, staging_pixmap, plan.tier
+            )
 
         # Retain no cache from a viewport that is no longer exposed.
         for key in list(self.tile_cache):
@@ -2910,11 +2990,12 @@ class TextEffectRenderer:
             plan = plan_effect_raster(
                 br.width(),
                 br.height(),
-                quality_raster_request(requested_scale),
+                self._raster_request(requested_scale),
             )
             if self.force_tiles:
                 plan = EffectRasterPlan(
-                    'tiles', 1.0, 0, 0, EFFECT_TILE_MAX_EDGE
+                    'tiles', min(1.0, plan.tier), 0, 0,
+                    EFFECT_TILE_MAX_EDGE,
                 )
             stale = (
                 self.cache_rendered_generation
@@ -2933,7 +3014,8 @@ class TextEffectRenderer:
                     self.repaint_background(requested_scale)
                 if self.force_tiles:
                     tile_plan = EffectRasterPlan(
-                        'tiles', 1.0, 0, 0, EFFECT_TILE_MAX_EDGE
+                        'tiles', min(1.0, plan.tier), 0, 0,
+                        EFFECT_TILE_MAX_EDGE,
                     )
                     self._draw_tiled_effects(
                         painter, tile_plan, exposed_rect
@@ -2950,7 +3032,9 @@ class TextEffectRenderer:
                     painter.setRenderHint(
                         QPainter.RenderHint.SmoothPixmapTransform
                     )
-                    painter.drawPixmap(br.topLeft(), self.background_pixmap)
+                    self._draw_surface_pixmap(
+                        painter, br, self.background_pixmap, plan.tier
+                    )
                 elif self.direct_stroke:
                     self._draw_direct_stroke(painter)
             else:

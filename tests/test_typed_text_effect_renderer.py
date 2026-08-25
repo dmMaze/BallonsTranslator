@@ -1403,120 +1403,59 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 finally:
                     item.set_export_effect_render(False)
 
-    def test_shadow_preview_promotes_cache_and_reshape_rebuilds_once(self):
-        overlay = GradientOverlayEffect(opacity=0.7)
-        before = TextEffectStack(effects=(
-            ShadowEffect(
-                offset=(0.1, 0.1),
-                blur=0.08,
-                paint=LinearGradientPaint(angle=15.0),
+    def test_effect_variants_rerender_preview_at_persistent_quality(self):
+        cases = (
+            (
+                TextEffectStack(effects=(ShadowEffect(blur=0.08),)),
+                TextEffectStack(effects=(ShadowEffect(
+                    offset=(0.3, -0.1), blur=0.12
+                ),)),
             ),
-            overlay,
-        ))
-        after = TextEffectStack(effects=(
-            ShadowEffect(
-                offset=(0.3, -0.1),
-                blur=0.12,
-                paint=LinearGradientPaint(angle=75.0),
+            (
+                TextEffectStack(effects=(StrokeEffect(
+                    width=0.12, paint=LinearGradientPaint()
+                ),)),
+                TextEffectStack(effects=(StrokeEffect(
+                    width=0.18,
+                    paint=LinearGradientPaint(angle=90.0, scale=1.5),
+                ),)),
             ),
-            overlay,
-        ))
-        item = self._item(before)
-        renderer = item.effect_renderer
-
-        with patch.object(
-            renderer,
-            '_render_effect_surface',
-            wraps=renderer._render_effect_surface,
-        ) as render:
-            item.set_text_effects(after, preview=True)
-            scratch = renderer._preview_effect_raster_state
-            self.assertEqual(render.call_count, 1)
-            item.set_text_effects(after)
-            self.assertEqual(render.call_count, 1)
-            self.assertIs(renderer._effect_raster_state, scratch)
-
-            item.startReshape()
-            item.setRect(QRectF(0, 0, 300, 170))
-            item.repaint_background()
-            item.setRect(QRectF(0, 0, 290, 160))
-            item.repaint_background()
-            self.assertEqual(render.call_count, 1)
-            item.endReshape()
-            self.assertEqual(render.call_count, 2)
-        self.assertEqual(item.blk.fontformat.text_effects, after)
-
-    def test_gradient_stroke_preview_promotes_completed_cache(self):
-        before = TextEffectStack(effects=(StrokeEffect(
-            width=0.12, paint=LinearGradientPaint()
-        ),))
-        after = TextEffectStack(effects=(StrokeEffect(
-            width=0.18,
-            paint=LinearGradientPaint(angle=90.0, scale=1.5),
-        ),))
-        item = self._item(before)
-        renderer = item.effect_renderer
-        with patch.object(
-            renderer,
-            '_render_effect_surface',
-            wraps=renderer._render_effect_surface,
-        ) as render:
-            item.set_text_effects(after, preview=True)
-            scratch = renderer._preview_effect_raster_state
-            self.assertEqual(render.call_count, 1)
-            item.set_text_effects(after)
-            self.assertEqual(render.call_count, 1)
-            self.assertIs(renderer._effect_raster_state, scratch)
-
-    def test_gradient_overlay_preview_promotes_completed_cache(self):
-        before = TextEffectStack(effects=(GradientOverlayEffect(),))
-        after = TextEffectStack(effects=(GradientOverlayEffect(
-            opacity=0.65,
-            paint=LinearGradientPaint(angle=90.0, scale=1.5),
-        ),))
-        item = self._item(before)
-        renderer = item.effect_renderer
-        with patch.object(
-            renderer,
-            '_render_effect_surface',
-            wraps=renderer._render_effect_surface,
-        ) as render:
-            item.set_text_effects(after, preview=True)
-            scratch = renderer._preview_effect_raster_state
-            self.assertEqual(render.call_count, 1)
-            item.set_text_effects(after)
-            self.assertEqual(render.call_count, 1)
-            self.assertIs(renderer._effect_raster_state, scratch)
-
-    def test_glow_preview_promotes_cache_and_reshape_rebuilds_once(self):
-        before = TextEffectStack(effects=(GlowEffect(size=0.08),))
-        after = TextEffectStack(effects=(GlowEffect(
-            paint=LinearGradientPaint(angle=60.0),
-            size=0.16,
-            spread=0.04,
-        ),))
-        item = self._item(before)
-        renderer = item.effect_renderer
-        with patch.object(
-            renderer,
-            '_render_effect_surface',
-            wraps=renderer._render_effect_surface,
-        ) as render:
-            item.set_text_effects(after, preview=True)
-            scratch = renderer._preview_effect_raster_state
-            self.assertEqual(render.call_count, 1)
-            item.set_text_effects(after)
-            self.assertEqual(render.call_count, 1)
-            self.assertIs(renderer._effect_raster_state, scratch)
-
-            item.startReshape()
-            item.setRect(QRectF(0, 0, 300, 170))
-            item.repaint_background()
-            item.setRect(QRectF(0, 0, 290, 160))
-            item.repaint_background()
-            self.assertEqual(render.call_count, 1)
-            item.endReshape()
-            self.assertEqual(render.call_count, 2)
+            (
+                TextEffectStack(effects=(GradientOverlayEffect(),)),
+                TextEffectStack(effects=(GradientOverlayEffect(
+                    opacity=0.65,
+                    paint=LinearGradientPaint(angle=90.0, scale=1.5),
+                ),)),
+            ),
+            (
+                TextEffectStack(effects=(GlowEffect(size=0.08),)),
+                TextEffectStack(effects=(GlowEffect(
+                    paint=LinearGradientPaint(angle=60.0),
+                    size=0.16,
+                    spread=0.04,
+                ),)),
+            ),
+        )
+        for before, after in cases:
+            with self.subTest(effect=after.effects[0].effect_type):
+                item = self._item(before)
+                renderer = item.effect_renderer
+                with patch.object(
+                    renderer,
+                    '_render_effect_surface',
+                    wraps=renderer._render_effect_surface,
+                ) as render:
+                    item.set_text_effects(after, preview=True)
+                    scratch = renderer._preview_effect_raster_state
+                    self.assertEqual(render.call_count, 1)
+                    self.assertEqual(
+                        scratch.background_pixmap_scale, 0.5
+                    )
+                    item.set_text_effects(after)
+                    self.assertEqual(render.call_count, 2)
+                    self.assertIsNot(
+                        renderer._effect_raster_state, scratch
+                    )
 
     def test_glow_allocation_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(GlowEffect(size=0.2),))

@@ -60,7 +60,8 @@ def render_text_alpha_mask(
                 f'{pixel_width}x{pixel_height}'
             )
         image.fill(255)
-        image.setDevicePixelRatio(render_scale)
+        if render_scale >= 1.0:
+            image.setDevicePixelRatio(render_scale)
         painter = QPainter(image)
         if not painter.isActive():
             raise EffectRasterAllocationError(
@@ -68,8 +69,10 @@ def render_text_alpha_mask(
             )
         try:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            # DevicePixelRatio owns scaling; translate only in logical units
-            # so full and tile surfaces share the same item-space sample grid.
+            if render_scale < 1.0:
+                # Qt 5 does not apply a sub-unit image DPR to painter
+                # coordinates, so preview surfaces own that scale explicitly.
+                painter.scale(render_scale, render_scale)
             painter.translate(-surface_rect.topLeft())
             for stroke in mask.strokes:
                 painter.setCompositionMode(

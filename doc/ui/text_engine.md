@@ -168,9 +168,12 @@ effect overflow, and never expand persistent or derived bounds.
 
 The renderer owns derived padding and separate committed, preview, and export
 raster namespaces. A live preview replaces the complete effective stack but
-does not mutate `FontFormat`, project data, or undo history; commit may promote
-only a matching persistent-quality scratch surface. Reshape interaction omits
-effects without changing stack state and rebuilds once after geometry settles.
+does not mutate `FontFormat`, project data, or undo history. Pixel-changing
+effect-stack previews use a bounded 0.5x physical scratch surface and never
+promote; commit rebuilds at persistent quality. Other preview output may
+promote only when its scratch surface already matches persistent quality.
+Reshape interaction omits effects without changing stack state and rebuilds
+once after geometry settles.
 Strict export renders the complete current output at persistent quality in its
 own non-promoted namespace. Paint-only state must not change document content
 or create undo steps. Keep Qt's text control authoritative for shaping, cursor,

@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import unittest
 import weakref
@@ -27,10 +28,16 @@ from ballontranslator.ui.text_engine.effect_edit_session import (
     TextEffectEditSession,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
-from ballontranslator.utils.fontformat import SineTextTransform, TextTransformStack
+from ballontranslator.ui.misc import pixmap2ndarray
+from ballontranslator.utils.fontformat import (
+    ProjectiveTextTransform,
+    SineTextTransform,
+    TextTransformStack,
+)
 from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    HollowEffect,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -81,19 +88,29 @@ class TextEffectPreviewTest(unittest.TestCase):
         return TextBlkItem(block, 1)
 
     @staticmethod
-    def _render_scene(scene):
+    def _render_scene(scene, scale=1.0):
+        width = math.ceil(420 * scale)
+        height = math.ceil(260 * scale)
         image = QImage(
-            420, 260, QImage.Format.Format_ARGB32_Premultiplied
+            width, height, QImage.Format.Format_ARGB32_Premultiplied
         )
         image.fill(QColor(0, 0, 0, 0))
         painter = QPainter(image)
         scene.render(
             painter,
-            QRectF(0, 0, 420, 260),
+            QRectF(0, 0, width, height),
             QRectF(-30, -30, 420, 260),
         )
         painter.end()
         return image
+
+    @staticmethod
+    def _alpha_bounds(image):
+        alpha = pixmap2ndarray(image, keep_alpha=True)[..., 3]
+        rows, columns = np.nonzero(alpha)
+        return (
+            columns.min(), rows.min(), columns.max(), rows.max()
+        )
 
     def test_preview_is_live_but_not_model_or_serialization_state(self):
         canonical = self._stack()
@@ -279,6 +296,14 @@ class TextEffectPreviewTest(unittest.TestCase):
         try:
             session.replace_targets(items)
             self.assertTrue(session.preview_states((after, after)))
+            scratches = tuple(
+                item.effect_renderer._preview_effect_raster_state
+                for item in items
+            )
+            self.assertTrue(all(
+                scratch.background_pixmap_scale == 0.5
+                for scratch in scratches
+            ))
             with patch.object(
                 items[0],
                 'clear_text_effect_preview',
@@ -292,6 +317,10 @@ class TextEffectPreviewTest(unittest.TestCase):
             ))
             self.assertTrue(all(
                 not item.effect_renderer.has_preview() for item in items
+            ))
+            self.assertTrue(all(
+                item.effect_renderer._effect_raster_state is not scratch
+                for item, scratch in zip(items, scratches)
             ))
             self.assertEqual(
                 tuple(item.document().availableUndoSteps() for item in items),
@@ -455,7 +484,86 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertIsNot(surface.cached_pixmap, old_pixmap)
         item.endEdit()
 
-    def test_commit_promotes_only_compatible_effect_preview_cache(self):
+    def test_effect_preview_is_half_resolution_but_keeps_logical_size(self):
+        canonical = TextEffectStack(effects=(
+            StrokeEffect(width=0.10, position='outside'),
+            HollowEffect(),
+        ))
+        target = TextEffectStack(effects=(
+            StrokeEffect(width=0.23, position='outside'),
+            HollowEffect(),
+        ))
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item = self._item(vertical, canonical)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+
+                item.set_text_effects(target, preview=True)
+                renderer = item.effect_renderer
+                scratch = renderer._preview_effect_raster_state
+                bounds = renderer.boundingRect()
+                self.assertEqual(scratch.background_pixmap_scale, 0.5)
+                self.assertEqual(
+                    scratch.background_pixmap.width(),
+                    math.ceil(bounds.width() * 0.5),
+                )
+                self.assertEqual(
+                    scratch.background_pixmap.height(),
+                    math.ceil(bounds.height() * 0.5),
+                )
+                self.assertEqual(
+                    scratch.background_pixmap.devicePixelRatioF(), 1.0
+                )
+                preview_bounds = self._alpha_bounds(
+                    self._render_scene(scene)
+                )
+
+                item.set_text_effects(target)
+                committed_bounds = self._alpha_bounds(
+                    self._render_scene(scene)
+                )
+                for preview_edge, committed_edge in zip(
+                    preview_bounds, committed_bounds
+                ):
+                    self.assertLessEqual(
+                        abs(preview_edge - committed_edge), 2
+                    )
+
+    def test_effect_preview_never_rebuilds_for_high_tier_scene_paints(self):
+        canonical = self._stack()
+        target = self._stack(
+            0.23, (70, 80, 90), position='outside'
+        )
+        transforms = (
+            TextTransformStack(),
+            TextTransformStack((
+                ProjectiveTextTransform(horizontal_scale=1.1),
+            )),
+            TextTransformStack((SineTextTransform(),)),
+        )
+        for transform in transforms:
+            with self.subTest(transform=transform):
+                item = self._item(stack=canonical)
+                if not transform.is_neutral():
+                    item.set_text_transform(transform)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                renderer = item.effect_renderer
+                with patch.object(
+                    renderer,
+                    '_render_effect_surface',
+                    wraps=renderer._render_effect_surface,
+                ) as render:
+                    item.set_text_effects(target, preview=True)
+                    scratch = renderer._preview_effect_raster_state
+                    self.assertEqual(render.call_count, 1)
+                    self._render_scene(scene, 2.0)
+                    self._render_scene(scene, 4.0)
+                    self.assertEqual(render.call_count, 1)
+                self.assertEqual(scratch.background_pixmap_scale, 0.5)
+
+    def test_commit_and_export_rerender_low_quality_preview_exactly(self):
         canonical = self._stack()
         target = self._stack(
             0.23, (70, 80, 90), position='outside'
@@ -469,30 +577,27 @@ class TextEffectPreviewTest(unittest.TestCase):
         ) as render:
             item.set_text_effects(target, preview=True)
             scratch = renderer._preview_effect_raster_state
-            scratch_pixmap = scratch.background_pixmap
-            self.assertEqual(render.call_count, 1)
             item.set_text_effects(target)
-            self.assertEqual(render.call_count, 1)
-        self.assertIs(renderer._effect_raster_state, scratch)
-        self.assertIs(renderer.background_pixmap, scratch_pixmap)
-        self.assertIsNone(renderer._preview_effect_raster_state)
+            persistent = renderer._effect_raster_state
+            self.assertIsNot(persistent, scratch)
+            self.assertEqual(persistent.background_pixmap_scale, 1.0)
 
-        fallback = self._item(stack=canonical)
-        fallback_renderer = fallback.effect_renderer
-        with patch.object(
-            fallback_renderer,
-            '_render_effect_surface',
-            wraps=fallback_renderer._render_effect_surface,
-        ) as render:
-            fallback.set_text_effects(target, preview=True)
-            scratch = fallback_renderer._preview_effect_raster_state
-            fallback_renderer.repaint_background(2.0)
-            self.assertEqual(render.call_count, 2)
-            self.assertEqual(scratch.background_pixmap_scale, 2.0)
-            fallback.set_text_effects(target)
-            self.assertEqual(render.call_count, 3)
-        self.assertIsNot(fallback_renderer._effect_raster_state, scratch)
-        self.assertEqual(fallback_renderer.background_pixmap_scale, 1.0)
+            renderer.repaint_background(4.0)
+            self.assertEqual(persistent.background_pixmap_scale, 4.0)
+            renderer.set_export_effect_render(True)
+            try:
+                renderer.repaint_background(4.0)
+                exported = renderer._export_effect_raster_state
+                self.assertIsNot(exported, persistent)
+                self.assertEqual(exported.background_pixmap_scale, 4.0)
+            finally:
+                renderer.set_export_effect_render(False)
+
+        self.assertEqual(
+            [call.args[1] for call in render.call_args_list],
+            [0.5, 1.0, 4.0, 4.0],
+        )
+        self.assertIs(renderer._effect_raster_state, persistent)
 
     def test_commit_never_promotes_low_quality_nonlinear_preview(self):
         canonical = self._stack()
