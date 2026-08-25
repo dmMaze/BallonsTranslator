@@ -1474,12 +1474,16 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 replace(
                     stroke,
                     opacity=opacity,
-                    paint=LinearGradientPaint(
-                        stops=(
-                            GradientStop(0.0, first, 0.4),
-                            GradientStop(1.0, second, 0.9),
-                        ),
-                        angle=angle,
+                    paint=(
+                        SolidPaint(first)
+                        if angle == 75.0
+                        else LinearGradientPaint(
+                            stops=(
+                                GradientStop(0.0, first, 0.4),
+                                GradientStop(1.0, second, 0.9),
+                            ),
+                            angle=angle,
+                        )
                     ),
                 ),
                 replace(
@@ -1497,12 +1501,16 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             for angle, opacity, first, second in (
                 (15.0, 0.4, (220, 30, 20), (20, 60, 220)),
                 (75.0, 0.7, (30, 200, 80), (180, 40, 160)),
-                (135.0, 0.9, (240, 180, 20), (20, 160, 220)),
+                (135.0, 0.501, (240, 180, 20), (20, 160, 220)),
             )
         )
         item = self._item(before)
         renderer = item.effect_renderer
         renderer._effect_raster_state.effect_source_cache.clear()
+        committed_coverage_keys = tuple(
+            renderer._effect_raster_state.positioned_stroke_coverage_cache
+        )
+        self.assertTrue(committed_coverage_keys)
 
         with patch.object(
             renderer,
@@ -1514,17 +1522,34 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 '_pixmap_alpha',
                 wraps=renderer._pixmap_alpha,
             ) as alpha:
-                for preview in previews:
-                    item.set_text_effects(preview, preview=True)
+                with patch.object(
+                    renderer,
+                    '_paint_cloned_document_stroke',
+                    wraps=renderer._paint_cloned_document_stroke,
+                ) as native_outline:
+                    for preview in previews:
+                        item.set_text_effects(preview, preview=True)
 
         self.assertEqual(capture.call_count, 1)
         self.assertEqual(alpha.call_count, 1)
+        self.assertEqual(native_outline.call_count, 1)
         scratch = renderer._preview_effect_raster_state
         self.assertEqual(len(scratch.effect_source_cache), 1)
+        scratch_coverage_keys = tuple(
+            scratch.positioned_stroke_coverage_cache
+        )
+        self.assertLessEqual(len(scratch_coverage_keys), 2)
+        self.assertTrue(
+            set(scratch_coverage_keys).intersection(
+                committed_coverage_keys
+            )
+        )
         hot = pixmap2ndarray(scratch.background_pixmap, keep_alpha=True)
 
         cold = self._item(before)
-        cold.effect_renderer._effect_raster_state.effect_source_cache.clear()
+        cold_state = cold.effect_renderer._effect_raster_state
+        cold_state.effect_source_cache.clear()
+        cold_state.positioned_stroke_coverage_cache.clear()
         cold.set_text_effects(previews[-1], preview=True)
         cold_pixels = pixmap2ndarray(
             cold.effect_renderer.background_pixmap, keep_alpha=True
@@ -1608,6 +1633,132 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertIsNone(renderer._preview_effect_raster_state)
         self.assertIsNone(renderer._export_effect_raster_state)
 
+    def test_positioned_stroke_coverage_cache_misses_and_lifecycle(self):
+        stroke = StrokeEffect(
+            width=0.18,
+            position='inside',
+            paint=LinearGradientPaint(),
+        )
+        item = self._item(TextEffectStack(effects=(stroke,)))
+        renderer = item.effect_renderer
+        state = renderer._effect_raster_state
+        state.positioned_stroke_coverage_cache.clear()
+
+        def coverage(
+            current: StrokeEffect,
+            rect: QRectF,
+            scale: float,
+        ) -> np.ndarray:
+            _source, alpha = renderer._cached_effect_source(
+                rect,
+                scale,
+                needs_alpha=current.position != 'center',
+            )
+            return renderer._positioned_stroke_coverage(
+                rect, scale, current, alpha
+            )
+
+        bounds = renderer.boundingRect()
+        with patch.object(
+            renderer,
+            '_paint_cloned_document_stroke',
+            wraps=renderer._paint_cloned_document_stroke,
+        ) as native_outline:
+            first = coverage(stroke, bounds, 0.5)
+            self.assertIs(first, coverage(
+                replace(
+                    stroke,
+                    opacity=0.37,
+                    paint=SolidPaint((20, 80, 220)),
+                ),
+                bounds,
+                0.5,
+            ))
+            self.assertEqual(native_outline.call_count, 1)
+            self.assertFalse(first.flags.writeable)
+            with self.assertRaises(ValueError):
+                first[0, 0] = 255
+
+            coverage(replace(stroke, width=0.24), bounds, 0.5)
+            self.assertEqual(native_outline.call_count, 2)
+            coverage(replace(stroke, position='outside'), bounds, 0.5)
+            self.assertEqual(native_outline.call_count, 3)
+            coverage(stroke, bounds, 1.0)
+            self.assertEqual(native_outline.call_count, 4)
+            adjusted = bounds.adjusted(0.0, 0.0, 1.0, 0.0)
+            coverage(stroke, adjusted, 0.5)
+            self.assertEqual(native_outline.call_count, 5)
+            self.assertEqual(
+                len(state.positioned_stroke_coverage_cache), 2
+            )
+
+            item.repaint_on_changed = False
+            item.setPlainText('Changed positioned Stroke source')
+            changed_bounds = renderer.boundingRect()
+            coverage(stroke, changed_bounds, 0.5)
+            self.assertEqual(native_outline.call_count, 6)
+            self.assertLessEqual(
+                len(state.positioned_stroke_coverage_cache), 2
+            )
+
+            committed_keys = tuple(
+                state.positioned_stroke_coverage_cache
+            )
+            renderer.set_export_effect_render(True)
+            try:
+                exported = renderer._export_effect_raster_state
+                self.assertEqual(
+                    exported.positioned_stroke_coverage_cache, {}
+                )
+                coverage(stroke, changed_bounds, 0.5)
+                self.assertEqual(native_outline.call_count, 7)
+                self.assertEqual(
+                    len(exported.positioned_stroke_coverage_cache), 1
+                )
+                self.assertEqual(
+                    tuple(state.positioned_stroke_coverage_cache),
+                    committed_keys,
+                )
+            finally:
+                renderer.set_export_effect_render(False)
+
+        item.startReshape()
+        self.assertEqual(state.positioned_stroke_coverage_cache, {})
+        item.endReshape()
+        renderer.release_caches()
+        self.assertIsNone(renderer._effect_raster_state)
+        self.assertIsNone(renderer._preview_effect_raster_state)
+        self.assertIsNone(renderer._export_effect_raster_state)
+
+    def test_cached_coverage_handles_compound_hollow_output(self):
+        stroke = StrokeEffect(
+            width=0.18,
+            position='outside',
+            opacity=0.501,
+            paint=LinearGradientPaint(angle=37.0),
+        )
+        item = self._item(TextEffectStack(effects=(
+            ShadowEffect(blur=0.08),
+            GlowEffect(size=0.07),
+            stroke,
+            HollowEffect(),
+        )))
+        renderer = item.effect_renderer
+        renderer._effect_raster_state.positioned_stroke_coverage_cache.clear()
+        bounds = renderer.boundingRect()
+        with patch.object(
+            renderer,
+            '_paint_cloned_document_stroke',
+            wraps=renderer._paint_cloned_document_stroke,
+        ) as native_outline:
+            cold = renderer._render_pre_mask_effect_surface(bounds, 1.0)
+            hot = renderer._render_pre_mask_effect_surface(bounds, 1.0)
+        self.assertEqual(native_outline.call_count, 1)
+        np.testing.assert_array_equal(
+            pixmap2ndarray(cold, keep_alpha=True),
+            pixmap2ndarray(hot, keep_alpha=True),
+        )
+
     def test_positioned_stroke_band_is_reused_within_one_composite(self):
         generated_strokes = (
             StrokeEffect(width=0.18, position='outside'),
@@ -1657,10 +1808,16 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             '_positioned_stroke_band',
             wraps=renderer._positioned_stroke_band,
         ) as band:
-            renderer._render_pre_mask_effect_surface(
-                renderer.boundingRect(), 1.0
-            )
+            with patch.object(
+                renderer,
+                '_positioned_stroke_coverage',
+                wraps=renderer._positioned_stroke_coverage,
+            ) as coverage:
+                renderer._render_pre_mask_effect_surface(
+                    renderer.boundingRect(), 1.0
+                )
         self.assertEqual(band.call_count, 0)
+        self.assertEqual(coverage.call_count, 0)
 
     def test_glow_allocation_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(GlowEffect(size=0.2),))

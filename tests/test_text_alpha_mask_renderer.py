@@ -479,6 +479,10 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         committed = renderer._effect_raster_state
         source_keys = tuple(committed.effect_source_cache)
         self.assertTrue(source_keys)
+        coverage_keys = tuple(
+            committed.positioned_stroke_coverage_cache
+        )
+        self.assertTrue(coverage_keys)
         masks = (
             TextAlphaMask(strokes=(
                 AlphaBrushStroke('erase', 18, ((20, 20),)),
@@ -502,6 +506,14 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             )
             self.assertEqual(
                 tuple(scratch.effect_source_cache), source_keys
+            )
+            self.assertIsNot(
+                scratch.positioned_stroke_coverage_cache,
+                committed.positioned_stroke_coverage_cache,
+            )
+            self.assertEqual(
+                tuple(scratch.positioned_stroke_coverage_cache),
+                coverage_keys,
             )
             item.set_text_alpha_mask(masks[1], preview=True)
             self.assertEqual(upstream.call_count, 1)

@@ -182,11 +182,15 @@ fallbacks, but export must report incomplete output instead of silently
 omitting text. Mask raster/cache state is item-owned and keyed by an O(1)
 generation; each raster namespace reuses at most two bounded pre-mask surfaces
 for mask-only changes instead of regenerating glyph and effect phases. Only
-the immutable mask history is persisted. Editing feedback is transient and
-unmasked. Effect padding expands paint bounds only; ordinary shape and hit
-testing remain on the logical box plus layout-owned ink overhang. Selection is
-composited after the completed effect surface, and the caret is deferred and
-painted last so neither becomes part of Hollow or another raster effect.
+the immutable mask history is persisted. Each namespace also retains at most
+two canonical glyph sources and positioned Stroke coverage planes across
+paint-only previews; coverage reuse excludes Stroke paint and opacity but
+includes source geometry, render scale, width, and position. Editing feedback
+is transient and unmasked. Effect padding expands paint bounds only; ordinary
+shape and hit testing remain on the logical box plus layout-owned ink
+overhang. Selection is composited after the completed effect surface, and the
+caret is deferred and painted last so neither becomes part of Hollow or
+another raster effect.
 
 The Canvas-owned mask session freezes the scene-to-source mapper and unpadded
 logical origin for each stroke. Raw samples remain session-owned until release;

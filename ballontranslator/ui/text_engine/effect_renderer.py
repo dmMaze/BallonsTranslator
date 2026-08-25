@@ -98,6 +98,11 @@ class _EffectRasterState:
         # Effect paint does not change the canonical glyph pixels. Retain at
         # most the same two full/tile source captures across paint previews.
         self.effect_source_cache = {}
+        # Stroke paint and opacity consume, but do not change, native outline
+        # coverage. Keep the same bounded full/tile working set.
+        self.positioned_stroke_coverage_cache: Dict[
+            tuple, np.ndarray
+        ] = {}
 
 
 class _EffectRasterField:
@@ -477,12 +482,15 @@ class TextEffectRenderer:
         )
 
     @staticmethod
-    def _copy_effect_source_cache(
+    def _copy_source_caches(
         source: Optional[_EffectRasterState],
         target: _EffectRasterState,
     ) -> None:
         if source is not None:
             target.effect_source_cache.update(source.effect_source_cache)
+            target.positioned_stroke_coverage_cache.update(
+                source.positioned_stroke_coverage_cache
+            )
 
     @staticmethod
     def _copy_pre_mask_cache(
@@ -693,6 +701,7 @@ class TextEffectRenderer:
                 state.tile_cache.clear()
                 state.pre_mask_cache.clear()
                 state.effect_source_cache.clear()
+                state.positioned_stroke_coverage_cache.clear()
         self._effect_raster_state = None
         self._preview_effect_raster_state = None
         self._export_effect_raster_state = None
@@ -723,6 +732,7 @@ class TextEffectRenderer:
         state.tile_cache.clear()
         state.pre_mask_cache.clear()
         state.effect_source_cache.clear()
+        state.positioned_stroke_coverage_cache.clear()
         state.background_pixmap = None
         state.background_pixmap_scale = None
 
@@ -784,7 +794,7 @@ class TextEffectRenderer:
                 if stack.effects != canonical.effects:
                     if not had_pixel_preview:
                         preview_state = _EffectRasterState()
-                        self._copy_effect_source_cache(
+                        self._copy_source_caches(
                             source_state, preview_state
                         )
                         self._preview_effect_raster_state = preview_state
@@ -935,7 +945,7 @@ class TextEffectRenderer:
             if first_preview and not had_pixel_preview:
                 preview_state = _EffectRasterState()
                 self._copy_pre_mask_cache(source_state, preview_state)
-                self._copy_effect_source_cache(source_state, preview_state)
+                self._copy_source_caches(source_state, preview_state)
                 self._preview_effect_raster_state = preview_state
                 self.geometry_controller.retain_effect_preview_surface()
             self._mark_mask_cache_dirty()
@@ -2279,18 +2289,48 @@ class TextEffectRenderer:
             hollow=True,
         )
 
-    def _positioned_stroke_band(
+    @staticmethod
+    def _positioned_stroke_coverage_cache_key(
+        source_key: tuple,
+        stroke: StrokeEffect,
+    ) -> tuple:
+        """Key Stroke geometry without its downstream paint or opacity.
+
+        >>> first = StrokeEffect(width=0.2, opacity=0.25)
+        >>> second = StrokeEffect(
+        ...     width=0.2, opacity=0.75,
+        ...     paint=LinearGradientPaint(angle=95.0)
+        ... )
+        >>> TextEffectRenderer._positioned_stroke_coverage_cache_key(
+        ...     ('source',), first
+        ... ) == TextEffectRenderer._positioned_stroke_coverage_cache_key(
+        ...     ('source',), second
+        ... )
+        True
+        """
+        return source_key, float(stroke.width), stroke.position
+
+    def _positioned_stroke_coverage(
         self,
         surface_rect: QRectF,
         render_scale: float,
         stroke: StrokeEffect,
         canonical_alpha: Optional[np.ndarray],
-    ) -> QPixmap:
-        """Capture one native outline and clip it to its semantic side.
+    ) -> np.ndarray:
+        """Return immutable native outline alpha clipped to its position.
 
-        >>> hasattr(TextEffectRenderer, '_positioned_stroke_band')
+        >>> hasattr(TextEffectRenderer, '_positioned_stroke_coverage')
         True
         """
+        state = self._raster_state()
+        key = self._positioned_stroke_coverage_cache_key(
+            self._effect_source_cache_key(surface_rect, render_scale),
+            stroke,
+        )
+        cached = state.positioned_stroke_coverage_cache.get(key)
+        if cached is not None:
+            return cached
+
         previous = self._render_stroke
         previous_outline_only = self._outline_only_stroke
         self._render_stroke = stroke
@@ -2338,21 +2378,58 @@ class TextEffectRenderer:
                 product += 127
                 product //= 255
                 alpha = product.astype(np.uint8)
+            alpha = np.ascontiguousarray(alpha)
+            alpha.setflags(write=False)
+            state.positioned_stroke_coverage_cache[key] = alpha
+            while len(state.positioned_stroke_coverage_cache) > 2:
+                state.positioned_stroke_coverage_cache.pop(
+                    next(iter(state.positioned_stroke_coverage_cache))
+                )
+            return alpha
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render positioned Stroke coverage'
+            ) from error
+        finally:
+            self._outline_only_stroke = previous_outline_only
+            self._render_stroke = previous
+
+    def _positioned_stroke_band(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+        stroke: StrokeEffect,
+        canonical_alpha: Optional[np.ndarray],
+    ) -> QPixmap:
+        """Apply one Stroke's paint and opacity to geometric coverage.
+
+        >>> hasattr(TextEffectRenderer, '_positioned_stroke_band')
+        True
+        """
+        try:
+            alpha = self._positioned_stroke_coverage(
+                surface_rect,
+                render_scale,
+                stroke,
+                canonical_alpha,
+            )
             if stroke.opacity != 1.0:
                 product = alpha.astype(np.uint16)
                 product *= int(round(stroke.opacity * 255))
                 product += 127
                 product //= 255
                 alpha = product.astype(np.uint8)
+            rgba = np.empty(alpha.shape + (4,), dtype=np.uint8)
             rgba[..., 3] = alpha
-            if isinstance(stroke.paint, LinearGradientPaint):
-                colorize_effect_paint_rgba(
-                    stroke.paint,
-                    rgba,
-                    surface_rect,
-                    self.logical_unpadded_rect(),
-                    render_scale,
-                )
+            colorize_effect_paint_rgba(
+                stroke.paint,
+                rgba,
+                surface_rect,
+                self.logical_unpadded_rect(),
+                render_scale,
+            )
             band = ndarray2pixmap(rgba)
             if band is None or band.isNull():
                 raise EffectRasterAllocationError(
@@ -2367,9 +2444,6 @@ class TextEffectRenderer:
             raise EffectRasterAllocationError(
                 'unable to render positioned Stroke band'
             ) from error
-        finally:
-            self._outline_only_stroke = previous_outline_only
-            self._render_stroke = previous
 
     def _paint_positioned_strokes(
         self,
