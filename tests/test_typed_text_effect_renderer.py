@@ -1,5 +1,6 @@
 import os
 import unittest
+from dataclasses import replace
 from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -472,6 +473,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )
         item = self._item(TextEffectStack(effects=(overlay,)))
         renderer = item.effect_renderer
+        renderer._effect_raster_state.effect_source_cache.clear()
         with patch.object(
             renderer, '_pixmap_alpha', wraps=renderer._pixmap_alpha
         ) as pixmap_alpha:
@@ -491,6 +493,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             ),
         )))
         renderer = center_gradient.effect_renderer
+        renderer._effect_raster_state.effect_source_cache.clear()
         with patch.object(
             renderer, '_pixmap_alpha', wraps=renderer._pixmap_alpha
         ) as pixmap_alpha:
@@ -508,6 +511,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             with self.subTest(effect=effect):
                 item = self._item(TextEffectStack(effects=(effect,)))
                 renderer = item.effect_renderer
+                renderer._effect_raster_state.effect_source_cache.clear()
                 with patch.object(
                     renderer, '_pixmap_alpha', wraps=renderer._pixmap_alpha
                 ) as pixmap_alpha:
@@ -1456,6 +1460,207 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     self.assertIsNot(
                         renderer._effect_raster_state, scratch
                     )
+
+    def test_paint_previews_reuse_canonical_source_and_match_cold_output(self):
+        stroke = StrokeEffect(
+            width=0.18,
+            position='inside',
+            paint=LinearGradientPaint(),
+        )
+        overlay = GradientOverlayEffect()
+        before = TextEffectStack(effects=(stroke, overlay))
+        previews = tuple(
+            TextEffectStack(effects=(
+                replace(
+                    stroke,
+                    opacity=opacity,
+                    paint=LinearGradientPaint(
+                        stops=(
+                            GradientStop(0.0, first, 0.4),
+                            GradientStop(1.0, second, 0.9),
+                        ),
+                        angle=angle,
+                    ),
+                ),
+                replace(
+                    overlay,
+                    opacity=opacity,
+                    paint=LinearGradientPaint(
+                        stops=(
+                            GradientStop(0.0, second, 0.7),
+                            GradientStop(1.0, first, 1.0),
+                        ),
+                        angle=angle + 45.0,
+                    ),
+                ),
+            ))
+            for angle, opacity, first, second in (
+                (15.0, 0.4, (220, 30, 20), (20, 60, 220)),
+                (75.0, 0.7, (30, 200, 80), (180, 40, 160)),
+                (135.0, 0.9, (240, 180, 20), (20, 160, 220)),
+            )
+        )
+        item = self._item(before)
+        renderer = item.effect_renderer
+        renderer._effect_raster_state.effect_source_cache.clear()
+
+        with patch.object(
+            renderer,
+            '_capture_effect_source',
+            wraps=renderer._capture_effect_source,
+        ) as capture:
+            with patch.object(
+                renderer,
+                '_pixmap_alpha',
+                wraps=renderer._pixmap_alpha,
+            ) as alpha:
+                for preview in previews:
+                    item.set_text_effects(preview, preview=True)
+
+        self.assertEqual(capture.call_count, 1)
+        self.assertEqual(alpha.call_count, 1)
+        scratch = renderer._preview_effect_raster_state
+        self.assertEqual(len(scratch.effect_source_cache), 1)
+        hot = pixmap2ndarray(scratch.background_pixmap, keep_alpha=True)
+
+        cold = self._item(before)
+        cold.effect_renderer._effect_raster_state.effect_source_cache.clear()
+        cold.set_text_effects(previews[-1], preview=True)
+        cold_pixels = pixmap2ndarray(
+            cold.effect_renderer.background_pixmap, keep_alpha=True
+        )
+        np.testing.assert_array_equal(hot, cold_pixels)
+
+    def test_effect_source_cache_key_is_bounded_and_lifecycle_owned(self):
+        stack = TextEffectStack(effects=(StrokeEffect(
+            width=0.18,
+            position='inside',
+            paint=LinearGradientPaint(),
+        ),))
+        item = self._item(stack)
+        renderer = item.effect_renderer
+        state = renderer._effect_raster_state
+        state.effect_source_cache.clear()
+        bounds = renderer.boundingRect()
+
+        with patch.object(
+            renderer,
+            '_capture_effect_source',
+            wraps=renderer._capture_effect_source,
+        ) as capture:
+            renderer._cached_effect_source(
+                bounds, 0.5, needs_alpha=True
+            )
+            renderer._cached_effect_source(
+                bounds, 0.5, needs_alpha=True
+            )
+            self.assertEqual(capture.call_count, 1)
+
+            renderer._cached_effect_source(
+                bounds, 1.0, needs_alpha=True
+            )
+            self.assertEqual(capture.call_count, 2)
+            renderer._cached_effect_source(
+                bounds.adjusted(0.0, 0.0, 1.0, 0.0),
+                0.5,
+                needs_alpha=True,
+            )
+            self.assertEqual(capture.call_count, 3)
+            self.assertEqual(len(state.effect_source_cache), 2)
+
+            item.repaint_on_changed = False
+            item.setPlainText('Changed canonical source')
+            changed_bounds = renderer.boundingRect()
+            renderer._cached_effect_source(
+                changed_bounds, 0.5, needs_alpha=True
+            )
+            self.assertEqual(capture.call_count, 4)
+            self.assertLessEqual(len(state.effect_source_cache), 2)
+
+            geometry_rect = QRectF(*item.blk.bounding_rect())
+            geometry_rect.setWidth(geometry_rect.width() + 24.0)
+            item.setRect(geometry_rect, repaint=False)
+            changed_bounds = renderer.boundingRect()
+            renderer._cached_effect_source(
+                changed_bounds, 0.5, needs_alpha=True
+            )
+            self.assertEqual(capture.call_count, 5)
+            self.assertLessEqual(len(state.effect_source_cache), 2)
+
+        committed_keys = tuple(state.effect_source_cache)
+        renderer.set_export_effect_render(True)
+        try:
+            exported = renderer._export_effect_raster_state
+            self.assertEqual(exported.effect_source_cache, {})
+            renderer._cached_effect_source(
+                changed_bounds, 0.5, needs_alpha=True
+            )
+            self.assertEqual(len(exported.effect_source_cache), 1)
+            self.assertEqual(tuple(state.effect_source_cache), committed_keys)
+        finally:
+            renderer.set_export_effect_render(False)
+
+        item.startReshape()
+        self.assertEqual(state.effect_source_cache, {})
+        item.endReshape()
+        renderer.release_caches()
+        self.assertIsNone(renderer._effect_raster_state)
+        self.assertIsNone(renderer._preview_effect_raster_state)
+        self.assertIsNone(renderer._export_effect_raster_state)
+
+    def test_positioned_stroke_band_is_reused_within_one_composite(self):
+        generated_strokes = (
+            StrokeEffect(width=0.18, position='outside'),
+            StrokeEffect(
+                width=0.18,
+                position='center',
+                paint=LinearGradientPaint(angle=35.0),
+            ),
+            StrokeEffect(width=0.18, position='inside'),
+        )
+        exterior_effects = (
+            ShadowEffect(blur=0.08),
+            GlowEffect(size=0.08),
+        )
+        for exterior in exterior_effects:
+            for stroke in generated_strokes:
+                for hollow in (False, True):
+                    with self.subTest(
+                        exterior=exterior.effect_type,
+                        position=stroke.position,
+                        hollow=hollow,
+                    ):
+                        effects = [exterior, stroke]
+                        if hollow:
+                            effects.append(HollowEffect(enabled=True))
+                        item = self._item(TextEffectStack(
+                            effects=tuple(effects)
+                        ))
+                        renderer = item.effect_renderer
+                        with patch.object(
+                            renderer,
+                            '_positioned_stroke_band',
+                            wraps=renderer._positioned_stroke_band,
+                        ) as band:
+                            renderer._render_pre_mask_effect_surface(
+                                renderer.boundingRect(), 1.0
+                            )
+                        self.assertEqual(band.call_count, 1)
+
+        item = self._item(TextEffectStack(effects=(
+            ShadowEffect(blur=0.08),
+            StrokeEffect(width=0.18, position='center'),
+        )))
+        renderer = item.effect_renderer
+        with patch.object(
+            renderer,
+            '_positioned_stroke_band',
+            wraps=renderer._positioned_stroke_band,
+        ) as band:
+            renderer._render_pre_mask_effect_surface(
+                renderer.boundingRect(), 1.0
+            )
+        self.assertEqual(band.call_count, 0)
 
     def test_glow_allocation_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(GlowEffect(size=0.2),))

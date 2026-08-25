@@ -1,7 +1,7 @@
 """Typed effects, block alpha masks, and completed text rendering."""
 
 import math
-from typing import Callable, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -95,6 +95,9 @@ class _EffectRasterState:
         # Mask previews only change the final alpha. Keep at most two complete
         # pre-mask surfaces so visible full/tile output can be derived cheaply.
         self.pre_mask_cache = {}
+        # Effect paint does not change the canonical glyph pixels. Retain at
+        # most the same two full/tile source captures across paint previews.
+        self.effect_source_cache = {}
 
 
 class _EffectRasterField:
@@ -431,6 +434,56 @@ class TextEffectRenderer:
             bool(target_stroke),
         )
 
+    def _effect_source_cache_key(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> tuple:
+        """Describe only inputs that can change canonical source pixels.
+
+        >>> callable(TextEffectRenderer._effect_source_cache_key)
+        True
+        """
+        document = self.document()
+        layout = self.layout
+        layout_renderer = self.geometry_controller.layout_renderer
+        layout_render_key = (
+            None
+            if layout_renderer is None
+            else layout_renderer.render_cache_key()
+        )
+        logical_rect = self.logical_unpadded_rect()
+        source_rect = self.boundingRect()
+        return (
+            document.revision(),
+            getattr(layout, 'layout_generation', 0),
+            layout_render_key,
+            self.geometry_controller.effective(),
+            self.fontformat.vertical,
+            bool(self._active_strokes()),
+            (
+                logical_rect.x(), logical_rect.y(),
+                logical_rect.width(), logical_rect.height(),
+            ),
+            (
+                source_rect.x(), source_rect.y(),
+                source_rect.width(), source_rect.height(),
+            ),
+            (
+                surface_rect.x(), surface_rect.y(),
+                surface_rect.width(), surface_rect.height(),
+            ),
+            float(render_scale),
+        )
+
+    @staticmethod
+    def _copy_effect_source_cache(
+        source: Optional[_EffectRasterState],
+        target: _EffectRasterState,
+    ) -> None:
+        if source is not None:
+            target.effect_source_cache.update(source.effect_source_cache)
+
     @staticmethod
     def _copy_pre_mask_cache(
         source: Optional[_EffectRasterState],
@@ -639,6 +692,7 @@ class TextEffectRenderer:
             if state is not None:
                 state.tile_cache.clear()
                 state.pre_mask_cache.clear()
+                state.effect_source_cache.clear()
         self._effect_raster_state = None
         self._preview_effect_raster_state = None
         self._export_effect_raster_state = None
@@ -668,6 +722,7 @@ class TextEffectRenderer:
         state.cache_input_key = None
         state.tile_cache.clear()
         state.pre_mask_cache.clear()
+        state.effect_source_cache.clear()
         state.background_pixmap = None
         state.background_pixmap_scale = None
 
@@ -720,12 +775,19 @@ class TextEffectRenderer:
             if preview_before == stack:
                 return False
             had_pixel_preview = self._uses_preview_cache_namespace()
+            source_state = (
+                None if self._export_active else self._peek_raster_state()
+            )
             self.preview = stack
             effects_changed = effective_before.effects != stack.effects
             if effects_changed:
-                self._preview_effect_raster_state = None
                 if stack.effects != canonical.effects:
                     if not had_pixel_preview:
+                        preview_state = _EffectRasterState()
+                        self._copy_effect_source_cache(
+                            source_state, preview_state
+                        )
+                        self._preview_effect_raster_state = preview_state
                         self.geometry_controller.retain_effect_preview_surface()
                     self._mark_effect_cache_dirty()
                 elif self._mask_preview_changes_pixels:
@@ -735,6 +797,7 @@ class TextEffectRenderer:
                 else:
                     # Returning to canonical effect pixels keeps the complete
                     # preview alive only for its native overall opacity.
+                    self._preview_effect_raster_state = None
                     self._finish_effect_transition(False)
                     self.geometry_controller.restore_effect_preview_surface()
                     return True
@@ -863,13 +926,16 @@ class TextEffectRenderer:
                 return False
             first_preview = not self._mask_preview_changes_pixels
             had_pixel_preview = self._uses_preview_cache_namespace()
-            source_state = self._peek_raster_state()
+            source_state = (
+                None if self._export_active else self._peek_raster_state()
+            )
             self._mask_preview = mask
             self._mask_preview_changes_pixels = True
             self._mask_preview_generation += 1
             if first_preview and not had_pixel_preview:
                 preview_state = _EffectRasterState()
                 self._copy_pre_mask_cache(source_state, preview_state)
+                self._copy_effect_source_cache(source_state, preview_state)
                 self._preview_effect_raster_state = preview_state
                 self.geometry_controller.retain_effect_preview_surface()
             self._mark_mask_cache_dirty()
@@ -1981,11 +2047,12 @@ class TextEffectRenderer:
             interior or exterior or positioned_strokes
         )
         if completed_foreground or needs_canonical_alpha:
-            canonical = self._capture_effect_source(
-                surface_rect, render_scale
+            canonical, canonical_alpha = self._cached_effect_source(
+                surface_rect,
+                render_scale,
+                needs_alpha=needs_canonical_alpha,
             )
-            if needs_canonical_alpha:
-                canonical_alpha = self._pixmap_alpha(canonical)
+        positioned_stroke_bands: Dict[StrokeEffect, QPixmap] = {}
         exterior_alpha = canonical_alpha
         if exterior and paint_stroke:
             assert canonical is not None
@@ -1995,6 +2062,7 @@ class TextEffectRenderer:
                 canonical_alpha,
                 surface_rect,
                 render_scale,
+                positioned_stroke_bands,
             )
             exterior_alpha = self._pixmap_alpha(silhouette)
 
@@ -2056,6 +2124,7 @@ class TextEffectRenderer:
                         surface_rect,
                         render_scale,
                         canonical_alpha,
+                        positioned_stroke_bands,
                     )
                 else:
                     self._paint_positioned_strokes(
@@ -2064,6 +2133,7 @@ class TextEffectRenderer:
                         render_scale,
                         canonical_alpha,
                         ('center', 'outside'),
+                        positioned_stroke_bands,
                     )
 
             if interior:
@@ -2086,6 +2156,7 @@ class TextEffectRenderer:
                         render_scale,
                         canonical_alpha,
                         ('inside',),
+                        positioned_stroke_bands,
                     )
                 target_painter.translate(surface_rect.topLeft())
                 for effect in reversed(interior):
@@ -2117,6 +2188,7 @@ class TextEffectRenderer:
                         render_scale,
                         canonical_alpha,
                         ('inside',),
+                        positioned_stroke_bands,
                     )
 
             if self.surface_raster_error is not None:
@@ -2188,6 +2260,9 @@ class TextEffectRenderer:
         surface_rect: QRectF,
         render_scale: float,
         canonical_alpha: Optional[np.ndarray] = None,
+        positioned_stroke_bands: Optional[
+            Dict[StrokeEffect, QPixmap]
+        ] = None,
     ) -> None:
         """Paint positioned Stroke bands without their opaque glyph fill.
 
@@ -2200,6 +2275,7 @@ class TextEffectRenderer:
             render_scale,
             canonical_alpha,
             ('center', 'inside', 'outside'),
+            positioned_stroke_bands,
             hollow=True,
         )
 
@@ -2302,6 +2378,9 @@ class TextEffectRenderer:
         render_scale: float,
         canonical_alpha: Optional[np.ndarray],
         positions: Tuple[str, ...],
+        positioned_stroke_bands: Optional[
+            Dict[StrokeEffect, QPixmap]
+        ] = None,
         *,
         hollow: bool = False,
     ) -> None:
@@ -2332,15 +2411,24 @@ class TextEffectRenderer:
                     finally:
                         painter.restore()
                     continue
-                self._draw_surface_pixmap(
-                    painter,
-                    surface_rect,
-                    self._positioned_stroke_band(
+                band = (
+                    None
+                    if positioned_stroke_bands is None
+                    else positioned_stroke_bands.get(stroke)
+                )
+                if band is None:
+                    band = self._positioned_stroke_band(
                         surface_rect,
                         render_scale,
                         stroke,
                         canonical_alpha,
-                    ),
+                    )
+                    if positioned_stroke_bands is not None:
+                        positioned_stroke_bands[stroke] = band
+                self._draw_surface_pixmap(
+                    painter,
+                    surface_rect,
+                    band,
                     render_scale,
                 )
         finally:
@@ -2400,6 +2488,39 @@ class TextEffectRenderer:
                 ) from end_error
         return source
 
+    def _cached_effect_source(
+        self,
+        surface_rect: QRectF,
+        render_scale: float,
+        *,
+        needs_alpha: bool,
+    ) -> Tuple[QPixmap, Optional[np.ndarray]]:
+        """Reuse paint-independent canonical glyph pixels and alpha.
+
+        >>> hasattr(TextEffectRenderer, '_cached_effect_source')
+        True
+        """
+        state = self._raster_state()
+        key = self._effect_source_cache_key(surface_rect, render_scale)
+        cached = state.effect_source_cache.get(key)
+        if cached is None:
+            canonical = self._capture_effect_source(
+                surface_rect, render_scale
+            )
+            canonical_alpha = (
+                self._pixmap_alpha(canonical) if needs_alpha else None
+            )
+            cached = (canonical, canonical_alpha)
+            state.effect_source_cache[key] = cached
+            while len(state.effect_source_cache) > 2:
+                state.effect_source_cache.pop(
+                    next(iter(state.effect_source_cache))
+                )
+        elif needs_alpha and cached[1] is None:
+            cached = (cached[0], self._pixmap_alpha(cached[0]))
+            state.effect_source_cache[key] = cached
+        return cached
+
     def _gradient_overlay_pixmap(
         self,
         canonical: QPixmap,
@@ -2447,6 +2568,9 @@ class TextEffectRenderer:
         canonical_alpha: np.ndarray,
         surface_rect: QRectF,
         render_scale: float,
+        positioned_stroke_bands: Optional[
+            Dict[StrokeEffect, QPixmap]
+        ] = None,
     ) -> QPixmap:
         """Add visible positioned Stroke coverage to canonical shadow alpha.
 
@@ -2472,6 +2596,7 @@ class TextEffectRenderer:
                     render_scale,
                     canonical_alpha,
                     ('center', 'inside', 'outside'),
+                    positioned_stroke_bands,
                 )
             finally:
                 painter.end()
@@ -2707,7 +2832,7 @@ class TextEffectRenderer:
         state.cache_input_key = None
         state.tile_cache.clear()
         state.pre_mask_cache.clear()
-        # Never combine a previous glyph silhouette with a new fill angle.
+        # Completed effect pixels contain the previous paint parameters.
         self.background_pixmap = None
         self.background_pixmap_scale = None
 
