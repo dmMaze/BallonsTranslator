@@ -81,7 +81,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
         )
         self.assertEqual(explicit_empty.stroke_width, 0.0)
 
-        overlay = GradientOverlayEffect(opacity=0.7)
+        overlay = GradientOverlayEffect()
         authoritative_overlay = FontFormat(
             text_effects=TextEffectStack(effects=(overlay,)),
             gradient_enabled=True,
@@ -238,10 +238,11 @@ class TextEffectPersistenceTest(unittest.TestCase):
         old_style_path = pcfg.text_styles_path
         overlay_stack = TextEffectStack(effects=(
             GradientOverlayEffect(
-                opacity=0.65,
                 paint=LinearGradientPaint(angle=35.0, scale=1.2),
             ),
         ))
+        legacy_overlay_payload = overlay_stack.to_serializable_dict()
+        legacy_overlay_payload['effects'][0]['opacity'] = 0.65
         with tempfile.TemporaryDirectory() as directory:
             style_path = os.path.join(directory, 'styles.json')
             config_path = os.path.join(directory, 'config.json')
@@ -257,7 +258,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
                     {'gradient_enabled': True},
                     {
                         '_style_name': 'typed overlay',
-                        'text_effects': overlay_stack.to_serializable_dict(),
+                        'text_effects': legacy_overlay_payload,
                     },
                 ], handle)
             with open(config_path, 'w', encoding='utf8') as handle:
@@ -347,7 +348,6 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 ),
                 HollowEffect(enabled=False),
                 GradientOverlayEffect(
-                    opacity=0.8,
                     paint=LinearGradientPaint(stops=(
                         GradientStop(0.0, (90, 80, 70), 0.2),
                         GradientStop(1.0, (10, 20, 30), 1.0),

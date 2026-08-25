@@ -1647,6 +1647,13 @@ class RubyFuriganaTest(unittest.TestCase):
         slanted_bounds = item.layout.annotation_ink_bounds()
         self.assertFalse(slanted_bounds.isEmpty())
         self.assertNotEqual(neutral_bounds, slanted_bounds)
+        item.set_text_transform(TextTransformStack(
+            transform.transforms, 0.0
+        ))
+        self.assertEqual(
+            item.layout.annotation_ink_bounds(), neutral_bounds
+        )
+        item.set_text_transform(transform)
 
         shadow = item.fontformat.deepcopy()
         shadow.text_effects = TextEffectStack(effects=(

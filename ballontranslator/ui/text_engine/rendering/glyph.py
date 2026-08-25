@@ -51,6 +51,7 @@ from ballontranslator.ui.misc import ndarray2pixmap, pixmap2ndarray
 
 GLYPH_STROKE_FORMAT_PROPERTY = 0x100000 + 1239
 GLYPH_DILATED_STROKE_FORMAT_PROPERTY = 0x100000 + 1240
+GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY = 0x100000 + 1242
 FALLBACK_RASTER_MAX_SCALE = 8.0
 FALLBACK_RASTER_MAX_PIXELS = 4_194_304
 FALLBACK_RASTER_MAX_DIMENSION = 8192
@@ -1280,7 +1281,6 @@ def draw_slanted_line(
             shift_boundaries,
         )
 
-    normal_spans = paint_spans()
     baseline_y = line.y() + line.ascent() + offset.y()
     geometry_cache = {}
     shift_starts = tuple(start for start, _end, _shift in horizontal_shifts)
@@ -1353,14 +1353,31 @@ def draw_slanted_line(
                 )
         return
 
-    for span in normal_spans:
-        rect = logical_span_rect(
-            line, span.start, span.length, span_offset(span), orientation
+    # The completed text-effect surface already owns ordinary foreground.
+    # Its editing pass marks one transparent document-wide selection so this
+    # custom glyph path paints only real selection feedback over that surface.
+    feedback_only = any(
+        bool(selection.format.property(GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY))
+        for selection in context.selections
+    )
+    feedback_selections = tuple(
+        selection
+        for selection in context.selections
+        if not bool(
+            selection.format.property(GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY)
         )
-        _draw_background(painter, rect, span.char_format)
+    )
+    normal_spans = () if feedback_only else paint_spans()
+
+    if not feedback_only:
+        for span in normal_spans:
+            rect = logical_span_rect(
+                line, span.start, span.length, span_offset(span), orientation
+            )
+            _draw_background(painter, rect, span.char_format)
 
     selection_spans = []
-    for selection in context.selections:
+    for selection in feedback_selections:
         spans = paint_spans(selection)
         selection_range = _selection_range(block, selection, line)
         if selection_range is None:
@@ -1399,22 +1416,23 @@ def draw_slanted_line(
 
     # Paint normal ink once. Selection foreground is a second, logically
     # clipped pass so ligature overhang outside the selection remains normal.
-    for span in normal_spans:
-        draw_glyph_geometry(
-            painter,
-            span_geometry(span),
-            span.char_format,
-            failure_handler,
-        )
-        _draw_decorations(
-            painter,
-            _logical_span_base_rect(
-                line, span.start, span.length, span_offset(span)
-            ),
-            span.char_format,
-            orientation,
-            baseline_y,
-        )
+    if not feedback_only:
+        for span in normal_spans:
+            draw_glyph_geometry(
+                painter,
+                span_geometry(span),
+                span.char_format,
+                failure_handler,
+            )
+            _draw_decorations(
+                painter,
+                _logical_span_base_rect(
+                    line, span.start, span.length, span_offset(span)
+                ),
+                span.char_format,
+                orientation,
+                baseline_y,
+            )
 
     for span, rect in selection_spans:
         painter.save()

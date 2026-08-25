@@ -193,7 +193,7 @@ class TextEffectDomainTest(unittest.TestCase):
         glow = GlowEffect(size=0.2)
         hollow = HollowEffect()
         inner = ShadowEffect(shadow_type='inner', blur=0.2)
-        overlay = GradientOverlayEffect(opacity=0.7)
+        overlay = GradientOverlayEffect()
         source = TextEffectStack(
             0.8, (drop, glow, hollow, overlay, inner)
         )
@@ -216,14 +216,12 @@ class TextEffectDomainTest(unittest.TestCase):
             GradientStop(1.0, (0, 0, 255), 0.0),
         ))
         self.assertTrue(GradientOverlayEffect(enabled=False).is_neutral())
-        self.assertTrue(GradientOverlayEffect(opacity=0.0).is_neutral())
-        self.assertTrue(
+        self.assertFalse(
             GradientOverlayEffect(paint=transparent).is_neutral()
         )
         self.assertEqual(effect_phase(GradientOverlayEffect()), 'foreground')
         for constructor in (
             lambda: GradientOverlayEffect(enabled=1),
-            lambda: GradientOverlayEffect(opacity=1.1),
             lambda: GradientOverlayEffect(blend_mode='multiply'),
             lambda: GradientOverlayEffect(paint=SolidPaint()),
             lambda: TextEffectStack(effects=(
@@ -236,7 +234,6 @@ class TextEffectDomainTest(unittest.TestCase):
 
     def test_gradient_overlay_payload_round_trip_and_isolation(self):
         overlay = GradientOverlayEffect(
-            opacity=0.6,
             paint=LinearGradientPaint(
                 stops=(
                     GradientStop(0.0, (1, 2, 3), 0.25),
@@ -252,13 +249,17 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(payload['effects'][1], {
             'effect_type': 'gradient_overlay',
             'enabled': True,
-            'opacity': 0.6,
             'blend_mode': 'normal',
             'paint': overlay.paint.to_serializable_dict(),
         })
         self.assertEqual(
             coerce_text_effect_stack(payload).effects,
             (StrokeEffect(width=0.2), overlay),
+        )
+        legacy_payload = payload['effects'][1] | {'opacity': 0.4}
+        self.assertEqual(
+            coerce_text_effect_stack({'effects': [legacy_payload]}).effects,
+            (overlay,),
         )
 
         malformed = {'effects': [

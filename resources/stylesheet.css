@@ -1137,7 +1137,7 @@ QComboBox[bottomBorderSelector="true"]:focus {
 }
 
 QComboBox[bottomBorderSelector="true"]::drop-down {
-    width: 20px;
+    width: 16px;
     border: none;
 }
 
@@ -2452,6 +2452,18 @@ QWidget#InlineLinearGradientEditor {
 QToolButton#GradientStopColorPicker {
     border: 1px solid @borderColor;
     border-radius: 3px;
+}
+
+QToolButton#GradientStopActionButton {
+    margin: 0px;
+    padding: 0px;
+    border: none;
+    border-radius: 3px;
+    background-color: transparent;
+}
+
+QToolButton#GradientStopActionButton:hover {
+    background-color: @borderColor;
 }
 
 QToolButton#AddTextTransformButton,

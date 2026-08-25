@@ -1,11 +1,21 @@
 """Inline controls for immutable linear-gradient effect paints."""
 
+import math
 from dataclasses import replace
 from typing import Optional, Tuple
 
-from qtpy.QtCore import QEvent, QPointF, QRectF, QSignalBlocker, Signal, Qt
+from qtpy.QtCore import (
+    QEvent,
+    QPointF,
+    QRectF,
+    QSignalBlocker,
+    QSize,
+    Signal,
+    Qt,
+)
 from qtpy.QtGui import (
     QColor,
+    QIcon,
     QKeyEvent,
     QMouseEvent,
     QPaintEvent,
@@ -16,9 +26,7 @@ from qtpy.QtWidgets import (
     QAbstractSpinBox,
     QColorDialog,
     QDoubleSpinBox,
-    QGridLayout,
     QHBoxLayout,
-    QLabel,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
@@ -27,6 +35,7 @@ from qtpy.QtWidgets import (
 
 from ballontranslator.utils.text_effects import GradientStop, LinearGradientPaint
 
+from ...misc import themed_icon_path
 from ..rendering.effect_paint import paint_effect_paint_preview
 from ..transforms.controls import TransformDragLabel
 
@@ -202,7 +211,7 @@ class GradientStopBar(QWidget):
         self.update()
 
     def _strip_rect(self) -> QRectF:
-        return QRectF(7.0, 6.0, max(1.0, self.width() - 14.0), 18.0)
+        return QRectF(7.0, 0.0, max(1.0, self.width() - 14.0), 24.0)
 
     def _position_from_x(self, x: float) -> float:
         rect = self._strip_rect()
@@ -394,7 +403,7 @@ class GradientStopColorButton(QToolButton):
         super().__init__(parent)
         self._color = QColor(0, 0, 0)
         self.setObjectName('GradientStopColorPicker')
-        self.setFixedSize(26, 22)
+        self.setFixedSize(24, 24)
 
     def set_color(self, color: Tuple[int, int, int]) -> None:
         self._color = QColor(*color)
@@ -404,6 +413,136 @@ class GradientStopColorButton(QToolButton):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.fillRect(self.contentsRect().adjusted(3, 3, -3, -3), self._color)
+
+
+class GradientAngleDial(QWidget):
+    """Paint and drag one pointer in the renderer's screen-angle convention.
+
+    >>> GradientAngleDial.__name__
+    'GradientAngleDial'
+    """
+
+    angle_previewed = Signal(float)
+    angle_commit_requested = Signal()
+    angle_preview_canceled = Signal()
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._angle = 0.0
+        self._drag_start_angle: Optional[float] = None
+        self.setFixedSize(36, 36)
+        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(self.tr('Drag to set gradient angle'))
+        self.setAccessibleName(self.tr('Gradient Angle'))
+
+    def set_angle(self, angle: float) -> None:
+        angle = float(angle) % 360.0
+        if angle == self._angle:
+            return
+        self._angle = angle
+        self.update()
+
+    def end_interaction(self) -> None:
+        self._drag_start_angle = None
+
+    def _set_angle_from_point(self, point: QPointF) -> None:
+        center = QRectF(self.rect()).center()
+        delta = point - center
+        if delta.x() == 0.0 and delta.y() == 0.0:
+            return
+        angle = round(
+            math.degrees(math.atan2(delta.y(), delta.x())) % 360.0,
+            1,
+        )
+        if angle == self._angle:
+            return
+        self._angle = angle
+        self.update()
+        self.angle_previewed.emit(angle)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() != Qt.MouseButton.LeftButton or not self.isEnabled():
+            super().mousePressEvent(event)
+            return
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        self._drag_start_angle = self._angle
+        self._set_angle_from_point(_mouse_position(event))
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._drag_start_angle is None:
+            super().mouseMoveEvent(event)
+            return
+        self._set_angle_from_point(_mouse_position(event))
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if (
+            self._drag_start_angle is None
+            or event.button() != Qt.MouseButton.LeftButton
+        ):
+            super().mouseReleaseEvent(event)
+            return
+        self._set_angle_from_point(_mouse_position(event))
+        before = self._drag_start_angle
+        self._drag_start_angle = None
+        if self._angle != before:
+            self.angle_commit_requested.emit()
+        event.accept()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if (
+            event.key() == Qt.Key.Key_Escape
+            and self._drag_start_angle is not None
+        ):
+            before = self._drag_start_angle
+            changed = self._angle != before
+            self._angle = before
+            self._drag_start_angle = None
+            self.update()
+            if changed:
+                self.angle_preview_canceled.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def event(self, event: QEvent) -> bool:
+        if (
+            event.type() == QEvent.Type.ShortcutOverride
+            and self._drag_start_angle is not None
+            and event.key() == Qt.Key.Key_Escape
+        ):
+            event.accept()
+            return True
+        return super().event(event)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if not self.isEnabled():
+            painter.setOpacity(0.45)
+        rect = QRectF(self.rect()).adjusted(2.5, 2.5, -2.5, -2.5)
+        center = rect.center()
+        radius = min(rect.width(), rect.height()) / 2.0
+        border = (
+            self.palette().highlight().color()
+            if self.hasFocus() else self.palette().mid().color()
+        )
+        painter.setPen(QPen(border, 1.0))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(center, radius, radius)
+        radians = math.radians(self._angle)
+        end = center + QPointF(
+            math.cos(radians) * (radius - 3.0),
+            math.sin(radians) * (radius - 3.0),
+        )
+        hand_pen = QPen(self.palette().highlight().color(), 2.0)
+        hand_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(hand_pen)
+        painter.drawLine(center, end)
+        painter.setBrush(self.palette().highlight())
+        painter.drawEllipse(center, 1.5, 1.5)
 
 
 class InlineLinearGradientEditor(QWidget):
@@ -436,31 +575,45 @@ class InlineLinearGradientEditor(QWidget):
         self.stop_bar.selection_changed.connect(self._sync_selected_stop)
 
         self.add_stop_button = QToolButton(self)
-        self.add_stop_button.setText(self.tr('Add'))
+        self.add_stop_button.setObjectName('GradientStopActionButton')
+        self.add_stop_button.setIcon(QIcon(themed_icon_path('add.svg')))
+        self.add_stop_button.setIconSize(QSize(16, 16))
+        self.add_stop_button.setFixedSize(20, 20)
         self.add_stop_button.setToolTip(self.tr('Add Stop'))
         self.add_stop_button.setAccessibleName(self.tr('Add Stop'))
         self.add_stop_button.clicked.connect(self._on_add_stop)
         self.remove_stop_button = QToolButton(self)
-        self.remove_stop_button.setText(self.tr('Remove'))
+        self.remove_stop_button.setObjectName('GradientStopActionButton')
+        self.remove_stop_button.setIcon(
+            QIcon(themed_icon_path('titlebar_close.svg'))
+        )
+        self.remove_stop_button.setIconSize(QSize(12, 12))
+        self.remove_stop_button.setFixedSize(20, 20)
         self.remove_stop_button.setToolTip(self.tr('Remove Stop'))
         self.remove_stop_button.setAccessibleName(self.tr('Remove Stop'))
         self.remove_stop_button.clicked.connect(self._on_remove_stop)
-
-        strip_row = QHBoxLayout()
-        strip_row.setContentsMargins(0, 0, 0, 0)
-        strip_row.setSpacing(4)
-        strip_row.addWidget(self.stop_bar, 1)
-        strip_actions = QVBoxLayout()
-        strip_actions.setContentsMargins(0, 3, 0, 3)
-        strip_actions.setSpacing(3)
-        strip_actions.addWidget(self.add_stop_button)
-        strip_actions.addWidget(self.remove_stop_button)
-        strip_row.addLayout(strip_actions)
 
         self.stop_color_picker = GradientStopColorButton(self)
         self.stop_color_picker.setToolTip(self.tr('Stop Color'))
         self.stop_color_picker.setAccessibleName(self.tr('Stop Color'))
         self.stop_color_picker.clicked.connect(self._choose_stop_color)
+
+        strip_row = QHBoxLayout()
+        strip_row.setContentsMargins(0, 6, 0, 0)
+        strip_row.setSpacing(4)
+        strip_row.addWidget(
+            self.stop_color_picker,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
+        strip_row.addWidget(self.stop_bar, 1)
+        strip_actions = QVBoxLayout()
+        strip_actions.setContentsMargins(0, 0, 0, 0)
+        strip_actions.setSpacing(2)
+        strip_actions.addWidget(self.add_stop_button)
+        strip_actions.addWidget(self.remove_stop_button)
+        strip_row.addLayout(strip_actions)
+
         self.stop_opacity_editor = self._spinbox(
             0.0, 100.0, 1.0, '%', decimals=0
         )
@@ -476,20 +629,6 @@ class InlineLinearGradientEditor(QWidget):
         self.stop_opacity_editor.editingFinished.connect(self._commit_current)
         self.stop_position_editor.editingFinished.connect(self._commit_current)
 
-        color_control = QWidget(self)
-        color_control.setObjectName('TextEffectControl')
-        color_layout = QHBoxLayout(color_control)
-        color_layout.setContentsMargins(0, 0, 0, 0)
-        color_layout.setSpacing(8)
-        color_label = QLabel(self.tr('Color'), self)
-        color_label.setObjectName('TextEffectParamLabel')
-        color_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        color_layout.addWidget(color_label)
-        color_layout.addWidget(self.stop_color_picker, 1)
-        color_layout.setStretch(0, 1)
-        color_layout.setStretch(1, 2)
         (
             stop_opacity_control,
             self.stop_opacity_label,
@@ -504,15 +643,11 @@ class InlineLinearGradientEditor(QWidget):
             self.tr('Position'),
             self.stop_position_editor,
         )
-        stop_grid = QGridLayout()
-        stop_grid.setContentsMargins(0, 0, 0, 0)
-        stop_grid.setHorizontalSpacing(8)
-        stop_grid.setVerticalSpacing(4)
-        stop_grid.addWidget(color_control, 0, 0)
-        stop_grid.addWidget(stop_opacity_control, 0, 1)
-        stop_grid.addWidget(stop_position_control, 1, 0)
-        stop_grid.setColumnStretch(0, 1)
-        stop_grid.setColumnStretch(1, 1)
+        stop_values_row = QHBoxLayout()
+        stop_values_row.setContentsMargins(0, 0, 0, 0)
+        stop_values_row.setSpacing(8)
+        stop_values_row.addWidget(stop_opacity_control, 1)
+        stop_values_row.addWidget(stop_position_control, 1)
 
         self.angle_editor = self._spinbox(
             0.0, 359.9, 1.0, self.tr('°'), decimals=1
@@ -520,35 +655,41 @@ class InlineLinearGradientEditor(QWidget):
         self.scale_editor = self._spinbox(
             10.0, 400.0, 1.0, '%', decimals=0
         )
+        self.angle_editor.setMinimumWidth(48)
+        self.scale_editor.setMinimumWidth(48)
+        self.angle_dial = GradientAngleDial(self)
+        self.angle_dial.angle_previewed.connect(
+            self._on_angle_dial_preview
+        )
+        self.angle_dial.angle_commit_requested.connect(self._commit_current)
+        self.angle_dial.angle_preview_canceled.connect(self.cancel_pending)
         self.angle_editor.valueChanged.connect(self._on_angle_preview)
         self.scale_editor.valueChanged.connect(self._on_scale_preview)
         self.angle_editor.editingFinished.connect(self._commit_current)
         self.scale_editor.editingFinished.connect(self._commit_current)
-        angle_control, self.angle_label = self._drag_value_control(
-            self.tr('Angle'), self.angle_editor
-        )
+        angle_control = QWidget(self)
+        angle_control.setObjectName('TextEffectControl')
+        angle_layout = QHBoxLayout(angle_control)
+        angle_layout.setContentsMargins(0, 0, 0, 0)
+        angle_layout.setSpacing(8)
+        angle_layout.addWidget(self.angle_dial)
+        angle_layout.addWidget(self.angle_editor, 1)
         scale_control, self.scale_label = self._drag_value_control(
             self.tr('Scale'), self.scale_editor
         )
-        self.flip_button = QToolButton(self)
-        self.flip_button.setText(self.tr('Flip'))
-        self.flip_button.setToolTip(self.tr('Flip Gradient'))
-        self.flip_button.setAccessibleName(self.tr('Flip Gradient'))
-        self.flip_button.clicked.connect(self._on_flip)
-
-        geometry_row = QHBoxLayout()
+        self.geometry_controls = QWidget(self)
+        geometry_row = QHBoxLayout(self.geometry_controls)
         geometry_row.setContentsMargins(0, 0, 0, 0)
-        geometry_row.setSpacing(4)
+        geometry_row.setSpacing(8)
         geometry_row.addWidget(angle_control, 1)
         geometry_row.addWidget(scale_control, 1)
-        geometry_row.addWidget(self.flip_button)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(8)
         layout.addLayout(strip_row)
-        layout.addLayout(stop_grid)
-        layout.addLayout(geometry_row)
+        layout.addLayout(stop_values_row)
+        layout.addWidget(self.geometry_controls)
 
         for editor in self._editors():
             editor.step_committed.connect(self._commit_current)
@@ -596,7 +737,7 @@ class InlineLinearGradientEditor(QWidget):
             direction=0,
             text=title,
             alignment=(
-                Qt.AlignmentFlag.AlignRight
+                Qt.AlignmentFlag.AlignLeft
                 | Qt.AlignmentFlag.AlignVCenter
             ),
         )
@@ -611,8 +752,6 @@ class InlineLinearGradientEditor(QWidget):
         layout.setSpacing(8)
         layout.addWidget(label)
         layout.addWidget(editor, 1)
-        layout.setStretch(0, 1)
-        layout.setStretch(1, 2)
         return control, label
 
     def _on_label_drag_started(self) -> None:
@@ -645,13 +784,14 @@ class InlineLinearGradientEditor(QWidget):
         self._paint = paint
         self._edit_before = None
         self.stop_bar.end_interaction()
+        self.angle_dial.end_interaction()
         self.stop_bar.set_paint(paint)
         self.stop_bar.set_mixed(not editable)
         self.stop_bar.setEnabled(editable)
         self.add_stop_button.setEnabled(editable and len(paint.stops) < 32)
         self.remove_stop_button.setEnabled(editable and len(paint.stops) > 2)
         self.stop_color_picker.setEnabled(editable)
-        self.flip_button.setEnabled(editable)
+        self.angle_dial.setEnabled(editable)
         for editor in self._editors():
             editor.resolve_text_edit()
             editor.set_preview_pending(False)
@@ -670,6 +810,7 @@ class InlineLinearGradientEditor(QWidget):
         )
         self.angle_editor.setValue(self._paint.angle)
         self.scale_editor.setValue(self._paint.scale * 100.0)
+        self.angle_dial.set_angle(self._paint.angle)
         del blockers
         self._sync_selected_stop(self.stop_bar.selected_index)
 
@@ -736,12 +877,14 @@ class InlineLinearGradientEditor(QWidget):
 
     def commit_pending(self) -> bool:
         self.stop_bar.end_interaction()
+        self.angle_dial.end_interaction()
         for editor in self._editors():
             editor.resolve_text_edit()
         return self._commit_current()
 
     def cancel_pending(self, *_args: object) -> bool:
         self.stop_bar.end_interaction()
+        self.angle_dial.end_interaction()
         before = self._edit_before
         self._edit_before = None
         for editor in self._editors():
@@ -807,18 +950,17 @@ class InlineLinearGradientEditor(QWidget):
         return tuple(stops)
 
     def _on_angle_preview(self, value: float) -> None:
+        self.angle_dial.set_angle(value)
         self._publish_preview(replace(self._paint, angle=value))
+
+    def _on_angle_dial_preview(self, value: float) -> None:
+        blocker = QSignalBlocker(self.angle_editor)
+        self.angle_editor.setValue(value)
+        del blocker
+        self._on_angle_preview(value)
 
     def _on_scale_preview(self, value: float) -> None:
         self._publish_preview(replace(self._paint, scale=value / 100.0))
-
-    def _on_flip(self) -> None:
-        self._begin_edit()
-        self._publish_preview(replace(self._paint, angle=self._paint.angle + 180.0))
-        blocker = QSignalBlocker(self.angle_editor)
-        self.angle_editor.setValue(self._paint.angle)
-        del blocker
-        self._commit_current()
 
     def _choose_stop_color(self) -> None:
         self._begin_edit()

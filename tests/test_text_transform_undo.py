@@ -31,6 +31,8 @@ from qtpy.QtWidgets import (
     QGraphicsTextItem,
     QGraphicsView,
     QStyleOptionGraphicsItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 try:
@@ -937,26 +939,47 @@ class TextTransformPanelTest(TextTransformTestBase):
         operation_panel.close_button.click()
         self.assertEqual(removed, [0])
 
-    def test_panel_grows_until_its_scrollable_maximum(self):
+    def test_panel_prefers_scrollable_maximum_without_growing_host(self):
         panel = self._make_panel()
         initial_height = panel.sizeHint().height()
+        host = QWidget()
+        host_layout = QVBoxLayout(host)
+        host_layout.setContentsMargins(0, 0, 0, 0)
+        host_layout.addWidget(panel.view_widget)
+        reserved_space = QWidget(host)
+        reserved_space.setMinimumHeight(80)
+        host_layout.addWidget(reserved_space, 1)
+        host.resize(300, 180)
+        host.show()
+        self.app.processEvents()
+        constrained_height = host.height()
+        self.addCleanup(host.deleteLater)
+
         self._set_stack(
             panel,
             transform_state(*(
                 ProjectiveTextTransform() for _index in range(10)
             )),
         )
+        self.app.processEvents()
         self.assertGreater(panel.sizeHint().height(), initial_height)
         self.assertEqual(panel.sizeHint().height(), panel.MAX_CONTENT_HEIGHT)
         self.assertEqual(panel.maximumHeight(), panel.MAX_CONTENT_HEIGHT)
-        panel.setMaximumWidth(300)
-        panel.resize(300, panel.MAX_CONTENT_HEIGHT)
-        panel.show()
-        self.app.processEvents()
+        self.assertEqual(host.height(), constrained_height)
         self.assertGreater(panel.verticalScrollBar().maximum(), 0)
-        self.app.processEvents()
         self.assertEqual(
             panel.scrollContent.width(), panel.viewport().width()
+        )
+        self.assertTrue(all(
+            operation.height() >= operation.minimumSizeHint().height()
+            for operation in panel.transform_panels
+        ))
+        narrow_panel_width = panel.transform_panels[0].width()
+        host.resize(460, constrained_height)
+        self.app.processEvents()
+        self.assertEqual(host.height(), constrained_height)
+        self.assertGreater(
+            panel.transform_panels[0].width(), narrow_panel_width
         )
         self.assertEqual(
             len({operation.width() for operation in panel.transform_panels}),

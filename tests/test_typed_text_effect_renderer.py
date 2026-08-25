@@ -8,10 +8,12 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import cv2
 import numpy as np
 
-from qtpy.QtCore import QPointF, QRectF
+from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
+    QAbstractTextDocumentLayout,
     QColor,
     QImage,
+    QInputMethodEvent,
     QPainter,
     QPalette,
     QTextCharFormat,
@@ -441,31 +443,20 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             rect,
             rect,
             1.0,
-            source_atop_opacity=1.0,
         )
         self.assertEqual(recolored[0, 0].tolist(), [0, 100, 240, 127])
-        tinted = colorize_effect_paint_rgba(
-            opaque,
-            canonical.copy(),
-            rect,
-            rect,
-            1.0,
-            source_atop_opacity=0.5,
-        )
-        self.assertEqual(tinted[0, 0].tolist(), [100, 60, 140, 127])
         half_alpha = LinearGradientPaint(stops=(
             GradientStop(0.0, (0, 100, 240), 0.5),
             GradientStop(1.0, (0, 100, 240), 0.5),
         ))
-        stop_tinted = colorize_effect_paint_rgba(
+        stop_colored = colorize_effect_paint_rgba(
             half_alpha,
             canonical.copy(),
             rect,
             rect,
             1.0,
-            source_atop_opacity=1.0,
         )
-        np.testing.assert_array_equal(stop_tinted, tinted)
+        self.assertEqual(stop_colored[0, 0].tolist(), [0, 100, 240, 64])
 
     def test_canonical_alpha_is_only_extracted_for_alpha_consumers(self):
         overlay = GradientOverlayEffect(
@@ -527,7 +518,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             GradientStop(1.0, color, stop_opacity),
         ))
 
-    def test_gradient_overlay_replaces_and_tints_canonical_face(self):
+    def test_gradient_replaces_foreground_and_stop_opacity_overwrites_alpha(self):
         plain = self._item(TextEffectStack())
         opaque = self._item(TextEffectStack(effects=(
             GradientOverlayEffect(
@@ -536,14 +527,19 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )))
         partial = self._item(TextEffectStack(effects=(
             GradientOverlayEffect(
-                opacity=0.5,
-                paint=self._constant_gradient((0, 0, 255)),
+                paint=self._constant_gradient((0, 0, 255), 0.5),
+            ),
+        )))
+        transparent = self._item(TextEffectStack(effects=(
+            GradientOverlayEffect(
+                paint=self._constant_gradient((0, 0, 255), 0.0),
             ),
         )))
 
         plain_pixels = self._render(plain)
         opaque_pixels = self._render(opaque)
         partial_pixels = self._render(partial)
+        transparent_pixels = self._render(transparent)
         self.assertLessEqual(
             np.max(np.abs(
                 plain_pixels[..., 3].astype(np.int16)
@@ -557,9 +553,17 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             np.mean(opaque_pixels[..., 2][visible]),
             np.mean(opaque_pixels[..., 0][visible]),
         )
-        partial_visible = partial_pixels[..., 3] > 160
-        self.assertGreater(np.mean(partial_pixels[..., 0][partial_visible]), 40)
-        self.assertGreater(np.mean(partial_pixels[..., 2][partial_visible]), 40)
+        expected_partial_alpha = np.rint(
+            opaque_pixels[..., 3].astype(np.float32) * 0.5
+        ).astype(np.uint8)
+        self.assertLessEqual(
+            np.max(np.abs(
+                partial_pixels[..., 3].astype(np.int16)
+                - expected_partial_alpha.astype(np.int16)
+            )),
+            2,
+        )
+        self.assertEqual(np.max(transparent_pixels[..., 3]), 0)
 
     def test_gradient_overlay_phase_hollow_and_shadow_silhouette(self):
         overlay = GradientOverlayEffect(
@@ -1273,7 +1277,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             ),
             0,
         )
-        self.assertGreater(
+        self.assertEqual(
             np.count_nonzero(
                 (pixels[..., 0] > 180)
                 & (pixels[..., 1] < 80)
@@ -1282,6 +1286,171 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             ),
             0,
         )
+        view.close()
+
+    def test_custom_glyph_editing_keeps_completed_effect_surface(self):
+        gradient = GradientOverlayEffect(
+            paint=self._constant_gradient((0, 0, 255))
+        )
+        cases = (
+            ('vertical-gradient', True, TextTransformStack(), (gradient,)),
+            (
+                'vertical-hollow',
+                True,
+                TextTransformStack(),
+                (
+                    StrokeEffect(width=0.2, position='outside'),
+                    HollowEffect(),
+                ),
+            ),
+            (
+                'horizontal-glyph-slant',
+                False,
+                TextTransformStack(glyph_slant_angle=18.0),
+                (gradient,),
+            ),
+        )
+        for name, vertical, transform, effects in cases:
+            with self.subTest(name=name):
+                item = self._item(
+                    TextEffectStack(effects=effects), vertical=vertical
+                )
+                item.set_text_transform(transform)
+                scene = QGraphicsScene()
+                view = QGraphicsView(scene)
+                scene.addItem(item)
+                view.show()
+                view.setFocus()
+                self.app.processEvents()
+                settled = self._render(item)
+
+                item.startEdit()
+                view.setFocus()
+                item.setFocus()
+                self.app.processEvents()
+                renderer = item.effect_renderer
+                with patch.object(
+                    item.geometry_controller, 'paint_deferred_cursor'
+                ), patch.object(
+                    renderer,
+                    '_paint_live_layout',
+                    wraps=renderer._paint_live_layout,
+                ) as replay_layout:
+                    editing = self._render(item)
+
+                np.testing.assert_array_equal(editing, settled)
+                replay_layout.assert_not_called()
+                view.close()
+
+    def test_feedback_context_does_not_restore_unspecified_foreground(self):
+        item = self._item(TextEffectStack(effects=(HollowEffect(),)))
+        cursor = QTextCursor(item.document())
+        cursor.setPosition(0)
+        cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+        selection = QAbstractTextDocumentLayout.Selection()
+        selection.cursor = cursor
+        selection.format = QTextCharFormat()
+        selection.format.setBackground(QColor('#3f51b5'))
+        context = QAbstractTextDocumentLayout.PaintContext()
+        context.selections = [selection]
+
+        feedback = item.effect_renderer._editing_feedback_context(context)
+
+        self.assertEqual(len(feedback.selections), 2)
+        replay_format = feedback.selections[1].format
+        self.assertEqual(replay_format.foreground().color().alpha(), 0)
+        self.assertEqual(
+            replay_format.background().color(), QColor('#3f51b5')
+        )
+        self.assertEqual(
+            replay_format.textOutline().style(), Qt.PenStyle.NoPen
+        )
+        self.assertEqual(replay_format.underlineColor().alpha(), 0)
+
+    def test_vertical_glyph_slant_selection_stays_above_gradient(self):
+        item = self._item(
+            TextEffectStack(effects=(GradientOverlayEffect(
+                paint=self._constant_gradient((0, 0, 255))
+            ),)),
+            vertical=True,
+        )
+        item.set_text_transform(TextTransformStack(glyph_slant_angle=15.0))
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        scene.addItem(item)
+        view.show()
+        item.startEdit()
+        view.setFocus()
+        item.setFocus()
+        self.app.processEvents()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+
+        pixels = self._render(item)
+        selection = view.palette().color(QPalette.ColorRole.Highlight)
+        selection_rgb = np.array([
+            selection.red(), selection.green(), selection.blue()
+        ])
+        self.assertGreater(np.count_nonzero(
+            np.all(pixels[..., :3] == selection_rgb, axis=2)
+            & (pixels[..., 3] > 0)
+        ), 0)
+        self.assertEqual(np.count_nonzero(
+            (pixels[..., 0] > 180)
+            & (pixels[..., 1] < 80)
+            & (pixels[..., 2] < 80)
+            & (pixels[..., 3] > 0)
+        ), 0)
+        view.close()
+
+    def test_vertical_gradient_keeps_transient_ime_preedit_visible(self):
+        block = TextBlock([0, 0, 220, 260])
+        block._bounding_rect = [0, 0, 220, 260]
+        block.translation = '字'
+        block.vertical = True
+        block.fontformat.frgb = [240, 20, 20]
+        block.fontformat.text_effects = TextEffectStack(effects=(
+            GradientOverlayEffect(
+                paint=self._constant_gradient((0, 0, 255))
+            ),
+        ))
+        item = TextBlkItem(block, 1)
+        scene = QGraphicsScene()
+        view = QGraphicsView(scene)
+        scene.addItem(item)
+        view.show()
+        item.startEdit()
+        view.setFocus()
+        item.setFocus()
+        self.app.processEvents()
+
+        with patch.object(
+            item.geometry_controller, 'paint_deferred_cursor'
+        ):
+            before = self._render(item)
+            item.inputMethodEvent(QInputMethodEvent('かな', []))
+            self.app.processEvents()
+            after = self._render(item)
+
+        before_red = np.count_nonzero(
+            (before[..., 0] > 180)
+            & (before[..., 1] < 80)
+            & (before[..., 2] < 80)
+            & (before[..., 3] > 0)
+        )
+        after_red = np.count_nonzero(
+            (after[..., 0] > 180)
+            & (after[..., 1] < 80)
+            & (after[..., 2] < 80)
+            & (after[..., 3] > 0)
+        )
+        self.assertEqual(before_red, 0)
+        self.assertGreater(after_red, 0)
+        self.assertGreater(np.count_nonzero(
+            (after[..., 2] > 180) & (after[..., 3] > 0)
+        ), 0)
         view.close()
 
     def test_deferred_cursor_is_visible_over_neutral_effect_surface(self):
@@ -1427,7 +1596,6 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             (
                 TextEffectStack(effects=(GradientOverlayEffect(),)),
                 TextEffectStack(effects=(GradientOverlayEffect(
-                    opacity=0.65,
                     paint=LinearGradientPaint(angle=90.0, scale=1.5),
                 ),)),
             ),
@@ -1488,11 +1656,10 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ),
                 replace(
                     overlay,
-                    opacity=opacity,
                     paint=LinearGradientPaint(
                         stops=(
-                            GradientStop(0.0, second, 0.7),
-                            GradientStop(1.0, first, 1.0),
+                            GradientStop(0.0, second, 0.7 * opacity),
+                            GradientStop(1.0, first, opacity),
                         ),
                         angle=angle + 45.0,
                     ),
@@ -1913,7 +2080,6 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     spread=0.02,
                 ),
                 GradientOverlayEffect(
-                    opacity=0.7,
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, (40, 80, 220), 0.4),

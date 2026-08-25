@@ -3,7 +3,6 @@
 import os
 import os.path as osp
 import threading
-from typing import Optional
 
 from ballontranslator.utils import shared
 
@@ -29,8 +28,6 @@ def _colorize_linear_gradient_rgba(
     positions,
     colors,
     opacities,
-    source_atop,
-    source_atop_opacity,
     opaque_stops,
 ):
     """Mutate RGBA with the NumPy oracle's exact float32/integer rounding.
@@ -75,29 +72,15 @@ def _colorize_linear_gradient_rgba(
                     opacities[left]
                     + (opacities[right] - opacities[left]) * ratio
                 ))
-            effective_alpha = paint_alpha
-            if source_atop:
-                effective_alpha = int(np.rint(
-                    np.float32(paint_alpha) * source_atop_opacity
-                ))
-
             for channel in range(3):
                 paint_value = int(np.rint(
                     colors[left, channel]
                     + (colors[right, channel] - colors[left, channel])
                     * ratio
                 ))
-                if not source_atop or effective_alpha == 255:
-                    rgba[row, column, channel] = paint_value
-                else:
-                    rgba[row, column, channel] = (
-                        int(rgba[row, column, channel])
-                        * (255 - effective_alpha)
-                        + paint_value * effective_alpha
-                        + 127
-                    ) // 255
+                rgba[row, column, channel] = paint_value
 
-            if not source_atop and not opaque_stops:
+            if not opaque_stops:
                 rgba[row, column, 3] = (
                     int(rgba[row, column, 3]) * paint_alpha + 127
                 ) // 255
@@ -130,13 +113,11 @@ def warm_effect_paint_numba_cache() -> None:
             colors,
             opacities,
             True,
-            np.float32(0.5),
-            True,
         )
         expected = np.asarray((
-            (228, 10, 20, 127),
-            (100, 10, 148, 127),
-            (100, 10, 148, 127),
+            (255, 0, 0, 127),
+            (0, 0, 255, 127),
+            (0, 0, 255, 127),
         ), dtype=np.uint8)
         if not np.array_equal(rgba[0], expected):
             raise RuntimeError(
@@ -158,7 +139,6 @@ def colorize_linear_gradient_rgba(
     positions: np.ndarray,
     colors: np.ndarray,
     opacities: np.ndarray,
-    source_atop_opacity: Optional[float],
 ) -> bool:
     """Colorize in place, or return ``False`` for the NumPy fallback.
 
@@ -167,7 +147,6 @@ def colorize_linear_gradient_rgba(
     """
     if not _warmup_complete or not rgba.flags.c_contiguous:
         return False
-    source_atop = source_atop_opacity is not None
     render_scale = np.float32(render_scale)
     projected_x = (
         np.float32(surface_left)
@@ -191,10 +170,6 @@ def colorize_linear_gradient_rgba(
         positions,
         colors,
         opacities,
-        source_atop,
-        np.float32(
-            0.0 if source_atop_opacity is None else source_atop_opacity
-        ),
         bool(np.all(opacities == np.float32(255.0))),
     )
     return True

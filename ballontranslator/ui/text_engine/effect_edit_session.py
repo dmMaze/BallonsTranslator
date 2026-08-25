@@ -216,13 +216,13 @@ class TextEffectEditSession:
                 raise ValueError('unknown Hollow field')
             parameters['enabled'] = value
         elif isinstance(effect, GradientOverlayEffect):
-            if param_name not in {'enabled', 'opacity', 'paint'}:
-                raise ValueError('unknown Gradient Overlay field')
+            if param_name not in {'enabled', 'paint'}:
+                raise ValueError('unknown Gradient field')
             if param_name == 'paint' and not isinstance(
                 value, LinearGradientPaint
             ):
                 raise TypeError(
-                    'Gradient Overlay paint must be LinearGradientPaint'
+                    'Gradient paint must be LinearGradientPaint'
                 )
             parameters[param_name] = value
         else:

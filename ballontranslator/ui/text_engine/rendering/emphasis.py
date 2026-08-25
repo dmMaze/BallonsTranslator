@@ -24,6 +24,7 @@ from ..annotations import (
     text_combine_upright_values,
 )
 from .glyph import (
+    GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
     PaintSpan,
     glyph_geometry,
@@ -147,12 +148,25 @@ def _effect_spans(
     context: QAbstractTextDocumentLayout.PaintContext,
 ) -> Iterable[PaintSpan]:
     additional_formats = tuple(block.layout().formats())
+    feedback_only = any(
+        bool(selection.format.property(GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY))
+        for selection in context.selections
+    )
     effect_selections = tuple(
         selection
         for selection in context.selections
-        if bool(selection.format.property(GLYPH_STROKE_FORMAT_PROPERTY))
+        if not bool(
+            selection.format.property(GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY)
+        )
+        and (
+            feedback_only
+            or bool(selection.format.property(GLYPH_STROKE_FORMAT_PROPERTY))
+        )
     )
-    if not effect_selections or len(effect_selections) != len(context.selections):
+    if not feedback_only and (
+        not effect_selections
+        or len(effect_selections) != len(context.selections)
+    ):
         return resolve_paint_spans(block, line, additional_formats)
     spans = []
     line_start = line.textStart()

@@ -2,7 +2,7 @@
 
 from typing import Sequence
 
-from qtpy.QtCore import QCoreApplication, QEvent, QSize, QTimer, Signal, Qt
+from qtpy.QtCore import QSize, QTimer, Signal, Qt
 from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import (
     QHBoxLayout,
@@ -54,7 +54,6 @@ class TextTransformPanel(PanelArea):
     ):
         super().__init__(panel_name, config_name, config_expand_name)
         self._base_width_hint = 1
-        self._syncing_geometry = False
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
@@ -165,54 +164,12 @@ class TextTransformPanel(PanelArea):
         self._sync_content_height()
         QTimer.singleShot(0, self._sync_content_height)
 
-    def _sync_content_height(self):
-        if self._syncing_geometry:
+    def _sync_content_height(self) -> None:
+        if not hasattr(self, 'transform_layout'):
             return
-        self._syncing_geometry = True
-        try:
-            # The viewport can still report its pre-show size here. Overlay
-            # scrollbars consume no layout width, so the frame gives the
-            # responsive content width directly.
-            content_width = max(
-                1, self.width() - 2 * self.frameWidth()
-            )
-            self.scrollContent.setMinimumWidth(content_width)
-            self.scrollContent.setMaximumWidth(content_width)
-            self.scrollContent.resize(
-                content_width,
-                max(1, self.scrollContent.height()),
-            )
-            self.transform_layout.invalidate()
-            content_height = (
-                self.transform_layout.heightForWidth(content_width)
-                if self.transform_layout.hasHeightForWidth()
-                else self.transform_layout.sizeHint().height()
-            )
-            self.scrollContent.setMinimumHeight(content_height)
-            self.scrollContent.resize(
-                content_width,
-                max(content_height, self.viewport().height()),
-            )
-            self.transform_layout.activate()
-            self.transform_rows_layout.invalidate()
-            self.transform_rows_layout.activate()
-            target = min(
-                content_height + 2 * self.frameWidth(),
-                self.MAX_CONTENT_HEIGHT,
-            )
-            self.setMinimumHeight(target)
-            self.scrollContent.updateGeometry()
-            self.updateGeometry()
-            self.view_widget.updateGeometry()
-            # A hidden resizable child does not always update QScrollArea's
-            # range after its minimum height changes.
-            QCoreApplication.sendEvent(
-                self, QEvent(QEvent.Type.LayoutRequest)
-            )
-        finally:
-            self._syncing_geometry = False
+        self._sync_scroll_content_height(self.transform_layout)
 
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
         hint = super().sizeHint()
         if not hasattr(self, 'transform_layout'):
             return hint
@@ -271,6 +228,7 @@ class TextTransformPanel(PanelArea):
             panel.card_clicked.connect(self.toggle_transform)
             panel.selected.connect(self.select_transform)
             self.transform_rows_layout.addWidget(panel)
+            panel.show()
             self.transform_panels.append(panel)
         self._transform_panel_types = transform_types
         count = len(self.transform_panels)

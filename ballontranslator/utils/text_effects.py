@@ -428,50 +428,35 @@ class HollowEffect:
 
 @dataclass(frozen=True)
 class GradientOverlayEffect:
-    """Replace or tint the canonical foreground with a linear gradient.
+    """Replace the canonical foreground with a linear gradient.
 
-    >>> GradientOverlayEffect(opacity=0.5).effect_type
+    >>> GradientOverlayEffect().effect_type
     'gradient_overlay'
     """
 
     enabled: bool = True
-    opacity: float = 1.0
     blend_mode: str = 'normal'
     paint: LinearGradientPaint = field(default_factory=LinearGradientPaint)
     effect_type: str = field(init=False, default='gradient_overlay')
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
-            raise TypeError('gradient overlay enabled must be a bool')
-        object.__setattr__(
-            self,
-            'opacity',
-            _float_in_range(
-                'gradient overlay opacity', self.opacity, 0.0, 1.0
-            ),
-        )
+            raise TypeError('gradient enabled must be a bool')
         if self.blend_mode != 'normal':
-            raise ValueError('unsupported gradient overlay blend mode')
+            raise ValueError('unsupported gradient blend mode')
         if not isinstance(self.paint, LinearGradientPaint):
-            raise TypeError(
-                'gradient overlay paint must be LinearGradientPaint'
-            )
+            raise TypeError('gradient paint must be LinearGradientPaint')
 
     def to_serializable_dict(self) -> dict:
         return {
             'effect_type': self.effect_type,
             'enabled': self.enabled,
-            'opacity': self.opacity,
             'blend_mode': self.blend_mode,
             'paint': self.paint.to_serializable_dict(),
         }
 
     def is_neutral(self) -> bool:
-        return (
-            not self.enabled
-            or self.opacity == 0.0
-            or _effect_paint_is_transparent(self.paint)
-        )
+        return not self.enabled
 
 
 TextEffect = Union[
@@ -548,7 +533,7 @@ class TextEffectStack:
             isinstance(effect, GradientOverlayEffect) for effect in effects
         ) > 1:
             raise ValueError(
-                'text effect stack accepts at most one Gradient Overlay'
+                'text effect stack accepts at most one Gradient'
             )
         object.__setattr__(self, 'effects', effects)
 
@@ -699,9 +684,10 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         _unexpected_fields(
             payload,
             ('effect_type', 'enabled', 'opacity', 'blend_mode', 'paint'),
-            'Gradient Overlay effect',
+            'Gradient effect',
         )
         payload.pop('effect_type')
+        payload.pop('opacity', None)
         if 'paint' in payload:
             payload['paint'] = _coerce_effect_paint(payload['paint'])
         return GradientOverlayEffect(**payload)
@@ -770,7 +756,7 @@ def coerce_text_effect_stack(
             if isinstance(effect, GradientOverlayEffect):
                 if gradient_overlay_loaded:
                     raise ValueError(
-                        'text effect stack accepts at most one Gradient Overlay'
+                        'text effect stack accepts at most one Gradient'
                     )
                 gradient_overlay_loaded = True
             effects.append(effect)

@@ -207,6 +207,15 @@ publishes its cached compiled kernel; pre-warm painting stays on NumPy without
 importing Numba on the Qt thread. Both paths use the same item-local coordinates
 and rounding.
 
+Dynamic Text Effect and Text Transform cards keep their natural height inside
+`PanelArea.scrollContent`. Their panels may advertise a capped, content-driven
+preferred height, but must not raise their minimum height with that content;
+the containing window's current allocation takes precedence and overflow
+scrolls. Mark newly inserted cards visible before measuring them, then use the
+shared scroll-content height synchronizer so a constrained viewport neither
+flattens cards nor enlarges the main window. Leave horizontal sizing to the
+resizable scroll area so cards follow the viewport when a splitter moves.
+
 ## Change workflow
 
 Before editing this subsystem:

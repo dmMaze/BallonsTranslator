@@ -48,7 +48,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
         surface_rect,
         logical_rect,
         render_scale,
-        source_atop_opacity,
     ):
         with patch.object(
             effect_paint,
@@ -61,7 +60,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                 surface_rect,
                 logical_rect,
                 render_scale,
-                source_atop_opacity=source_atop_opacity,
             )
 
     def test_cache_and_background_warmup_use_existing_ownership(self):
@@ -112,7 +110,7 @@ class EffectPaintNumbaTest(unittest.TestCase):
         logical = QRectF(-2.5, 0.75, 9.5, 3.25)
         original = np.arange(32, dtype=np.uint8).reshape(2, 4, 4)
         expected = self._numpy_result(
-            paint, original.copy(), surface, logical, 1.25, 0.4
+            paint, original.copy(), surface, logical, 1.25
         )
 
         original_import = builtins.__import__
@@ -132,7 +130,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                 surface,
                 logical,
                 1.25,
-                source_atop_opacity=0.4,
             )
         self.assertIs(result, before_warmup)
         np.testing.assert_array_equal(result, expected)
@@ -147,7 +144,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                 surface,
                 logical,
                 1.25,
-                source_atop_opacity=0.4,
             )
         self.assertIs(result, unavailable)
         np.testing.assert_array_equal(result, expected)
@@ -175,7 +171,7 @@ class EffectPaintNumbaTest(unittest.TestCase):
         logical = QRectF(-7.5, -4.25, 19.75, 12.5)
         paint = LinearGradientPaint(angle=117.0, scale=1.35)
         expected = self._numpy_result(
-            paint, target.copy(), surface, logical, 1.25, None
+            paint, target.copy(), surface, logical, 1.25
         )
         with patch.object(
             effect_paint_numba,
@@ -195,7 +191,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
         heights = (1, 3, 17, 263)
         widths = (1, 9, 31)
         scales = (0.5, 1.0, 1.25, 2.0, 3.0)
-        source_opacities = (None, 0.0, 0.137, 0.5, 0.99999999, 1.0)
         opacity_values = (0.0, 0.125, 0.5, 0.875, 1.0)
 
         for case in range(256):
@@ -234,9 +229,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                 float(rng.uniform(1.0, 120.0)),
                 float(rng.uniform(1.0, 120.0)),
             )
-            source_atop_opacity = source_opacities[
-                case % len(source_opacities)
-            ]
             original = rng.integers(
                 0, 256, (height, width, 4), dtype=np.uint8
             )
@@ -246,7 +238,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                 surface,
                 logical,
                 render_scale,
-                source_atop_opacity,
             )
             actual = colorize_effect_paint_rgba(
                 paint,
@@ -254,7 +245,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                 surface,
                 logical,
                 render_scale,
-                source_atop_opacity=source_atop_opacity,
             )
             np.testing.assert_array_equal(
                 actual, expected, err_msg=f'random gradient case {case}'
@@ -282,7 +272,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
             surface,
             logical,
             render_scale,
-            source_atop_opacity=0.7,
         )
         tiled = np.empty_like(full)
         for top, bottom in ((0, 127), (127, 263)):
@@ -299,7 +288,6 @@ class EffectPaintNumbaTest(unittest.TestCase):
                     tile_rect,
                     logical,
                     render_scale,
-                    source_atop_opacity=0.7,
                 )
         np.testing.assert_array_equal(tiled, full)
 

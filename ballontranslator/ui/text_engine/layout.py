@@ -64,11 +64,11 @@ def paint_context_without_selection_ranges(
     delegated.clip = QRectF(context.clip)
     delegated.cursorPosition = context.cursorPosition
     delegated.palette = context.palette
-    delegated.selections = []
+    selections = []
     block_length = max(0, block.length() - 1)
     for selection in context.selections:
         if not selection.cursor.hasSelection():
-            delegated.selections.append(selection)
+            selections.append(selection)
             continue
         local_start = max(
             0, selection.cursor.selectionStart() - block.position()
@@ -88,7 +88,9 @@ def paint_context_without_selection_ranges(
                 QTextCursor.MoveMode.KeepAnchor,
             )
             copied.format = selection.format
-            delegated.selections.append(copied)
+            selections.append(copied)
+    # PaintContext list access may return a copy; publish the completed list.
+    delegated.selections = selections
     return delegated
 
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:

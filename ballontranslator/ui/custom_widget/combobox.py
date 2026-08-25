@@ -2,7 +2,7 @@ from typing import List, Callable
 
 from qtpy.QtWidgets import QComboBox, QWidget
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QDoubleValidator, QPainter
+from qtpy.QtGui import QDoubleValidator, QPaintEvent, QPainter
 
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from .push_button import NoBorderPushBtn
@@ -46,7 +46,7 @@ class BottomBorderComboBox(QComboBox):
         super().__init__(parent)
         self.setProperty('bottomBorderSelector', True)
 
-    def paintEvent(self, event):
+    def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
         painter = QPainter(self)
         pixmap = render_svg_pixmap(
@@ -55,7 +55,7 @@ class BottomBorderComboBox(QComboBox):
             self.ARROW_SIZE,
             self.devicePixelRatioF(),
         )
-        x = self.width() - self.ARROW_SIZE - 5
+        x = self.width() - self.ARROW_SIZE - 4
         y = (self.height() - self.ARROW_SIZE) // 2
         painter.drawPixmap(x, y, pixmap)
         painter.end()

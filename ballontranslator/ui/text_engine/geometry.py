@@ -1226,10 +1226,14 @@ class TextItemGeometryController:
                 self.item.layout.render_failure_handler = None
             return False
         renderer.release_caches()
-        if self.item.layout is not None:
-            self.item.layout.render_delegate = None
-            self.item.layout.render_failure_handler = None
+        layout = self.item.layout
+        if layout is not None:
+            layout.render_delegate = None
+            layout.render_failure_handler = None
         self.layout_renderer = None
+        if layout is not None and any(layout._ruby_metrics):
+            # Ruby bounds are derived from the active Glyph Slant angle.
+            layout._refresh_annotation_ink_bounds()
         return True
 
     def layout_ink_bounds(self) -> QRectF:

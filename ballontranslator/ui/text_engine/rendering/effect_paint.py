@@ -2,7 +2,6 @@
 
 import math
 import threading
-from typing import Optional
 
 import numpy as np
 
@@ -67,15 +66,11 @@ def colorize_effect_paint_rgba(
     surface_rect: QRectF,
     logical_rect: QRectF,
     render_scale: float,
-    *,
-    source_atop_opacity: Optional[float] = None,
 ) -> np.ndarray:
-    """Colorize or source-atop an existing straight-RGBA surface in place.
+    """Colorize an existing straight-RGBA surface in place.
 
     Stop RGB and opacity interpolate independently. Chunking bounds temporary
     storage and lets the effect renderer reuse its captured effect surface.
-    ``source_atop_opacity`` preserves target alpha and blends over existing
-    RGB, matching a source-atop foreground recolor rather than source-over.
 
     >>> pixels = np.full((1, 2, 4), 255, dtype=np.uint8)
     >>> colorize_effect_paint_rgba(
@@ -92,22 +87,8 @@ def colorize_effect_paint_rgba(
         raise TypeError('effect paint target must be a uint8 RGBA array')
     if not math.isfinite(render_scale) or render_scale <= 0.0:
         raise ValueError('effect paint raster scale must be positive')
-    if source_atop_opacity is not None and (
-        not math.isfinite(source_atop_opacity)
-        or not 0.0 <= source_atop_opacity <= 1.0
-    ):
-        raise ValueError('effect paint source-atop opacity must be from 0 to 1')
     if isinstance(paint, SolidPaint):
-        if source_atop_opacity is None:
-            rgba[..., :3] = paint.color
-        else:
-            alpha = int(round(source_atop_opacity * 255.0))
-            for channel, value in enumerate(paint.color):
-                product = rgba[..., channel].astype(np.uint32)
-                product *= 255 - alpha
-                product += value * alpha + 127
-                product //= 255
-                rgba[..., channel] = product.astype(np.uint8)
+        rgba[..., :3] = paint.color
         return rgba
     if not isinstance(paint, LinearGradientPaint):
         raise TypeError('effect paint raster requires EffectPaint')
@@ -117,15 +98,6 @@ def colorize_effect_paint_rgba(
     length = max(logical_rect.width(), logical_rect.height()) * paint.scale
     if length <= 0.0:
         alpha = int(round(paint.stops[0].opacity * 255))
-        if source_atop_opacity is not None:
-            alpha = int(round(alpha * source_atop_opacity))
-            for channel, value in enumerate(paint.stops[0].color):
-                product = rgba[..., channel].astype(np.uint32)
-                product *= 255 - alpha
-                product += value * alpha + 127
-                product //= 255
-                rgba[..., channel] = product.astype(np.uint8)
-            return rgba
         rgba[..., :3] = paint.stops[0].color
         product = rgba[..., 3].astype(np.uint16)
         product *= alpha
@@ -159,7 +131,6 @@ def colorize_effect_paint_rgba(
         positions,
         colors,
         opacities,
-        source_atop_opacity,
     ):
         return rgba
     x = (
@@ -196,47 +167,13 @@ def colorize_effect_paint_rgba(
                 ratio = (parameter - positions[0]) / span
                 np.clip(ratio, 0.0, 1.0, out=ratio)
 
-            direct_rgb = (
-                source_atop_opacity is None
-                or (
-                    opaque_two_stop
-                    and source_atop_opacity == 1.0
-                )
-            )
-            if source_atop_opacity is not None and not direct_rgb:
-                if opaque_two_stop:
-                    effective_alpha = np.uint32(np.rint(
-                        np.float32(255.0)
-                        * np.float32(source_atop_opacity)
-                    ))
-                else:
-                    paint_alpha = np.rint(
-                        opacities[0]
-                        + (opacities[1] - opacities[0]) * ratio
-                    ).astype(np.uint8)
-                    effective_alpha = np.rint(
-                        paint_alpha.astype(np.float32)
-                        * source_atop_opacity
-                    ).astype(np.uint8).astype(np.uint32)
-                inverse_alpha = 255 - effective_alpha
-
             for channel in range(3):
                 values = colors[0, channel] + (
                     colors[1, channel] - colors[0, channel]
                 ) * ratio
-                paint_values = np.rint(values).astype(np.uint8)
-                if direct_rgb:
-                    target[..., channel] = paint_values
-                    continue
-                product = target[..., channel].astype(np.uint32)
-                product *= inverse_alpha
-                product += (
-                    paint_values.astype(np.uint32) * effective_alpha + 127
-                )
-                product //= 255
-                target[..., channel] = product.astype(np.uint8)
+                target[..., channel] = np.rint(values).astype(np.uint8)
 
-            if source_atop_opacity is not None or opaque_two_stop:
+            if opaque_two_stop:
                 continue
             paint_alpha = np.rint(
                 opacities[0]
@@ -253,11 +190,7 @@ def colorize_effect_paint_rgba(
         # Advancing on equality preserves equal-position hard transitions.
         for index in range(1, len(paint.stops) - 1):
             right[parameter >= positions[index]] = index + 1
-        paint_rgb = (
-            target[..., :3]
-            if source_atop_opacity is None
-            else np.empty(parameter.shape + (3,), dtype=np.uint8)
-        )
+        paint_rgb = target[..., :3]
         paint_alpha = np.empty(parameter.shape, dtype=np.uint8)
         for right_index in range(1, len(paint.stops)):
             selected = right == right_index
@@ -285,23 +218,6 @@ def colorize_effect_paint_rgba(
                 opacities[right_index] - opacities[left_index]
             ) * ratio
             paint_alpha[selected] = np.rint(alpha).astype(np.uint8)
-        if source_atop_opacity is not None:
-            effective_alpha = np.rint(
-                paint_alpha.astype(np.float32) * source_atop_opacity
-            ).astype(np.uint8)
-            inverse_alpha = 255 - effective_alpha.astype(np.uint32)
-            effective_alpha_u32 = effective_alpha.astype(np.uint32)
-            for channel in range(3):
-                product = target[..., channel].astype(np.uint32)
-                product *= inverse_alpha
-                product += (
-                    paint_rgb[..., channel].astype(np.uint32)
-                    * effective_alpha_u32
-                    + 127
-                )
-                product //= 255
-                target[..., channel] = product.astype(np.uint8)
-            continue
         product = target[..., 3].astype(np.uint16)
         product *= paint_alpha.astype(np.uint16)
         product += 127

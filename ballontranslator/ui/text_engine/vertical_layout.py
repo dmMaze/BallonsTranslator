@@ -949,13 +949,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         copied.clip = QRectF(context.clip)
         copied.cursorPosition = context.cursorPosition
         copied.palette = context.palette
-        copied.selections = []
+        selections = []
         for selection in context.selections:
             foreground_selection = QAbstractTextDocumentLayout.Selection()
             foreground_selection.cursor = selection.cursor
             foreground_selection.format = QTextCharFormat(selection.format)
             foreground_selection.format.clearBackground()
-            copied.selections.append(foreground_selection)
+            selections.append(foreground_selection)
+        # Qt exposes PaintContext.selections as a copied list on some
+        # bindings, so mutating the getter silently loses every selection.
+        copied.selections = selections
         return copied
 
     def _vertical_selection_backgrounds(
@@ -1618,31 +1621,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     continue
 
                 xoff, yoff = self._draw_offset[blk_no][ii]
-
-                if custom_rendering:
-                    if not uniform_block_drawn:
-                        render_delegate.draw_vertical_line(
-                            painter, block, ii, context
-                        )
-                    placement = self.vertical_line_placement(block, ii)
-                    if placement is not None:
-                        placed_line, offset, orientation = placement
-                        draw_emphasis_marks(
-                            painter,
-                            block,
-                            placed_line,
-                            context,
-                            vertical=True,
-                            offset=offset,
-                            orientation=orientation,
-                            side_offsets=ruby_side_margins(
-                                block,
-                                placed_line,
-                                self._ruby_metrics[block.blockNumber()],
-                                vertical=True,
-                            ),
-                        )
-                    continue
                 intersects = has_selection and self._line_has_selection(
                     block, line, context
                 )
@@ -1669,6 +1647,35 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_context = self._selection_foreground_context(
                         line_context
                     )
+
+                if custom_rendering:
+                    if not uniform_block_drawn:
+                        render_delegate.draw_vertical_line(
+                            painter,
+                            block,
+                            ii,
+                            line_context,
+                            background_overlays=selection_backgrounds,
+                        )
+                    placement = self.vertical_line_placement(block, ii)
+                    if placement is not None:
+                        placed_line, offset, orientation = placement
+                        draw_emphasis_marks(
+                            painter,
+                            block,
+                            placed_line,
+                            context,
+                            vertical=True,
+                            offset=offset,
+                            orientation=orientation,
+                            side_offsets=ruby_side_margins(
+                                block,
+                                placed_line,
+                                self._ruby_metrics[block.blockNumber()],
+                                vertical=True,
+                            ),
+                        )
+                    continue
                 placement = self.vertical_line_placement(block, ii)
                 if self.is_tate_chu_yoko_line(block, ii):
                     if placement is not None:

@@ -42,6 +42,7 @@ from .rendering.alpha_mask import render_text_alpha_mask
 from .rendering.effect_paint import colorize_effect_paint_rgba
 from .rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
+    GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
 )
 from .rendering.shadow import render_glow_alpha, render_shadow_alpha
@@ -1229,7 +1230,10 @@ class TextEffectRenderer:
             nonlocal captured_context
             if previous_observer is not None:
                 previous_observer(context)
-            captured_context = self._editing_feedback_context(context)
+            # A caret is painted separately. Avoid a second full layout pass
+            # unless Qt supplied selection feedback or active IME preedit ink.
+            if context.selections or self.pre_editing:
+                captured_context = self._editing_feedback_context(context)
 
         layout.defer_cursor_paint = True
         layout.paint_context_observer = capture_context
@@ -1262,16 +1266,10 @@ class TextEffectRenderer:
         >>> callable(TextEffectRenderer._editing_feedback_context)
         True
         """
-        selections = [
-            (QTextCursor(selection.cursor), QTextCharFormat(selection.format))
-            for selection in context.selections
-        ]
-        clip = QRectF(context.clip)
-        palette = context.palette
         feedback = QAbstractTextDocumentLayout.PaintContext()
-        feedback.clip = clip
+        feedback.clip = QRectF(context.clip)
         feedback.cursorPosition = -1
-        feedback.palette = palette
+        feedback.palette = context.palette
 
         muted = QAbstractTextDocumentLayout.Selection()
         muted.cursor = QTextCursor(self.document())
@@ -1281,12 +1279,26 @@ class TextEffectRenderer:
         muted_format.setForeground(transparent)
         muted_format.setBackground(transparent)
         muted_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
+        muted_format.setUnderlineColor(transparent)
+        feedback_base_format = QTextCharFormat(muted_format)
+        muted_format.setProperty(GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY, True)
         muted.format = muted_format
         feedback_selections = [muted]
-        for cursor, char_format in selections:
+        for selection in context.selections:
+            char_format = selection.format
             copied = QAbstractTextDocumentLayout.Selection()
-            copied.cursor = cursor
-            copied.format = char_format
+            copied.cursor = QTextCursor(selection.cursor)
+            feedback_format = QTextCharFormat(feedback_base_format)
+            feedback_format.merge(char_format)
+            if (
+                char_format.foreground().style()
+                != Qt.BrushStyle.NoBrush
+                and not char_format.underlineColor().isValid()
+            ):
+                feedback_format.setUnderlineColor(
+                    char_format.foreground().color()
+                )
+            copied.format = feedback_format
             feedback_selections.append(copied)
         feedback.selections = feedback_selections
         return feedback
@@ -2602,7 +2614,7 @@ class TextEffectRenderer:
         render_scale: float,
         overlay: GradientOverlayEffect,
     ) -> QPixmap:
-        """Blend one typed overlay over captured canonical foreground pixels.
+        """Replace captured canonical foreground pixels with one Gradient.
 
         >>> hasattr(TextEffectRenderer, '_gradient_overlay_pixmap')
         True
@@ -2611,7 +2623,7 @@ class TextEffectRenderer:
             rgba = pixmap2ndarray(canonical, keep_alpha=True)
             if rgba is None:
                 raise EffectRasterAllocationError(
-                    'unable to access Gradient Overlay source pixels'
+                    'unable to access Gradient source pixels'
                 )
             colorize_effect_paint_rgba(
                 overlay.paint,
@@ -2619,12 +2631,11 @@ class TextEffectRenderer:
                 surface_rect,
                 self.logical_unpadded_rect(),
                 render_scale,
-                source_atop_opacity=overlay.opacity,
             )
             result = ndarray2pixmap(rgba)
             if result is None or result.isNull():
                 raise EffectRasterAllocationError(
-                    'unable to allocate Gradient Overlay surface'
+                    'unable to allocate Gradient surface'
                 )
             if render_scale >= 1.0:
                 result.setDevicePixelRatio(render_scale)
@@ -2633,7 +2644,7 @@ class TextEffectRenderer:
             if isinstance(error, EffectRasterAllocationError):
                 raise
             raise EffectRasterAllocationError(
-                'unable to render Gradient Overlay'
+                'unable to render Gradient'
             ) from error
 
     def _stroke_silhouette(

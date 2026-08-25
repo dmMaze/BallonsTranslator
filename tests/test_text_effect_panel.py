@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QEvent, QPoint, QPointF, Qt
+from qtpy.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from qtpy.QtGui import QColor, QFocusEvent, QKeyEvent, QKeySequence, QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
@@ -32,6 +32,7 @@ from ballontranslator.ui.text_engine.formatting.commands import (
 from ballontranslator.ui.text_engine.formatting.effects import (
     ShadowEffectCard,
     StrokeEffectCard,
+    TextEffectPanel,
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.formatting.gradient_editor import (
@@ -360,7 +361,11 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
             effect_panel.gradient_overlay_card.visibility_button.toolTip(),
-            'Hide Gradient Overlay',
+            'Hide Gradient',
+        )
+        self.assertEqual(
+            effect_panel.add_effect_actions['gradient_overlay'].text(),
+            'Gradient',
         )
         self.assertTrue(all(
             not action.icon().isNull()
@@ -410,6 +415,45 @@ class TextEffectPanelTest(unittest.TestCase):
             self.assertTrue(card.delete_button.icon().isNull())
         finally:
             card.deleteLater()
+
+    def test_added_card_scrolls_without_growing_a_constrained_host(self):
+        effect_panel = TextEffectPanel(
+            'Text Effect', 'test_effect', 'test_effect_expand'
+        )
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(effect_panel.view_widget)
+        reserved_space = QWidget(host)
+        reserved_space.setMinimumHeight(80)
+        layout.addWidget(reserved_space, 1)
+        host.resize(320, 180)
+        host.show()
+        self.app.processEvents()
+        constrained_height = host.height()
+
+        try:
+            effect_panel._set_effect_states([
+                self._stack(StrokeEffect(paint=LinearGradientPaint()))
+            ])
+            self.app.processEvents()
+
+            card = effect_panel.stroke_cards[0]
+            self.assertEqual(host.height(), constrained_height)
+            self.assertGreater(
+                effect_panel.verticalScrollBar().maximum(), 0
+            )
+            self.assertGreaterEqual(
+                card.height(), card.minimumSizeHint().height()
+            )
+            narrow_card_width = card.width()
+            host.resize(480, constrained_height)
+            self.app.processEvents()
+            self.assertEqual(host.height(), constrained_height)
+            self.assertGreater(card.width(), narrow_card_width)
+        finally:
+            host.deleteLater()
+            self.app.processEvents()
 
     def test_mixed_eye_click_enables_all_with_one_command(self):
         enabled = self._item(self._stack(StrokeEffect(enabled=True)))
@@ -541,15 +585,20 @@ class TextEffectPanelTest(unittest.TestCase):
             self.panel.texteffect_panel.scrollContent.minimumHeight(),
             solid_content_height,
         )
+        gradient_content_height = (
+            self.panel.texteffect_panel.scrollContent.minimumHeight()
+        )
         self.assertEqual(self.canvas.stack.count(), 1)
         self.canvas.stack.undo()
         self.assertEqual(
             solid.blk.fontformat.text_effects[0].paint,
             SolidPaint((12, 34, 56)),
         )
-        self.assertEqual(
+        self.assertTrue(card.gradient_editor.isHidden())
+        self.assertFalse(card.paint_button.isHidden())
+        self.assertLess(
             self.panel.texteffect_panel.scrollContent.minimumHeight(),
-            solid_content_height,
+            gradient_content_height,
         )
         self.canvas.stack.redo()
         self.assertEqual(
@@ -1334,14 +1383,19 @@ class TextEffectPanelTest(unittest.TestCase):
             self.panel.texteffect_panel.scrollContent.minimumHeight(),
             solid_content_height,
         )
+        gradient_content_height = (
+            self.panel.texteffect_panel.scrollContent.minimumHeight()
+        )
         self.canvas.stack.undo()
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint,
             SolidPaint((12, 34, 56)),
         )
-        self.assertEqual(
+        self.assertTrue(card.gradient_editor.isHidden())
+        self.assertFalse(card.paint_button.isHidden())
+        self.assertLess(
             self.panel.texteffect_panel.scrollContent.minimumHeight(),
-            solid_content_height,
+            gradient_content_height,
         )
         self.canvas.stack.redo()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, converted)
@@ -1396,27 +1450,18 @@ class TextEffectPanelTest(unittest.TestCase):
         )
 
         card = effect_panel.gradient_overlay_card
-        editor = card.opacity_control.editor
-        editor.setText('55.0%')
-        editor.textEdited.emit('55.0%')
-        self.assertEqual(item.blk.fontformat.text_effects[0], overlay)
-        self.assertAlmostEqual(item.effective_text_effects()[0].opacity, 0.55)
-        editor.returnPressed.emit()
-        self.assertAlmostEqual(
-            item.blk.fontformat.text_effects[0].opacity, 0.55
-        )
-        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertEqual(card.title_label.text(), 'Gradient')
         self.assertIs(effect_panel.gradient_overlay_card, card)
 
         card.visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
-        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertEqual(self.canvas.stack.count(), 2)
         card.delete_button.click()
         self.assertFalse(any(
             isinstance(effect, GradientOverlayEffect)
             for effect in item.blk.fontformat.text_effects
         ))
-        self.assertEqual(self.canvas.stack.count(), 4)
+        self.assertEqual(self.canvas.stack.count(), 3)
         self.assertTrue(
             effect_panel.add_effect_actions['gradient_overlay'].isEnabled()
         )
@@ -1428,7 +1473,6 @@ class TextEffectPanelTest(unittest.TestCase):
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
         mixed_card = effect_panel.gradient_overlay_card
-        self.assertEqual(mixed_card.opacity_control.editor.text(), '100.0%')
         self.assertFalse(mixed_card.gradient_editor.isHidden())
         self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
 
@@ -1476,27 +1520,53 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIs(self.panel.texteffect_panel.gradient_overlay_card, card)
 
-    def test_gradient_label_drag_previews_then_commits_once(self):
+    def test_gradient_angle_dial_previews_then_commits_once(self):
         before = self._stack(self._constant_overlay())
         item = self._item(before)
         self.panel.set_textblk_item(item)
         gradient = (
             self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
         )
-        angle_label = gradient.angle_label
+        dial = gradient.angle_dial
+        center = QRectF(dial.rect()).center()
+        down = center + QPointF(0.0, 8.0)
+        left = center - QPointF(8.0, 0.0)
 
-        angle_label.size_ctrl_changed.emit(15)
-        self.assertEqual(item.effective_text_effects()[0].paint.angle, 15.0)
+        QApplication.sendEvent(dial, QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            down,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 90.0)
+        self.assertEqual(gradient.angle_editor.value(), 90.0)
         self.assertEqual(item.blk.fontformat.text_effects, before)
         self.assertEqual(self.canvas.stack.count(), 0)
-        angle_label.btn_released.emit()
-        self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 15.0)
+        QApplication.sendEvent(dial, QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            down,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 90.0)
         self.assertEqual(self.canvas.stack.count(), 1)
 
-        angle_label.size_ctrl_changed.emit(10)
-        self.assertEqual(item.effective_text_effects()[0].paint.angle, 25.0)
-        angle_label.drag_canceled.emit()
-        self.assertEqual(item.effective_text_effects()[0].paint.angle, 15.0)
+        QApplication.sendEvent(dial, QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            left,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 180.0)
+        QApplication.sendEvent(dial, QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_Escape,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertEqual(item.effective_text_effects()[0].paint.angle, 90.0)
         self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_shadow_reorder_is_phase_safe_and_mixed_type_does_not_guess(self):

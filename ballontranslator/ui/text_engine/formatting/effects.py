@@ -7,7 +7,6 @@ from qtpy.QtGui import QColor, QIcon, QPaintEvent, QPainter
 from qtpy.QtWidgets import (
     QAbstractSpinBox,
     QColorDialog,
-    QComboBox,
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
@@ -39,6 +38,7 @@ from ballontranslator.utils.text_effects import (
 )
 
 from ...custom_widget import PanelArea
+from ...custom_widget.combobox import BottomBorderComboBox
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 from ..transforms.controls import CommittedTransformControl, TransformDragLabel
@@ -177,7 +177,10 @@ def _effect_action_widget(
     layout.setSpacing(4)
     for button in buttons:
         button.setFixedSize(18, 18)
-        button.setIconSize(QSize(16, 16))
+        icon_size = (
+            12 if button.objectName() == 'TextEffectCloseButton' else 16
+        )
+        button.setIconSize(QSize(icon_size, icon_size))
         layout.addWidget(button)
     widget.setFixedWidth(18 * len(buttons) + 4 * max(0, len(buttons) - 1))
     parent.set_hover_actions(buttons)
@@ -203,7 +206,7 @@ class EffectNumericControl(CommittedTransformControl):
         self.label.setObjectName('TextEffectParamLabel')
         self.label.setWordWrap(False)
         self.label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         self.editor.setObjectName('TextEffectParamEditor')
         self.editor.setProperty('cardEditor', True)
@@ -214,8 +217,8 @@ class EffectNumericControl(CommittedTransformControl):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self.layout().setSpacing(8)
-        self.layout().setStretch(0, 1)
-        self.layout().setStretch(1, 2)
+        self.layout().setStretch(0, 0)
+        self.layout().setStretch(1, 1)
 
     def _on_text_edited(self) -> None:
         super()._on_text_edited()
@@ -374,11 +377,26 @@ class StrokeEffectCard(_EffectCard):
             ),
         )
 
+        self.position_selector = BottomBorderComboBox(self)
+        self.position_selector.setObjectName('TextEffectParamEditor')
+        self.position_selector.setPlaceholderText(self.tr('Mixed'))
+        self.position_selector.setAccessibleName(self.tr('Stroke Position'))
+        for label, value in (
+            (self.tr('Inside'), 'inside'),
+            (self.tr('Center'), 'center'),
+            (self.tr('Outside'), 'outside'),
+        ):
+            self.position_selector.addItem(label, value)
+        self.position_selector.currentIndexChanged.connect(
+            self._on_position_changed
+        )
+
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(6)
         header.addWidget(self.title_icon_label)
         header.addWidget(self.title_label)
+        header.addWidget(self.position_selector)
         header.addStretch()
         header.addWidget(action_widget)
         header.addWidget(self.visibility_button)
@@ -391,38 +409,13 @@ class StrokeEffectCard(_EffectCard):
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
             self, decimals=1,
         )
-        position_label = QLabel(self.tr('Position'), self)
-        position_label.setObjectName('TextEffectParamLabel')
-        position_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.position_selector = QComboBox(self)
-        self.position_selector.setObjectName('TextEffectParamEditor')
-        self.position_selector.setPlaceholderText(self.tr('Mixed'))
-        for label, value in (
-            (self.tr('Inside'), 'inside'),
-            (self.tr('Center'), 'center'),
-            (self.tr('Outside'), 'outside'),
-        ):
-            self.position_selector.addItem(label, value)
-        self.position_selector.currentIndexChanged.connect(
-            self._on_position_changed
-        )
-        position_widget = QWidget(self)
-        position_row = QHBoxLayout(position_widget)
-        position_row.setContentsMargins(0, 0, 0, 0)
-        position_row.setSpacing(8)
-        position_row.addWidget(position_label)
-        position_row.addWidget(self.position_selector, 1)
-        position_row.setStretch(0, 1)
-        position_row.setStretch(1, 2)
 
         fill_label = QLabel(self.tr('Fill'), self)
         fill_label.setObjectName('TextEffectParamLabel')
         fill_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.fill_type_selector = QComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(self)
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
         self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
         self.fill_type_selector.setAccessibleName(self.tr('Stroke Fill'))
@@ -434,11 +427,9 @@ class StrokeEffectCard(_EffectCard):
         fill_widget = QWidget(self)
         fill_row = QHBoxLayout(fill_widget)
         fill_row.setContentsMargins(0, 0, 0, 0)
-        fill_row.setSpacing(8)
+        fill_row.setSpacing(4)
         fill_row.addWidget(fill_label)
         fill_row.addWidget(self.fill_type_selector, 1)
-        fill_row.setStretch(0, 1)
-        fill_row.setStretch(1, 2)
 
         for control in (self.width_control, self.opacity_control):
             control.commit_requested.connect(self._on_control_commit)
@@ -474,23 +465,29 @@ class StrokeEffectCard(_EffectCard):
         )
         self.gradient_editor.hide()
 
+        paint_row = QGridLayout()
+        paint_row.setContentsMargins(0, 0, 0, 0)
+        paint_row.setHorizontalSpacing(8)
+        paint_row.addWidget(fill_widget, 0, 0)
+        paint_row.addWidget(self.paint_button, 0, 1)
+        paint_row.setColumnStretch(0, 1)
+        paint_row.setColumnStretch(1, 1)
+
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(8)
-        controls.setVerticalSpacing(4)
+        controls.setVerticalSpacing(8)
         controls.addWidget(self.width_control, 0, 0)
-        controls.addWidget(position_widget, 0, 1)
-        controls.addWidget(self.opacity_control, 1, 0)
-        controls.addWidget(fill_widget, 1, 1)
-        controls.addWidget(self.paint_button, 2, 0, 1, 2)
-        controls.addWidget(self.gradient_editor, 3, 0, 1, 2)
+        controls.addWidget(self.opacity_control, 0, 1)
+        controls.addLayout(paint_row, 1, 0, 1, 2)
+        controls.addWidget(self.gradient_editor, 2, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         self._controls_layout = controls
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
 
@@ -728,23 +725,10 @@ class ShadowEffectCard(_EffectCard):
             ),
         )
 
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(6)
-        header.addWidget(self.title_icon_label)
-        header.addWidget(self.title_label)
-        header.addStretch()
-        header.addWidget(action_widget)
-        header.addWidget(self.visibility_button)
-
-        type_label = QLabel(self.tr('Type'), self)
-        type_label.setObjectName('TextEffectParamLabel')
-        type_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.type_selector = QComboBox(self)
+        self.type_selector = BottomBorderComboBox(self)
         self.type_selector.setObjectName('TextEffectParamEditor')
         self.type_selector.setPlaceholderText(self.tr('Mixed'))
+        self.type_selector.setAccessibleName(self.tr('Shadow Type'))
         for label, value in (
             (self.tr('Drop'), 'drop'),
             (self.tr('Inner'), 'inner'),
@@ -754,14 +738,16 @@ class ShadowEffectCard(_EffectCard):
         self.type_selector.currentIndexChanged.connect(
             self._on_type_changed
         )
-        type_widget = QWidget(self)
-        type_row = QHBoxLayout(type_widget)
-        type_row.setContentsMargins(0, 0, 0, 0)
-        type_row.setSpacing(8)
-        type_row.addWidget(type_label)
-        type_row.addWidget(self.type_selector, 1)
-        type_row.setStretch(0, 1)
-        type_row.setStretch(1, 2)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
+        header.addWidget(self.title_label)
+        header.addWidget(self.type_selector)
+        header.addStretch()
+        header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         self.opacity_control = EffectNumericControl(
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
@@ -800,9 +786,9 @@ class ShadowEffectCard(_EffectCard):
         fill_label = QLabel(self.tr('Fill'), self)
         fill_label.setObjectName('TextEffectParamLabel')
         fill_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.fill_type_selector = QComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(self)
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
         self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
         self.fill_type_selector.setAccessibleName(self.tr('Shadow Fill'))
@@ -816,11 +802,9 @@ class ShadowEffectCard(_EffectCard):
         fill_widget = QWidget(self)
         fill_row = QHBoxLayout(fill_widget)
         fill_row.setContentsMargins(0, 0, 0, 0)
-        fill_row.setSpacing(8)
+        fill_row.setSpacing(4)
         fill_row.addWidget(fill_label)
         fill_row.addWidget(self.fill_type_selector, 1)
-        fill_row.setStretch(0, 1)
-        fill_row.setStretch(1, 2)
 
         self.paint_button = EffectPaintButton(self)
         self.paint_button.clicked.connect(self._on_paint_clicked)
@@ -842,26 +826,32 @@ class ShadowEffectCard(_EffectCard):
         )
         self.gradient_editor.hide()
 
+        paint_row = QGridLayout()
+        paint_row.setContentsMargins(0, 0, 0, 0)
+        paint_row.setHorizontalSpacing(8)
+        paint_row.addWidget(fill_widget, 0, 0)
+        paint_row.addWidget(self.paint_button, 0, 1)
+        paint_row.setColumnStretch(0, 1)
+        paint_row.setColumnStretch(1, 1)
+
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(8)
-        controls.setVerticalSpacing(4)
-        controls.addWidget(type_widget, 0, 0)
-        controls.addWidget(self.opacity_control, 0, 1)
+        controls.setVerticalSpacing(8)
+        controls.addWidget(self.opacity_control, 0, 0)
+        controls.addWidget(self.blur_control, 0, 1)
         controls.addWidget(self.offset_x_control, 1, 0)
         controls.addWidget(self.offset_y_control, 1, 1)
-        controls.addWidget(self.blur_control, 2, 0)
-        controls.addWidget(self.spread_control, 2, 1)
-        controls.addWidget(fill_widget, 3, 0, 1, 2)
-        controls.addWidget(self.paint_button, 4, 0, 1, 2)
-        controls.addWidget(self.gradient_editor, 5, 0, 1, 2)
+        controls.addWidget(self.spread_control, 2, 0)
+        controls.addLayout(paint_row, 3, 0, 1, 2)
+        controls.addWidget(self.gradient_editor, 4, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         self._controls_layout = controls
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
 
@@ -1129,36 +1119,24 @@ class GlowEffectCard(_EffectCard):
                 self.delete_button,
             ),
         )
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(6)
-        header.addWidget(self.title_icon_label)
-        header.addWidget(self.title_label)
-        header.addStretch()
-        header.addWidget(action_widget)
-        header.addWidget(self.visibility_button)
-
-        type_label = QLabel(self.tr('Type'), self)
-        type_label.setObjectName('TextEffectParamLabel')
-        type_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.type_selector = QComboBox(self)
+        self.type_selector = BottomBorderComboBox(self)
         self.type_selector.setObjectName('TextEffectParamEditor')
         self.type_selector.setPlaceholderText(self.tr('Mixed'))
+        self.type_selector.setAccessibleName(self.tr('Glow Type'))
         self.type_selector.addItem(self.tr('Outer'), 'outer')
         self.type_selector.addItem(self.tr('Inner'), 'inner')
         self.type_selector.currentIndexChanged.connect(
             self._on_type_changed
         )
-        type_widget = QWidget(self)
-        type_row = QHBoxLayout(type_widget)
-        type_row.setContentsMargins(0, 0, 0, 0)
-        type_row.setSpacing(8)
-        type_row.addWidget(type_label)
-        type_row.addWidget(self.type_selector, 1)
-        type_row.setStretch(0, 1)
-        type_row.setStretch(1, 2)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(6)
+        header.addWidget(self.title_icon_label)
+        header.addWidget(self.title_label)
+        header.addWidget(self.type_selector)
+        header.addStretch()
+        header.addWidget(action_widget)
+        header.addWidget(self.visibility_button)
 
         self.opacity_control = EffectNumericControl(
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
@@ -1187,9 +1165,9 @@ class GlowEffectCard(_EffectCard):
         fill_label = QLabel(self.tr('Fill'), self)
         fill_label.setObjectName('TextEffectParamLabel')
         fill_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.fill_type_selector = QComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(self)
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
         self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
         self.fill_type_selector.setAccessibleName(self.tr('Glow Fill'))
@@ -1203,11 +1181,9 @@ class GlowEffectCard(_EffectCard):
         fill_widget = QWidget(self)
         fill_row = QHBoxLayout(fill_widget)
         fill_row.setContentsMargins(0, 0, 0, 0)
-        fill_row.setSpacing(8)
+        fill_row.setSpacing(4)
         fill_row.addWidget(fill_label)
         fill_row.addWidget(self.fill_type_selector, 1)
-        fill_row.setStretch(0, 1)
-        fill_row.setStretch(1, 2)
 
         self.paint_button = EffectPaintButton(self)
         self.paint_button.clicked.connect(self._on_paint_clicked)
@@ -1229,24 +1205,30 @@ class GlowEffectCard(_EffectCard):
         )
         self.gradient_editor.hide()
 
+        paint_row = QGridLayout()
+        paint_row.setContentsMargins(0, 0, 0, 0)
+        paint_row.setHorizontalSpacing(8)
+        paint_row.addWidget(fill_widget, 0, 0)
+        paint_row.addWidget(self.paint_button, 0, 1)
+        paint_row.setColumnStretch(0, 1)
+        paint_row.setColumnStretch(1, 1)
+
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(8)
-        controls.setVerticalSpacing(4)
-        controls.addWidget(type_widget, 0, 0)
-        controls.addWidget(self.opacity_control, 0, 1)
-        controls.addWidget(self.size_control, 1, 0)
-        controls.addWidget(self.spread_control, 1, 1)
-        controls.addWidget(fill_widget, 2, 0, 1, 2)
-        controls.addWidget(self.paint_button, 3, 0, 1, 2)
-        controls.addWidget(self.gradient_editor, 4, 0, 1, 2)
+        controls.setVerticalSpacing(8)
+        controls.addWidget(self.opacity_control, 0, 0)
+        controls.addWidget(self.size_control, 0, 1)
+        controls.addWidget(self.spread_control, 1, 0)
+        controls.addLayout(paint_row, 2, 0, 1, 2)
+        controls.addWidget(self.gradient_editor, 3, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         self._controls_layout = controls
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
 
@@ -1447,7 +1429,7 @@ class GlowEffectCard(_EffectCard):
 
 
 class GradientOverlayEffectCard(_EffectCard):
-    """Edit the single foreground Gradient Overlay effect.
+    """Edit the single foreground Gradient effect.
 
     >>> GradientOverlayEffectCard.__name__
     'GradientOverlayEffectCard'
@@ -1473,14 +1455,14 @@ class GradientOverlayEffectCard(_EffectCard):
         self.title_icon_label = _effect_icon_label(
             'text-effect-gradient.svg', self
         )
-        self.title_label = QLabel(self.tr('Gradient Overlay'), self)
+        self.title_label = QLabel(self.tr('Gradient'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
         self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Gradient Overlay'),
-            self.tr('Hide Gradient Overlay'),
+            self.tr('Show Gradient'),
+            self.tr('Hide Gradient'),
             self,
         )
         self.visibility_button.visibility_requested.connect(
@@ -1491,9 +1473,9 @@ class GradientOverlayEffectCard(_EffectCard):
         self.delete_button.setIcon(
             QIcon(themed_icon_path('titlebar_close.svg'))
         )
-        self.delete_button.setToolTip(self.tr('Delete Gradient Overlay'))
+        self.delete_button.setToolTip(self.tr('Delete Gradient'))
         self.delete_button.setAccessibleName(
-            self.tr('Delete Gradient Overlay')
+            self.tr('Delete Gradient')
         )
         self.delete_button.setFixedSize(18, 18)
         self.delete_button.clicked.connect(self._on_delete_clicked)
@@ -1507,29 +1489,6 @@ class GradientOverlayEffectCard(_EffectCard):
         header.addStretch()
         header.addWidget(action_widget)
         header.addWidget(self.visibility_button)
-
-        self.opacity_control = EffectNumericControl(
-            self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
-            self, decimals=1,
-        )
-        self.opacity_control.commit_requested.connect(
-            self._on_control_commit
-        )
-        self.opacity_control.value_preview_requested.connect(
-            self._on_value_preview
-        )
-        self.opacity_control.preview_requested.connect(
-            self._on_parameter_preview
-        )
-        self.opacity_control.drag_commit_requested.connect(
-            self._on_parameter_commit
-        )
-        self.opacity_control.preview_canceled.connect(
-            self._on_preview_canceled
-        )
-        self.opacity_control.value_preview_canceled.connect(
-            self._on_preview_canceled
-        )
 
         self.gradient_editor = InlineLinearGradientEditor(
             LinearGradientPaint(), self
@@ -1549,9 +1508,8 @@ class GradientOverlayEffectCard(_EffectCard):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.addLayout(header)
-        layout.addWidget(self.opacity_control)
         layout.addWidget(self.gradient_editor)
 
     def set_values(
@@ -1565,14 +1523,6 @@ class GradientOverlayEffectCard(_EffectCard):
             else None
         )
         self.visibility_button.set_visibility(enabled)
-        opacity_values = [overlay.opacity for overlay in overlays]
-        common_opacity = (
-            opacity_values[0]
-            if opacity_values
-            and all(value == opacity_values[0] for value in opacity_values)
-            else None
-        )
-        self.opacity_control.set_model_value(common_opacity, opacity_values)
         paints = [overlay.paint for overlay in overlays]
         common_paint = (
             paints[0]
@@ -1585,27 +1535,12 @@ class GradientOverlayEffectCard(_EffectCard):
         )
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
-        return (self.opacity_control,)
+        return ()
 
     def _on_enabled_clicked(self, enabled: bool) -> None:
         self.value_commit_requested.emit(
             self.index, 'enabled', bool(enabled)
         )
-
-    def _on_control_commit(self, name: str, value) -> None:
-        self.value_commit_requested.emit(self.index, name, value)
-
-    def _on_value_preview(self, name: str, value) -> None:
-        self.value_preview_requested.emit(self.index, name, value)
-
-    def _on_parameter_preview(self, name: str, delta) -> None:
-        self.parameter_preview_requested.emit(self.index, name, delta)
-
-    def _on_parameter_commit(self, name: str, delta) -> None:
-        self.parameter_commit_requested.emit(self.index, name, delta)
-
-    def _on_preview_canceled(self, name: str) -> None:
-        self.preview_canceled.emit(self.index, name)
 
     def _on_delete_clicked(self) -> None:
         self.remove_requested.emit(self.index)
@@ -1679,9 +1614,9 @@ class AlphaMaskCard(_EffectCard):
         mode_label = QLabel(self.tr('Mode'), self)
         mode_label.setObjectName('TextEffectParamLabel')
         mode_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.mode_selector = QComboBox(self)
+        self.mode_selector = BottomBorderComboBox(self)
         self.mode_selector.setObjectName('TextEffectParamEditor')
         self.mode_selector.addItem(self.tr('Erase'), 'erase')
         self.mode_selector.addItem(self.tr('Restore'), 'restore')
@@ -1694,15 +1629,13 @@ class AlphaMaskCard(_EffectCard):
         mode_layout.setSpacing(8)
         mode_layout.addWidget(mode_label)
         mode_layout.addWidget(self.mode_selector, 1)
-        mode_layout.setStretch(0, 1)
-        mode_layout.setStretch(1, 2)
 
         self.size_label = TransformDragLabel(
             self,
             direction=0,
             text=self.tr('Size'),
             alignment=(
-                Qt.AlignmentFlag.AlignRight
+                Qt.AlignmentFlag.AlignLeft
                 | Qt.AlignmentFlag.AlignVCenter
             ),
         )
@@ -1733,8 +1666,6 @@ class AlphaMaskCard(_EffectCard):
         size_layout.setSpacing(8)
         size_layout.addWidget(self.size_label)
         size_layout.addWidget(self.diameter_editor, 1)
-        size_layout.setStretch(0, 1)
-        size_layout.setStretch(1, 2)
 
         self.clear_button = QToolButton(self)
         self.clear_button.setObjectName('TextAlphaMaskClearButton')
@@ -1747,7 +1678,7 @@ class AlphaMaskCard(_EffectCard):
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
         controls.setHorizontalSpacing(8)
-        controls.setVerticalSpacing(4)
+        controls.setVerticalSpacing(8)
         controls.addWidget(mode_widget, 0, 0)
         controls.addWidget(size_widget, 0, 1)
         controls.addWidget(self.clear_button, 0, 2)
@@ -1756,7 +1687,7 @@ class AlphaMaskCard(_EffectCard):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
 
@@ -1836,6 +1767,9 @@ class TextEffectPanel(PanelArea):
         super().__init__(panel_name, config_name, config_expand_name)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.scrollContent.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
         self.setMaximumHeight(self.MAX_CONTENT_HEIGHT)
 
@@ -1927,7 +1861,7 @@ class TextEffectPanel(PanelArea):
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
             (self.tr('Glow'), 'glow', 'text-effect-glow.svg'),
             (
-                self.tr('Gradient Overlay'),
+                self.tr('Gradient'),
                 'gradient_overlay',
                 'text-effect-gradient.svg',
             ),
@@ -2000,6 +1934,7 @@ class TextEffectPanel(PanelArea):
             card.clear_requested.connect(self.mask_clear_requested.emit)
             card.remove_requested.connect(self.mask_remove_requested.emit)
             self.mask_card_layout.addWidget(card)
+            card.show()
             self.alpha_mask_card = card
         elif not present and self.alpha_mask_card is not None:
             card = self.alpha_mask_card
@@ -2108,6 +2043,7 @@ class TextEffectPanel(PanelArea):
                 card.move_requested.connect(self.move_effect_requested.emit)
             card.remove_requested.connect(self.remove_effect_requested.emit)
             self.cards_layout.addWidget(card)
+            card.show()
             self.effect_cards.append(card)
 
     @staticmethod
@@ -2270,12 +2206,7 @@ class TextEffectPanel(PanelArea):
     def _sync_content_height(self) -> None:
         if not hasattr(self, 'content_layout'):
             return
-        content_height = self.content_layout.sizeHint().height()
-        self.scrollContent.setMinimumHeight(content_height)
-        self.setMinimumHeight(min(content_height, self.MAX_CONTENT_HEIGHT))
-        self.scrollContent.updateGeometry()
-        self.updateGeometry()
-        self.view_widget.updateGeometry()
+        self._sync_scroll_content_height(self.content_layout)
 
     def sizeHint(self) -> QSize:
         hint = super().sizeHint()
