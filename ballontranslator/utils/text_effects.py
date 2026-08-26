@@ -6,11 +6,14 @@ from numbers import Integral, Real
 from typing import Iterator, Mapping, Optional, Sequence, Tuple, Union
 
 from .logger import logger as LOGGER
+from .raster_assets import RasterAssetRef, coerce_raster_asset_ref
 
 
 SHADOW_OFFSET_LIMIT = 10.0
 SHADOW_BLUR_LIMIT = 10.0
 SHADOW_SPREAD_LIMIT = 10.0
+FilterScalar = Union[None, bool, int, float, str]
+FilterParams = Tuple[Tuple[str, FilterScalar], ...]
 
 
 def _float_in_range(
@@ -175,10 +178,49 @@ class LinearGradientPaint:
         }
 
 
-EffectPaint = Union[SolidPaint, LinearGradientPaint]
+@dataclass(frozen=True)
+class TexturePaint:
+    """Map one managed raster across the unpadded logical text rectangle.
+
+    Fill stretches to the logical rectangle, Fit contains the whole image,
+    Crop covers and center-crops it, and Tile repeats from the logical origin.
+
+    >>> TexturePaint(
+    ...     RasterAssetRef('assets/' + 'a' * 64 + '.png'), mapping='tile'
+    ... ).paint_type
+    'texture'
+    """
+
+    asset: RasterAssetRef
+    mapping: str = 'fill'
+    scale: float = 1.0
+    paint_type: str = field(init=False, default='texture')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.asset, RasterAssetRef):
+            raise TypeError('texture paint asset must be RasterAssetRef')
+        if self.mapping not in {'fill', 'fit', 'crop', 'tile'}:
+            raise ValueError('unsupported texture mapping')
+        object.__setattr__(
+            self,
+            'scale',
+            _float_in_range('texture scale', self.scale, 0.1, 4.0),
+        )
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'paint_type': self.paint_type,
+            'asset': self.asset.to_serializable_dict(),
+            'mapping': self.mapping,
+            'scale': self.scale,
+        }
 
 
-def _effect_paint_is_transparent(paint: EffectPaint) -> bool:
+GeneratedEffectPaint = Union[SolidPaint, LinearGradientPaint]
+EffectPaint = Union[GeneratedEffectPaint, TexturePaint]
+
+
+def _effect_paint_is_transparent(paint: GeneratedEffectPaint) -> bool:
     return (
         isinstance(paint, LinearGradientPaint)
         and all(stop.opacity == 0.0 for stop in paint.stops)
@@ -197,6 +239,8 @@ def effect_paint_fallback_color(
         return paint.color
     if isinstance(paint, LinearGradientPaint):
         return paint.stops[0].color
+    if isinstance(paint, TexturePaint):
+        return (0, 0, 0)
     raise TypeError('effect paint requires a typed paint value')
 
 
@@ -216,7 +260,7 @@ class StrokeEffect:
     opacity: float = 1.0
     blend_mode: str = 'normal'
     width: float = 0.1
-    paint: EffectPaint = field(default_factory=SolidPaint)
+    paint: GeneratedEffectPaint = field(default_factory=SolidPaint)
     position: str = 'outside'
     effect_type: str = field(init=False, default='stroke')
 
@@ -236,7 +280,7 @@ class StrokeEffect:
             _float_in_range('stroke width', self.width, 0.0),
         )
         if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
-            raise TypeError('stroke paint must be EffectPaint')
+            raise TypeError('stroke paint must be Solid or LinearGradient')
         if self.position not in {'inside', 'center', 'outside'}:
             raise ValueError('unsupported stroke position')
 
@@ -275,7 +319,7 @@ class ShadowEffect:
     opacity: float = 1.0
     blend_mode: str = 'normal'
     shadow_type: str = 'drop'
-    paint: EffectPaint = field(default_factory=SolidPaint)
+    paint: GeneratedEffectPaint = field(default_factory=SolidPaint)
     offset: Tuple[float, float] = (0.1, 0.1)
     blur: float = 0.0
     spread: float = 0.0
@@ -294,7 +338,7 @@ class ShadowEffect:
         if self.shadow_type not in {'drop', 'inner', 'long'}:
             raise ValueError('unsupported shadow type')
         if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
-            raise TypeError('shadow paint must be EffectPaint')
+            raise TypeError('shadow paint must be Solid or LinearGradient')
         object.__setattr__(self, 'offset', _offset_tuple(self.offset))
         object.__setattr__(
             self,
@@ -346,7 +390,7 @@ class GlowEffect:
     opacity: float = 1.0
     blend_mode: str = 'normal'
     glow_type: str = 'outer'
-    paint: EffectPaint = field(
+    paint: GeneratedEffectPaint = field(
         default_factory=lambda: SolidPaint((255, 255, 255))
     )
     size: float = 0.2
@@ -366,7 +410,7 @@ class GlowEffect:
         if self.glow_type not in {'outer', 'inner'}:
             raise ValueError('unsupported glow type')
         if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
-            raise TypeError('glow paint must be EffectPaint')
+            raise TypeError('glow paint must be Solid or LinearGradient')
         object.__setattr__(
             self,
             'size',
@@ -427,25 +471,27 @@ class HollowEffect:
 
 
 @dataclass(frozen=True)
-class GradientOverlayEffect:
-    """Replace the canonical foreground with a linear gradient.
+class TextFillEffect:
+    """Replace the canonical rich foreground with a typed paint.
 
-    >>> GradientOverlayEffect().effect_type
-    'gradient_overlay'
+    >>> TextFillEffect().effect_type
+    'text_fill'
     """
 
     enabled: bool = True
     blend_mode: str = 'normal'
-    paint: LinearGradientPaint = field(default_factory=LinearGradientPaint)
-    effect_type: str = field(init=False, default='gradient_overlay')
+    paint: EffectPaint = field(default_factory=SolidPaint)
+    effect_type: str = field(init=False, default='text_fill')
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
-            raise TypeError('gradient enabled must be a bool')
+            raise TypeError('text fill enabled must be a bool')
         if self.blend_mode != 'normal':
-            raise ValueError('unsupported gradient blend mode')
-        if not isinstance(self.paint, LinearGradientPaint):
-            raise TypeError('gradient paint must be LinearGradientPaint')
+            raise ValueError('unsupported text fill blend mode')
+        if not isinstance(
+            self.paint, (SolidPaint, LinearGradientPaint, TexturePaint)
+        ):
+            raise TypeError('text fill paint must be EffectPaint')
 
     def to_serializable_dict(self) -> dict:
         return {
@@ -459,17 +505,96 @@ class GradientOverlayEffect:
         return not self.enabled
 
 
+def _filter_params_tuple(value: object) -> FilterParams:
+    """Return sorted, hashable flat JSON scalar filter parameters.
+
+    >>> _filter_params_tuple({'z': 2, 'a': True})
+    (('a', True), ('z', 2))
+    """
+    items = value.items() if isinstance(value, Mapping) else value
+    if not isinstance(items, (Sequence, type({}.items()))):
+        raise TypeError('filter params must be a flat mapping or item sequence')
+    normalized = []
+    keys = set()
+    for item in items:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            raise TypeError('filter params must contain key/value pairs')
+        key, parameter = item
+        if not isinstance(key, str) or not key:
+            raise ValueError('filter parameter names must be non-empty strings')
+        if key in keys:
+            raise ValueError(f'duplicate filter parameter: {key}')
+        if not isinstance(parameter, (bool, int, float, str, type(None))):
+            raise TypeError(f'filter parameter {key} must be a JSON scalar')
+        if isinstance(parameter, float) and not math.isfinite(parameter):
+            raise ValueError(f'filter parameter {key} must be finite')
+        keys.add(key)
+        normalized.append((key, parameter))
+    return tuple(sorted(normalized))
+
+
+@dataclass(frozen=True)
+class FilterEffect:
+    """One repeatable lazy filter request with hashable opaque parameters.
+
+    Plug-in availability is deliberately not checked at this persistence
+    boundary, so unknown and newer filter requests survive passive loading.
+
+    >>> hash(FilterEffect('custom:demo', params={'amount': 0.5})) != 0
+    True
+    """
+
+    filter_id: str
+    schema_version: int = 1
+    enabled: bool = True
+    params: FilterParams = ()
+    effect_type: str = field(init=False, default='filter')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.filter_id, str) or not self.filter_id.strip():
+            raise ValueError('filter id must be a non-empty string')
+        if any(character.isspace() for character in self.filter_id):
+            raise ValueError('filter id must not contain whitespace')
+        if (
+            isinstance(self.schema_version, bool)
+            or not isinstance(self.schema_version, Integral)
+            or self.schema_version <= 0
+        ):
+            raise ValueError('filter schema version must be a positive integer')
+        if not isinstance(self.enabled, bool):
+            raise TypeError('filter enabled must be a bool')
+        object.__setattr__(self, 'schema_version', int(self.schema_version))
+        object.__setattr__(self, 'params', _filter_params_tuple(self.params))
+
+    def params_dict(self) -> dict:
+        """Return the opaque parameters as a fresh deterministic mapping."""
+        return dict(self.params)
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'enabled': self.enabled,
+            'filter_id': self.filter_id,
+            'schema_version': self.schema_version,
+            'params': self.params_dict(),
+        }
+
+    def is_neutral(self) -> bool:
+        return not self.enabled
+
+
 TextEffect = Union[
     StrokeEffect,
     ShadowEffect,
     GlowEffect,
     HollowEffect,
-    GradientOverlayEffect,
+    TextFillEffect,
+    FilterEffect,
 ]
 
 
 def effect_phase(effect: TextEffect) -> str:
-    """Return the fixed compiler phase for one typed effect.
+    """Return the canonical source/bounds phase for one typed effect.
 
     >>> effect_phase(ShadowEffect(shadow_type='inner'))
     'interior'
@@ -484,9 +609,22 @@ def effect_phase(effect: TextEffect) -> str:
         return 'interior' if effect.glow_type == 'inner' else 'exterior'
     if isinstance(effect, StrokeEffect):
         return 'stroke'
-    if isinstance(effect, (HollowEffect, GradientOverlayEffect)):
+    if isinstance(effect, (HollowEffect, TextFillEffect)):
         return 'foreground'
+    if isinstance(effect, FilterEffect):
+        return 'filter'
     raise TypeError('effect_phase requires a typed text effect')
+
+
+def effect_structure_key(effect: TextEffect) -> object:
+    """Return the mixed-selection identity for one stack position.
+
+    >>> effect_structure_key(FilterEffect('builtin:noise', 2))
+    ('filter', 'builtin:noise', 2)
+    """
+    if isinstance(effect, FilterEffect):
+        return effect.effect_type, effect.filter_id, effect.schema_version
+    return effect.effect_type
 
 
 @dataclass(frozen=True)
@@ -521,7 +659,8 @@ class TextEffectStack:
                     ShadowEffect,
                     GlowEffect,
                     HollowEffect,
-                    GradientOverlayEffect,
+                    TextFillEffect,
+                    FilterEffect,
                 ),
             )
             for effect in effects
@@ -530,10 +669,10 @@ class TextEffectStack:
         if sum(isinstance(effect, HollowEffect) for effect in effects) > 1:
             raise ValueError('text effect stack accepts at most one Hollow')
         if sum(
-            isinstance(effect, GradientOverlayEffect) for effect in effects
+            isinstance(effect, TextFillEffect) for effect in effects
         ) > 1:
             raise ValueError(
-                'text effect stack accepts at most one Gradient'
+                'text effect stack accepts at most one Text Fill'
             )
         object.__setattr__(self, 'effects', effects)
 
@@ -562,6 +701,34 @@ class TextEffectStack:
         }
 
 
+def without_project_texture_paints(
+    stack: TextEffectStack,
+) -> TextEffectStack:
+    """Remove project-only Texture fills at application-style boundaries.
+
+    The Text Fill itself is removed so the original rich foreground survives.
+
+    >>> asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
+    >>> stack = TextEffectStack(effects=(
+    ...     StrokeEffect(), TextFillEffect(paint=TexturePaint(asset)),
+    ... ))
+    >>> filtered = without_project_texture_paints(stack)
+    >>> tuple(type(effect).__name__ for effect in filtered)
+    ('StrokeEffect',)
+    """
+    if not isinstance(stack, TextEffectStack):
+        raise TypeError('project texture filtering requires TextEffectStack')
+    effects = tuple(
+        effect
+        for effect in stack.effects
+        if not (
+            isinstance(effect, TextFillEffect)
+            and isinstance(effect.paint, TexturePaint)
+        )
+    )
+    return stack if effects == stack.effects else replace(stack, effects=effects)
+
+
 def _unexpected_fields(
     payload: Mapping[str, object], allowed: Sequence[str], label: str
 ) -> None:
@@ -583,7 +750,7 @@ def _coerce_gradient_stop(value: object) -> GradientStop:
 
 
 def _coerce_effect_paint(value: object) -> EffectPaint:
-    if isinstance(value, (SolidPaint, LinearGradientPaint)):
+    if isinstance(value, (SolidPaint, LinearGradientPaint, TexturePaint)):
         return value
     if not isinstance(value, dict):
         raise ValueError('effect paint must be a value or typed payload')
@@ -604,6 +771,12 @@ def _coerce_effect_paint(value: object) -> EffectPaint:
                 _coerce_gradient_stop(stop) for stop in stops
             )
         return LinearGradientPaint(**payload)
+    if paint_type == 'texture':
+        _unexpected_fields(
+            payload, ('asset', 'mapping', 'scale'), 'texture paint'
+        )
+        payload['asset'] = coerce_raster_asset_ref(payload.get('asset'))
+        return TexturePaint(**payload)
     raise ValueError('unsupported or missing effect paint type')
 
 
@@ -620,7 +793,8 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             ShadowEffect,
             GlowEffect,
             HollowEffect,
-            GradientOverlayEffect,
+            TextFillEffect,
+            FilterEffect,
         ),
     ):
         return value
@@ -680,7 +854,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         )
         payload.pop('effect_type')
         return HollowEffect(**payload)
-    if effect_type == 'gradient_overlay':
+    if effect_type in {'gradient', 'gradient_overlay'}:
         _unexpected_fields(
             payload,
             ('effect_type', 'enabled', 'opacity', 'blend_mode', 'paint'),
@@ -690,8 +864,78 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         payload.pop('opacity', None)
         if 'paint' in payload:
             payload['paint'] = _coerce_effect_paint(payload['paint'])
-        return GradientOverlayEffect(**payload)
+        else:
+            payload['paint'] = LinearGradientPaint()
+        paint = payload.get('paint')
+        if not isinstance(paint, LinearGradientPaint):
+            raise ValueError(
+                'legacy Gradient paint must be LinearGradientPaint'
+            )
+        return TextFillEffect(**payload)
+    if effect_type == 'text_fill':
+        _unexpected_fields(
+            payload,
+            ('effect_type', 'enabled', 'blend_mode', 'paint'),
+            'Text Fill effect',
+        )
+        payload.pop('effect_type')
+        if 'paint' in payload:
+            payload['paint'] = _coerce_effect_paint(payload['paint'])
+        return TextFillEffect(**payload)
+    if effect_type == 'filter':
+        _unexpected_fields(
+            payload,
+            (
+                'effect_type', 'enabled', 'filter_id',
+                'schema_version', 'params',
+            ),
+            'Filter effect',
+        )
+        payload.pop('effect_type')
+        return FilterEffect(**payload)
     raise ValueError('unsupported or missing text effect type')
+
+
+def _coerce_filter_effect_passive(payload: Mapping[str, object]) -> FilterEffect:
+    """Load generic fields independently without resolving plug-in code."""
+    raw = dict(payload)
+    unknown = set(raw) - {
+        'effect_type', 'enabled', 'filter_id', 'schema_version', 'params'
+    }
+    if unknown:
+        LOGGER.warning(
+            'Ignoring unsupported Filter effect fields: %s.', sorted(unknown)
+        )
+    filter_id = raw.get('filter_id')
+    if not isinstance(filter_id, str) or not filter_id.strip():
+        raise ValueError('filter id must be a non-empty string')
+
+    enabled = raw.get('enabled', True)
+    if not isinstance(enabled, bool):
+        LOGGER.warning('Ignoring invalid Filter enabled value; using true.')
+        enabled = True
+    schema_version = raw.get('schema_version', 1)
+    if (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, Integral)
+        or schema_version <= 0
+    ):
+        LOGGER.warning(
+            'Ignoring invalid Filter schema version; using version 1.'
+        )
+        schema_version = 1
+
+    raw_params = raw.get('params', {})
+    if not isinstance(raw_params, Mapping):
+        LOGGER.warning('Ignoring invalid Filter params container.')
+        raw_params = {}
+    params = {}
+    for key, value in raw_params.items():
+        try:
+            params.update(_filter_params_tuple(((key, value),)))
+        except (TypeError, ValueError) as error:
+            LOGGER.warning('Ignoring invalid Filter parameter (%s).', error)
+    return FilterEffect(filter_id, schema_version, enabled, params)
 
 
 def coerce_text_effect_stack(
@@ -745,20 +989,25 @@ def coerce_text_effect_stack(
         raw_effects = ()
     effects = []
     hollow_loaded = False
-    gradient_overlay_loaded = False
+    text_fill_loaded = False
     for index, raw_effect in enumerate(raw_effects):
         try:
-            effect = coerce_text_effect(raw_effect)
+            effect = (
+                _coerce_filter_effect_passive(raw_effect)
+                if isinstance(raw_effect, Mapping)
+                and raw_effect.get('effect_type') == 'filter'
+                else coerce_text_effect(raw_effect)
+            )
             if isinstance(effect, HollowEffect):
                 if hollow_loaded:
                     raise ValueError('text effect stack accepts at most one Hollow')
                 hollow_loaded = True
-            if isinstance(effect, GradientOverlayEffect):
-                if gradient_overlay_loaded:
+            if isinstance(effect, TextFillEffect):
+                if text_fill_loaded:
                     raise ValueError(
-                        'text effect stack accepts at most one Gradient'
+                        'text effect stack accepts at most one Text Fill'
                     )
-                gradient_overlay_loaded = True
+                text_fill_loaded = True
             effects.append(effect)
         except (TypeError, ValueError) as error:
             LOGGER.warning(
@@ -783,20 +1032,38 @@ def primary_stroke(stack: TextEffectStack) -> Optional[StrokeEffect]:
     )
 
 
+def generated_effect_insertion_index(
+    effects: Sequence[TextEffect],
+) -> int:
+    """Insert after movable values and before only trailing structural state.
+
+    Legacy stacks may retain Text Fill/Hollow in the middle, but their raw
+    position must not change the projected movable order.
+
+    >>> generated_effect_insertion_index((
+    ...     FilterEffect('builtin:noise'), TextFillEffect(), GlowEffect()
+    ... ))
+    3
+    >>> generated_effect_insertion_index((
+    ...     FilterEffect('builtin:noise'), GlowEffect(), TextFillEffect()
+    ... ))
+    2
+    """
+    insertion = len(effects)
+    while insertion > 0 and isinstance(
+        effects[insertion - 1], (HollowEffect, TextFillEffect)
+    ):
+        insertion -= 1
+    return insertion
+
+
 def ensure_primary_stroke(stack: TextEffectStack) -> TextEffectStack:
     """Return ``stack`` with a default primary Stroke when one is absent."""
     if not isinstance(stack, TextEffectStack):
         raise TypeError('ensure_primary_stroke requires TextEffectStack')
     if primary_stroke(stack) is not None:
         return stack
-    insertion = next(
-        (
-            index
-            for index, effect in enumerate(stack.effects)
-            if effect_phase(effect) in {'foreground', 'interior'}
-        ),
-        len(stack.effects),
-    )
+    insertion = generated_effect_insertion_index(stack.effects)
     effects = list(stack.effects)
     effects.insert(insertion, StrokeEffect())
     return replace(stack, effects=tuple(effects))
@@ -825,8 +1092,9 @@ def with_non_stroke_effects(
 ) -> TextEffectStack:
     """Copy non-Stroke style state while retaining every target Stroke.
 
-    Source non-Stroke and target Stroke order are each preserved. Strokes are
-    inserted at the fixed compiler boundary without matching effect indices.
+    Source non-Stroke and target Stroke order are each preserved. Strokes land
+    after existing movable values and before only trailing structural state,
+    without trusting raw legacy Text Fill/Hollow positions.
 
     >>> target = TextEffectStack(effects=(StrokeEffect(width=0.4),))
     >>> source = TextEffectStack(overall_opacity=0.6)
@@ -845,14 +1113,7 @@ def with_non_stroke_effects(
         for effect in source.effects
         if not isinstance(effect, StrokeEffect)
     ]
-    insertion = next(
-        (
-            index
-            for index, effect in enumerate(source_non_strokes)
-            if effect_phase(effect) in {'foreground', 'interior'}
-        ),
-        len(source_non_strokes),
-    )
+    insertion = generated_effect_insertion_index(source_non_strokes)
     effects = list(source_non_strokes)
     effects[insertion:insertion] = target_strokes
     if (

@@ -21,6 +21,7 @@ from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
+from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_effects import (
     SolidPaint,
     TextEffectStack,
@@ -45,7 +46,7 @@ from .editing.context_menu import create_text_edit_context_menu
 from ..misc import td_pattern, table_pattern
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
-from .effect_renderer import TextEffectRenderer
+from .effects.renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
 from .annotations import (
     AnnotationProperty,
@@ -592,6 +593,12 @@ class TextBlkItem(QGraphicsTextItem):
         return self.effect_renderer.set_text_alpha_mask(
             mask, preview=preview
         )
+
+    def set_rendered_image_layer(
+        self, layer: Optional[RenderedImageLayer]
+    ) -> bool:
+        """Replace the TextBlock-owned full-RGBA layer."""
+        return self.effect_renderer.set_rendered_image_layer(layer)
 
     def clear_text_alpha_mask_preview(self) -> bool:
         return self.effect_renderer.clear_text_alpha_mask_preview()

@@ -18,6 +18,7 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.text_effects import TextEffectStack
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
+from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ...misc import doc_replace, doc_replace_no_shift
 from ..shape_control import TextBlkShapeControl
 from ...page_search_widget import PageSearchWidget, Matched
@@ -260,6 +261,57 @@ class SetTextAlphaMaskCommand(QUndoCommand):
 
     def _apply(self, mask: Optional[TextAlphaMask]) -> None:
         self.item.set_text_alpha_mask(mask, preview=False)
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+
+    def redo(self) -> None:
+        self._apply(self.after)
+
+    def undo(self) -> None:
+        self._apply(self.before)
+
+
+class SetRenderedImageLayerCommand(QUndoCommand):
+    """Replace one TextBlock-owned Rendered Image layer atomically.
+
+    >>> hasattr(SetRenderedImageLayerCommand, 'create')
+    True
+    """
+
+    def __init__(
+        self,
+        item: TextBlkItem,
+        before: Optional[RenderedImageLayer],
+        after: Optional[RenderedImageLayer],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__()
+        for name, value in (('before', before), ('after', after)):
+            if value is not None and not isinstance(
+                value, RenderedImageLayer
+            ):
+                raise TypeError(
+                    f'{name} layer requires RenderedImageLayer or None'
+                )
+        self.item = item
+        self.before = before
+        self.after = after
+        self.refresh_callback = refresh_callback
+
+    @classmethod
+    def create(
+        cls,
+        item: TextBlkItem,
+        before: Optional[RenderedImageLayer],
+        after: Optional[RenderedImageLayer],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> Optional["SetRenderedImageLayerCommand"]:
+        if before == after:
+            return None
+        return cls(item, before, after, refresh_callback)
+
+    def _apply(self, layer: Optional[RenderedImageLayer]) -> None:
+        self.item.set_rendered_image_layer(layer)
         if self.refresh_callback is not None:
             self.refresh_callback()
 

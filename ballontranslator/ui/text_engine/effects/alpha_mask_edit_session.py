@@ -19,13 +19,13 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
     simplify_alpha_brush_points,
 )
-from .editing.commands import SetTextAlphaMaskCommand
-from .item import TextBlkItem
-from .shape_control import CONTROL_ITEM_DATA_KEY
+from ..editing.commands import SetTextAlphaMaskCommand
+from ..item import TextBlkItem
+from ..shape_control import CONTROL_ITEM_DATA_KEY
 
 if TYPE_CHECKING:
-    from .formatting.effects import TextEffectPanel
-    from ..canvas import Canvas
+    from .panel import TextEffectPanel
+    from ...canvas import Canvas
 
 
 class TextAlphaMaskEditSession(QObject):
@@ -78,8 +78,18 @@ class TextAlphaMaskEditSession(QObject):
             self._on_effect_edit_started
         )
         controls.add_effect_requested.connect(self._on_effect_edit_started)
+        controls.add_filter_requested.connect(self._on_effect_edit_started)
         controls.remove_effect_requested.connect(self._on_effect_edit_started)
         controls.move_effect_requested.connect(self._on_effect_edit_started)
+        controls.rendered_image_enabled_requested.connect(
+            self._on_effect_edit_started
+        )
+        controls.rendered_image_mode_requested.connect(
+            self._on_effect_edit_started
+        )
+        controls.rendered_image_remove_requested.connect(
+            self._on_effect_edit_started
+        )
         controls.color_dialog_active_changed.connect(
             self._on_effect_color_dialog_active_changed
         )

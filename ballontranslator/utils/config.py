@@ -15,6 +15,7 @@ from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import default_profiles, load_profiles, migrate_module_llm_profiles, profile_by_id, profile_to_dict, LLMProfile
 from .secret_store import SecretStore
+from .text_effects import without_project_texture_paints
 
 class RunStatus:
     FIN_DET = 1
@@ -427,7 +428,16 @@ class ProgramConfig(Config):
                 config_dict.pop('global_fontformat')
         warn_ignored_legacy_effects(effect_notices, 'program config')
 
-        return ProgramConfig(**config_dict)
+        config = ProgramConfig(**config_dict)
+        portable_effects = without_project_texture_paints(
+            config.global_fontformat.text_effects
+        )
+        if portable_effects != config.global_fontformat.text_effects:
+            LOGGER.warning(
+                'Discard project-only Texture paint from global FontFormat.'
+            )
+            config.global_fontformat.text_effects = portable_effects
+        return config
     
 
 pcfg = ProgramConfig()
@@ -452,7 +462,16 @@ def load_textstyle_from(p: str, raise_exception = False):
                         normalize_fontformat_effect_payload(style)
                     )
                     effect_notices.update(notices)
-                    styles_loaded.append(FontFormat(**normalized))
+                    style_format = FontFormat(**normalized)
+                    portable_effects = without_project_texture_paints(
+                        style_format.text_effects
+                    )
+                    if portable_effects != style_format.text_effects:
+                        LOGGER.warning(
+                            'Discard project-only Texture paint from text style.'
+                        )
+                        style_format.text_effects = portable_effects
+                    styles_loaded.append(style_format)
                 except Exception as e:
                     LOGGER.warning(f'Skip invalid text style: {style}')
             warn_ignored_legacy_effects(effect_notices, 'text styles')
@@ -522,6 +541,9 @@ def json_dump_program_config(obj, **kwargs):
 def save_config():
     global pcfg
     try:
+        pcfg.global_fontformat.text_effects = without_project_texture_paints(
+            pcfg.global_fontformat.text_effects
+        )
         config_dir = osp.dirname(shared.CONFIG_PATH)
         if config_dir and not osp.exists(config_dir):
             os.makedirs(config_dir)
@@ -540,6 +562,10 @@ def save_config():
 def save_text_styles(raise_exception = False):
     global pcfg, text_styles
     try:
+        for style in text_styles:
+            style.text_effects = without_project_texture_paints(
+                style.text_effects
+            )
         style_dir = osp.dirname(pcfg.text_styles_path)
         if not osp.exists(style_dir):
             os.makedirs(style_dir)

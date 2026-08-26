@@ -2434,6 +2434,8 @@ QFrame#TextAlphaMaskCard QLabel#TextEffectParameterTitle {
 
 QToolButton#TextEffectPaintButton {
     min-width: 0px;
+    font-size: 12px;
+    text-align: left;
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 0px;

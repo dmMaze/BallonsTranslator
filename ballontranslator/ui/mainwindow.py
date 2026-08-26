@@ -57,7 +57,7 @@ from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .text_engine.editing.commands import GlobalRepalceAllCommand
 from .text_engine.transforms.grid import start_grid_numba_warmup
-from .text_engine.rendering.effect_paint import (
+from .text_engine.effects.paint import (
     start_effect_paint_numba_warmup,
 )
 from .text_engine.pipeline_formatting import (

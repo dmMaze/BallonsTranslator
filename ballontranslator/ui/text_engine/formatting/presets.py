@@ -8,6 +8,7 @@ from qtpy.QtGui import QDrag, QFontMetrics, QColor, QPixmap, QPainter, QContextM
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.text_effects import (
     effect_paint_fallback_color,
+    without_project_texture_paints,
     primary_stroke,
 )
 from ballontranslator.utils.config import save_text_styles, text_styles
@@ -160,7 +161,11 @@ class TextStyleLabel(Widget):
             fontfmt = C.active_format
         if fontfmt is None:
             return
-        updated_keys = self.fontfmt.merge(fontfmt, compare=True)
+        portable_format = fontfmt.deepcopy()
+        portable_format.text_effects = without_project_texture_paints(
+            portable_format.text_effects
+        )
+        updated_keys = self.fontfmt.merge(portable_format, compare=True)
         if len(updated_keys) > 0:
             save_text_styles()
         

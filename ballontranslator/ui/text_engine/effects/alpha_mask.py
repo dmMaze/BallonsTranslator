@@ -6,7 +6,7 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
 
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
-from .raster import (
+from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
     EFFECT_CACHE_MAX_PIXELS,

@@ -23,7 +23,7 @@ from ballontranslator.ui.text_engine.annotations import (
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.fontformat import TextTransformStack
 from ballontranslator.utils.text_effects import (
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     LinearGradientPaint,
     ShadowEffect,
@@ -71,7 +71,7 @@ def _item(
                 width=0.18,
                 paint=SolidPaint((34, 38, 48)),
             ),
-            GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+            TextFillEffect(paint=LinearGradientPaint(stops=(
                 GradientStop(0.0, tuple(gradient[0])),
                 GradientStop(1.0, tuple(gradient[1])),
             ))),

@@ -20,7 +20,7 @@ from ballontranslator.ui.text_engine.annotations import (
     apply_text_combine_upright,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
-from ballontranslator.ui.text_engine.rendering.alpha_mask import (
+from ballontranslator.ui.text_engine.effects.alpha_mask import (
     render_text_alpha_mask,
 )
 from ballontranslator.ui.text_engine.rendering.raster import (
@@ -40,7 +40,7 @@ from ballontranslator.utils.text_alpha_mask import (
 )
 from ballontranslator.utils.text_effects import (
     GlowEffect,
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -216,7 +216,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                     position='outside',
                     paint=SolidPaint((0, 0, 255)),
                 ),
-                GradientOverlayEffect(
+                TextFillEffect(
                     paint=LinearGradientPaint(angle=90.0)
                 ),
                 GlowEffect(
@@ -326,7 +326,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         renderer.set_export_effect_render(True)
         try:
             with patch(
-                'ballontranslator.ui.text_engine.effect_renderer.'
+                'ballontranslator.ui.text_engine.effects.renderer.'
                 'EFFECT_TILE_MAX_EDGE',
                 32,
             ):
@@ -438,7 +438,8 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         item = self._item(stack, self._partial_mask())
         renderer = item.effect_renderer
         key = renderer._effect_cache_input_key()
-        self.assertIsInstance(key[1], int)
+        self.assertIsNone(key[1])
+        self.assertIsInstance(key[2], int)
         self.assertNotIn(item.blk.text_alpha_mask, key)
 
         with patch.object(
@@ -572,7 +573,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                 committed.cache_input_key[0],
                 item.blk.fontformat.text_effects.effects,
             )
-            self.assertGreaterEqual(committed.cache_input_key[1], 0)
+            self.assertGreaterEqual(committed.cache_input_key[2], 0)
 
     def _assert_active_scratch_is_current(self, item: TextBlkItem) -> None:
         renderer = item.effect_renderer
@@ -709,7 +710,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         renderer = item.effect_renderer
         self.assertTrue(renderer._completed_foreground_ready())
         with patch(
-            'ballontranslator.ui.text_engine.effect_renderer.'
+            'ballontranslator.ui.text_engine.effects.renderer.'
             'render_text_alpha_mask',
             side_effect=failure,
         ):
@@ -727,7 +728,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             HollowEffect(),
         )))
         with patch(
-            'ballontranslator.ui.text_engine.effect_renderer.'
+            'ballontranslator.ui.text_engine.effects.renderer.'
             'render_text_alpha_mask',
             side_effect=failure,
         ):
@@ -744,7 +745,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         renderer.set_export_effect_render(True)
         try:
             with patch(
-                'ballontranslator.ui.text_engine.effect_renderer.'
+                'ballontranslator.ui.text_engine.effects.renderer.'
                 'render_text_alpha_mask',
                 side_effect=failure,
             ):

@@ -24,7 +24,7 @@ from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.text_engine.editing.commands import (
     SetTextEffectStackCommand,
 )
-from ballontranslator.ui.text_engine.effect_edit_session import (
+from ballontranslator.ui.text_engine.effects.edit_session import (
     TextEffectEditSession,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem

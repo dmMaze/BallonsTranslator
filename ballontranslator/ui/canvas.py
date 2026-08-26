@@ -22,7 +22,7 @@ from .text_engine.shape_control import (
 )
 from .text_engine.transforms.grid_control import TextGridTransformControl
 from .text_engine.transforms.projective_control import TextProjectiveTransformControl
-from .text_engine.alpha_mask_edit_session import TextAlphaMaskEditSession
+from .text_engine.effects.alpha_mask_edit_session import TextAlphaMaskEditSession
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
@@ -865,6 +865,7 @@ class Canvas(QGraphicsScene):
     def attach_text_item(self, item: TextBlkItem) -> None:
         """Attach a text item and its badge to their canvas-owned layers."""
         item.setParentItem(self.textLayer)
+        item.effect_renderer.project_assets_changed()
         item.set_order_badge_layer(self.orderBadgeLayer)
         item.set_order_badge_visible(self.order_badges_visible)
 

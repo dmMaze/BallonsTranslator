@@ -1,4 +1,7 @@
+import hashlib
 import os
+import shutil
+import tempfile
 import unittest
 from dataclasses import replace
 from unittest.mock import patch
@@ -7,6 +10,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
@@ -34,12 +38,12 @@ from ballontranslator.ui.text_engine.rendering.raster import (
     EffectRasterPlan,
     EffectRasterAllocationError,
 )
-from ballontranslator.ui.text_engine.rendering.effect_paint import (
+from ballontranslator.ui.text_engine.effects.paint import (
     colorize_effect_paint_rgba,
     effect_paint_preview_image,
     rasterize_effect_paint,
 )
-from ballontranslator.ui.text_engine.rendering.shadow import (
+from ballontranslator.ui.text_engine.effects.shadow import (
     render_glow_alpha,
     render_shadow_alpha,
 )
@@ -47,9 +51,12 @@ from ballontranslator.utils.fontformat import (
     SineTextTransform,
     TextTransformStack,
 )
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
+    FilterEffect,
     GlowEffect,
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -57,6 +64,7 @@ from ballontranslator.utils.text_effects import (
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
+    TexturePaint,
 )
 from ballontranslator.utils.textblock import TextBlock
 
@@ -121,15 +129,32 @@ class TypedShadowRasterTest(unittest.TestCase):
         alpha[5, 5] = 255
 
         long_alpha = render_shadow_alpha(
-            alpha, 'long', 1.0, (23, 11), 9, 9
+            alpha, 'long', 1.0, (23, 11), 9, 9, alpha
         )
 
-        self.assertEqual(long_alpha[5, 5], 255)
+        self.assertEqual(long_alpha[5, 5], 0)
         self.assertEqual(long_alpha[16, 28], 255)
         components, _labels = cv2.connectedComponents(
             (long_alpha > 0).astype(np.uint8), connectivity=8
         )
         self.assertEqual(components, 2)
+
+    def test_drop_and_long_are_clipped_outside_canonical_alpha(self):
+        alpha = np.zeros((21, 21), dtype=np.uint8)
+        alpha[8:13, 8:13] = 255
+
+        for shadow_type in ('drop', 'long'):
+            with self.subTest(shadow_type=shadow_type):
+                zero = render_shadow_alpha(
+                    alpha, shadow_type, 1.0, (0, 0), 0, 0, alpha
+                )
+                self.assertEqual(np.count_nonzero(zero), 0)
+
+                shifted = render_shadow_alpha(
+                    alpha, shadow_type, 1.0, (4, 3), 0, 0, alpha
+                )
+                self.assertEqual(np.count_nonzero(shifted[alpha > 0]), 0)
+                self.assertGreater(np.count_nonzero(shifted), 0)
 
     def test_blur_is_translation_invariant_at_array_edges(self):
         source = np.zeros((11, 13), dtype=np.uint8)
@@ -204,6 +229,85 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         vertical = self._item(inner_stack, vertical=True)
         self.assertGreater(np.count_nonzero(self._render(vertical)[..., 3]), 0)
 
+    def test_drop_and_long_preserve_face_and_tile_exact_in_both_layouts(self):
+        black = SolidPaint((0, 0, 0))
+        for vertical in (False, True):
+            for shadow_type in ('drop', 'long'):
+                with self.subTest(
+                    vertical=vertical, shadow_type=shadow_type
+                ):
+                    zero_item = self._item(TextEffectStack(effects=(
+                        ShadowEffect(
+                            shadow_type=shadow_type,
+                            offset=(0.0, 0.0),
+                            blur=0.0,
+                            spread=0.0,
+                            paint=black,
+                        ),
+                    )), vertical=vertical)
+                    zero_renderer = zero_item.effect_renderer
+                    zero_bounds = zero_renderer.boundingRect()
+                    base = pixmap2ndarray(
+                        zero_renderer._render_effect_base(
+                            zero_bounds, 1.0
+                        ),
+                        keep_alpha=True,
+                    )
+                    zero = pixmap2ndarray(
+                        zero_renderer._render_effect_surface(
+                            zero_bounds, 1.0
+                        ),
+                        keep_alpha=True,
+                    )
+                    opaque_face = base[..., 3] == 255
+                    self.assertGreater(np.count_nonzero(opaque_face), 0)
+                    np.testing.assert_array_equal(
+                        zero[..., :3][opaque_face],
+                        base[..., :3][opaque_face],
+                    )
+
+                    shifted_item = self._item(TextEffectStack(effects=(
+                        ShadowEffect(
+                            shadow_type=shadow_type,
+                            offset=(0.24, 0.16),
+                            blur=0.0,
+                            spread=0.0,
+                            paint=black,
+                        ),
+                    )), vertical=vertical)
+                    renderer = shifted_item.effect_renderer
+                    bounds = renderer.boundingRect()
+                    shifted_base = pixmap2ndarray(
+                        renderer._render_effect_base(bounds, 1.0),
+                        keep_alpha=True,
+                    )
+                    full = renderer._render_effect_surface(bounds, 1.0)
+                    full_pixels = pixmap2ndarray(full, keep_alpha=True)
+                    exterior = (
+                        (shifted_base[..., 3] == 0)
+                        & (full_pixels[..., 3] > 0)
+                    )
+                    self.assertGreater(np.count_nonzero(exterior), 0)
+
+                    tiled = renderer._new_effect_pixmap(1.0, bounds)
+                    painter = QPainter(tiled)
+                    painter.translate(-bounds.topLeft())
+                    renderer.tile_cache.clear()
+                    try:
+                        renderer._draw_tiled_effects(
+                            painter,
+                            EffectRasterPlan(
+                                'tiles', 1.0, 0, 0, 96
+                            ),
+                            bounds,
+                        )
+                    finally:
+                        painter.end()
+                    np.testing.assert_array_equal(
+                        full_pixels,
+                        pixmap2ndarray(tiled, keep_alpha=True),
+                    )
+
     def test_glow_phases_source_hollow_padding_and_opacity(self):
         outer = GlowEffect(
             paint=SolidPaint((0, 0, 255)), size=0.12, spread=0.04
@@ -221,7 +325,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 position='outside',
                 paint=SolidPaint((255, 0, 0)),
             ),
-            GradientOverlayEffect(
+            TextFillEffect(
                 paint=self._constant_gradient((220, 80, 20))
             ),
             inner,
@@ -306,7 +410,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         for glow, expected_alpha in cases:
             with self.subTest(glow=glow), patch(
-                'ballontranslator.ui.text_engine.effect_renderer.'
+                'ballontranslator.ui.text_engine.effects.renderer.'
                 'render_glow_alpha',
                 return_value=generated_alpha.copy(),
             ) as render_alpha:
@@ -322,7 +426,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             )
             self.assertEqual(render_alpha.call_args.args[1], 'outer')
 
-    def test_shadow_and_glow_share_retained_phase_order(self):
+    def test_shadow_and_glow_follow_global_card_order(self):
         effects = (
             ShadowEffect(spread=0.1),
             GlowEffect(size=0.1, spread=0.05),
@@ -334,10 +438,20 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         calls = []
         original = renderer._generated_effect_pixmap
 
-        def record(source_alpha, effect, surface_rect, render_scale):
+        def record(
+            source_alpha,
+            effect,
+            surface_rect,
+            render_scale,
+            canonical_alpha,
+        ):
             calls.append(effect)
             return original(
-                source_alpha, effect, surface_rect, render_scale
+                source_alpha,
+                effect,
+                surface_rect,
+                render_scale,
+                canonical_alpha,
             )
 
         with patch.object(
@@ -347,9 +461,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 renderer.boundingRect(), 1.0
             )
 
-        self.assertEqual(tuple(calls), (
-            effects[1], effects[0], effects[3], effects[2]
-        ))
+        self.assertEqual(tuple(calls), tuple(reversed(effects)))
 
     def test_outer_glow_uses_each_positioned_stroke_silhouette(self):
         for position in ('inside', 'center', 'outside'):
@@ -458,11 +570,11 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )
         self.assertEqual(stop_colored[0, 0].tolist(), [0, 100, 240, 64])
 
-    def test_canonical_alpha_is_only_extracted_for_alpha_consumers(self):
-        overlay = GradientOverlayEffect(
+    def test_canonical_alpha_is_extracted_for_consumers_and_center_clip(self):
+        text_fill = TextFillEffect(
             paint=self._constant_gradient((20, 60, 220))
         )
-        item = self._item(TextEffectStack(effects=(overlay,)))
+        item = self._item(TextEffectStack(effects=(text_fill,)))
         renderer = item.effect_renderer
         renderer._effect_raster_state.effect_source_cache.clear()
         with patch.object(
@@ -491,7 +603,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             renderer._render_pre_mask_effect_surface(
                 renderer.boundingRect(), 1.0
             )
-        self.assertEqual(pixmap_alpha.call_count, 0)
+        self.assertEqual(pixmap_alpha.call_count, 1)
 
         consumers = (
             ShadowEffect(),
@@ -521,17 +633,17 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     def test_gradient_replaces_foreground_and_stop_opacity_overwrites_alpha(self):
         plain = self._item(TextEffectStack())
         opaque = self._item(TextEffectStack(effects=(
-            GradientOverlayEffect(
+            TextFillEffect(
                 paint=self._constant_gradient((0, 0, 255))
             ),
         )))
         partial = self._item(TextEffectStack(effects=(
-            GradientOverlayEffect(
+            TextFillEffect(
                 paint=self._constant_gradient((0, 0, 255), 0.5),
             ),
         )))
         transparent = self._item(TextEffectStack(effects=(
-            GradientOverlayEffect(
+            TextFillEffect(
                 paint=self._constant_gradient((0, 0, 255), 0.0),
             ),
         )))
@@ -565,8 +677,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )
         self.assertEqual(np.max(transparent_pixels[..., 3]), 0)
 
-    def test_gradient_overlay_phase_hollow_and_shadow_silhouette(self):
-        overlay = GradientOverlayEffect(
+    def test_text_fill_phase_hollow_and_shadow_silhouette(self):
+        text_fill = TextFillEffect(
             paint=self._constant_gradient((0, 0, 255))
         )
         shadow = ShadowEffect(
@@ -574,14 +686,24 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             offset=(0.2, 0.1),
             blur=0.05,
         )
-        without_overlay = self._render(self._item(TextEffectStack(effects=(
-            shadow,
-        ))))
-        with_overlay = self._render(self._item(TextEffectStack(effects=(
-            shadow, overlay,
-        ))))
+        without_fill_item = self._item(TextEffectStack(effects=(shadow,)))
+        with_fill_item = self._item(TextEffectStack(effects=(
+            shadow, text_fill,
+        )))
+        without_fill = pixmap2ndarray(
+            without_fill_item.effect_renderer._render_pre_mask_effect_surface(
+                without_fill_item.effect_renderer.boundingRect(), 1.0
+            ),
+            keep_alpha=True,
+        )
+        with_fill = pixmap2ndarray(
+            with_fill_item.effect_renderer._render_pre_mask_effect_surface(
+                with_fill_item.effect_renderer.boundingRect(), 1.0
+            ),
+            keep_alpha=True,
+        )
         np.testing.assert_array_equal(
-            without_overlay[..., 3], with_overlay[..., 3]
+            without_fill[..., 3], with_fill[..., 3]
         )
 
         hollow = HollowEffect()
@@ -593,19 +715,19 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             ),
             hollow,
         ))))
-        hollow_overlay = self._render(self._item(TextEffectStack(effects=(
+        hollow_fill = self._render(self._item(TextEffectStack(effects=(
             StrokeEffect(
                 width=0.2,
                 position='outside',
                 paint=SolidPaint((0, 255, 0)),
             ),
             hollow,
-            overlay,
+            text_fill,
         ))))
-        np.testing.assert_array_equal(hollow_plain, hollow_overlay)
+        np.testing.assert_array_equal(hollow_plain, hollow_fill)
 
         inside = self._render(self._item(TextEffectStack(effects=(
-            overlay,
+            text_fill,
             StrokeEffect(
                 width=0.35,
                 position='inside',
@@ -621,7 +743,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             (inside[..., 1] > inside[..., 2]) & visible_inside
         ))
 
-    def test_solid_center_stays_native_while_gradient_center_is_generated(self):
+    def test_completed_surface_bands_solid_and_gradient_center_strokes(self):
         item = self._item(TextEffectStack())
         renderer = item.effect_renderer
         solid = TextEffectStack(effects=(StrokeEffect(
@@ -641,12 +763,76 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             wraps=renderer._positioned_stroke_band,
         ) as band:
             item.set_text_effects(solid)
-            self.assertEqual(band.call_count, 0)
+            solid_calls = band.call_count
+            self.assertGreater(solid_calls, 0)
             self.assertEqual(renderer._effect_flags(), (True, False))
             item.set_text_effects(gradient)
-            self.assertGreater(band.call_count, 0)
+            self.assertGreater(band.call_count, solid_calls)
             self.assertEqual(renderer._effect_flags(), (True, True))
         self.assertGreater(np.count_nonzero(self._render(item)[..., 3]), 0)
+
+    def test_noop_filter_preserves_public_center_stroke_appearance(self):
+        noop = FilterEffect('builtin:noise', params={
+            'amount': 0.0, 'mode': 'monochrome', 'seed': 1,
+        })
+        paints = (
+            SolidPaint((20, 60, 220)),
+            LinearGradientPaint(stops=(
+                GradientStop(0.0, (20, 60, 220)),
+                GradientStop(1.0, (220, 60, 20)),
+            )),
+        )
+        for vertical in (False, True):
+            for paint in paints:
+                stroke = StrokeEffect(
+                    width=0.20, position='center', paint=paint
+                )
+                baseline = self._render(self._item(
+                    TextEffectStack(effects=(stroke,)), vertical=vertical
+                ))
+                for effects in ((noop, stroke), (stroke, noop)):
+                    with self.subTest(
+                        vertical=vertical,
+                        paint=type(paint).__name__,
+                        effects=effects,
+                    ):
+                        filtered = self._render(self._item(
+                            TextEffectStack(effects=effects),
+                            vertical=vertical,
+                        ))
+                        delta = np.abs(
+                            filtered.astype(np.int16)
+                            - baseline.astype(np.int16)
+                        )
+                        changed = np.count_nonzero(
+                            np.any(delta, axis=2)
+                        )
+                        # The direct Qt face-over-outline and isolated
+                        # surface bridge round antialias coverage differently.
+                        # Keep this below the former 200/1.1k regression.
+                        self.assertLessEqual(
+                            int(delta.max()), 100,
+                            (int(delta.max()), int(changed)),
+                        )
+                        self.assertLessEqual(changed, 1000)
+
+    def test_center_coverage_cache_is_reused_when_hollow_changes(self):
+        stroke = StrokeEffect(
+            width=0.20,
+            position='center',
+            paint=SolidPaint((20, 60, 220)),
+        )
+        item = self._item(TextEffectStack(effects=(stroke,)))
+        renderer = item.effect_renderer
+        renderer._render_effect_surface(renderer.boundingRect(), 0.5)
+
+        with patch.object(
+            renderer, 'paint_stroke', wraps=renderer.paint_stroke
+        ) as paint_stroke:
+            item.set_text_effects(TextEffectStack(effects=(
+                stroke, HollowEffect()
+            )), preview=True)
+        self.assertEqual(paint_stroke.call_count, 0)
 
     def test_gradient_stroke_positions_flip_hollow_and_multiple_paints(self):
         def gradient(angle=0.0):
@@ -885,22 +1071,29 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertGreater(np.count_nonzero(self._render(inside)[..., 3]), 0)
         self.assertGreater(np.count_nonzero(self._render(outside)[..., 3]), 0)
 
-    def test_first_shadow_card_paints_on_top_within_exterior_phase(self):
+    def test_first_shadow_card_paints_on_top_in_shared_exterior_pixels(self):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(
-                paint=SolidPaint((255, 0, 0)), offset=(0.0, 0.0)
+                paint=SolidPaint((255, 0, 0)), offset=(0.18, 0.12)
             ),
             ShadowEffect(
-                paint=SolidPaint((0, 0, 255)), offset=(0.0, 0.0)
+                paint=SolidPaint((0, 0, 255)), offset=(0.18, 0.12)
             ),
         )))
-        pixels = pixmap2ndarray(
-            item.effect_renderer.background_pixmap, keep_alpha=True
+        renderer = item.effect_renderer
+        bounds = renderer.boundingRect()
+        base = pixmap2ndarray(
+            renderer._render_effect_base(bounds, 1.0), keep_alpha=True
         )
-        opaque = pixels[..., 3] > 200
+        pixels = pixmap2ndarray(
+            renderer._render_effect_surface(bounds, 1.0), keep_alpha=True
+        )
+        exterior = (base[..., 3] == 0) & (pixels[..., 3] > 200)
 
-        self.assertGreater(np.count_nonzero(opaque), 0)
-        self.assertTrue(np.all(pixels[..., 0][opaque] > pixels[..., 2][opaque]))
+        self.assertGreater(np.count_nonzero(exterior), 0)
+        self.assertTrue(np.all(
+            pixels[..., 0][exterior] > pixels[..., 2][exterior]
+        ))
 
     def test_drop_preserves_fractional_relative_offset(self):
         item = self._item(TextEffectStack())
@@ -915,17 +1108,18 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )
         alpha = pixmap2ndarray(pixmap, keep_alpha=True)[..., 3]
 
-        shifted = alpha[3, 3:5]
-        self.assertTrue(np.all(shifted > 0))
-        self.assertTrue(np.all(shifted < 255))
+        self.assertEqual(alpha[3, 3], 0)
+        self.assertGreater(alpha[3, 4], 0)
+        self.assertLess(alpha[3, 4], 255)
 
     def test_shadow_gradient_color_and_stop_opacity_share_block_coordinates(
         self,
     ):
         item = self._item(TextEffectStack())
         renderer = item.effect_renderer
-        source_alpha = np.full((1, 4), 255, dtype=np.uint8)
-        rect = QRectF(0, 0, 4, 1)
+        source_alpha = np.zeros((1, 6), dtype=np.uint8)
+        source_alpha[0, :2] = 255
+        rect = QRectF(0, 0, 6, 1)
         shadow = ShadowEffect(
             opacity=0.5,
             offset=(0.0, 0.0),
@@ -937,16 +1131,19 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         with patch.object(
             renderer, 'logical_unpadded_rect', return_value=rect
+        ), patch.object(
+            renderer, '_shadow_metrics', return_value=(0.0, 0.0, 2.0, 0.0)
         ):
             pixmap = renderer._shadow_pixmap(
                 source_alpha, shadow, rect, 1.0
             )
         pixels = pixmap2ndarray(pixmap, keep_alpha=True)
 
-        self.assertGreater(pixels[0, 0, 0], pixels[0, 0, 2])
-        self.assertGreater(pixels[0, -1, 2], pixels[0, -1, 0])
+        self.assertGreater(pixels[0, 2, 0], pixels[0, 2, 2])
+        self.assertGreater(pixels[0, 3, 2], pixels[0, 3, 0])
         np.testing.assert_array_equal(
-            pixels[..., 3], np.full((1, 4), 64, dtype=np.uint8)
+            pixels[..., 3],
+            np.array([[0, 0, 64, 64, 0, 0]], dtype=np.uint8),
         )
 
     def test_fractional_exterior_offsets_keep_horizontal_raster_guard(self):
@@ -1289,7 +1486,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         view.close()
 
     def test_custom_glyph_editing_keeps_completed_effect_surface(self):
-        gradient = GradientOverlayEffect(
+        gradient = TextFillEffect(
             paint=self._constant_gradient((0, 0, 255))
         )
         cases = (
@@ -1369,7 +1566,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
     def test_vertical_glyph_slant_selection_stays_above_gradient(self):
         item = self._item(
-            TextEffectStack(effects=(GradientOverlayEffect(
+            TextEffectStack(effects=(TextFillEffect(
                 paint=self._constant_gradient((0, 0, 255))
             ),)),
             vertical=True,
@@ -1412,7 +1609,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         block.vertical = True
         block.fontformat.frgb = [240, 20, 20]
         block.fontformat.text_effects = TextEffectStack(effects=(
-            GradientOverlayEffect(
+            TextFillEffect(
                 paint=self._constant_gradient((0, 0, 255))
             ),
         ))
@@ -1594,8 +1791,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ),)),
             ),
             (
-                TextEffectStack(effects=(GradientOverlayEffect(),)),
-                TextEffectStack(effects=(GradientOverlayEffect(
+                TextEffectStack(effects=(TextFillEffect(),)),
+                TextEffectStack(effects=(TextFillEffect(
                     paint=LinearGradientPaint(angle=90.0, scale=1.5),
                 ),)),
             ),
@@ -1635,8 +1832,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             position='inside',
             paint=LinearGradientPaint(),
         )
-        overlay = GradientOverlayEffect()
-        before = TextEffectStack(effects=(stroke, overlay))
+        text_fill = TextFillEffect()
+        before = TextEffectStack(effects=(stroke, text_fill))
         previews = tuple(
             TextEffectStack(effects=(
                 replace(
@@ -1655,7 +1852,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     ),
                 ),
                 replace(
-                    overlay,
+                    text_fill,
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, second, 0.7 * opacity),
@@ -1929,6 +2126,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     def test_positioned_stroke_band_is_reused_within_one_composite(self):
         generated_strokes = (
             StrokeEffect(width=0.18, position='outside'),
+            StrokeEffect(width=0.18, position='center'),
             StrokeEffect(
                 width=0.18,
                 position='center',
@@ -1983,14 +2181,14 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 renderer._render_pre_mask_effect_surface(
                     renderer.boundingRect(), 1.0
                 )
-        self.assertEqual(band.call_count, 0)
-        self.assertEqual(coverage.call_count, 0)
+        self.assertEqual(band.call_count, 1)
+        self.assertEqual(coverage.call_count, 1)
 
     def test_glow_allocation_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(GlowEffect(size=0.2),))
         interactive = self._item(TextEffectStack())
         with patch(
-            'ballontranslator.ui.text_engine.effect_renderer.'
+            'ballontranslator.ui.text_engine.effects.renderer.'
             'render_glow_alpha',
             side_effect=BufferError('Glow bridge failure'),
         ):
@@ -2002,7 +2200,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         exported.set_export_effect_render(True)
         try:
             with patch(
-                'ballontranslator.ui.text_engine.effect_renderer.'
+                'ballontranslator.ui.text_engine.effects.renderer.'
                 'render_glow_alpha',
                 side_effect=BufferError('strict Glow bridge failure'),
             ):
@@ -2013,13 +2211,13 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         finally:
             exported.set_export_effect_render(False)
 
-    def test_gradient_overlay_allocation_fallback_and_strict_export(self):
-        stack = TextEffectStack(effects=(GradientOverlayEffect(),))
+    def test_text_fill_allocation_fallback_and_strict_export(self):
+        stack = TextEffectStack(effects=(TextFillEffect(),))
         item = self._item(stack)
         with patch(
-            'ballontranslator.ui.text_engine.effect_renderer.'
+            'ballontranslator.ui.text_engine.effects.renderer.'
             'colorize_effect_paint_rgba',
-            side_effect=BufferError('overlay bridge failure'),
+            side_effect=BufferError('Text Fill bridge failure'),
         ):
             interactive = self._render(item)
         self.assertGreater(np.count_nonzero(interactive[..., 3]), 0)
@@ -2028,9 +2226,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         exported.set_export_effect_render(True)
         try:
             with patch(
-                'ballontranslator.ui.text_engine.effect_renderer.'
+                'ballontranslator.ui.text_engine.effects.renderer.'
                 'colorize_effect_paint_rgba',
-                side_effect=BufferError('strict overlay bridge failure'),
+                side_effect=BufferError('strict Text Fill bridge failure'),
             ):
                 self._render(exported)
             self.assertIsInstance(
@@ -2038,6 +2236,226 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             )
         finally:
             exported.set_export_effect_render(False)
+
+    def test_texture_fill_uses_project_asset_and_missing_export_is_strict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'blue.png')
+            Image.fromarray(np.full(
+                (2, 2, 4), (20, 60, 230, 255), dtype=np.uint8
+            ), 'RGBA').save(source_path)
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = project.import_raster_asset(source_path)
+            stack = TextEffectStack(effects=(TextFillEffect(
+                paint=TexturePaint(asset, mapping='tile', scale=1.5)
+            ),))
+
+            for vertical, transformed in (
+                (False, False), (True, False), (False, True)
+            ):
+                with self.subTest(vertical=vertical, transformed=transformed):
+                    item = self._item(stack, vertical=vertical)
+                    if transformed:
+                        item.set_text_transform(
+                            TextTransformStack((SineTextTransform(),))
+                        )
+                    scene = QGraphicsScene()
+                    scene.imgtrans_proj = project
+                    scene.addItem(item)
+                    item.effect_renderer.project_assets_changed()
+                    pixels = self._render(item)
+                    visible = pixels[..., 3] > 160
+                    self.assertTrue(np.any(visible))
+                    self.assertGreater(
+                        np.mean(pixels[..., 2][visible]),
+                        np.mean(pixels[..., 0][visible]),
+                    )
+
+            missing = RasterAssetRef(
+                'assets/' + 'b' * 64 + '.png', 'missing.png'
+            )
+            item = self._item(TextEffectStack(effects=(TextFillEffect(
+                paint=TexturePaint(missing)
+            ),)))
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            scene.addItem(item)
+            item.effect_renderer.project_assets_changed()
+            interactive = self._render(item)
+            visible = interactive[..., 3] > 160
+            self.assertTrue(np.any(visible))
+            self.assertGreater(
+                np.mean(interactive[..., 0][visible]),
+                np.mean(interactive[..., 2][visible]),
+            )
+
+            item.set_export_effect_render(True)
+            try:
+                self._render(item)
+                self.assertIsInstance(
+                    item.export_effect_error, EffectRasterAllocationError
+                )
+            finally:
+                item.set_export_effect_render(False)
+
+    def test_cached_texture_strict_export_rechecks_deleted_and_corrupt_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'blue.png')
+            Image.fromarray(np.full(
+                (3, 4, 4), (20, 60, 230, 255), dtype=np.uint8
+            ), 'RGBA').save(source_path)
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = project.import_raster_asset(source_path)
+            item = self._item(TextEffectStack(effects=(TextFillEffect(
+                paint=TexturePaint(asset)
+            ),)))
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            scene.addItem(item)
+            item.effect_renderer.project_assets_changed()
+
+            self._render(item)
+            installed_path = project.resolve_raster_asset(asset)
+            os.unlink(installed_path)
+            item.effect_renderer.project_assets_changed()
+            bypassed = self._render(item)
+            visible = bypassed[..., 3] > 160
+            self.assertGreater(
+                np.mean(bypassed[..., 0][visible]),
+                np.mean(bypassed[..., 2][visible]),
+            )
+            item.set_export_effect_render(True)
+            try:
+                self._render(item)
+                self.assertIsInstance(
+                    item.export_effect_error, EffectRasterAllocationError
+                )
+            finally:
+                item.set_export_effect_render(False)
+
+            restored = project.import_raster_asset(source_path)
+            self.assertEqual(restored, asset)
+            item.effect_renderer.project_assets_changed()
+            self._render(item)
+            with open(project.resolve_raster_asset(asset), 'wb') as installed:
+                installed.write(b'corrupt')
+            item.set_export_effect_render(True)
+            try:
+                self._render(item)
+                self.assertIsInstance(
+                    item.export_effect_error, EffectRasterAllocationError
+                )
+            finally:
+                item.set_export_effect_render(False)
+
+    def test_missing_texture_recovers_after_restore_and_invalidation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'recover.png')
+            Image.fromarray(np.full(
+                (3, 4, 4), (20, 190, 230, 255), dtype=np.uint8
+            ), 'RGBA').save(source_path)
+            with open(source_path, 'rb') as source:
+                digest = hashlib.sha256(source.read()).hexdigest()
+            asset = RasterAssetRef(
+                f'assets/{digest}.png', 'recover.png'
+            )
+            project = ProjImgTrans()
+            project.directory = directory
+            item = self._item(TextEffectStack(effects=(TextFillEffect(
+                paint=TexturePaint(asset)
+            ),)))
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            scene.addItem(item)
+            item.effect_renderer.project_assets_changed()
+
+            missing = self._render(item)
+            visible = missing[..., 3] > 160
+            self.assertGreater(
+                np.mean(missing[..., 0][visible]),
+                np.mean(missing[..., 2][visible]),
+            )
+
+            os.makedirs(project.assets_dir())
+            shutil.copyfile(
+                source_path,
+                os.path.join(project.assets_dir(), f'{digest}.png'),
+            )
+            item.effect_renderer.project_assets_changed()
+            recovered = self._render(item)
+            visible = recovered[..., 3] > 160
+            self.assertGreater(
+                np.mean(recovered[..., 2][visible]),
+                np.mean(recovered[..., 0][visible]),
+            )
+
+    def test_forced_tiles_match_full_texture_surface_and_reuse_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'pattern.png')
+            pattern = np.array(
+                [
+                    [[230, 20, 40, 255], [20, 200, 60, 255]],
+                    [[40, 60, 230, 255], [210, 190, 20, 255]],
+                ],
+                dtype=np.uint8,
+            )
+            Image.fromarray(pattern, 'RGBA').save(source_path)
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = project.import_raster_asset(source_path)
+            stack = TextEffectStack(effects=(TextFillEffect(
+                paint=TexturePaint(asset, mapping='tile', scale=1.5)
+            ),))
+            item = self._item(stack)
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            scene.addItem(item)
+            renderer = item.effect_renderer
+            renderer.project_assets_changed()
+            bounds = renderer.boundingRect()
+
+            project._raster_asset_cache.clear()
+            renderer.release_caches()
+            with patch.object(
+                project,
+                '_decode_raster_asset_snapshot',
+                wraps=project._decode_raster_asset_snapshot,
+            ) as decode, patch.object(
+                renderer,
+                '_capture_effect_source',
+                wraps=renderer._capture_effect_source,
+            ) as capture:
+                full = renderer._render_effect_surface(bounds, 1.0)
+                changed = replace(
+                    stack.effects[0].paint, mapping='crop', scale=0.75
+                )
+                item.set_text_effects(TextEffectStack(effects=(
+                    replace(stack.effects[0], paint=changed),
+                )))
+                renderer._render_effect_surface(bounds, 1.0)
+            self.assertEqual(decode.call_count, 1)
+            self.assertEqual(capture.call_count, 1)
+
+            item.set_text_effects(stack)
+            renderer.tile_cache.clear()
+            full = renderer._render_effect_surface(bounds, 1.0)
+            tiled = renderer._new_effect_pixmap(1.0, bounds)
+            painter = QPainter(tiled)
+            painter.translate(-bounds.topLeft())
+            renderer.tile_cache.clear()
+            try:
+                renderer._draw_tiled_effects(
+                    painter,
+                    EffectRasterPlan('tiles', 1.0, 0, 0, 64),
+                    bounds,
+                )
+            finally:
+                painter.end()
+            np.testing.assert_array_equal(
+                pixmap2ndarray(full, keep_alpha=True),
+                pixmap2ndarray(tiled, keep_alpha=True),
+            )
 
     def test_forced_tiles_match_full_typed_effect_surface(self):
         stacks = (
@@ -2079,7 +2497,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     size=0.06,
                     spread=0.02,
                 ),
-                GradientOverlayEffect(
+                TextFillEffect(
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, (40, 80, 220), 0.4),
@@ -2134,6 +2552,65 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                         pixmap2ndarray(tiled, keep_alpha=True),
                     )
 
+    def test_two_filter_cumulative_halos_match_full_at_absolute_origins(self):
+        stack = TextEffectStack(effects=(
+            FilterEffect('builtin:grain', params={
+                'amount': 0.55, 'size': 3.4, 'seed': 17,
+            }),
+            GlowEffect(size=0.08, spread=0.03),
+            FilterEffect('builtin:rough_edge', params={
+                'amount': 0.7, 'size': 2.7,
+                'hardness': 0.35, 'seed': 29,
+            }),
+        ))
+        item = self._item(stack)
+        renderer = item.effect_renderer
+        bounds = renderer.boundingRect()
+        logical = renderer.logical_unpadded_rect()
+        self.assertLess(bounds.left() - logical.left(), 0.0)
+        self.assertLess(bounds.top() - logical.top(), 0.0)
+
+        for scale in (1.0, 2.0):
+            with self.subTest(scale=scale):
+                renderer.release_caches()
+                full = renderer._render_effect_surface(bounds, scale)
+                tiled = renderer._new_effect_pixmap(scale, bounds)
+                painter = QPainter(tiled)
+                painter.translate(-bounds.topLeft())
+                try:
+                    renderer._draw_tiled_effects(
+                        painter,
+                        EffectRasterPlan('tiles', scale, 0, 0, 96),
+                        bounds,
+                    )
+                finally:
+                    painter.end()
+                np.testing.assert_array_equal(
+                    pixmap2ndarray(full, keep_alpha=True),
+                    pixmap2ndarray(tiled, keep_alpha=True),
+                )
+
+    def test_filter_only_receives_horizontal_and_vertical_canonical_text(self):
+        stack = TextEffectStack(effects=(FilterEffect(
+            'builtin:noise', params={
+                'amount': 0.8, 'mode': 'monochrome', 'seed': 5,
+            }
+        ),))
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item = self._item(stack, vertical=vertical)
+                pixels = pixmap2ndarray(
+                    item.effect_renderer._render_effect_surface(
+                        item.effect_renderer.boundingRect(), 1.0
+                    ),
+                    keep_alpha=True,
+                )
+                self.assertGreater(np.count_nonzero(pixels[:, :, 3]), 0)
+                visible = pixels[:, :, 3] > 128
+                self.assertGreater(
+                    np.unique(pixels[:, :, 0][visible]).size, 1
+                )
+
     def test_hollow_bridge_failures_use_safe_fallback_and_strict_export(self):
         stack = TextEffectStack(effects=(
             StrokeEffect(width=0.2, position='center'), HollowEffect()
@@ -2146,7 +2623,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             with self.subTest(error=type(error).__name__):
                 item = self._item(TextEffectStack())
                 with patch(
-                    'ballontranslator.ui.text_engine.effect_renderer.'
+                    'ballontranslator.ui.text_engine.effects.renderer.'
                     'pixmap2ndarray',
                     side_effect=error,
                 ):
@@ -2158,7 +2635,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item.set_export_effect_render(True)
         try:
             with patch(
-                'ballontranslator.ui.text_engine.effect_renderer.'
+                'ballontranslator.ui.text_engine.effects.renderer.'
                 'pixmap2ndarray',
                 side_effect=BufferError('strict bridge failure'),
             ):

@@ -3,17 +3,23 @@
 import math
 import threading
 
+import cv2
 import numpy as np
 
 from qtpy.QtCore import QRectF
 from qtpy.QtGui import QImage, QPainter, QPalette
 
 from ballontranslator.utils.text_effects import (
-    EffectPaint,
+    GeneratedEffectPaint,
     LinearGradientPaint,
     SolidPaint,
+    TexturePaint,
 )
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.rgba import (
+    premultiply_rgba_in_place,
+    unpremultiply_rgba_in_place,
+)
 
 from ...misc import ndarray2pixmap
 
@@ -30,7 +36,7 @@ def start_effect_paint_numba_warmup() -> threading.Thread:
     def warmup() -> None:
         global _numba_colorize_linear_gradient_rgba
         try:
-            from .effect_paint_numba import (
+            from .paint_numba import (
                 colorize_linear_gradient_rgba,
                 warm_effect_paint_numba_cache,
             )
@@ -61,7 +67,7 @@ def _compiled_colorize_linear_gradient_rgba(*args, **kwargs) -> bool:
 
 
 def colorize_effect_paint_rgba(
-    paint: EffectPaint,
+    paint: GeneratedEffectPaint,
     rgba: np.ndarray,
     surface_rect: QRectF,
     logical_rect: QRectF,
@@ -91,7 +97,7 @@ def colorize_effect_paint_rgba(
         rgba[..., :3] = paint.color
         return rgba
     if not isinstance(paint, LinearGradientPaint):
-        raise TypeError('effect paint raster requires EffectPaint')
+        raise TypeError('generated effect paint requires Solid or Gradient')
 
     height, width = rgba.shape[:2]
     center = logical_rect.center()
@@ -226,8 +232,142 @@ def colorize_effect_paint_rgba(
     return rgba
 
 
+def colorize_texture_paint_rgba(
+    paint: TexturePaint,
+    rgba: np.ndarray,
+    texture_rgba: np.ndarray,
+    surface_rect: QRectF,
+    logical_rect: QRectF,
+    render_scale: float,
+    *,
+    texture_premultiplied: bool = False,
+) -> np.ndarray:
+    """Map required RGBA8 texture pixels in absolute logical coordinates.
+
+    >>> callable(colorize_texture_paint_rgba)
+    True
+    """
+    if not isinstance(paint, TexturePaint):
+        raise TypeError('texture colorization requires TexturePaint')
+    if (
+        not isinstance(rgba, np.ndarray)
+        or rgba.dtype != np.uint8
+        or rgba.ndim != 3
+        or rgba.shape[2] != 4
+    ):
+        raise TypeError('texture paint target must be a uint8 RGBA array')
+    if not math.isfinite(render_scale) or render_scale <= 0.0:
+        raise ValueError('texture paint raster scale must be positive')
+    if (
+        not isinstance(texture_rgba, np.ndarray)
+        or texture_rgba.dtype != np.uint8
+        or texture_rgba.ndim != 3
+        or texture_rgba.shape[2] != 4
+        or not texture_rgba.shape[0]
+        or not texture_rgba.shape[1]
+    ):
+        raise ValueError('texture paint requires a uint8 RGBA raster')
+    height, width = rgba.shape[:2]
+    texture_height, texture_width = texture_rgba.shape[:2]
+    logical_width = logical_rect.width()
+    logical_height = logical_rect.height()
+    if logical_width <= 0.0 or logical_height <= 0.0:
+        rgba[..., :3] = texture_rgba[0, 0, :3]
+        rgba[..., 3] = 0
+        return rgba
+    has_transparency = texture_premultiplied or not np.all(
+        texture_rgba[..., 3] == 255
+    )
+    texture_source = texture_rgba
+    if has_transparency and not texture_premultiplied:
+        texture_source = np.array(texture_rgba, copy=True, order='C')
+        premultiply_rgba_in_place(texture_source)
+
+    x = (
+        surface_rect.left()
+        + (np.arange(width, dtype=np.float32) + 0.5) / render_scale
+    )
+    if paint.mapping == 'fill':
+        map_x = (
+            (x - logical_rect.left()) * texture_width / logical_width - 0.5
+        )
+        mapped_width = logical_width
+        mapped_height = logical_height
+        mapped_left = logical_rect.left()
+        mapped_top = logical_rect.top()
+        border_mode = cv2.BORDER_REPLICATE
+    elif paint.mapping in {'fit', 'crop'}:
+        factor = (
+            min(
+                logical_width / texture_width,
+                logical_height / texture_height,
+            )
+            if paint.mapping == 'fit'
+            else max(
+                logical_width / texture_width,
+                logical_height / texture_height,
+            )
+        )
+        mapped_width = texture_width * factor
+        mapped_height = texture_height * factor
+        mapped_left = logical_rect.center().x() - mapped_width / 2.0
+        mapped_top = logical_rect.center().y() - mapped_height / 2.0
+        map_x = (x - mapped_left) * texture_width / mapped_width - 0.5
+        border_mode = cv2.BORDER_CONSTANT
+    else:
+        mapped_width = texture_width * paint.scale
+        mapped_height = texture_height * paint.scale
+        mapped_left = logical_rect.left()
+        mapped_top = logical_rect.top()
+        map_x = (
+            (x - mapped_left) * texture_width / mapped_width - 0.5
+        )
+        border_mode = cv2.BORDER_WRAP
+
+    for row_start in range(0, height, 256):
+        row_end = min(height, row_start + 256)
+        y = (
+            surface_rect.top()
+            + (np.arange(row_start, row_end, dtype=np.float32) + 0.5)
+            / render_scale
+        )
+        map_y = (y - mapped_top) * texture_height / mapped_height - 0.5
+        map_x_grid = np.broadcast_to(
+            map_x[None, :], (row_end - row_start, width)
+        )
+        map_y_grid = np.broadcast_to(
+            map_y[:, None], (row_end - row_start, width)
+        )
+        sampled = cv2.remap(
+            texture_source,
+            map_x_grid,
+            map_y_grid,
+            cv2.INTER_LINEAR,
+            borderMode=border_mode,
+            borderValue=(0, 0, 0, 0),
+        )
+        if paint.mapping == 'fit':
+            inside = (
+                (x[None, :] >= mapped_left)
+                & (x[None, :] < mapped_left + mapped_width)
+                & (y[:, None] >= mapped_top)
+                & (y[:, None] < mapped_top + mapped_height)
+            )
+            sampled[~inside] = 0
+        if has_transparency:
+            unpremultiply_rgba_in_place(sampled)
+        target = rgba[row_start:row_end]
+        target[..., :3] = sampled[..., :3]
+        product = target[..., 3].astype(np.uint16)
+        product *= sampled[..., 3].astype(np.uint16)
+        product += 127
+        product //= 255
+        target[..., 3] = product.astype(np.uint8)
+    return rgba
+
+
 def rasterize_effect_paint(
-    paint: EffectPaint,
+    paint: GeneratedEffectPaint,
     surface_rect: QRectF,
     logical_rect: QRectF,
     render_scale: float,
@@ -252,12 +392,16 @@ def rasterize_effect_paint(
     result = np.empty((height, width, 4), dtype=np.uint8)
     result[..., 3] = 255
     return colorize_effect_paint_rgba(
-        paint, result, surface_rect, logical_rect, render_scale
+        paint,
+        result,
+        surface_rect,
+        logical_rect,
+        render_scale,
     )
 
 
 def effect_paint_preview_image(
-    paint: EffectPaint,
+    paint: GeneratedEffectPaint,
     logical_rect: QRectF,
     render_scale: float,
 ) -> QImage:
@@ -279,7 +423,7 @@ def effect_paint_preview_image(
 def paint_effect_paint_preview(
     painter: QPainter,
     rect: QRectF,
-    paint: EffectPaint,
+    paint: GeneratedEffectPaint,
     palette: QPalette,
     render_scale: float,
 ) -> None:

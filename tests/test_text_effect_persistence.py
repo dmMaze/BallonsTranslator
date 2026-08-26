@@ -1,10 +1,12 @@
+import hashlib
 import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
+from PIL import Image
 
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import (
@@ -20,9 +22,16 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.io_utils import json_dump_nested_obj
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
+from ballontranslator.utils.raster_assets import (
+    RasterAssetRef,
+    coerce_raster_asset_ref,
+)
+from ballontranslator.utils.rendered_image import RenderedImageLayer
+from ballontranslator.utils.rgba import premultiply_rgba_in_place
 from ballontranslator.utils.text_effects import (
+    FilterEffect,
     GlowEffect,
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -30,6 +39,7 @@ from ballontranslator.utils.text_effects import (
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
+    TexturePaint,
     primary_stroke,
 )
 from ballontranslator.utils.textblock import (
@@ -39,6 +49,375 @@ from ballontranslator.utils.textblock import (
 
 
 class TextEffectPersistenceTest(unittest.TestCase):
+    def test_rendered_image_layer_round_trip_and_permissive_failure(self):
+        asset = RasterAssetRef(
+            'assets/' + 'c' * 64 + '.png', 'rendered.png'
+        )
+        layer = RenderedImageLayer(asset, enabled=False, mode='overlay')
+        block = TextBlock(rendered_image=layer)
+        block.translation = 'preserved'
+
+        payload = json.loads(json.dumps(block, cls=TextBlkEncoder))
+        restored = TextBlock(**payload)
+        self.assertEqual(restored.rendered_image, layer)
+
+        payload['rendered_image']['version'] = 99
+        malformed = TextBlock(**payload)
+        self.assertIsNone(malformed.rendered_image)
+        self.assertEqual(malformed.translation, 'preserved')
+        self.assertIsNone(TextBlock().rendered_image)
+
+    def test_raster_asset_payload_coercion_is_shared_and_strict(self):
+        payload = {'path': 'assets/' + 'd' * 64 + '.webp'}
+        self.assertEqual(coerce_raster_asset_ref(payload).digest, 'd' * 64)
+        with self.assertRaises(ValueError):
+            coerce_raster_asset_ref({**payload, 'future': True})
+
+    def test_raster_import_hashes_and_decodes_one_stable_snapshot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'changing.png')
+            red = np.full((2, 3, 4), (230, 20, 30, 255), dtype=np.uint8)
+            blue = np.full((2, 3, 4), (20, 30, 230, 255), dtype=np.uint8)
+            Image.fromarray(red).save(source_path)
+            with open(source_path, 'rb') as source:
+                original_bytes = source.read()
+            real_image_open = Image.open
+
+            def mutate_source_after_snapshot(path, *args, **kwargs):
+                if os.path.basename(path).startswith('.import-'):
+                    Image.fromarray(blue).save(source_path)
+                return real_image_open(path, *args, **kwargs)
+
+            project = ProjImgTrans()
+            project.directory = directory
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.Image.open',
+                side_effect=mutate_source_after_snapshot,
+            ):
+                asset = project.import_raster_asset(source_path)
+
+            self.assertEqual(
+                asset.digest, hashlib.sha256(original_bytes).hexdigest()
+            )
+            with open(project.resolve_raster_asset(asset), 'rb') as installed:
+                self.assertEqual(installed.read(), original_bytes)
+            np.testing.assert_array_equal(
+                project.load_raster_asset(asset), red
+            )
+
+    def test_raster_import_rejects_resource_bombs_and_wide_channels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = ProjImgTrans()
+            project.directory = directory
+            source_path = os.path.join(directory, 'texture.png')
+            Image.fromarray(np.zeros((3, 3, 4), dtype=np.uint8)).save(
+                source_path
+            )
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.'
+                'RASTER_ASSET_MAX_SOURCE_BYTES',
+                1,
+            ):
+                with self.assertRaises(ValueError):
+                    project.import_raster_asset(source_path)
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.Image.open',
+                side_effect=Image.DecompressionBombError('too large'),
+            ):
+                with self.assertRaises(ValueError):
+                    project.import_raster_asset(source_path)
+
+            wide_path = os.path.join(directory, 'wide.png')
+            Image.fromarray(
+                np.array([[0, 65535]], dtype=np.uint16)
+            ).save(wide_path)
+            with self.assertRaises(ValueError):
+                project.import_raster_asset(wide_path)
+
+    def test_raster_decode_accepts_full_page_texture_dimensions(self):
+        with tempfile.NamedTemporaryFile() as source:
+            height, width = 7016, 4960
+            rgba = np.broadcast_to(
+                np.zeros((1, 1, 4), dtype=np.uint8),
+                (height, width, 4),
+            )
+            image = MagicMock()
+            image.__enter__.return_value = image
+            image.format = 'PNG'
+            image.size = (width, height)
+            image.mode = 'RGB'
+
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.Image.open',
+                return_value=image,
+            ), patch(
+                'ballontranslator.utils.proj_imgtrans.np.array',
+                return_value=rgba,
+            ), patch(
+                'ballontranslator.utils.proj_imgtrans.np.ascontiguousarray',
+                return_value=rgba,
+            ):
+                extension, decoded = ProjImgTrans._decode_raster_asset_snapshot(
+                    source.name
+                )
+
+            self.assertEqual(extension, '.png')
+            self.assertEqual(decoded.shape, (height, width, 4))
+
+    def test_raster_decode_cache_is_byte_bounded(self):
+        project = ProjImgTrans()
+        first = RasterAssetRef('assets/' + 'a' * 64 + '.png')
+        second = RasterAssetRef('assets/' + 'b' * 64 + '.png')
+        pixels = np.zeros((2, 2, 4), dtype=np.uint8)
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.'
+            'RASTER_ASSET_DECODE_CACHE_MAX_BYTES',
+            pixels.nbytes,
+        ):
+            project._cache_raster_asset(first, pixels, (1, 1, 1, 1))
+            project._cache_raster_asset(second, pixels.copy(), (2, 2, 2, 2))
+
+        self.assertEqual(tuple(project._raster_asset_cache), (second.path,))
+
+    def test_changed_raster_bytes_are_reverified_before_interactive_decode(self):
+        for replacement in ('invalid-bytes', 'valid-wrong-digest'):
+            with (
+                self.subTest(replacement=replacement),
+                tempfile.TemporaryDirectory() as directory,
+            ):
+                source_path = os.path.join(directory, 'source.png')
+                red = np.full(
+                    (2, 3, 4), (230, 20, 30, 255), dtype=np.uint8
+                )
+                Image.fromarray(red, 'RGBA').save(source_path)
+                project = ProjImgTrans()
+                project.directory = directory
+                asset = project.import_raster_asset(source_path)
+                np.testing.assert_array_equal(
+                    project.load_raster_asset(asset), red
+                )
+                installed = project.resolve_raster_asset(asset)
+                if replacement == 'invalid-bytes':
+                    with open(installed, 'wb') as handle:
+                        handle.write(b'not an image')
+                else:
+                    project._raster_asset_cache.clear()
+                    blue = np.full(
+                        (2, 3, 4), (20, 30, 230, 255), dtype=np.uint8
+                    )
+                    Image.fromarray(blue, 'RGBA').save(installed)
+
+                with patch(
+                    'ballontranslator.utils.proj_imgtrans.LOGGER.warning'
+                ) as warning:
+                    self.assertIsNone(project.load_raster_asset(asset))
+                warning.assert_called_once()
+                with self.assertRaises(OSError):
+                    project.load_raster_asset(asset, strict=True)
+
+    def test_non_strict_raster_stat_race_bypasses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'source.png')
+            Image.fromarray(
+                np.zeros((2, 3, 4), dtype=np.uint8), 'RGBA'
+            ).save(source_path)
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = project.import_raster_asset(source_path)
+
+            with patch.object(
+                project,
+                '_raster_asset_signature',
+                side_effect=FileNotFoundError('changed during resolve'),
+            ), patch(
+                'ballontranslator.utils.proj_imgtrans.LOGGER.warning'
+            ) as warning:
+                self.assertIsNone(project.load_raster_asset(asset))
+            warning.assert_called_once()
+
+    def test_strict_raster_load_rejects_replacement_after_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'source.png')
+            replacement_path = os.path.join(directory, 'replacement.png')
+            red = np.full((2, 3, 4), (230, 20, 30, 255), dtype=np.uint8)
+            blue = np.full((2, 3, 4), (20, 30, 230, 255), dtype=np.uint8)
+            Image.fromarray(red, 'RGBA').save(source_path)
+            Image.fromarray(blue, 'RGBA').save(replacement_path)
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = project.import_raster_asset(source_path)
+            installed = project.resolve_raster_asset(asset)
+            original_hash = project._hash_raster_asset_file
+
+            def replace_after_hash(path):
+                digest = original_hash(path)
+                os.replace(replacement_path, path)
+                return digest
+
+            with patch.object(
+                project,
+                '_hash_raster_asset_file',
+                side_effect=replace_after_hash,
+            ) as raster_hash:
+                with self.assertRaisesRegex(OSError, 'changed while'):
+                    project.load_raster_asset(asset, strict=True)
+            raster_hash.assert_called_once_with(installed)
+            self.assertNotIn(asset.path, project._raster_asset_cache)
+
+    def test_project_cache_reuses_and_invalidates_premultiplied_pixels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'source.png')
+            straight = np.full(
+                (2, 3, 4), (200, 100, 50, 128), dtype=np.uint8
+            )
+            Image.fromarray(straight, 'RGBA').save(source_path)
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = project.import_raster_asset(source_path)
+
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.'
+                'premultiply_rgba_in_place',
+                wraps=premultiply_rgba_in_place,
+            ) as premultiply, patch.object(
+                project,
+                '_hash_raster_asset_file',
+                side_effect=AssertionError('warm interactive hit hashed'),
+            ):
+                first = project.load_raster_asset(asset, premultiplied=True)
+                second = project.load_raster_asset(asset, premultiplied=True)
+                self.assertIs(first, second)
+                self.assertFalse(first.flags.writeable)
+                self.assertEqual(first[0, 0].tolist(), [100, 50, 25, 128])
+                np.testing.assert_array_equal(
+                    project.load_raster_asset(asset), straight
+                )
+                self.assertEqual(premultiply.call_count, 1)
+
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.'
+                'premultiply_rgba_in_place',
+                wraps=premultiply_rgba_in_place,
+            ) as premultiply:
+                self.assertEqual(project.import_raster_asset(source_path), asset)
+                project.load_raster_asset(asset, premultiplied=True)
+                self.assertEqual(premultiply.call_count, 1)
+
+    def test_project_imports_and_resolves_content_addressed_raster_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = os.path.join(directory, 'paper texture.png')
+            Image.fromarray(np.array([
+                [[255, 0, 0, 255], [0, 255, 0, 128]],
+            ], dtype=np.uint8), 'RGBA').save(source_path)
+            project = ProjImgTrans()
+            project.directory = directory
+
+            first = project.import_raster_asset(source_path)
+            second = project.import_raster_asset(source_path)
+            resolved = project.resolve_raster_asset(first)
+
+            self.assertEqual(first, second)
+            self.assertIsInstance(first, RasterAssetRef)
+            self.assertEqual(first.display_name, 'paper texture.png')
+            self.assertTrue(first.path.startswith('assets/'))
+            self.assertTrue(os.path.isfile(resolved))
+            self.assertEqual(
+                TextFillEffect(paint=TexturePaint(first)).to_serializable_dict()[
+                    'paint'
+                ]['asset']['path'],
+                first.path,
+            )
+
+            with open(resolved, 'wb') as installed:
+                installed.write(b'corrupt')
+            with self.assertRaises(OSError):
+                project.import_raster_asset(source_path)
+
+            os.unlink(resolved)
+            with patch(
+                'ballontranslator.utils.proj_imgtrans.LOGGER.warning'
+            ) as warning:
+                self.assertIsNone(project.resolve_raster_asset(first))
+            warning.assert_called_once()
+            with self.assertRaises(FileNotFoundError):
+                project.resolve_raster_asset(first, strict=True)
+
+            jxl_path = os.path.join(directory, 'paper texture.jxl')
+            Image.fromarray(np.zeros((2, 2, 4), dtype=np.uint8)).save(jxl_path)
+            self.assertTrue(
+                project.import_raster_asset(jxl_path).path.endswith('.jxl')
+            )
+
+    def test_project_raster_assets_cannot_escape_through_a_symlink(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                tempfile.TemporaryDirectory() as outside:
+            source_path = os.path.join(directory, 'texture.png')
+            Image.fromarray(np.zeros((2, 2, 4), dtype=np.uint8)).save(
+                source_path
+            )
+            try:
+                os.symlink(outside, os.path.join(directory, 'assets'))
+            except OSError as error:
+                self.skipTest(f'symlink creation is unavailable: {error}')
+            project = ProjImgTrans()
+            project.directory = directory
+
+            with self.assertRaises(OSError):
+                project.import_raster_asset(source_path)
+            asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
+            self.assertIsNone(project.resolve_raster_asset(asset))
+            with self.assertRaises(FileNotFoundError):
+                project.resolve_raster_asset(asset, strict=True)
+
+    def test_application_styles_discard_only_project_texture_fills(self):
+        asset = RasterAssetRef('assets/' + 'a' * 64 + '.png', 'paper.png')
+        stack = TextEffectStack(effects=(
+            StrokeEffect(width=0.25),
+            TextFillEffect(paint=TexturePaint(asset)),
+            GlowEffect(size=0.2),
+        ))
+        payload = FontFormat(text_effects=stack).to_serializable_dict()
+        with tempfile.TemporaryDirectory() as directory:
+            style_path = os.path.join(directory, 'styles.json')
+            config_path = os.path.join(directory, 'config.json')
+            with open(style_path, 'w', encoding='utf8') as handle:
+                json.dump([payload], handle)
+            with open(config_path, 'w', encoding='utf8') as handle:
+                json.dump({'global_fontformat': payload}, handle)
+            old_styles = list(text_styles)
+            old_style_path = pcfg.text_styles_path
+            try:
+                load_textstyle_from(style_path)
+                config = ProgramConfig.load(config_path)
+                expected = (StrokeEffect(width=0.25), GlowEffect(size=0.2))
+                self.assertEqual(text_styles[0].text_effects.effects, expected)
+                self.assertEqual(
+                    config.global_fontformat.text_effects.effects, expected
+                )
+            finally:
+                text_styles[:] = old_styles
+                pcfg.text_styles_path = old_style_path
+
+    def test_project_payload_passively_preserves_texture_fill_reference(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'missing-paper.png'
+        )
+        stack = TextEffectStack(effects=(
+            StrokeEffect(width=0.25),
+            TextFillEffect(
+                paint=TexturePaint(asset, mapping='tile', scale=1.5)
+            ),
+        ))
+        block = TextBlock()
+        block.fontformat.text_effects = stack
+
+        payload = json.loads(json.dumps(block, cls=TextBlkEncoder))
+        normalized, _notices = normalize_textblock_effect_payload(payload)
+        restored = TextBlock(**normalized)
+
+        self.assertEqual(restored.fontformat.text_effects, stack)
+
     def test_passive_normalization_does_not_share_bridge_lists(self):
         first_payload, _ = normalize_fontformat_effect_payload({})
         second_payload, _ = normalize_fontformat_effect_payload({})
@@ -81,15 +460,15 @@ class TextEffectPersistenceTest(unittest.TestCase):
         )
         self.assertEqual(explicit_empty.stroke_width, 0.0)
 
-        overlay = GradientOverlayEffect()
-        authoritative_overlay = FontFormat(
-            text_effects=TextEffectStack(effects=(overlay,)),
+        text_fill = TextFillEffect()
+        authoritative_text_fill = FontFormat(
+            text_effects=TextEffectStack(effects=(text_fill,)),
             gradient_enabled=True,
             gradient_start_color=[255, 0, 0],
             gradient_end_color=[0, 0, 255],
         )
         self.assertEqual(
-            authoritative_overlay.text_effects.effects, (overlay,)
+            authoritative_text_fill.text_effects.effects, (text_fill,)
         )
 
         with patch(
@@ -236,13 +615,16 @@ class TextEffectPersistenceTest(unittest.TestCase):
     def test_style_and_global_config_loaders_migrate_once_per_owner(self):
         old_styles = list(text_styles)
         old_style_path = pcfg.text_styles_path
-        overlay_stack = TextEffectStack(effects=(
-            GradientOverlayEffect(
+        text_fill_stack = TextEffectStack(effects=(
+            TextFillEffect(
                 paint=LinearGradientPaint(angle=35.0, scale=1.2),
             ),
         ))
-        legacy_overlay_payload = overlay_stack.to_serializable_dict()
-        legacy_overlay_payload['effects'][0]['opacity'] = 0.65
+        legacy_gradient_payload = text_fill_stack.to_serializable_dict()
+        legacy_gradient_payload['effects'][0][
+            'effect_type'
+        ] = 'gradient_overlay'
+        legacy_gradient_payload['effects'][0]['opacity'] = 0.65
         with tempfile.TemporaryDirectory() as directory:
             style_path = os.path.join(directory, 'styles.json')
             config_path = os.path.join(directory, 'config.json')
@@ -257,8 +639,8 @@ class TextEffectPersistenceTest(unittest.TestCase):
                     },
                     {'gradient_enabled': True},
                     {
-                        '_style_name': 'typed overlay',
-                        'text_effects': legacy_overlay_payload,
+                        '_style_name': 'typed text_fill',
+                        'text_effects': legacy_gradient_payload,
                     },
                 ], handle)
             with open(config_path, 'w', encoding='utf8') as handle:
@@ -281,7 +663,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 self.assertEqual(len(text_styles), 3)
                 self.assertEqual(text_styles[0].opacity, 0.6)
                 self.assertEqual(text_styles[0].stroke_width, 0.2)
-                self.assertEqual(text_styles[2].text_effects, overlay_stack)
+                self.assertEqual(text_styles[2].text_effects, text_fill_stack)
 
                 with patch(
                     'ballontranslator.utils.fontformat.LOGGER.warning'
@@ -299,16 +681,16 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 )
                 self.assertEqual(
                     saved_styles[2]['text_effects'],
-                    overlay_stack.to_serializable_dict(),
+                    text_fill_stack.to_serializable_dict(),
                 )
 
-                config.global_fontformat.text_effects = overlay_stack
+                config.global_fontformat.text_effects = text_fill_stack
                 saved_config = json.loads(json_dump_program_config(config))
                 with open(config_path, 'w', encoding='utf8') as handle:
                     json.dump(saved_config, handle)
                 reloaded = ProgramConfig.load(config_path)
                 self.assertEqual(
-                    reloaded.global_fontformat.text_effects, overlay_stack
+                    reloaded.global_fontformat.text_effects, text_fill_stack
                 )
             finally:
                 text_styles[:] = old_styles
@@ -347,7 +729,7 @@ class TextEffectPersistenceTest(unittest.TestCase):
                     position='inside',
                 ),
                 HollowEffect(enabled=False),
-                GradientOverlayEffect(
+                TextFillEffect(
                     paint=LinearGradientPaint(stops=(
                         GradientStop(0.0, (90, 80, 70), 0.2),
                         GradientStop(1.0, (10, 20, 30), 1.0),
@@ -384,6 +766,11 @@ class TextEffectPersistenceTest(unittest.TestCase):
             GlowEffect(size=0.3, spread=0.1),
             StrokeEffect(paint=LinearGradientPaint()),
             HollowEffect(),
+            FilterEffect(
+                'future:grain',
+                schema_version=8,
+                params={'future': 'preserved', 'amount': 0.4},
+            ),
         ))
         payload = FontFormat(text_effects=stack).to_serializable_dict()
         with tempfile.TemporaryDirectory() as directory:

@@ -14,23 +14,25 @@ Projective, Bend, Sine Wave, Grid, and Glyph Slant.
 Project JSON
   -> TextBlock + FontFormat.text_effects    persistent state
                + TextBlock.text_alpha_mask
+               + TextBlock.rendered_image
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
-  -> TextEffectRenderer                     fixed effect phases + fill
+  -> TextEffectRenderer                     ordered generated/filter stack + fill
   -> TextItemGeometryController             bounds and visual mapping
   -> QGraphicsScene                         interaction, view, export
 ```
 
 | Concern | Owner | Main files |
 | --- | --- | --- |
-| Block content, logical rectangle, angle, metadata, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
+| Block content, logical rectangle, angle, metadata, Rendered Image, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
 | Persistent typography, transforms, and immutable effect stack | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py), [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Shaping and placement | `SceneTextLayout` and its writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
-| Fill, effects, raster bounds | `TextEffectRenderer` and rendering helpers | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
+| Fill, effects, raster bounds | `TextEffectRenderer` and effect helpers | [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
+| Reusable content-addressed raster assets | `ProjImgTrans` | [`utils/proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
 | Bounds, transforms, and input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py), [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
-| Alpha-mask brush input, preview, and undo | Canvas-owned `TextAlphaMaskEditSession` | [`ui/text_engine/alpha_mask_edit_session.py`](../../ballontranslator/ui/text_engine/alpha_mask_edit_session.py), [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
+| Alpha-mask brush input, preview, and undo | Canvas-owned `TextAlphaMaskEditSession` | [`ui/text_engine/effects/alpha_mask_edit_session.py`](../../ballontranslator/ui/text_engine/effects/alpha_mask_edit_session.py), [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
 | Paired editors and undo integration | `SceneTextManager` | [`ui/text_engine/editing/`](../../ballontranslator/ui/text_engine/editing/) |
 | Formatting UI | Formatting panels and commands | [`ui/text_engine/formatting/`](../../ballontranslator/ui/text_engine/formatting/) |
 
@@ -41,8 +43,8 @@ owner instead of adding a parallel path.
 ## State boundaries
 
 - **Persistent state:** `TextBlock` and `FontFormat`; only this belongs in
-  project JSON. The immutable alpha-mask history is block-owned, never part of
-  a typography style or preset.
+  project JSON. Rendered Image and the immutable alpha-mask history are
+  block-owned, never part of a typography style or preset.
 - **Live editing state:** `QTextDocument`, cursor, selection, IME state, and
   paired-editor synchronization.
 - **Derived state:** layout records, padding, visual mappings, previews,
@@ -134,12 +136,55 @@ placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
 `FontFormat.text_effects` owns the canonical immutable style stack;
-`TextBlock.text_alpha_mask` separately owns item-specific structural alpha.
-`TextEffectRenderer` composes the stack in fixed phases around one canonical
-glyph source, applies the block mask to the completed Normal surface, and hands
+`TextBlock.rendered_image` and `TextBlock.text_alpha_mask` separately own the
+item-specific full-RGBA layer and structural alpha. `TextEffectRenderer`
+composes a fixed Text Fill/Rendered Image base, then walks generated layers and
+lazy Filters bottom-to-top around one canonical glyph source before the block mask,
+and hands
 that padded source to the geometry owner. See [Text effects](text_effects.md)
-for phase order, migration, preview/undo, mask editing, cache boundaries, and
-extension rules.
+for stack order, migration, preview/undo, mask editing, cache boundaries, and
+extension rules. See [Text filters](text_filters.md) for plug-in metadata,
+trusted-code runtime, and deterministic tile contracts.
+
+Text Fill textures use immutable project-relative `RasterAssetRef` values.
+The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`
+remains text-effect-specific. `ProjImgTrans` owns one-snapshot validated import
+into the project `assets/` directory, path-safe resolution, digest verification,
+bounded RGBA8 decode, and the small positive decoded cache. The effect renderer
+maps those shared pixels inside its existing completed foreground pass. Missing
+assets never create a second renderer or mutate the project while loading.
+Interactive rendering visibly bypasses missing or invalid optional assets and
+can recover after restore/invalidation; strict export always rechecks the file
+digest even after an interactive cache hit. That hash and the matching cached
+reuse or decode stay inside one before/after file-signature bracket, so a
+mid-load replacement fails. Non-strict reuse resolves existence and containment;
+unchanged warm entries remain hash-free, while cold or stat-changed files are
+digest-verified once before decode so corrupt or replaced managed bytes visibly
+bypass. The same project cache lazily holds an immutable premultiplied companion
+for transparent sources, avoiding a full-source copy on every tile. It retains
+at most two entries and is also byte-bounded to 512 MiB, enough for two maximum
+opaque sources or one maximum transparent source.
+
+Rendered Image reuses that same asset decoder and existing completed surface.
+Replace skips canonical/generated rasterization and replaces the fixed base,
+including overflow, with an image mapped into the unpadded logical rectangle;
+Overlay source-over composites it above Text Fill and below the movable stack.
+Scaling uses premultiplied-alpha,
+global-coordinate bilinear sampling over only the logical intersection, keeping
+transparent edges and full/tiled output stable without a padded image copy. The
+fixed downstream order is Text Eraser alpha, Overall Opacity, global
+transform, then interaction
+feedback. During native horizontal or vertical text editing the layer is
+suppressed so the editable source, selection, caret, and IME stay coherent; it
+returns exactly after editing ends and remains active for strict export.
+
+Texture Text Fill is project-only in v1. Itemless/global formatting cannot
+select it, and application-global presets/config strip only project Texture
+fills at their load/edit/save boundaries because there is no global asset
+registry. Concrete project TextBlocks keep valid and valid-but-missing refs on
+passive load. Newly imported images are decoded while the chooser/import chain
+keeps the formatting panel pinned; an old uncached asset may incur one bounded
+synchronous first decode (32 MiB source, 64 Mpx, 256 MiB RGBA8).
 
 Effect padding expands source paint bounds only. Ordinary shape and hit testing
 remain on the logical box plus layout-owned ink overhang. Qt stays authoritative
@@ -192,6 +237,8 @@ Refresh from the first owner whose input changed:
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
 | Typed effect stack/paint or Overall Opacity | Effect renderer |
+| Filter-only parameter preview | Effect renderer below-filter prefix plus canonical/Stroke-coverage caches; recompose only generated layers above it |
+| TextBlock Rendered Image replacement | Effect renderer pre-mask surface; retain canonical source cache |
 | TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |

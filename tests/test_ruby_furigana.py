@@ -1,4 +1,5 @@
 import os
+import math
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ from qtpy.QtGui import (
     QInputMethodEvent,
     QKeyEvent,
     QPainter,
+    QPixmap,
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
@@ -22,10 +24,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
-from ballontranslator.ui.text_engine import (
-    effect_renderer as effect_rendering,
-    horizontal_layout,
-)
+from ballontranslator.ui.text_engine import horizontal_layout
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.rendering import glyph as glyph_rendering
 from ballontranslator.ui.text_engine.annotations import (
@@ -60,7 +59,7 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     LinearGradientPaint,
     ShadowEffect,
@@ -1510,59 +1509,6 @@ class RubyFuriganaTest(unittest.TestCase):
         normal = item.layout._vertical_ruby_placements(document_block)[0]
         normal_bounds = QRectF(normal.ink_bounds)
         surface_rect = QRectF(item.boundingRect())
-        NATIVE_DOCUMENT_CACHE.clear()
-        self.addCleanup(NATIVE_DOCUMENT_CACHE.clear)
-
-        mask_flags = []
-        dilation_inputs = []
-        native_documents = []
-        annotation_calls = []
-        draw_mask = item.geometry_controller.draw_layout_selection_mask
-        draw_annotations = item.geometry_controller.draw_layout_annotations
-        dilate = effect_rendering.cv2.dilate
-        native_draw = QTextDocument.drawContents
-
-        def record_mask(painter, context, *, include_annotations=True):
-            mask_flags.append(include_annotations)
-            return draw_mask(
-                painter,
-                context,
-                include_annotations=include_annotations,
-            )
-
-        def record_annotations(painter, context):
-            annotation_calls.append(True)
-            return draw_annotations(painter, context)
-
-        def record_dilate(source, kernel, *args, **kwargs):
-            dilation_inputs.append(source.copy())
-            return dilate(source, kernel, *args, **kwargs)
-
-        def record_document(document, *args):
-            native_documents.append(document)
-            return native_draw(document, *args)
-
-        with patch.object(
-            item.geometry_controller,
-            'draw_layout_selection_mask',
-            new=record_mask,
-        ), patch.object(
-            item.geometry_controller,
-            'draw_layout_annotations',
-            new=record_annotations,
-        ), patch.object(
-            effect_rendering.cv2,
-            'dilate',
-            new=record_dilate,
-        ), patch.object(
-            QTextDocument,
-            'drawContents',
-            new=record_document,
-        ), patch.object(
-            glyph_rendering,
-            '_draw_dilated_path_stroke',
-        ) as generic_dilation:
-            item.repaint_background()
 
         def alpha_region(alpha, bounds: QRectF, padding: float = 0.0):
             local = QRectF(bounds).translated(-surface_rect.topLeft())
@@ -1574,18 +1520,26 @@ class RubyFuriganaTest(unittest.TestCase):
             bottom = min(alpha.shape[0], pixels.bottom() + 1)
             return alpha[top:bottom, left:right]
 
-        self.assertTrue(mask_flags)
-        self.assertFalse(any(mask_flags))
-        self.assertEqual(len(annotation_calls), 1)
-        self.assertTrue(dilation_inputs)
-        self.assertTrue(all(alpha.any() for alpha in dilation_inputs))
-        self.assertTrue(all(
-            not alpha_region(alpha, normal_bounds).any()
-            for alpha in dilation_inputs
-        ))
-        generic_dilation.assert_not_called()
-
         stroke_context = item.effect_renderer._stroke_paint_context()
+        mask_pixmap = QPixmap(
+            max(1, math.ceil(surface_rect.width())),
+            max(1, math.ceil(surface_rect.height())),
+        )
+        mask_pixmap.fill(Qt.GlobalColor.transparent)
+        mask_painter = QPainter(mask_pixmap)
+        try:
+            mask_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            mask_painter.translate(-surface_rect.topLeft())
+            item.geometry_controller.draw_layout_selection_mask(
+                mask_painter,
+                stroke_context,
+                include_annotations=False,
+            )
+        finally:
+            mask_painter.end()
+        mask_alpha = pixmap2ndarray(mask_pixmap, keep_alpha=True)[..., 3]
+        self.assertFalse(alpha_region(mask_alpha, normal_bounds).any())
+
         outlined = item.layout._vertical_ruby_placements(
             document_block, stroke_context
         )[0]
@@ -1600,10 +1554,12 @@ class RubyFuriganaTest(unittest.TestCase):
             source_cursor.charFormat().textOutline().widthF(),
             expected_width,
         )
-        self.assertEqual(
-            sum(document is source.document for document in native_documents),
-            1,
+        self.assertAlmostEqual(
+            source.ink_bounds.width()
+            - normal.paint_runs[0].source.ink_bounds.width(),
+            expected_width,
         )
+        item.repaint_background()
         final_alpha = pixmap2ndarray(
             item.effect_renderer.background_pixmap,
             keep_alpha=True,
@@ -1659,7 +1615,7 @@ class RubyFuriganaTest(unittest.TestCase):
         shadow.text_effects = TextEffectStack(effects=(
             StrokeEffect(width=0.2),
             ShadowEffect(blur=0.2),
-            GradientOverlayEffect(paint=LinearGradientPaint(stops=(
+            TextFillEffect(paint=LinearGradientPaint(stops=(
                 GradientStop(0.0, (255, 80, 80)),
                 GradientStop(1.0, (60, 100, 255)),
             ))),

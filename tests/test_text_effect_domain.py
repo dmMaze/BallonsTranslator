@@ -2,9 +2,11 @@ from dataclasses import FrozenInstanceError
 import unittest
 from unittest.mock import patch
 
+from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
+    FilterEffect,
     GlowEffect,
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -15,8 +17,10 @@ from ballontranslator.utils.text_effects import (
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
+    TexturePaint,
     coerce_text_effect_stack,
     effect_phase,
+    effect_structure_key,
     effect_paint_fallback_color,
     ensure_primary_stroke,
     primary_stroke,
@@ -26,6 +30,53 @@ from ballontranslator.utils.text_effects import (
 
 
 class TextEffectDomainTest(unittest.TestCase):
+    def test_filter_effect_is_repeatable_hashable_and_structurally_typed(self):
+        noise = FilterEffect(
+            'builtin:noise', params={'seed': 7, 'amount': 0.25}
+        )
+        newer = FilterEffect(
+            'builtin:noise', schema_version=2, params=noise.params
+        )
+        stack = TextEffectStack(effects=(noise, noise, newer))
+
+        self.assertEqual(hash(noise), hash(FilterEffect(
+            'builtin:noise', params=(('amount', 0.25), ('seed', 7))
+        )))
+        self.assertEqual(noise.params, (('amount', 0.25), ('seed', 7)))
+        self.assertEqual(effect_phase(noise), 'filter')
+        self.assertEqual(
+            effect_structure_key(noise), ('filter', 'builtin:noise', 1)
+        )
+        self.assertNotEqual(
+            effect_structure_key(noise), effect_structure_key(newer)
+        )
+        self.assertEqual(len(stack.effects), 3)
+
+    def test_filter_effect_passive_load_isolates_generic_fields_and_params(self):
+        stack = coerce_text_effect_stack({'effects': (
+            {
+                'effect_type': 'filter',
+                'filter_id': 'future:kept',
+                'schema_version': 9,
+                'enabled': False,
+                'params': {'future': 'opaque', 'bad': [1, 2]},
+            },
+            {
+                'effect_type': 'filter',
+                'filter_id': 'future:defaults',
+                'schema_version': 0,
+                'enabled': 'bad',
+                'params': 'bad',
+            },
+            StrokeEffect(width=0.3).to_serializable_dict(),
+        )})
+
+        self.assertEqual(stack.effects[0], FilterEffect(
+            'future:kept', 9, False, {'future': 'opaque'}
+        ))
+        self.assertEqual(stack.effects[1], FilterEffect('future:defaults'))
+        self.assertIsInstance(stack.effects[2], StrokeEffect)
+
     def test_linear_gradient_values_are_immutable_and_strict(self):
         hard_transition = LinearGradientPaint(
             stops=(
@@ -172,6 +223,50 @@ class TextEffectDomainTest(unittest.TestCase):
             paint=SolidPaint((90, 80, 70)),
         ),))
 
+    def test_run_inserted_stroke_stays_below_top_filter_and_above_base(self):
+        filter_effect = FilterEffect('builtin:noise')
+        text_fill = TextFillEffect()
+
+        result = ensure_primary_stroke(TextEffectStack(effects=(
+            filter_effect, text_fill
+        )))
+
+        self.assertIs(result.effects[0], filter_effect)
+        self.assertIsInstance(result.effects[1], StrokeEffect)
+        self.assertIs(result.effects[2], text_fill)
+
+    def test_run_stroke_ignores_legacy_mid_structural_position(self):
+        filter_effect = FilterEffect('builtin:noise')
+        inner = ShadowEffect(shadow_type='inner')
+        text_fill = TextFillEffect()
+        legacy = ensure_primary_stroke(TextEffectStack(effects=(
+            filter_effect, text_fill, inner
+        )))
+        normalized = ensure_primary_stroke(TextEffectStack(effects=(
+            filter_effect, inner, text_fill
+        )))
+
+        movable_types = (
+            FilterEffect, StrokeEffect, ShadowEffect, GlowEffect
+        )
+        self.assertEqual(
+            tuple(
+                type(effect) for effect in legacy.effects
+                if isinstance(effect, movable_types)
+            ),
+            tuple(
+                type(effect) for effect in normalized.effects
+                if isinstance(effect, movable_types)
+            ),
+        )
+        self.assertEqual(
+            tuple(
+                type(effect) for effect in legacy.effects
+                if isinstance(effect, movable_types)
+            ),
+            (FilterEffect, ShadowEffect, StrokeEffect),
+        )
+
     def test_non_stroke_override_preserves_all_stroke_cards(self):
         strokes = (
             StrokeEffect(width=0.2),
@@ -186,16 +281,16 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(result.effects, strokes)
         self.assertIs(with_non_stroke_effects(result, source), result)
 
-    def test_non_stroke_override_copies_typed_values_by_phase_boundary(self):
+    def test_non_stroke_override_ignores_mid_structural_position(self):
         first = StrokeEffect(width=0.2)
         second = StrokeEffect(width=0.7)
         drop = ShadowEffect(shadow_type='drop', offset=(0.2, 0.3))
         glow = GlowEffect(size=0.2)
         hollow = HollowEffect()
         inner = ShadowEffect(shadow_type='inner', blur=0.2)
-        overlay = GradientOverlayEffect()
+        text_fill = TextFillEffect()
         source = TextEffectStack(
-            0.8, (drop, glow, hollow, overlay, inner)
+            0.8, (drop, glow, hollow, text_fill, inner)
         )
         target = TextEffectStack(0.4, (first, second))
 
@@ -203,37 +298,57 @@ class TextEffectDomainTest(unittest.TestCase):
 
         self.assertEqual(
             result.effects,
-            (drop, glow, first, second, hollow, overlay, inner),
+            (drop, glow, hollow, text_fill, inner, first, second),
         )
         self.assertEqual(
             [effect for effect in result if not isinstance(effect, StrokeEffect)],
-            [drop, glow, hollow, overlay, inner],
+            [drop, glow, hollow, text_fill, inner],
         )
 
-    def test_gradient_overlay_is_strict_unique_and_neutral(self):
+        normalized = with_non_stroke_effects(
+            target,
+            TextEffectStack(
+                0.8, (drop, glow, inner, hollow, text_fill)
+            ),
+        )
+        movable_types = (
+            FilterEffect, StrokeEffect, ShadowEffect, GlowEffect
+        )
+        self.assertEqual(
+            tuple(
+                type(effect) for effect in result.effects
+                if isinstance(effect, movable_types)
+            ),
+            tuple(
+                type(effect) for effect in normalized.effects
+                if isinstance(effect, movable_types)
+            ),
+        )
+
+    def test_text_fill_is_strict_unique_and_neutral(self):
         transparent = LinearGradientPaint(stops=(
             GradientStop(0.0, (255, 0, 0), 0.0),
             GradientStop(1.0, (0, 0, 255), 0.0),
         ))
-        self.assertTrue(GradientOverlayEffect(enabled=False).is_neutral())
+        self.assertTrue(TextFillEffect(enabled=False).is_neutral())
         self.assertFalse(
-            GradientOverlayEffect(paint=transparent).is_neutral()
+            TextFillEffect(paint=transparent).is_neutral()
         )
-        self.assertEqual(effect_phase(GradientOverlayEffect()), 'foreground')
+        self.assertEqual(effect_phase(TextFillEffect()), 'foreground')
         for constructor in (
-            lambda: GradientOverlayEffect(enabled=1),
-            lambda: GradientOverlayEffect(blend_mode='multiply'),
-            lambda: GradientOverlayEffect(paint=SolidPaint()),
+            lambda: TextFillEffect(enabled=1),
+            lambda: TextFillEffect(blend_mode='multiply'),
+            lambda: TextFillEffect(paint=object()),
             lambda: TextEffectStack(effects=(
-                GradientOverlayEffect(), GradientOverlayEffect()
+                TextFillEffect(), TextFillEffect()
             )),
         ):
             with self.subTest(constructor=constructor):
                 with self.assertRaises((TypeError, ValueError)):
                     constructor()
 
-    def test_gradient_overlay_payload_round_trip_and_isolation(self):
-        overlay = GradientOverlayEffect(
+    def test_text_fill_payload_round_trip_and_isolation(self):
+        text_fill = TextFillEffect(
             paint=LinearGradientPaint(
                 stops=(
                     GradientStop(0.0, (1, 2, 3), 0.25),
@@ -244,30 +359,36 @@ class TextEffectDomainTest(unittest.TestCase):
             ),
         )
         payload = TextEffectStack(effects=(
-            StrokeEffect(width=0.2), overlay,
+            StrokeEffect(width=0.2), text_fill,
         )).to_serializable_dict()
         self.assertEqual(payload['effects'][1], {
-            'effect_type': 'gradient_overlay',
+            'effect_type': 'text_fill',
             'enabled': True,
             'blend_mode': 'normal',
-            'paint': overlay.paint.to_serializable_dict(),
+            'paint': text_fill.paint.to_serializable_dict(),
         })
         self.assertEqual(
             coerce_text_effect_stack(payload).effects,
-            (StrokeEffect(width=0.2), overlay),
+            (StrokeEffect(width=0.2), text_fill),
         )
-        legacy_payload = payload['effects'][1] | {'opacity': 0.4}
-        self.assertEqual(
-            coerce_text_effect_stack({'effects': [legacy_payload]}).effects,
-            (overlay,),
-        )
+        for legacy_type in ('gradient', 'gradient_overlay'):
+            legacy_payload = payload['effects'][1] | {
+                'effect_type': legacy_type,
+                'opacity': 0.4,
+            }
+            self.assertEqual(
+                coerce_text_effect_stack({
+                    'effects': [legacy_payload]
+                }).effects,
+                (text_fill,),
+            )
 
         malformed = {'effects': [
             payload['effects'][1],
-            {'effect_type': 'gradient_overlay', 'opacity': 0.4},
+            {'effect_type': 'text_fill', 'opacity': 0.4},
             {'effect_type': 'stroke', 'width': 0.3},
             {
-                'effect_type': 'gradient_overlay',
+                'effect_type': 'text_fill',
                 'paint': {'paint_type': 'solid', 'color': [1, 2, 3]},
             },
         ]}
@@ -276,10 +397,43 @@ class TextEffectDomainTest(unittest.TestCase):
         ) as warning:
             loaded = coerce_text_effect_stack(malformed)
         self.assertEqual(loaded.effects, (
-            overlay,
+            text_fill,
             StrokeEffect(width=0.3, position='center'),
         ))
         self.assertEqual(warning.call_count, 2)
+
+    def test_texture_paint_round_trip_and_asset_reference_validation(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'paper.png'
+        )
+        texture = TexturePaint(asset, mapping='tile', scale=1.5)
+        fill = TextFillEffect(paint=texture)
+
+        loaded = coerce_text_effect_stack(
+            TextEffectStack(effects=(fill,)).to_serializable_dict()
+        )
+
+        self.assertEqual(loaded.effects, (fill,))
+        self.assertEqual(texture.to_serializable_dict()['asset'], {
+            'path': asset.path,
+            'display_name': 'paper.png',
+        })
+        for effect_type in (StrokeEffect, ShadowEffect, GlowEffect):
+            with self.subTest(effect_type=effect_type.__name__):
+                with self.assertRaises(TypeError):
+                    effect_type(paint=texture)
+        for constructor in (
+            lambda: RasterAssetRef('../paper.png'),
+            lambda: RasterAssetRef('/tmp/paper.png'),
+            lambda: RasterAssetRef(
+                'assets/' + 'a' * 64 + '.png', '../paper.png'
+            ),
+            lambda: TexturePaint(asset, mapping='future'),
+            lambda: TexturePaint(asset, scale=0.09),
+        ):
+            with self.subTest(constructor=constructor):
+                with self.assertRaises((TypeError, ValueError)):
+                    constructor()
 
     def test_glow_is_strict_repeatable_neutral_and_serializable(self):
         transparent = LinearGradientPaint(stops=(

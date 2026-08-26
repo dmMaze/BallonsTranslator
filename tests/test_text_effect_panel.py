@@ -1,15 +1,28 @@
 import os
+from dataclasses import replace
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
+from qtpy.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QPoint,
+    QPointF,
+    QRectF,
+    QTranslator,
+    Qt,
+)
 from qtpy.QtGui import QColor, QFocusEvent, QKeyEvent, QKeySequence, QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication,
     QColorDialog,
+    QFileDialog,
+    QMessageBox,
+    QGraphicsScene,
     QShortcut,
     QVBoxLayout,
     QWidget,
@@ -29,17 +42,23 @@ from ballontranslator.ui.misc import parse_stylesheet
 from ballontranslator.ui.text_engine.formatting.commands import (
     handle_ffmt_change,
 )
-from ballontranslator.ui.text_engine.formatting.effects import (
+from ballontranslator.ui.text_engine.effects.panel import (
+    FilterEffectCard,
     ShadowEffectCard,
     StrokeEffectCard,
     TextEffectPanel,
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
-from ballontranslator.ui.text_engine.formatting.gradient_editor import (
+from ballontranslator.ui.text_engine.formatting.presets import TextStyleLabel
+from ballontranslator.ui.text_engine.effects.gradient_editor import (
     GradientStopBar,
     InlineLinearGradientEditor,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.ui.text_engine.effects.filters import (
+    FilterUnavailableError,
+    get_filter_registry,
+)
 from ballontranslator.utils import config as C
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
@@ -48,9 +67,13 @@ from ballontranslator.utils.fontformat import (
     ProjectiveTextTransform,
     TextTransformStack,
 )
+from ballontranslator.utils.raster_assets import RasterAssetRef
+from ballontranslator.utils.rendered_image import RenderedImageLayer
+from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
+    FilterEffect,
     GlowEffect,
-    GradientOverlayEffect,
+    TextFillEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
@@ -58,6 +81,7 @@ from ballontranslator.utils.text_effects import (
     SolidPaint,
     StrokeEffect,
     TextEffectStack,
+    TexturePaint,
     with_primary_stroke,
 )
 from ballontranslator.utils.textblock import TextBlock
@@ -258,10 +282,10 @@ class TextEffectPanelTest(unittest.TestCase):
 
         preset.reset_mock()
         self.assertTrue(
-            self.panel.text_effect_session.add_effect('gradient_overlay')
+            self.panel.text_effect_session.add_effect('text_fill')
         )
         self.assertTrue(any(
-            isinstance(effect, GradientOverlayEffect)
+            isinstance(effect, TextFillEffect)
             for effect in self.panel.global_format.text_effects
         ))
         self.assertEqual(self.canvas.stack.count(), 0)
@@ -328,7 +352,7 @@ class TextEffectPanelTest(unittest.TestCase):
             ShadowEffect(enabled=False),
             GlowEffect(),
             HollowEffect(),
-            GradientOverlayEffect(),
+            TextFillEffect(),
         ))
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
@@ -336,7 +360,7 @@ class TextEffectPanelTest(unittest.TestCase):
             effect_panel.stroke_cards[0],
             effect_panel.shadow_cards[0],
             effect_panel.glow_cards[0],
-            effect_panel.gradient_overlay_card,
+            effect_panel.text_fill_card,
         )
         for card in cards:
             self.assertFalse(card.title_icon_label.pixmap().isNull())
@@ -360,12 +384,12 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertTrue(effect_panel.hollow_toggle_button.isChecked())
         self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
-            effect_panel.gradient_overlay_card.visibility_button.toolTip(),
-            'Hide Gradient',
+            effect_panel.text_fill_card.visibility_button.toolTip(),
+            'Hide Text Fill',
         )
         self.assertEqual(
-            effect_panel.add_effect_actions['gradient_overlay'].text(),
-            'Gradient',
+            effect_panel.add_effect_actions['text_fill'].text(),
+            'Text Fill',
         )
         self.assertTrue(all(
             not action.icon().isNull()
@@ -946,7 +970,7 @@ class TextEffectPanelTest(unittest.TestCase):
             return 0
 
         with patch(
-            'ballontranslator.ui.text_engine.formatting.gradient_editor.'
+            'ballontranslator.ui.text_engine.effects.gradient_editor.'
             'QColorDialog',
             side_effect=create_dialog,
         ), patch.object(
@@ -965,7 +989,7 @@ class TextEffectPanelTest(unittest.TestCase):
             return 1
 
         with patch(
-            'ballontranslator.ui.text_engine.formatting.gradient_editor.'
+            'ballontranslator.ui.text_engine.effects.gradient_editor.'
             'QColorDialog',
             side_effect=create_dialog,
         ), patch.object(
@@ -1434,56 +1458,56 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(mixed_card.gradient_editor.isHidden())
         self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
 
-    def test_gradient_overlay_add_edit_mixed_and_uniqueness(self):
+    def test_text_fill_add_edit_mixed_and_uniqueness(self):
         item = self._item(TextEffectStack())
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
-        effect_panel.add_effect_actions['gradient_overlay'].trigger()
-        overlay = item.blk.fontformat.text_effects[0]
-        self.assertIsInstance(overlay, GradientOverlayEffect)
+        effect_panel.add_effect_actions['text_fill'].trigger()
+        text_fill = item.blk.fontformat.text_effects[0]
+        self.assertIsInstance(text_fill, TextFillEffect)
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertFalse(
-            effect_panel.add_effect_actions['gradient_overlay'].isEnabled()
+            effect_panel.add_effect_actions['text_fill'].isEnabled()
         )
         self.assertFalse(
-            self.panel.text_effect_session.add_effect('gradient_overlay')
+            self.panel.text_effect_session.add_effect('text_fill')
         )
 
-        card = effect_panel.gradient_overlay_card
-        self.assertEqual(card.title_label.text(), 'Gradient')
-        self.assertIs(effect_panel.gradient_overlay_card, card)
+        card = effect_panel.text_fill_card
+        self.assertEqual(card.title_label.text(), 'Text Fill')
+        self.assertIs(effect_panel.text_fill_card, card)
 
         card.visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
         self.assertEqual(self.canvas.stack.count(), 2)
         card.delete_button.click()
         self.assertFalse(any(
-            isinstance(effect, GradientOverlayEffect)
+            isinstance(effect, TextFillEffect)
             for effect in item.blk.fontformat.text_effects
         ))
         self.assertEqual(self.canvas.stack.count(), 3)
         self.assertTrue(
-            effect_panel.add_effect_actions['gradient_overlay'].isEnabled()
+            effect_panel.add_effect_actions['text_fill'].isEnabled()
         )
 
-        common = self._constant_overlay(angle=0.0)
-        different = self._constant_overlay(angle=90.0)
+        common = self._constant_text_fill(angle=0.0)
+        different = self._constant_text_fill(angle=90.0)
         first = self._item(self._stack(common))
         second = self._item(self._stack(different))
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = effect_panel.gradient_overlay_card
+        mixed_card = effect_panel.text_fill_card
         self.assertFalse(mixed_card.gradient_editor.isHidden())
         self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
 
         self.canvas.selected = [first]
         self.panel.set_textblk_item(None, multi_select=True)
-        self.assertIs(effect_panel.gradient_overlay_card, mixed_card)
+        self.assertIs(effect_panel.text_fill_card, mixed_card)
         self.assertTrue(mixed_card.gradient_editor.angle_editor.isEnabled())
 
     @staticmethod
-    def _constant_overlay(angle: float = 0.0) -> GradientOverlayEffect:
-        return GradientOverlayEffect(paint=LinearGradientPaint(
+    def _constant_text_fill(angle: float = 0.0) -> TextFillEffect:
+        return TextFillEffect(paint=LinearGradientPaint(
             stops=(
                 GradientStop(0.0, (255, 0, 0), 1.0),
                 GradientStop(1.0, (0, 0, 255), 1.0),
@@ -1491,11 +1515,11 @@ class TextEffectPanelTest(unittest.TestCase):
             angle=angle,
         ))
 
-    def test_gradient_overlay_inline_preview_cancel_commit_one_undo(self):
-        before = self._stack(self._constant_overlay())
+    def test_text_fill_inline_preview_cancel_commit_one_undo(self):
+        before = self._stack(self._constant_text_fill())
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.gradient_overlay_card
+        card = self.panel.texteffect_panel.text_fill_card
         editor = card.gradient_editor
         preview = LinearGradientPaint(
             stops=before[0].paint.stops, angle=60.0
@@ -1518,14 +1542,904 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.angle_editor.editingFinished.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.gradient_overlay_card, card)
+        self.assertIs(self.panel.texteffect_panel.text_fill_card, card)
+
+    def test_filter_submenu_repeat_preview_reorder_eye_delete_and_one_undo(self):
+        item = self._item(TextEffectStack())
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        actions = {
+            action.data(): action for action in controls.filter_add_menu.actions()
+        }
+        self.assertEqual(
+            list(actions),
+            [
+                'builtin:noise',
+                'builtin:grain',
+                'builtin:rough_edge',
+                'builtin:gaussian_blur',
+                'builtin:bloom',
+                'builtin:glitch',
+            ],
+        )
+        self.assertTrue(all(not action.icon().isNull() for action in actions.values()))
+
+        actions['builtin:noise'].trigger()
+        actions['builtin:grain'].trigger()
+        self.assertEqual(len(controls.filter_cards), 2)
+        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertEqual(
+            [effect.filter_id for effect in item.blk.fontformat.text_effects],
+            ['builtin:grain', 'builtin:noise'],
+        )
+
+        noise_card = controls.filter_cards[1]
+        amount = noise_card.numeric_controls['amount']
+        amount.editor.setText('55.0')
+        amount.editor.textEdited.emit('55.0')
+        self.assertEqual(
+            item.effective_text_effects()[1].params_dict()['amount'], 0.55
+        )
+        self.assertEqual(
+            item.blk.fontformat.text_effects[1].params_dict()['amount'], 0.2
+        )
+        amount.editor.returnPressed.emit()
+        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertIs(controls.filter_cards[1], noise_card)
+
+        mode = noise_card.choice_selectors['mode']
+        mode.setCurrentIndex(mode.findData('color'))
+        self.assertEqual(
+            item.blk.fontformat.text_effects[1].params_dict()['mode'], 'color'
+        )
+        self.assertEqual(self.canvas.stack.count(), 4)
+
+        controls.filter_cards[1].move_up_button.click()
+        self.assertEqual(
+            [effect.filter_id for effect in item.blk.fontformat.text_effects],
+            ['builtin:noise', 'builtin:grain'],
+        )
+        self.assertEqual(self.canvas.stack.count(), 5)
+        controls.filter_cards[0].visibility_button.click()
+        self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
+        controls.filter_cards[0].delete_button.click()
+        self.assertEqual(len(item.blk.fontformat.text_effects), 1)
+        self.assertEqual(self.canvas.stack.count(), 7)
+        self.canvas.stack.undo()
+        self.assertEqual(len(item.blk.fontformat.text_effects), 2)
+
+    def test_new_filter_cards_and_gaussian_preview_cancel_commit_undo(self):
+        before = self._stack(
+            FilterEffect('builtin:bloom'),
+            FilterEffect('builtin:glitch'),
+            FilterEffect('builtin:gaussian_blur'),
+        )
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        bloom, glitch, gaussian = self.panel.texteffect_panel.filter_cards
+        self.assertEqual(
+            [card.title_label.text() for card in (bloom, glitch, gaussian)],
+            ['Bloom', 'Glitch', 'Gaussian Blur'],
+        )
+        self.assertEqual(
+            set(bloom.numeric_controls),
+            {'threshold', 'radius', 'intensity'},
+        )
+        self.assertEqual(
+            set(glitch.numeric_controls),
+            {'shift', 'block_size', 'activity', 'rgb_split', 'seed'},
+        )
+        self.assertEqual(set(gaussian.numeric_controls), {'radius'})
+        radius = gaussian.numeric_controls['radius']
+
+        radius.editor.setText('7.5')
+        radius.editor.textEdited.emit('7.5')
+        self.assertEqual(
+            item.effective_text_effects()[2].params_dict()['radius'], 7.5
+        )
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        QApplication.sendEvent(
+            radius.editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        self.assertEqual(item.effective_text_effects(), before)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+        radius.editor.setText('8.5')
+        radius.editor.textEdited.emit('8.5')
+        radius.editor.returnPressed.emit()
+        self.assertEqual(
+            item.blk.fontformat.text_effects[2].params_dict()['radius'], 8.5
+        )
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertIs(self.panel.texteffect_panel.filter_cards[2], gaussian)
+        self.canvas.stack.undo()
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+
+    def test_filter_structural_mixed_ids_and_missing_card_recovery_controls(self):
+        first = self._item(self._stack(FilterEffect('builtin:noise')))
+        second = self._item(self._stack(FilterEffect('builtin:grain')))
+        self.canvas.selected = [first, second]
+        self.panel.set_textblk_item(None, multi_select=True)
+        controls = self.panel.texteffect_panel
+        self.assertFalse(controls.mixed_label.isHidden())
+        self.assertEqual(controls.filter_cards, [])
+
+        missing = self._item(self._stack(FilterEffect('missing:local')))
+        self.panel.set_textblk_item(missing)
+        card = controls.filter_cards[0]
+        self.assertIsInstance(card, FilterEffectCard)
+        self.assertEqual(card.title_label.text(), 'Missing Filter: missing:local')
+        self.assertEqual(card.iter_controls(), ())
+        self.assertTrue(card.visibility_button.isEnabled())
+        self.assertTrue(card.delete_button.isEnabled())
+        card.visibility_button.click()
+        self.assertFalse(missing.blk.fontformat.text_effects[0].enabled)
+
+        newer = self._item(self._stack(FilterEffect(
+            'builtin:noise', schema_version=9, enabled=False,
+            params={'future': 'kept'},
+        )))
+        self.panel.set_textblk_item(newer)
+        card = controls.filter_cards[0]
+        self.assertEqual(card.title_label.text(), 'Noise')
+        self.assertTrue(card.visibility_button.isEnabled())
+        self.assertTrue(card.delete_button.isEnabled())
+        self.assertFalse(card.numeric_controls['amount'].isEnabled())
+        self.assertIn('schema 9', card.toolTip())
+
+    def test_filter_card_display_uses_static_metadata_without_import(self):
+        controls = self.panel.texteffect_panel
+        registry = get_filter_registry()
+        registry._modules.clear()
+        self.panel.set_active_format(FontFormat(text_effects=self._stack(
+            FilterEffect('builtin:noise')
+        )))
+
+        self.assertEqual(registry._modules, {})
+        self.assertEqual(controls.filter_cards[0].title_label.text(), 'Noise')
+        self.assertIn('amount', controls.filter_cards[0].numeric_controls)
+
+    def test_filter_runtime_overflow_defaults_during_card_sync(self):
+        huge = int('9' * 4001)
+        effect = FilterEffect('builtin:noise', params={
+            'amount': huge, 'mode': 'monochrome', 'seed': 1,
+        })
+        item = self._item(self._stack(effect))
+
+        self.panel.set_textblk_item(item)
+
+        card = self.panel.texteffect_panel.filter_cards[0]
+        self.assertEqual(card.numeric_controls['amount'].editor.text(), '20.0%')
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].params_dict()['amount'], huge
+        )
+
+    def test_builtin_filter_menu_and_card_share_localized_static_metadata(self):
+        class PrefixTranslator(QTranslator):
+            def translate(
+                self, context, source_text, disambiguation=None, n=-1
+            ):
+                if context == 'TextEffectPanel':
+                    return 'Localized ' + source_text
+                return source_text
+
+        translator = PrefixTranslator()
+        self.app.installTranslator(translator)
+        controls = TextEffectPanel(
+            'Filters', 'localized_filter_test', 'localized_filter_test_expand'
+        )
+        custom_card = None
+        try:
+            actions = {
+                action.data(): action.text()
+                for action in controls.filter_add_menu.actions()
+            }
+            self.assertEqual(actions['builtin:noise'], 'Localized Noise')
+
+            controls._set_effect_states((self._stack(
+                FilterEffect('builtin:noise')
+            ),))
+            card = controls.filter_cards[0]
+            self.assertEqual(card.title_label.text(), 'Localized Noise')
+            self.assertEqual(
+                card.numeric_controls['amount'].label.text(),
+                'Localized Amount',
+            )
+            mode = card.choice_selectors['mode']
+            self.assertEqual(
+                mode.itemText(mode.findData('monochrome')),
+                'Localized Monochrome',
+            )
+
+            builtin = get_filter_registry().get_spec('builtin:noise')
+            custom = replace(
+                builtin,
+                builtin=False,
+                name='Noise',
+                params=(replace(
+                    builtin.params[0], label='Amount', decimals=6
+                ),),
+            )
+            custom_card = FilterEffectCard(
+                0, custom.filter_id, custom, controls
+            )
+            self.assertEqual(custom_card.title_label.text(), 'Noise')
+            self.assertEqual(
+                custom_card.numeric_controls['amount'].label.text(), 'Amount'
+            )
+        finally:
+            if custom_card is not None:
+                custom_card.deleteLater()
+            controls.deleteLater()
+            self.app.removeTranslator(translator)
+            self.app.processEvents()
+
+    def test_known_filter_lazy_load_failure_disables_only_parameter_editors(self):
+        item = self._item(self._stack(FilterEffect('builtin:noise')))
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        card = controls.filter_cards[0]
+        registry = Mock()
+        registry.get_runtime_failure.return_value = FilterUnavailableError(
+            'Noise dependency is unavailable'
+        )
+
+        with patch(
+            'ballontranslator.ui.text_engine.effects.panel.'
+            'get_filter_registry',
+            return_value=registry,
+        ):
+            card.set_values((item.blk.fontformat.text_effects[0],))
+
+        self.assertEqual(card.title_label.text(), 'Noise')
+        self.assertTrue(card.visibility_button.isEnabled())
+        self.assertTrue(card.delete_button.isEnabled())
+        self.assertFalse(card.numeric_controls['amount'].isEnabled())
+        self.assertIn('dependency', card.toolTip())
+
+        failing_registry = Mock()
+        failing_registry.resolve.side_effect = FilterUnavailableError(
+            'Noise dependency is unavailable'
+        )
+        with patch(
+            'ballontranslator.ui.text_engine.effects.edit_session.'
+            'get_filter_registry',
+            return_value=failing_registry,
+        ):
+            self.assertFalse(
+                self.panel.text_effect_session.commit_value(
+                    0, 'param:amount', 0.5
+                )
+            )
+        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].params_dict(), {}
+        )
+
+    def test_explicit_filter_param_edit_commits_migrated_schema(self):
+        effect = FilterEffect(
+            'custom:migrate', schema_version=1,
+            params={'old_amount': 0.4, 'opaque': 'preserved'},
+        )
+        runtime = SimpleNamespace(
+            spec=SimpleNamespace(schema_version=2),
+            params={'amount': 0.4},
+        )
+        registry = Mock()
+        registry.resolve.return_value = runtime
+
+        with patch(
+            'ballontranslator.ui.text_engine.effects.edit_session.'
+            'get_filter_registry',
+            return_value=registry,
+        ):
+            result = self.panel.text_effect_session._with_value(
+                self._stack(effect), 0, 'param:amount', 0.75
+            )
+
+        self.assertEqual(result.effects[0].schema_version, 2)
+        self.assertEqual(result.effects[0].params_dict(), {'amount': 0.75})
+        self.assertEqual(
+            effect.params_dict(),
+            {'old_amount': 0.4, 'opaque': 'preserved'},
+        )
+
+    def test_filter_drag_reads_omitted_param_from_metadata_default(self):
+        state = self._stack(FilterEffect('builtin:noise', params={'seed': 4}))
+
+        value = self.panel.text_effect_session._value_at(
+            state, 0, 'param:amount'
+        )
+
+        self.assertEqual(value, 0.2)
+        self.assertEqual(state.effects[0].params_dict(), {'seed': 4})
+
+    def test_filter_card_rebuild_survives_deferred_delete(self):
+        item = self._item(self._stack(FilterEffect('builtin:noise')))
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        old_card = controls.filter_cards[0]
+
+        item.blk.fontformat.text_effects = TextEffectStack()
+        controls.set_effect_items((item,))
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        self.assertEqual(controls.filter_cards, [])
+
+        item.blk.fontformat.text_effects = self._stack(
+            FilterEffect('builtin:noise')
+        )
+        controls.set_effect_items((item,))
+        new_card = controls.filter_cards[0]
+        self.assertIsNot(new_card, old_card)
+        new_card.visibility_button.click()
+        self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_filter_and_generated_cards_reorder_as_one_global_sequence(self):
+        item = self._item(self._stack(
+            StrokeEffect(),
+            FilterEffect('builtin:noise'),
+            GlowEffect(),
+        ))
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        filter_card = controls.filter_cards[0]
+
+        self.assertTrue(filter_card.move_up_button.isEnabled())
+        self.assertTrue(filter_card.move_down_button.isEnabled())
+        filter_card.move_up_button.click()
+
+        self.assertEqual(
+            tuple(type(effect) for effect in item.blk.fontformat.text_effects),
+            (FilterEffect, StrokeEffect, GlowEffect),
+        )
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_add_generated_ignores_legacy_mid_structural_position(self):
+        filter_effect = FilterEffect('builtin:noise')
+        inner = ShadowEffect(shadow_type='inner')
+        text_fill = TextFillEffect()
+        results = []
+        for effects in (
+            (filter_effect, text_fill, inner),
+            (filter_effect, inner, text_fill),
+        ):
+            item = self._item(self._stack(*effects))
+            self.panel.set_textblk_item(item)
+            self.assertTrue(
+                self.panel.text_effect_session.add_effect('glow')
+            )
+            results.append(tuple(
+                type(effect)
+                for effect in item.blk.fontformat.text_effects
+                if isinstance(effect, (
+                    FilterEffect, StrokeEffect, ShadowEffect, GlowEffect
+                ))
+            ))
+
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(
+            results[0],
+            (FilterEffect, ShadowEffect, GlowEffect),
+        )
+
+    def test_visual_order_projects_movable_stack_then_fixed_base_and_eraser(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'rendered.png'
+        )
+        block = TextBlock([0, 0, 320, 180])
+        block._bounding_rect = [0, 0, 320, 180]
+        block.translation = 'Phase order'
+        block.fontformat.text_effects = self._stack(
+            StrokeEffect(), TextFillEffect(), FilterEffect('builtin:noise')
+        )
+        block.rendered_image = RenderedImageLayer(asset)
+        block.text_alpha_mask = TextAlphaMask()
+        item = TextBlkItem(block, 1)
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = Mock()
+        scene.imgtrans_proj.resolve_raster_asset.return_value = '/asset.png'
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        controls.resize(420, 480)
+        controls.show()
+        controls.content_layout.activate()
+        self.app.processEvents()
+        cards = (
+            controls.stroke_cards[0],
+            controls.filter_cards[0],
+            controls.rendered_image_card,
+            controls.text_fill_card,
+            controls.alpha_mask_card,
+        )
+        positions = [
+            card.mapTo(controls.scrollContent, QPoint(0, 0)).y()
+            for card in cards
+        ]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_rendered_image_add_edit_replace_remove_and_dialog_pin(self):
+        first = RasterAssetRef(
+            'assets/' + 'e' * 64 + '.png', 'first.png'
+        )
+        second = RasterAssetRef(
+            'assets/' + 'f' * 64 + '.png', 'second.png'
+        )
+        project = Mock()
+        project.import_raster_asset.side_effect = (first, second)
+        project.resolve_raster_asset.return_value = '/project/assets/image.png'
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item()
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        action = controls.add_effect_actions['rendered_image']
+        self.assertTrue(action.isEnabled())
+        self.assertIsNone(controls.rendered_image_card)
+        initial_height = controls.content_layout.sizeHint().height()
+
+        transitions = []
+        controls.color_dialog_active_changed.connect(transitions.append)
+
+        def choose_first(*_args):
+            self.assertTrue(self.panel.focusOnColorDialog)
+            self.panel.set_textblk_item(None)
+            self.assertIs(self.panel.textblk_item, item)
+            return '/tmp/first.png', ''
+
+        with patch.object(
+            QFileDialog, 'getOpenFileName', side_effect=choose_first
+        ):
+            action.trigger()
+
+        self.assertEqual(transitions, [True, False])
+        self.assertFalse(self.panel.focusOnColorDialog)
+        self.assertEqual(
+            item.blk.rendered_image, RenderedImageLayer(first)
+        )
+        self.assertEqual(self.canvas.stack.count(), 1)
+        card = controls.rendered_image_card
+        self.assertIsNotNone(card)
+        self.assertFalse(action.isEnabled())
+        self.assertEqual(card.title_label.text(), 'Rendered Image')
+        self.assertFalse(card.title_icon_label.pixmap().isNull())
+        self.assertIn('Hidden while editing', card.toolTip())
+        project.resolve_raster_asset.return_value = None
+        controls.refresh_rendered_image_state()
+        self.assertTrue(card.image_button.text().startswith('Missing:'))
+        project.resolve_raster_asset.return_value = '/project/assets/image.png'
+        controls.refresh_rendered_image_state()
+        controls.content_layout.activate()
+        self.assertGreater(
+            controls.content_layout.sizeHint().height(), initial_height
+        )
+
+        card.mode_selector.setCurrentIndex(
+            card.mode_selector.findData('overlay')
+        )
+        self.assertEqual(item.blk.rendered_image.mode, 'overlay')
+        card.visibility_button.click()
+        self.assertFalse(item.blk.rendered_image.enabled)
+
+        with patch.object(
+            QFileDialog,
+            'getOpenFileName',
+            return_value=('/tmp/second.png', ''),
+        ):
+            card.image_button.click()
+        self.assertEqual(item.blk.rendered_image.asset, second)
+        self.assertEqual(item.blk.rendered_image.mode, 'overlay')
+        self.assertFalse(item.blk.rendered_image.enabled)
+        self.assertEqual(self.canvas.stack.count(), 4)
+
+        card.delete_button.click()
+        self.assertIsNone(item.blk.rendered_image)
+        self.assertIsNone(controls.rendered_image_card)
+        self.assertTrue(action.isEnabled())
+        self.assertEqual(self.canvas.stack.count(), 5)
+        self.canvas.stack.undo()
+        self.assertEqual(item.blk.rendered_image.asset, second)
+        self.assertIsNotNone(controls.rendered_image_card)
+
+    def test_rendered_image_section_is_once_between_effects_and_eraser(self):
+        asset = RasterAssetRef(
+            'assets/' + 'e' * 64 + '.png', 'section.png'
+        )
+        project = Mock()
+        project.resolve_raster_asset.return_value = (
+            '/project/assets/section.png'
+        )
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(StrokeEffect()))
+        item.blk.rendered_image = RenderedImageLayer(asset)
+        item.blk.text_alpha_mask = TextAlphaMask()
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        controls.view_widget.resize(420, 600)
+        controls.view_widget.show()
+        self.app.processEvents()
+
+        stroke = controls.stroke_cards[0]
+        rendered = controls.rendered_image_card
+        eraser = controls.alpha_mask_card
+        self.assertIsNotNone(rendered)
+        self.assertIsNotNone(eraser)
+        self.assertEqual(
+            len(controls.scrollContent.findChildren(type(rendered))), 1
+        )
+        y_positions = tuple(
+            card.mapTo(controls.scrollContent, QPoint(0, 0)).y()
+            for card in (stroke, rendered, eraser)
+        )
+        self.assertLess(y_positions[0], y_positions[1])
+        self.assertLess(y_positions[1], y_positions[2])
+
+    def test_same_asset_reimport_refreshes_rendered_and_texture_state(self):
+        rendered_asset = RasterAssetRef(
+            'assets/' + 'e' * 64 + '.png', 'rendered.png'
+        )
+        texture_asset = RasterAssetRef(
+            'assets/' + 'f' * 64 + '.png', 'texture.png'
+        )
+        available = set()
+        project = Mock()
+        project.import_raster_asset.side_effect = (
+            rendered_asset,
+            texture_asset,
+        )
+        project.resolve_raster_asset.side_effect = lambda asset: (
+            f'/project/{asset.path}' if asset in available else None
+        )
+        self.canvas.imgtrans_proj = project
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(TextFillEffect(
+            paint=TexturePaint(texture_asset)
+        )))
+        item.blk.rendered_image = RenderedImageLayer(rendered_asset)
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        fill_card = controls.text_fill_card
+        self.assertTrue(
+            controls.rendered_image_card.image_button.text().startswith(
+                'Missing:'
+            )
+        )
+        self.assertTrue(fill_card.texture_button.text().startswith('Missing:'))
+
+        with patch.object(
+            item.effect_renderer, 'project_assets_changed'
+        ) as assets_changed:
+            available.add(rendered_asset)
+            controls.rendered_image_file_requested.emit('/tmp/rendered.png')
+            self.assertFalse(
+                controls.rendered_image_card.image_button.text().startswith(
+                    'Missing:'
+                )
+            )
+            self.assertTrue(
+                fill_card.texture_button.text().startswith('Missing:')
+            )
+            self.assertEqual(self.canvas.stack.count(), 0)
+
+            available.add(texture_asset)
+            fill_card.texture_file_requested.emit(
+                fill_card.index, '/tmp/texture.png'
+            )
+            self.assertFalse(
+                fill_card.texture_button.text().startswith('Missing:')
+            )
+            self.assertEqual(assets_changed.call_count, 2)
+
+        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(
+            [call.args[0] for call in project.import_raster_asset.call_args_list],
+            ['/tmp/rendered.png', '/tmp/texture.png'],
+        )
+
+    def test_rendered_image_is_single_project_item_only_and_cancel_balances(self):
+        controls = self.panel.texteffect_panel
+        action = controls.add_effect_actions['rendered_image']
+        self.assertFalse(action.isEnabled())
+
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = Mock()
+        first = self._item()
+        second = self._item()
+        scene.addItem(first)
+        scene.addItem(second)
+        self.canvas.selected = [first, second]
+        self.panel.set_textblk_item(None, multi_select=True)
+        self.assertFalse(action.isEnabled())
+
+        self.panel.set_textblk_item(first)
+        transitions = []
+        controls.color_dialog_active_changed.connect(transitions.append)
+        with patch.object(
+            QFileDialog, 'getOpenFileName', return_value=('', '')
+        ):
+            action.trigger()
+        self.assertEqual(transitions, [True, False])
+        self.assertIsNone(first.blk.rendered_image)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+        scene.imgtrans_proj.import_raster_asset.side_effect = ValueError(
+            'broken image'
+        )
+
+        def warn_while_pinned(*_args):
+            self.assertTrue(self.panel.focusOnColorDialog)
+
+        with patch.object(
+            QFileDialog,
+            'getOpenFileName',
+            return_value=('/tmp/broken.png', ''),
+        ), patch.object(
+            QMessageBox, 'warning', side_effect=warn_while_pinned
+        ) as warning:
+            action.trigger()
+        warning.assert_called_once()
+        self.assertFalse(self.panel.focusOnColorDialog)
+        self.assertEqual(transitions[-2:], [True, False])
+
+    def test_text_fill_texture_import_mapping_preview_cancel_and_commit(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'paper.png'
+        )
+        project = Mock()
+        project.import_raster_asset.return_value = asset
+        self.canvas.imgtrans_proj = project
+        item = self._item(self._stack(TextFillEffect()))
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.text_fill_card
+
+        with patch.object(card, '_choose_texture_file', return_value=False):
+            card.fill_type_selector.setCurrentIndex(
+                card.fill_type_selector.findData('texture')
+            )
+        self.assertEqual(card.fill_type_selector.currentData(), 'solid')
+
+        card.texture_file_requested.emit(card.index, '/tmp/paper.png')
+
+        paint = item.blk.fontformat.text_effects[0].paint
+        self.assertEqual(paint, TexturePaint(asset))
+        project.import_raster_asset.assert_called_once_with('/tmp/paper.png')
+        self.assertEqual(self.canvas.stack.count(), 1)
+        card.texture_mapping_selector.setCurrentIndex(
+            card.texture_mapping_selector.findData('tile')
+        )
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].paint.mapping, 'tile'
+        )
+        self.assertEqual(self.canvas.stack.count(), 2)
+
+        editor = card.texture_scale_control.editor
+        editor.setText('150.0%')
+        editor.textEdited.emit('150.0%')
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint.scale, 1.0)
+        self.assertEqual(item.effective_text_effects()[0].paint.scale, 1.5)
+        QApplication.sendEvent(
+            editor,
+            QKeyEvent(
+                QEvent.Type.KeyPress,
+                Qt.Key.Key_Escape,
+                Qt.KeyboardModifier.NoModifier,
+            ),
+        )
+        self.assertEqual(item.effective_text_effects()[0].paint.scale, 1.0)
+        editor.setText('150.0%')
+        editor.textEdited.emit('150.0%')
+        editor.returnPressed.emit()
+        self.assertEqual(item.blk.fontformat.text_effects[0].paint.scale, 1.5)
+        self.assertEqual(self.canvas.stack.count(), 3)
+
+        project.import_raster_asset.side_effect = ValueError('not an image')
+        with patch(
+            'ballontranslator.ui.text_engine.effects.panel.'
+            'QMessageBox.warning'
+        ) as warning:
+            card.texture_file_requested.emit(card.index, '/tmp/broken.png')
+        warning.assert_called_once()
+        self.assertEqual(self.canvas.stack.count(), 3)
+
+    def test_text_fill_texture_is_project_item_only(self):
+        global_stack = self._stack(TextFillEffect())
+        self.panel.global_format.text_effects = global_stack
+        self.panel.set_active_format(self.panel.global_format)
+        card = self.panel.texteffect_panel.text_fill_card
+        self.assertEqual(card.fill_type_selector.findData('texture'), -1)
+
+        project = Mock()
+        self.canvas.imgtrans_proj = project
+        self.assertFalse(
+            self.panel.text_effect_session.import_texture(
+                card.index, '/tmp/never-imported.png'
+            )
+        )
+        project.import_raster_asset.assert_not_called()
+        self.assertEqual(
+            self.panel.global_format.text_effects, global_stack
+        )
+
+    def test_displaying_global_format_does_not_sanitize_its_model(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'paper.png'
+        )
+        stack = self._stack(
+            StrokeEffect(width=0.25),
+            TextFillEffect(paint=TexturePaint(asset)),
+            GlowEffect(size=0.2),
+            FilterEffect('builtin:noise', params={
+                'amount': 0.4, 'mode': 'color', 'seed': 3,
+            }),
+        )
+        arbitrary_format = FontFormat(text_effects=stack)
+
+        self.panel.texteffect_panel.set_active_format(arbitrary_format)
+
+        self.assertEqual(arbitrary_format.text_effects, stack)
+        self.assertIsNone(self.panel.texteffect_panel.text_fill_card)
+
+    def test_active_item_texture_is_omitted_when_updating_portable_preset(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'paper.png'
+        )
+        stack = self._stack(
+            StrokeEffect(width=0.25),
+            TextFillEffect(paint=TexturePaint(asset)),
+            GlowEffect(size=0.2),
+            FilterEffect('builtin:noise', params={
+                'amount': 0.4, 'mode': 'color', 'seed': 3,
+            }),
+        )
+        item = self._item(stack)
+        self.panel.set_textblk_item(item)
+        C.active_format = item.get_fontformat()
+        preset = TextStyleLabel(fontfmt=FontFormat())
+        try:
+            with patch(
+                'ballontranslator.ui.text_engine.formatting.presets.'
+                'save_text_styles'
+            ) as save:
+                preset.update_style()
+            save.assert_called_once_with()
+            self.assertEqual(
+                preset.fontfmt.text_effects.effects,
+                (
+                    StrokeEffect(width=0.25),
+                    GlowEffect(size=0.2),
+                    FilterEffect('builtin:noise', params={
+                        'amount': 0.4, 'mode': 'color', 'seed': 3,
+                    }),
+                ),
+            )
+            self.assertEqual(item.blk.fontformat.text_effects, stack)
+        finally:
+            preset.deleteLater()
+
+    def test_text_fill_mixed_texture_fields_and_asset_only_unification(self):
+        first_asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'paper.png'
+        )
+        second_asset = RasterAssetRef(
+            'assets/' + 'b' * 64 + '.png', 'cloth.png'
+        )
+        unified_asset = RasterAssetRef(
+            'assets/' + 'c' * 64 + '.png', 'shared.png'
+        )
+        first = self._item(self._stack(TextFillEffect(
+            paint=TexturePaint(first_asset, mapping='tile', scale=1.5)
+        )))
+        second = self._item(self._stack(TextFillEffect(
+            paint=TexturePaint(first_asset, mapping='fit', scale=0.75)
+        )))
+        self.canvas.selected = [first, second]
+        self.panel.set_textblk_item(None, multi_select=True)
+        card = self.panel.texteffect_panel.text_fill_card
+
+        self.assertIn('paper.png', card.texture_button.text())
+        self.assertTrue(card.texture_button.isEnabled())
+        self.assertEqual(card.texture_mapping_selector.currentIndex(), -1)
+        self.assertFalse(card.texture_scale_control.isHidden())
+
+        second_stack = self._stack(TextFillEffect(
+            paint=TexturePaint(second_asset, mapping='fit', scale=0.75)
+        ))
+        second.blk.fontformat.text_effects = second_stack
+        second.fontformat.text_effects = second_stack
+        self.panel.set_textblk_item(None, multi_select=True)
+        card = self.panel.texteffect_panel.text_fill_card
+        self.assertEqual(card.texture_button.text(), 'Mixed')
+        self.assertTrue(card.texture_button.isEnabled())
+
+        project = Mock()
+        project.import_raster_asset.return_value = unified_asset
+        self.canvas.imgtrans_proj = project
+        card.texture_file_requested.emit(card.index, '/tmp/shared.png')
+        first_paint = first.blk.fontformat.text_effects[0].paint
+        second_paint = second.blk.fontformat.text_effects[0].paint
+        self.assertEqual(first_paint.asset, unified_asset)
+        self.assertEqual(second_paint.asset, unified_asset)
+        self.assertEqual((first_paint.mapping, first_paint.scale), ('tile', 1.5))
+        self.assertEqual((second_paint.mapping, second_paint.scale), ('fit', 0.75))
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_text_fill_file_dialog_pins_panel_through_cancel_and_error(self):
+        item = self._item(self._stack(TextFillEffect()))
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.text_fill_card
+        transitions = []
+        card.color_dialog_active_changed.connect(transitions.append)
+
+        with patch.object(
+            QFileDialog, 'getOpenFileName', return_value=('', '')
+        ):
+            self.assertFalse(card._choose_texture_file())
+        self.assertEqual(transitions, [True, False])
+        self.assertFalse(self.panel.focusOnColorDialog)
+
+        project = Mock()
+        project.import_raster_asset.side_effect = ValueError('bad image')
+        self.canvas.imgtrans_proj = project
+
+        def assert_pinned(*_args) -> None:
+            self.assertTrue(self.panel.focusOnColorDialog)
+
+        with patch.object(
+            QFileDialog,
+            'getOpenFileName',
+            return_value=('/tmp/broken.png', 'Images'),
+        ), patch.object(
+            QMessageBox, 'warning', side_effect=assert_pinned
+        ):
+            self.assertTrue(card._choose_texture_file())
+        self.assertEqual(transitions, [True, False, True, False])
+        self.assertFalse(self.panel.focusOnColorDialog)
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+    def test_text_fill_card_visibility_and_content_height_follow_type(self):
+        asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'paper.png'
+        )
+        item = self._item(self._stack(TextFillEffect()))
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.text_fill_card
+        card.layout().activate()
+        solid_height = card.sizeHint().height()
+        self.assertTrue(card.gradient_editor.isHidden())
+        self.assertTrue(card.texture_controls_widget.isHidden())
+
+        card.set_values([TextFillEffect(
+            paint=TexturePaint(asset, mapping='fit')
+        )])
+        card.layout().activate()
+        texture_height = card.sizeHint().height()
+        self.assertFalse(card.texture_controls_widget.isHidden())
+        self.assertTrue(card.texture_scale_control.isHidden())
+        self.assertGreater(texture_height, solid_height)
+
+        card.set_values([TextFillEffect(
+            paint=TexturePaint(asset, mapping='tile')
+        )])
+        self.assertFalse(card.texture_scale_control.isHidden())
 
     def test_gradient_angle_dial_previews_then_commits_once(self):
-        before = self._stack(self._constant_overlay())
+        before = self._stack(self._constant_text_fill())
         item = self._item(before)
         self.panel.set_textblk_item(item)
         gradient = (
-            self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
+            self.panel.texteffect_panel.text_fill_card.gradient_editor
         )
         dial = gradient.angle_dial
         center = QRectF(dial.rect()).center()
@@ -1569,7 +2483,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.effective_text_effects()[0].paint.angle, 90.0)
         self.assertEqual(self.canvas.stack.count(), 1)
 
-    def test_shadow_reorder_is_phase_safe_and_mixed_type_does_not_guess(self):
+    def test_effect_reorder_is_global_and_mixed_shadow_type_stays_editable(self):
         top = ShadowEffect(paint=SolidPaint((255, 0, 0)))
         inner = ShadowEffect(
             shadow_type='inner', paint=SolidPaint((0, 255, 0))
@@ -1581,19 +2495,19 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(first)
         cards = self.panel.texteffect_panel.shadow_cards
 
-        self.assertFalse(cards[1].move_up_button.isEnabled())
-        cards[2].move_up_button.click()
+        self.assertTrue(cards[1].move_up_button.isEnabled())
+        cards[1].move_up_button.click()
         effects = first.blk.fontformat.text_effects.effects
-        self.assertEqual(effects[0].paint, SolidPaint((0, 0, 255)))
-        self.assertIsInstance(effects[1], StrokeEffect)
-        self.assertEqual(effects[2].shadow_type, 'inner')
-        self.assertEqual(effects[3].paint, SolidPaint((255, 0, 0)))
+        self.assertEqual(effects[0].paint, SolidPaint((255, 0, 0)))
+        self.assertEqual(effects[1].shadow_type, 'inner')
+        self.assertIsInstance(effects[2], StrokeEffect)
+        self.assertEqual(effects[3].paint, SolidPaint((0, 0, 255)))
         self.assertEqual(self.canvas.stack.count(), 1)
 
         second = self._item(self._stack(
             ShadowEffect(shadow_type='inner'),
-            StrokeEffect(width=0.3),
             ShadowEffect(shadow_type='inner'),
+            StrokeEffect(width=0.3),
             ShadowEffect(),
         ))
         self.canvas.selected = [first, second]
@@ -1601,7 +2515,7 @@ class TextEffectPanelTest(unittest.TestCase):
         mixed_card = self.panel.texteffect_panel.shadow_cards[0]
         self.assertEqual(mixed_card.type_selector.currentIndex(), -1)
         self.assertFalse(mixed_card.move_up_button.isEnabled())
-        self.assertFalse(mixed_card.move_down_button.isEnabled())
+        self.assertTrue(mixed_card.move_down_button.isEnabled())
 
     def test_page_change_commits_pending_effect_before_owner_merge(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))
@@ -1620,9 +2534,9 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.panel.text_effect_session.items, [])
 
     def test_page_change_commits_pending_inline_gradient(self):
-        item = self._item(self._stack(self._constant_overlay()))
+        item = self._item(self._stack(self._constant_text_fill()))
         self.panel.set_textblk_item(item)
-        editor = self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
+        editor = self.panel.texteffect_panel.text_fill_card.gradient_editor
         editor.angle_editor.setValue(75.0)
         self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 0.0)
 
@@ -1632,10 +2546,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_history_change_cancels_pending_inline_gradient(self):
-        before = self._stack(self._constant_overlay())
+        before = self._stack(self._constant_text_fill())
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        editor = self.panel.texteffect_panel.gradient_overlay_card.gradient_editor
+        editor = self.panel.texteffect_panel.text_fill_card.gradient_editor
         editor.angle_editor.setValue(75.0)
         self.assertEqual(item.effective_text_effects()[0].paint.angle, 75.0)
 

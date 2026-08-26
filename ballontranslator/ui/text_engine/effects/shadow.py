@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -107,6 +107,7 @@ def render_shadow_alpha(
     offset: Tuple[float, float],
     blur_radius: int,
     spread_radius: int,
+    canonical_alpha: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Compile one typed Shadow into a paint-independent alpha layer.
 
@@ -115,8 +116,14 @@ def render_shadow_alpha(
 
     >>> alpha = np.zeros((3, 4), dtype=np.uint8)
     >>> alpha[1, 1] = 255
-    >>> int(render_shadow_alpha(alpha, 'drop', 1, (1, 0), 0, 0)[1, 2])
+    >>> int(render_shadow_alpha(
+    ...     alpha, 'drop', 1, (1, 0), 0, 0, alpha
+    ... )[1, 2])
     255
+    >>> int(render_shadow_alpha(
+    ...     alpha, 'drop', 1, (1, 0), 0, 0, alpha
+    ... )[1, 1])
+    0
     """
     if shadow_type == 'long':
         mask = _long_shadow_alpha(
@@ -135,6 +142,12 @@ def render_shadow_alpha(
         mask = _alpha_intersection(mask, source_alpha)
     else:
         raise ValueError('unsupported shadow type')
+    if shadow_type in {'drop', 'long'} and canonical_alpha is not None:
+        # These are exterior layers. Keeping their source footprint made the
+        # base-first compositor tint the canonical face that used to cover it.
+        # Stroke is deliberately not clipped: global card order decides
+        # whether a higher Shadow can cover a lower Stroke.
+        mask = _alpha_intersection(mask, 255 - canonical_alpha)
     if opacity != 1.0:
         mask = np.clip(
             mask.astype(np.float32) * opacity, 0, 255

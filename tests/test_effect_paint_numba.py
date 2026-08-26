@@ -8,22 +8,25 @@ from unittest.mock import patch
 import numpy as np
 from qtpy.QtCore import QRectF
 
-from ballontranslator.ui.text_engine.rendering import effect_paint
-from ballontranslator.ui.text_engine.rendering import effect_paint_numba
-from ballontranslator.ui.text_engine.rendering.effect_paint import (
+from ballontranslator.ui.text_engine.effects import paint as effect_paint
+from ballontranslator.ui.text_engine.effects import paint_numba as effect_paint_numba
+from ballontranslator.ui.text_engine.effects.paint import (
     colorize_effect_paint_rgba,
+    colorize_texture_paint_rgba,
     start_effect_paint_numba_warmup,
 )
-from ballontranslator.ui.text_engine.rendering.effect_paint_numba import (
+from ballontranslator.ui.text_engine.effects.paint_numba import (
     NUMBA_CACHE_DIR,
     colorize_linear_gradient_rgba,
     warm_effect_paint_numba_cache,
 )
 from ballontranslator.utils import shared
+from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
     GradientStop,
     LinearGradientPaint,
     SolidPaint,
+    TexturePaint,
 )
 
 
@@ -184,6 +187,54 @@ class EffectPaintNumbaTest(unittest.TestCase):
         self.assertIs(result, target)
         np.testing.assert_array_equal(result, expected)
         np.testing.assert_array_equal(storage[:, 1::2], gaps)
+
+    def test_texture_mapping_is_anchored_and_full_tile_identical(self):
+        asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
+        texture = np.array([
+            [[255, 0, 0, 255], [0, 255, 0, 128]],
+            [[0, 0, 255, 255], [255, 255, 0, 255]],
+        ], dtype=np.uint8)
+        logical = QRectF(0.0, 0.0, 8.0, 6.0)
+        for mapping in ('fill', 'fit', 'crop', 'tile'):
+            with self.subTest(mapping=mapping):
+                paint = TexturePaint(asset, mapping=mapping, scale=1.5)
+                full = np.full((6, 8, 4), 255, dtype=np.uint8)
+                colorize_texture_paint_rgba(
+                    paint, full, texture, logical, logical, 1.0
+                )
+                left = np.full((6, 4, 4), 255, dtype=np.uint8)
+                right = np.full((6, 4, 4), 255, dtype=np.uint8)
+                colorize_texture_paint_rgba(
+                    paint,
+                    left,
+                    texture,
+                    QRectF(0.0, 0.0, 4.0, 6.0),
+                    logical,
+                    1.0,
+                )
+                colorize_texture_paint_rgba(
+                    paint,
+                    right,
+                    texture,
+                    QRectF(4.0, 0.0, 4.0, 6.0),
+                    logical,
+                    1.0,
+                )
+                np.testing.assert_array_equal(
+                    full, np.concatenate((left, right), axis=1)
+                )
+
+        fit = np.full((6, 8, 4), 255, dtype=np.uint8)
+        colorize_texture_paint_rgba(
+            TexturePaint(asset, mapping='fit'),
+            fit,
+            texture,
+            logical,
+            logical,
+            1.0,
+        )
+        self.assertEqual(int(fit[0, 0, 3]), 0)
+        self.assertTrue(np.any(fit[..., 3] == 128))
 
     def test_randomized_compiled_results_match_numpy_exactly(self):
         rng = np.random.default_rng(20260825)

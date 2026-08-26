@@ -4,29 +4,36 @@ from dataclasses import replace
 from typing import Optional, Sequence, Tuple, TYPE_CHECKING
 
 from ballontranslator.utils import config as C
+from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_effects import (
     EffectPaint,
+    FilterEffect,
+    GeneratedEffectPaint,
     GlowEffect,
-    GradientOverlayEffect,
     GradientStop,
     HollowEffect,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    TextFillEffect,
     TextEffect,
     TextEffectStack,
-    effect_phase,
+    TexturePaint,
+    effect_structure_key,
     effect_paint_fallback_color,
+    generated_effect_insertion_index,
+    without_project_texture_paints,
 )
+from .filters import FilterUnavailableError, get_filter_registry
 
-from .. import shared_widget as SW
-from .editing.commands import SetTextEffectStackCommand
+from ... import shared_widget as SW
+from ..editing.commands import SetTextEffectStackCommand
 
 if TYPE_CHECKING:
-    from .formatting.effects import TextEffectPanel
-    from .formatting.panel import FontFormatPanel
-    from .item import TextBlkItem
+    from .panel import TextEffectPanel
+    from ..formatting.panel import FontFormatPanel
+    from ..item import TextBlkItem
 
 
 OVERALL_OPACITY_INDEX = -1
@@ -62,11 +69,13 @@ class TextEffectEditSession:
             )
             controls.preview_canceled.connect(self.cancel_preview)
             controls.add_effect_requested.connect(self.add_effect)
+            controls.add_filter_requested.connect(self.add_filter)
             controls.hollow_enabled_requested.connect(
                 self.set_hollow_enabled
             )
             controls.remove_effect_requested.connect(self.remove_effect)
             controls.move_effect_requested.connect(self.move_effect)
+            controls.texture_file_requested.connect(self.import_texture)
 
     @staticmethod
     def _state_for_item(item: "TextBlkItem") -> TextEffectStack:
@@ -89,8 +98,10 @@ class TextEffectEditSession:
         return values
 
     @staticmethod
-    def _effect_sequence(state: TextEffectStack) -> Tuple[str, ...]:
-        return tuple(effect.effect_type for effect in state.effects)
+    def _effect_sequence(state: TextEffectStack) -> Tuple[object, ...]:
+        return tuple(
+            effect_structure_key(effect) for effect in state.effects
+        )
 
     @classmethod
     def _has_common_stack_shape(
@@ -106,7 +117,7 @@ class TextEffectEditSession:
         paint: EffectPaint,
         paint_type: str,
         mixed_values: bool,
-    ) -> EffectPaint:
+    ) -> GeneratedEffectPaint:
         """Convert effect Fill without inventing a shared mixed value.
 
         >>> converted = TextEffectEditSession._convert_effect_paint(
@@ -215,16 +226,51 @@ class TextEffectEditSession:
             if param_name != 'enabled':
                 raise ValueError('unknown Hollow field')
             parameters['enabled'] = value
-        elif isinstance(effect, GradientOverlayEffect):
-            if param_name not in {'enabled', 'paint'}:
-                raise ValueError('unknown Gradient field')
-            if param_name == 'paint' and not isinstance(
-                value, LinearGradientPaint
-            ):
-                raise TypeError(
-                    'Gradient paint must be LinearGradientPaint'
+        elif isinstance(effect, TextFillEffect):
+            if param_name not in {
+                'enabled', 'paint', 'paint_type', 'texture_mapping',
+                'texture_scale',
+            }:
+                raise ValueError('unknown Text Fill field')
+            if param_name == 'paint':
+                if not isinstance(
+                    value, (SolidPaint, LinearGradientPaint, TexturePaint)
+                ):
+                    raise TypeError('Text Fill paint must be EffectPaint')
+                parameters['paint'] = value
+            elif param_name == 'paint_type':
+                paint_type, mixed_values = value
+                parameters['paint'] = (
+                    TextEffectEditSession._convert_effect_paint(
+                        effect.paint, paint_type, mixed_values
+                    )
                 )
-            parameters[param_name] = value
+            elif param_name in {'texture_mapping', 'texture_scale'}:
+                if not isinstance(effect.paint, TexturePaint):
+                    raise TypeError('texture controls require Texture paint')
+                parameters['paint'] = replace(
+                    effect.paint,
+                    **{
+                        'mapping' if param_name == 'texture_mapping' else 'scale':
+                        value
+                    },
+                )
+            else:
+                parameters[param_name] = value
+        elif isinstance(effect, FilterEffect):
+            if param_name == 'enabled':
+                parameters['enabled'] = value
+            elif param_name.startswith('param:'):
+                key = param_name.removeprefix('param:')
+                if not key:
+                    raise ValueError('filter parameter name is empty')
+                runtime = get_filter_registry().resolve(effect)
+                params = dict(runtime.params)
+                params[key] = value
+                parameters['params'] = params
+                parameters['schema_version'] = runtime.spec.schema_version
+            else:
+                raise ValueError('unknown Filter field')
         else:
             raise ValueError('selected text effect type is unsupported')
         effects = list(state.effects)
@@ -246,9 +292,23 @@ class TextEffectEditSession:
             'offset_x', 'offset_y'
         }:
             return effect.offset[0 if param_name == 'offset_x' else 1]
+        if isinstance(effect, TextFillEffect) and param_name in {
+            'texture_mapping', 'texture_scale'
+        }:
+            if not isinstance(effect.paint, TexturePaint):
+                raise TypeError('texture controls require Texture paint')
+            return (
+                effect.paint.mapping
+                if param_name == 'texture_mapping'
+                else effect.paint.scale
+            )
+        if isinstance(effect, FilterEffect) and param_name.startswith('param:'):
+            key = param_name.removeprefix('param:')
+            return get_filter_registry().resolve(effect).params[key]
         return getattr(effect, param_name)
 
     def _set_global_effects(self, state: TextEffectStack) -> None:
+        state = without_project_texture_paints(state)
         self.host.global_format.text_effects = state
         active = C.active_format
         if active is self.host.global_format:
@@ -288,6 +348,9 @@ class TextEffectEditSession:
         before = tuple(before)
         after = tuple(after)
         if not self.items:
+            after = tuple(
+                without_project_texture_paints(state) for state in after
+            )
             changed = before != after
             self._set_global_effects(after[0])
             if changed and hasattr(self.host, 'update_text_style_label'):
@@ -372,7 +435,13 @@ class TextEffectEditSession:
                 self._with_value(state, index, param_name, value)
                 for state in before
             ]
-        except (AttributeError, IndexError, TypeError, ValueError):
+        except (
+            AttributeError,
+            FilterUnavailableError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ):
             self.cancel_preview()
             return
         self._apply_preview_states(after)
@@ -399,7 +468,13 @@ class TextEffectEditSession:
                 )
                 for state in before
             ]
-        except (AttributeError, IndexError, TypeError, ValueError):
+        except (
+            AttributeError,
+            FilterUnavailableError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ):
             self.cancel_preview()
             return
         self._apply_preview_states(after)
@@ -431,7 +506,13 @@ class TextEffectEditSession:
                 self._with_value(state, index, param_name, value)
                 for state in before
             ]
-        except (AttributeError, IndexError, TypeError, ValueError):
+        except (
+            AttributeError,
+            FilterUnavailableError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ):
             self.cancel_preview()
             self._sync_effect_ui()
             return False
@@ -457,7 +538,13 @@ class TextEffectEditSession:
                 )
                 for state in before
             ]
-        except (AttributeError, IndexError, TypeError, ValueError):
+        except (
+            AttributeError,
+            FilterUnavailableError,
+            IndexError,
+            TypeError,
+            ValueError,
+        ):
             self.cancel_preview()
             return False
         self.preview_before = None
@@ -474,23 +561,14 @@ class TextEffectEditSession:
     def _insertion_index(
         state: TextEffectStack, effect: TextEffect
     ) -> int:
-        phase = effect_phase(effect)
-        phase_order = {
-            'exterior': 0,
-            'stroke': 1,
-            'foreground': 2,
-            'interior': 3,
-        }
-        rank = phase_order[phase]
-        insertion = len(state.effects)
-        for index, current in enumerate(state.effects):
-            current_rank = phase_order[effect_phase(current)]
-            if current_rank > rank:
-                insertion = index
-                break
-            if current_rank == rank:
-                insertion = index + 1
-        return insertion
+        if isinstance(effect, FilterEffect):
+            # A new Filter keeps the established "filter everything" result.
+            return 0
+        if isinstance(effect, (HollowEffect, TextFillEffect)):
+            return len(state.effects)
+        # Raw legacy structural positions do not participate in the movable
+        # order projected by the panel and renderer.
+        return generated_effect_insertion_index(state.effects)
 
     def add_effect(self, effect_type: str) -> bool:
         self._prepare_structure_change()
@@ -502,11 +580,11 @@ class TextEffectEditSession:
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
             'glow': GlowEffect,
-            'gradient_overlay': GradientOverlayEffect,
+            'text_fill': TextFillEffect,
         }
         constructor = constructors.get(effect_type)
         unique_type = {
-            'gradient_overlay': GradientOverlayEffect,
+            'text_fill': TextFillEffect,
         }.get(effect_type)
         if constructor is None or (
             unique_type is not None
@@ -527,6 +605,72 @@ class TextEffectEditSession:
             effects.insert(self._insertion_index(state, effect), effect)
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
+
+    def add_filter(self, filter_id: str) -> bool:
+        """Append one repeatable filter with its metadata defaults."""
+        self._prepare_structure_change()
+        before = self._current_states()
+        if not self._has_common_stack_shape(before):
+            self._sync_effect_ui()
+            return False
+        spec = get_filter_registry().get_spec(filter_id)
+        if spec is None:
+            self._sync_effect_ui()
+            return False
+        after = []
+        for state in before:
+            effect = FilterEffect(
+                spec.filter_id,
+                schema_version=spec.schema_version,
+                params=spec.default_params(),
+            )
+            effects = list(state.effects)
+            effects.insert(self._insertion_index(state, effect), effect)
+            after.append(replace(state, effects=tuple(effects)))
+        return self._commit_complete_states(before, after)
+
+    def import_texture(self, index: int, source_path: str) -> bool:
+        """Import a managed texture and commit it as one complete-stack edit."""
+        self._prepare_structure_change()
+        if not self.items:
+            self._sync_effect_ui()
+            return False
+        before = self._current_states()
+        if not self._has_common_stack_shape(before):
+            self._sync_effect_ui()
+            return False
+        project = getattr(SW.canvas, 'imgtrans_proj', None)
+        try:
+            if project is None:
+                raise ValueError('Open a project before importing a texture.')
+            asset = project.import_raster_asset(source_path)
+            after = []
+            for state in before:
+                if index < 0 or index >= len(state.effects):
+                    raise IndexError('Text Fill index is no longer current')
+                effect = state.effects[index]
+                if not isinstance(effect, TextFillEffect):
+                    raise TypeError('selected effect is not Text Fill')
+                paint = (
+                    replace(effect.paint, asset=asset)
+                    if isinstance(effect.paint, TexturePaint)
+                    else TexturePaint(asset)
+                )
+                effects = list(state.effects)
+                effects[index] = replace(effect, paint=paint)
+                after.append(replace(state, effects=tuple(effects)))
+        except (IndexError, OSError, TypeError, ValueError) as error:
+            LOGGER.warning('Unable to import Text Fill texture: %s', error)
+            self._sync_effect_ui()
+            if self.controls is not None:
+                self.controls.show_texture_import_error(index, str(error))
+            return False
+        changed = self._commit_complete_states(before, after)
+        if not changed and self.controls is not None:
+            # A same-digest import can restore a missing managed file without
+            # changing the immutable TexturePaint value.
+            self.controls.project_assets_changed()
+        return changed
 
     def set_hollow_enabled(self, enabled: bool) -> bool:
         """Enable the unique Hollow value, inserting it when first used.
@@ -596,28 +740,18 @@ class TextEffectEditSession:
         ):
             self._sync_effect_ui()
             return False
-        phase_sequences = [
-            tuple(effect_phase(effect) for effect in state.effects)
-            for state in before
-        ]
-        if any(
-            sequence != phase_sequences[0]
-            for sequence in phase_sequences[1:]
-        ):
+        movable_types = (StrokeEffect, ShadowEffect, GlowEffect, FilterEffect)
+        if not isinstance(before[0].effects[index], movable_types):
             self._sync_effect_ui()
             return False
-        phase = phase_sequences[0][index]
-        if phase == 'foreground':
-            self._sync_effect_ui()
-            return False
-        phase_indices = [
+        movable_indices = [
             effect_index
-            for effect_index, current_phase in enumerate(phase_sequences[0])
-            if current_phase == phase
+            for effect_index, effect in enumerate(before[0].effects)
+            if isinstance(effect, movable_types)
         ]
         try:
-            position = phase_indices.index(index)
-            destination = phase_indices[position + direction]
+            position = movable_indices.index(index)
+            destination = movable_indices[position + direction]
         except (IndexError, ValueError):
             self._sync_effect_ui()
             return False
