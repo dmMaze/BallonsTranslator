@@ -152,6 +152,42 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertEqual(renderer.background_pixmap.cacheKey(), committed_key)
         self.assertFalse(item.clear_text_effect_preview())
 
+    def test_full_quality_preview_is_default_and_promotes_on_commit(self):
+        canonical = self._stack()
+        target = self._stack(0.24, (70, 80, 90), position='outside')
+        item = self._item(stack=canonical)
+        renderer = item.effect_renderer
+
+        with patch.object(
+            renderer,
+            '_render_effect_surface',
+            wraps=renderer._render_effect_surface,
+        ) as render:
+            item.set_text_effects(target, preview=True)
+            scratch = renderer._preview_effect_raster_state
+            self.assertFalse(renderer.faster_preview)
+            self.assertEqual(scratch.background_pixmap_scale, 1.0)
+
+            item.set_text_effects(target)
+
+        self.assertEqual(render.call_count, 1)
+        self.assertIs(renderer._effect_raster_state, scratch)
+
+    def test_faster_preview_toggle_rerenders_an_active_preview(self):
+        item = self._item(stack=self._stack())
+        renderer = item.effect_renderer
+        item.set_text_effects(self._stack(0.24), preview=True)
+        scratch = renderer._preview_effect_raster_state
+        self.assertEqual(scratch.background_pixmap_scale, 1.0)
+
+        self.assertTrue(renderer.set_faster_preview(True))
+        self.assertIs(renderer._preview_effect_raster_state, scratch)
+        self.assertEqual(scratch.background_pixmap_scale, 0.5)
+        self.assertFalse(renderer.set_faster_preview(True))
+
+        self.assertTrue(renderer.set_faster_preview(False))
+        self.assertEqual(scratch.background_pixmap_scale, 1.0)
+
     def test_distinct_render_copy_is_mirrored_only_on_commit(self):
         canonical = self._stack()
         target = self._stack(0.26, (80, 90, 100), opacity=0.6)
@@ -343,6 +379,8 @@ class TextEffectPreviewTest(unittest.TestCase):
         SW.canvas = canvas
         try:
             session.replace_targets(items)
+            for item in items:
+                item.effect_renderer.set_faster_preview(True)
             self.assertTrue(session.preview_states((after, after)))
             scratches = tuple(
                 item.effect_renderer._preview_effect_raster_state
@@ -544,6 +582,7 @@ class TextEffectPreviewTest(unittest.TestCase):
         for vertical in (False, True):
             with self.subTest(vertical=vertical):
                 item = self._item(vertical, canonical)
+                item.effect_renderer.set_faster_preview(True)
                 scene = QGraphicsScene()
                 scene.addItem(item)
 
@@ -593,6 +632,7 @@ class TextEffectPreviewTest(unittest.TestCase):
         for transform in transforms:
             with self.subTest(transform=transform):
                 item = self._item(stack=canonical)
+                item.effect_renderer.set_faster_preview(True)
                 if not transform.is_neutral():
                     item.set_text_transform(transform)
                 scene = QGraphicsScene()
@@ -618,6 +658,7 @@ class TextEffectPreviewTest(unittest.TestCase):
         )
         item = self._item(stack=canonical)
         renderer = item.effect_renderer
+        renderer.set_faster_preview(True)
         with patch.object(
             renderer,
             '_render_effect_surface',
@@ -651,6 +692,7 @@ class TextEffectPreviewTest(unittest.TestCase):
         canonical = self._stack()
         target = self._stack(0.23)
         item = self._item(stack=canonical)
+        item.effect_renderer.set_faster_preview(True)
         item.set_text_transform(TextTransformStack((SineTextTransform(),)))
         scene = QGraphicsScene()
         scene.addItem(item)

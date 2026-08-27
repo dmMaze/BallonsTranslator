@@ -22,6 +22,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QColorDialog,
     QDoubleSpinBox,
     QFileDialog,
@@ -2963,7 +2964,7 @@ class TextEffectPanel(PanelArea):
         self.add_effect_button.setText(self.tr('Add'))
         self.add_effect_button.setToolTip(self.tr('Add Effect'))
         self.add_effect_button.setAccessibleName(self.tr('Add Effect'))
-        self.add_effect_button.setFixedSize(72, 26)
+        self.add_effect_button.setFixedSize(52, 26)
         self.add_effect_button.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextOnly
         )
@@ -3008,14 +3009,33 @@ class TextEffectPanel(PanelArea):
         self.add_effect_button.setMenu(add_menu)
         self.add_effect_actions['rendered_image'].setEnabled(False)
 
+        self.faster_preview_toggle = QCheckBox(
+            self.tr('Faster Preview'), self.scrollContent
+        )
+        self.faster_preview_toggle.setObjectName(
+            'TextEffectFasterPreviewToggle'
+        )
+        faster_preview_hint = self.tr(
+            'Render live effect changes at half resolution. Committed and '
+            'exported text keep full quality.'
+        )
+        self.faster_preview_toggle.setToolTip(faster_preview_hint)
+        self.faster_preview_toggle.setAccessibleDescription(
+            faster_preview_hint
+        )
+        self.faster_preview_toggle.toggled.connect(
+            self._on_faster_preview_toggled
+        )
+
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(6)
+        top_row.setSpacing(4)
         top_row.addWidget(self.add_effect_button)
         top_row.addWidget(self.mask_brush_button)
         top_row.addWidget(self.hollow_toggle_button)
         top_row.addStretch()
         top_row.addWidget(self.overall_opacity_control)
+        top_row.addWidget(self.faster_preview_toggle)
 
         self.mixed_label = QLabel(self.tr('Mixed'), self.scrollContent)
         self.mixed_label.setObjectName('TextEffectMixedLabel')
@@ -3462,6 +3482,9 @@ class TextEffectPanel(PanelArea):
 
     def set_effect_items(self, items: Sequence["TextBlkItem"]) -> None:
         self._block_items = tuple(items)
+        faster_preview = self.faster_preview_toggle.isChecked()
+        for item in self._block_items:
+            item.effect_renderer.set_faster_preview(faster_preview)
         self._set_effect_states(
             [item.blk.fontformat.text_effects for item in items]
         )
@@ -3618,6 +3641,10 @@ class TextEffectPanel(PanelArea):
 
     def _on_hollow_toggled(self, enabled: bool) -> None:
         self.hollow_enabled_requested.emit(enabled)
+
+    def _on_faster_preview_toggled(self, enabled: bool) -> None:
+        for item in self._block_items:
+            item.effect_renderer.set_faster_preview(enabled)
 
     def _on_mask_brush_clicked(self, checked: bool) -> None:
         self.mask_edit_requested.emit(checked)

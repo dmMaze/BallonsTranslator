@@ -186,6 +186,24 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.effective_text_effects(), before)
         self.assertEqual(self.canvas.stack.count(), 1)
 
+    def test_faster_preview_is_opt_in_and_follows_selected_items(self):
+        first = self._item(self._stack(StrokeEffect(width=0.12)))
+        second = self._item(self._stack(StrokeEffect(width=0.18)))
+        effect_panel = self.panel.texteffect_panel
+
+        self.panel.set_textblk_item(first)
+        self.assertFalse(effect_panel.faster_preview_toggle.isChecked())
+        self.assertFalse(first.effect_renderer.faster_preview)
+
+        effect_panel.faster_preview_toggle.click()
+        self.assertTrue(first.effect_renderer.faster_preview)
+
+        self.panel.set_textblk_item(second)
+        self.assertTrue(second.effect_renderer.faster_preview)
+
+        effect_panel.faster_preview_toggle.click()
+        self.assertFalse(second.effect_renderer.faster_preview)
+
     def test_stroke_numeric_preview_commit_escape_and_incremental_card(self):
         before = self._stack(StrokeEffect(width=0.12))
         item = self._item(before)

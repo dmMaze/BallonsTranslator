@@ -184,6 +184,7 @@ class TextEffectRenderer:
         self._mask_preview = self._NO_MASK_PREVIEW
         self._mask_preview_changes_pixels = False
         self.preview = None
+        self.faster_preview = False
         self._render_stroke = None
         self._outline_only_stroke = False
         self.refreshing_effect_padding = False
@@ -757,9 +758,26 @@ class TextEffectRenderer:
         return state
 
     def _raster_request(self, requested_scale: float) -> float:
-        if not self._export_active and self._effect_preview_changes_pixels():
+        if (
+            self.faster_preview
+            and not self._export_active
+            and self._effect_preview_changes_pixels()
+        ):
             return 0.5
         return quality_raster_request(requested_scale)
+
+    def set_faster_preview(self, enabled: bool) -> bool:
+        """Choose the existing half-resolution live effect preview path."""
+        enabled = bool(enabled)
+        if self.faster_preview == enabled:
+            return False
+        self.faster_preview = enabled
+        if self._effect_preview_changes_pixels():
+            self._mark_effect_cache_dirty()
+            if not self.reshaping:
+                self.repaint_background()
+            self.item.update()
+        return True
 
     def _invalidate_stale_active_raster_state(self) -> bool:
         state = self._peek_raster_state()

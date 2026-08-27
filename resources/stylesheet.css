@@ -2517,7 +2517,7 @@ QToolButton#AddTextTransformButton {
 }
 
 QToolButton#AddTextEffectButton {
-    padding: 0px 14px 0px 6px;
+    padding: 0px 14px 0px 4px;
 }
 
 QToolButton#AddTextTransformButton:hover,
@@ -2538,6 +2538,11 @@ QToolButton#AddTextEffectButton::menu-indicator {
     subcontrol-origin: padding;
     subcontrol-position: right center;
     right: 4px;
+}
+
+QCheckBox#TextEffectFasterPreviewToggle {
+    background-color: transparent;
+    font-size: 12px;
 }
 
 QToolButton#TextTransformMoveButton:hover,

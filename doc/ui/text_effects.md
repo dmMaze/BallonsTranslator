@@ -59,6 +59,10 @@ state. `TextBlkItem` is the Qt boundary, while `TextEffectRenderer` owns the
 completed effect surface. Add behavior at those existing owners instead of
 introducing a second effect model, renderer, or edit session.
 
+The fixed top row is Add, Eraser, Hollow, a spacer, Opacity, then the opt-in
+Faster Preview checkbox. Faster Preview is a runtime panel preference, not a
+project/style value or an undoable effect edit.
+
 Effect and Transform cards share `BottomBorderComboBox`, the compact selector
 used by the Run dialog. The Blend control uses the same transparent
 bottom-border treatment on a native menu button so its families remain
@@ -367,11 +371,13 @@ not reconstruct state from individual controls. With no item targets, the same
 session updates the global format directly because there is no canvas state to
 put on the item undo stack.
 
-Pixel-changing effect previews use a non-promotable 0.5x physical scratch
-surface. Commit and export rerender at the requested quality. Overall Opacity
-is native group state and does not require rebuilding effect pixels. Reshape
-temporarily omits effects, invalidates geometry-sensitive caches, and rebuilds
-the effective namespace once geometry settles.
+Pixel-changing effect previews use requested quality by default, allowing a
+valid full-quality preview surface to promote on commit. The runtime-only,
+opt-in Faster Preview toggle selects a non-promotable 0.5x physical scratch
+surface instead. Commit and export always use the requested quality. Overall
+Opacity is native group state and does not require rebuilding effect pixels.
+Reshape temporarily omits effects, invalidates geometry-sensitive caches, and
+rebuilds the effective namespace once geometry settles.
 
 While native text editing is active, Rendered Image is intentionally omitted
 for both writing modes so the editable source, selection, caret, IME, and
@@ -415,11 +421,12 @@ visible pass and exterior silhouette. Paint-only edits must not rerasterize the
 native glyph outline. Shadow and Glow alpha are intentionally generated on
 demand; their measured cost does not justify another invalidation surface.
 
-Keep antialiasing enabled. The live 0.5x tier provides the useful preview
-tradeoff; disabling painter antialiasing did not materially reduce native
-outline cost. Large surfaces use the shared bounded full/tile policy instead of
-unbounded allocation. Every namespace must release pixmaps and arrays on
-reshape invalidation, item/page removal, and return to an inactive path.
+Keep antialiasing enabled. Faster Preview's 0.5x tier provides the optional
+speed/quality tradeoff; disabling painter antialiasing did not materially
+reduce native outline cost. Large surfaces use the shared bounded full/tile
+policy instead of unbounded allocation. Every namespace must release pixmaps
+and arrays on reshape invalidation, item/page removal, and return to an inactive
+path.
 
 Numba gradient warmup is queued after the main window is constructed and runs
 outside the Qt thread. Painting before it is ready stays on NumPy and must not

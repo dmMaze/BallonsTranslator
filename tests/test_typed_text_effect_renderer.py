@@ -2113,6 +2113,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             with self.subTest(effect=after.effects[0].effect_type):
                 item = self._item(before)
                 renderer = item.effect_renderer
+                renderer.set_faster_preview(True)
                 with patch.object(
                     renderer,
                     '_render_effect_surface',
@@ -2200,7 +2201,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         self.assertEqual(capture.call_count, 1)
         self.assertEqual(alpha.call_count, 1)
-        self.assertEqual(native_outline.call_count, 1)
+        self.assertEqual(native_outline.call_count, 0)
         scratch = renderer._preview_effect_raster_state
         self.assertEqual(len(scratch.effect_source_cache), 1)
         scratch_coverage_keys = tuple(

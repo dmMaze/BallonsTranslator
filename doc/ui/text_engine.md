@@ -209,12 +209,14 @@ deferred caret paint after the completed effect surface, so raster effects and
 Hollow cannot alter editing feedback.
 
 The renderer keeps committed, preview, and export raster namespaces separate.
-Pixel-changing previews use a bounded non-promotable 0.5x scratch surface,
-while commit and strict export rebuild at the requested quality. Reshape omits
-effects during pointer motion and rebuilds once geometry settles. All derived
-pixmaps, alpha planes, padding, and cache keys remain runtime-only and
-item-owned. Repeated Fill paint, Opacity, and Blend changes reuse the cached
-canonical source/mask rather than rasterizing glyphs again.
+Pixel-changing previews use requested quality by default and may be promoted
+on commit. The runtime-only Faster Preview toggle selects the existing bounded,
+non-promotable 0.5x scratch surface; commit and strict export still render at
+the requested quality. Reshape omits effects during pointer motion and rebuilds
+once geometry settles. All derived pixmaps, alpha planes, padding, and cache
+keys remain runtime-only and item-owned. Repeated Fill paint, Opacity, and
+Blend changes reuse the cached canonical source/mask rather than rasterizing
+glyphs again.
 
 The Canvas-owned mask session freezes source mapping for each brush stroke,
 publishes only a derived complete-mask preview, and commits one immutable mask
