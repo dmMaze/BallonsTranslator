@@ -3013,7 +3013,7 @@ class TextEffectPanel(PanelArea):
         self.add_effect_actions['rendered_image'].setEnabled(False)
 
         self.faster_preview_toggle = QCheckBox(
-            self.tr('Faster Preview'), self.scrollContent
+            self.tr('Faster Preview'), self.view_widget.title_label
         )
         self.faster_preview_toggle.setObjectName(
             'TextEffectFasterPreviewToggle'
@@ -3029,21 +3029,19 @@ class TextEffectPanel(PanelArea):
         self.faster_preview_toggle.toggled.connect(
             self._on_faster_preview_toggled
         )
+        title_layout = self.view_widget.title_label.layout()
+        title_layout.insertWidget(
+            title_layout.count() - 1, self.faster_preview_toggle
+        )
 
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
-        top_row.setSpacing(4)
+        top_row.setSpacing(6)
         top_row.addWidget(self.add_effect_button)
+        top_row.addWidget(self.mask_brush_button)
+        top_row.addWidget(self.hollow_toggle_button)
         top_row.addStretch()
-        top_row.addWidget(self.faster_preview_toggle)
-
-        second_row = QHBoxLayout()
-        second_row.setContentsMargins(0, 0, 0, 0)
-        second_row.setSpacing(4)
-        second_row.addWidget(self.mask_brush_button)
-        second_row.addWidget(self.hollow_toggle_button)
-        second_row.addStretch()
-        second_row.addWidget(self.overall_opacity_control)
+        top_row.addWidget(self.overall_opacity_control)
 
         self.mixed_label = QLabel(self.tr('Mixed'), self.scrollContent)
         self.mixed_label.setObjectName('TextEffectMixedLabel')
@@ -3074,7 +3072,6 @@ class TextEffectPanel(PanelArea):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
         layout.addLayout(top_row)
-        layout.addLayout(second_row)
         layout.addWidget(self.mixed_label)
         layout.addLayout(self.base_card_layout)
         layout.addLayout(self.rendered_card_layout)
