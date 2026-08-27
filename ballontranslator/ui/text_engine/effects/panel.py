@@ -1,6 +1,6 @@
 """Expandable controls for item-wide text effects."""
 
-from typing import Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Dict, Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from qtpy.QtCore import (
     QCoreApplication,
@@ -12,7 +12,14 @@ from qtpy.QtCore import (
     QSize,
     Qt,
 )
-from qtpy.QtGui import QColor, QIcon, QPaintEvent, QPainter
+from qtpy.QtGui import (
+    QAction,
+    QActionGroup,
+    QColor,
+    QIcon,
+    QPaintEvent,
+    QPainter,
+)
 from qtpy.QtWidgets import (
     QAbstractSpinBox,
     QColorDialog,
@@ -276,11 +283,146 @@ def _effect_action_widget(
     return widget
 
 
+class BlendModeSelector(QToolButton):
+    """Compact selector with native blend-family submenus.
+
+    >>> issubclass(BlendModeSelector, QToolButton)
+    True
+    """
+
+    mode_changed = Signal(str)
+    ARROW_SIZE = 12
+
+    def __init__(
+        self,
+        accessible_context: str,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._accessible_context = accessible_context
+        self._current_mode: Optional[str] = None
+        self._actions_by_mode: Dict[str, QAction] = {}
+        self.setObjectName('TextEffectBlendSelector')
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+
+        menu = QMenu(self)
+        menu.setObjectName('TextEffectBlendMenu')
+        self._action_group = QActionGroup(self)
+        self._action_group.setExclusive(True)
+        self._add_action(
+            menu,
+            QCoreApplication.translate('TextEffectPanel', 'Normal'),
+            'normal',
+        )
+        darken_menu = menu.addMenu(
+            QCoreApplication.translate('TextEffectPanel', 'Darken')
+        )
+        darken_menu.setObjectName('TextEffectBlendMenu')
+        for label, mode in (
+            (QCoreApplication.translate('TextEffectPanel', 'Darken'), 'darken'),
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Multiply'),
+                'multiply',
+            ),
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Color Burn'),
+                'color_burn',
+            ),
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Linear Burn'),
+                'linear_burn',
+            ),
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Darker Color'),
+                'darker_color',
+            ),
+        ):
+            self._add_action(darken_menu, label, mode)
+
+        lighten_menu = menu.addMenu(
+            QCoreApplication.translate('TextEffectPanel', 'Lighten')
+        )
+        lighten_menu.setObjectName('TextEffectBlendMenu')
+        for label, mode in (
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Lighten'),
+                'lighten',
+            ),
+            (QCoreApplication.translate('TextEffectPanel', 'Screen'), 'screen'),
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Color Dodge'),
+                'color_dodge',
+            ),
+            (
+                QCoreApplication.translate(
+                    'TextEffectPanel', 'Linear Dodge (Add)'
+                ),
+                'linear_dodge',
+            ),
+            (
+                QCoreApplication.translate('TextEffectPanel', 'Lighter Color'),
+                'lighter_color',
+            ),
+        ):
+            self._add_action(lighten_menu, label, mode)
+        self._action_group.triggered.connect(self._on_action_triggered)
+        self.setMenu(menu)
+        self.set_mode('normal')
+
+    def _add_action(self, menu: QMenu, label: str, mode: str) -> None:
+        action = menu.addAction(label)
+        action.setCheckable(True)
+        action.setData(mode)
+        self._action_group.addAction(action)
+        self._actions_by_mode[mode] = action
+
+    def current_mode(self) -> Optional[str]:
+        return self._current_mode
+
+    def set_mode(self, mode: Optional[str]) -> None:
+        action = self._actions_by_mode.get(mode)
+        self._current_mode = mode if action is not None else None
+        for candidate in self._action_group.actions():
+            candidate.setChecked(candidate is action)
+        label = (
+            action.text()
+            if action is not None
+            else QCoreApplication.translate('TextEffectPanel', 'Mixed')
+        )
+        self.setText(label)
+        self.setAccessibleName(f'{self._accessible_context}: {label}')
+
+    def _on_action_triggered(self, action: QAction) -> None:
+        mode = str(action.data())
+        if mode == self._current_mode or mode not in self._actions_by_mode:
+            return
+        self.set_mode(mode)
+        self.mode_changed.emit(mode)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        pixmap = render_svg_pixmap(
+            themed_icon_path('chevron-down.svg'),
+            self.ARROW_SIZE,
+            self.ARROW_SIZE,
+            self.devicePixelRatioF(),
+        )
+        x = self.width() - self.ARROW_SIZE - 4
+        y = (self.height() - self.ARROW_SIZE) // 2
+        painter.drawPixmap(x, y, pixmap)
+        painter.end()
+
+
 def _blend_control(
     parent: QWidget,
     accessible_name: str,
-) -> Tuple[QWidget, BottomBorderComboBox]:
-    """Build the shared three-choice blend-mode row."""
+) -> Tuple[QWidget, BlendModeSelector]:
+    """Build the shared blend-mode row."""
     label = QLabel(
         QCoreApplication.translate('TextEffectPanel', 'Blend'), parent
     )
@@ -288,32 +430,14 @@ def _blend_control(
     label.setAlignment(
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
     )
-    selector = BottomBorderComboBox(parent)
-    selector.setObjectName('TextEffectParamEditor')
-    selector.setPlaceholderText(
-        QCoreApplication.translate('TextEffectPanel', 'Mixed')
-    )
-    selector.setToolTip(QCoreApplication.translate(
+    selector = BlendModeSelector(accessible_name, parent)
+    tooltip = QCoreApplication.translate(
         'TextEffectPanel',
         'Blends with earlier output in the text-effect stack, not the page '
         'image or backdrop.',
-    ))
-    selector.setAccessibleName(accessible_name)
-    for text, value in (
-        (
-            QCoreApplication.translate('TextEffectPanel', 'Normal'),
-            'normal',
-        ),
-        (
-            QCoreApplication.translate('TextEffectPanel', 'Darken'),
-            'darken',
-        ),
-        (
-            QCoreApplication.translate('TextEffectPanel', 'Lighten'),
-            'lighten',
-        ),
-    ):
-        selector.addItem(text, value)
+    )
+    selector.setToolTip(tooltip)
+    selector.setAccessibleDescription(tooltip)
     widget = QWidget(parent)
     layout = QHBoxLayout(widget)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -324,7 +448,7 @@ def _blend_control(
 
 
 def _set_blend_values(
-    selector: BottomBorderComboBox,
+    selector: BlendModeSelector,
     effects: Sequence[object],
 ) -> None:
     values = [getattr(effect, 'blend_mode') for effect in effects]
@@ -333,10 +457,7 @@ def _set_blend_values(
         if values and all(value == values[0] for value in values)
         else None
     )
-    with QSignalBlocker(selector):
-        selector.setCurrentIndex(
-            -1 if common is None else selector.findData(common)
-        )
+    selector.set_mode(common)
 
 
 def _choose_project_raster(parent: QWidget, title: str) -> str:
@@ -575,7 +696,7 @@ class StrokeEffectCard(_EffectCard):
         blend_widget, self.blend_selector = _blend_control(
             self, self.tr('Stroke Blend')
         )
-        self.blend_selector.currentIndexChanged.connect(
+        self.blend_selector.mode_changed.connect(
             self._on_blend_changed
         )
 
@@ -785,13 +906,10 @@ class StrokeEffectCard(_EffectCard):
                 self.fill_type_selector.itemData(combo_index),
             )
 
-    def _on_blend_changed(self, combo_index: int) -> None:
-        if combo_index >= 0:
-            self.value_commit_requested.emit(
-                self.index,
-                'blend_mode',
-                self.blend_selector.itemData(combo_index),
-            )
+    def _on_blend_changed(self, blend_mode: str) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'blend_mode', blend_mode
+        )
 
     def _on_control_commit(self, name: str, value) -> None:
         self.value_commit_requested.emit(self.index, name, value)
@@ -955,7 +1073,7 @@ class ShadowEffectCard(_EffectCard):
         blend_widget, self.blend_selector = _blend_control(
             self, self.tr('Shadow Blend')
         )
-        self.blend_selector.currentIndexChanged.connect(
+        self.blend_selector.mode_changed.connect(
             self._on_blend_changed
         )
         for control in self.iter_controls():
@@ -1197,13 +1315,10 @@ class ShadowEffectCard(_EffectCard):
                 self.fill_type_selector.itemData(combo_index),
             )
 
-    def _on_blend_changed(self, combo_index: int) -> None:
-        if combo_index >= 0:
-            self.value_commit_requested.emit(
-                self.index,
-                'blend_mode',
-                self.blend_selector.itemData(combo_index),
-            )
+    def _on_blend_changed(self, blend_mode: str) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'blend_mode', blend_mode
+        )
 
     def _on_control_commit(self, name: str, value) -> None:
         self.value_commit_requested.emit(self.index, name, value)
@@ -1348,7 +1463,7 @@ class GlowEffectCard(_EffectCard):
         blend_widget, self.blend_selector = _blend_control(
             self, self.tr('Glow Blend')
         )
-        self.blend_selector.currentIndexChanged.connect(
+        self.blend_selector.mode_changed.connect(
             self._on_blend_changed
         )
         for control in self.iter_controls():
@@ -1580,13 +1695,10 @@ class GlowEffectCard(_EffectCard):
                 self.fill_type_selector.itemData(combo_index),
             )
 
-    def _on_blend_changed(self, combo_index: int) -> None:
-        if combo_index >= 0:
-            self.value_commit_requested.emit(
-                self.index,
-                'blend_mode',
-                self.blend_selector.itemData(combo_index),
-            )
+    def _on_blend_changed(self, blend_mode: str) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'blend_mode', blend_mode
+        )
 
     def _on_control_commit(self, name: str, value) -> None:
         self.value_commit_requested.emit(self.index, name, value)
@@ -1817,7 +1929,7 @@ class TextFillEffectCard(_EffectCard):
         blend_widget, self.blend_selector = _blend_control(
             self, self.tr('Text Fill Blend')
         )
-        self.blend_selector.currentIndexChanged.connect(
+        self.blend_selector.mode_changed.connect(
             self._on_blend_changed
         )
 
@@ -2088,13 +2200,10 @@ class TextFillEffectCard(_EffectCard):
                 self.texture_mapping_selector.itemData(combo_index),
             )
 
-    def _on_blend_changed(self, combo_index: int) -> None:
-        if combo_index >= 0:
-            self.value_commit_requested.emit(
-                self.index,
-                'blend_mode',
-                self.blend_selector.itemData(combo_index),
-            )
+    def _on_blend_changed(self, blend_mode: str) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'blend_mode', blend_mode
+        )
 
     def _on_control_commit(self, name: str, value) -> None:
         self.value_commit_requested.emit(self.index, name, value)

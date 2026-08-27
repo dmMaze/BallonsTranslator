@@ -2447,6 +2447,37 @@ QToolButton#TextEffectPaintButton:hover {
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
+QToolButton#TextEffectBlendSelector {
+    min-height: 20px;
+    max-height: 20px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    padding-left: 4px;
+    padding-right: 20px;
+    font-size: 12px;
+    text-align: left;
+}
+
+QToolButton#TextEffectBlendSelector:hover,
+QToolButton#TextEffectBlendSelector:focus,
+QToolButton#TextEffectBlendSelector:open {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QToolButton#TextEffectBlendSelector::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+
+QMenu#TextEffectBlendMenu::indicator:checked {
+    image: url(resources/icons/checkbox_checked.svg);
+}
+
 QWidget#InlineLinearGradientEditor {
     background-color: transparent;
 }

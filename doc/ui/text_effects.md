@@ -58,17 +58,22 @@ completed effect surface. Add behavior at those existing owners instead of
 introducing a second effect model, renderer, or edit session.
 
 Effect and Transform cards share `BottomBorderComboBox`, the compact selector
-used by the Run dialog. Stroke Position and Shadow/Glow Type follow the card
-title. Fill stays in the left control column; Solid shows its swatch opposite,
-Gradient expands the shared stop editor below it, and Text Fill additionally
-offers Texture with an image chooser plus Fill/Fit/Crop/Tile mapping. The
-Stroke, Shadow, Glow, and Text Fill cards expose only Normal, Darken, and
-Lighten in their Blend selector; mixed selections show Mixed. Text Fill puts
-Opacity and Blend in the compact row below its paint row. The
-Texture choice exists only for concrete project-item selections; global and
-itemless formatting never offers it. For a mixed Texture selection, asset,
-mapping, and scale compare independently. The chooser remains enabled when
-assets differ and selecting a file changes only the asset, retaining each
+used by the Run dialog. The Blend control uses the same transparent
+bottom-border treatment on a native menu button so its families remain
+keyboard-accessible: Normal is direct, Darken contains Darken, Multiply, Color
+Burn, Linear Burn, and Darker Color, and Lighten contains Lighten, Screen,
+Color Dodge, Linear Dodge (Add), and Lighter Color. Mixed selections show
+Mixed with no checked leaf; a common value checks its leaf inside the relevant
+submenu. These modes add no mode-specific parameter row; each effect's existing
+Opacity remains independent. Stroke Position and Shadow/Glow Type follow the
+card title. Fill stays in the left control column; Solid shows its swatch
+opposite, Gradient expands the shared stop editor below it, and Text Fill
+additionally offers Texture with an image chooser plus Fill/Fit/Crop/Tile
+mapping. Text Fill puts Opacity and Blend in the compact row below its paint
+row. The Texture choice exists only for concrete project-item selections;
+global and itemless formatting never offers it. For a mixed Texture selection,
+asset, mapping, and scale compare independently. The chooser remains enabled
+when assets differ and selecting a file changes only the asset, retaining each
 item's mapping and scale. The file dialog, synchronous import, and any error
 message keep the formatting panel pinned for their complete lifetime. The
 editor orders its
@@ -141,12 +146,25 @@ repeats at the selected scale from the unpadded logical top-left. Full surfaces,
 visible tiles, both writing modes, and downstream text transforms therefore
 sample the same logical point from the same texture point.
 
-Stroke, Shadow, Glow, and Text Fill accept exactly `normal`, `darken`, and
-`lighten`. QPainter applies these native modes while composing generated
-layers into the isolated text surface and fills into their transparent group.
-The destination is always earlier output in that local stack, never the page
-backdrop. This same destination and order apply to full, tiled, preview, and
-export rendering; no extra draw or RGBA blend bridge is used for these modes.
+Stroke, Shadow, Glow, and Text Fill persist one flat leaf from the UI families:
+`normal`; `darken`, `multiply`, `color_burn`, `linear_burn`, `darker_color`;
+or `lighten`, `screen`, `color_dodge`, `linear_dodge`, `lighter_color`. Family
+names and submenus are presentation only. Normal, Darken, Multiply, Color Burn,
+Lighten, Screen, and Color Dodge use native QPainter composition. Linear Burn,
+Darker Color, Linear Dodge (Add), and Lighter Color use one exact
+straight-RGBA8 source-over bridge per custom layer; row-chunked arithmetic
+bounds working memory and preserves full/tiled rounding, but the pixmap readback
+and replacement make these modes more expensive than native leaves. They do not
+rerasterize glyphs or add work to native layers.
+
+The first renderable Text Fill is source identity over its transparent group,
+so it is source-copied without entering native or custom blend dispatch. A
+single Fill therefore incurs no custom bridge regardless of its saved leaf; a
+custom second Fill incurs exactly one. The completed Fill group is still
+clipped once by canonical glyph coverage. Generated layers and later Fills
+blend with earlier output in their isolated local stack, never the page
+backdrop. The same destination, order, and arithmetic apply to full, tiled,
+preview, and export rendering.
 
 Neutral effects stay in model and panel state but are skipped by rendering.
 Keep that neutral test explicit when adding a type; disabled, zero-opacity, or

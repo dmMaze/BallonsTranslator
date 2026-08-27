@@ -154,12 +154,13 @@ for stack order, migration, preview/undo, mask editing, cache boundaries, and
 extension rules. See [Text filters](text_filters.md) for plug-in metadata,
 trusted-code runtime, and deterministic tile contracts.
 
-Stroke, Shadow, Glow, and Text Fill support only Normal, Darken, and Lighten.
-Their native QPainter composition destination is earlier output inside the
-isolated generated stack or transparent Fill group, never the page backdrop.
-Paint alpha and effect Opacity multiply coverage once. Passive loading warns
-and falls back to Normal for an invalid mode without dropping the effect; live
-values remain strict.
+Stroke, Shadow, Glow, and Text Fill support Normal plus the Darken and Lighten
+families detailed in [Text effects](text_effects.md). Family submenus are UI
+only; persistence stores one flat leaf. Every leaf composes with earlier output
+inside the isolated generated stack or transparent Fill group, never the page
+backdrop. Paint alpha and effect Opacity multiply coverage once. Passive loading
+warns and falls back to Normal for an invalid mode without dropping the effect;
+live values remain strict.
 
 Text Fill textures use immutable project-relative `RasterAssetRef` values.
 The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`

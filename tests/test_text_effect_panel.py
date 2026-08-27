@@ -919,6 +919,56 @@ class TextEffectPanelTest(unittest.TestCase):
             for name, value in theme_globals.items():
                 setattr(shared, name, value)
 
+    def test_long_blend_leaf_does_not_grow_card_or_host(self):
+        old_stylesheet = self.app.styleSheet()
+        theme_globals = {
+            name: getattr(shared, name)
+            for name in (
+                'FOREGROUND_FONTCOLOR',
+                'SLIDERHANDLE_COLOR',
+                'BORDER_COLOR',
+                'WIDGET_BACKGROUND_COLOR',
+            )
+        }
+        try:
+            for theme in ('eva-light', 'eva-dark'):
+                with self.subTest(theme=theme):
+                    self.app.setStyleSheet(parse_stylesheet(theme))
+                    host = QWidget()
+                    layout = QVBoxLayout(host)
+                    card = StrokeEffectCard(0)
+                    card.set_values([StrokeEffect(blend_mode='normal')])
+                    layout.addWidget(card)
+                    host.resize(
+                        host.minimumSizeHint().width(),
+                        host.minimumSizeHint().height(),
+                    )
+                    host.show()
+                    self.app.processEvents()
+                    before_card_minimum = card.minimumSizeHint().width()
+                    before_host_minimum = host.minimumSizeHint().width()
+                    before_host_width = host.width()
+
+                    card.set_values([
+                        StrokeEffect(blend_mode='linear_dodge')
+                    ])
+                    layout.activate()
+                    self.app.processEvents()
+
+                    self.assertLessEqual(
+                        card.minimumSizeHint().width(), before_card_minimum
+                    )
+                    self.assertLessEqual(
+                        host.minimumSizeHint().width(), before_host_minimum
+                    )
+                    self.assertEqual(host.width(), before_host_width)
+                    host.deleteLater()
+                    self.app.processEvents()
+        finally:
+            self.app.setStyleSheet(old_stylesheet)
+            for name, value in theme_globals.items():
+                setattr(shared, name, value)
+
     def test_inline_gradient_color_dialog_preview_reject_accept(self):
         before = self._stack(StrokeEffect(paint=LinearGradientPaint()))
         item = self._item(before)
@@ -1547,11 +1597,33 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertIs(self.panel.texteffect_panel.text_fill_cards[0], card)
 
     def test_blend_selectors_display_mixed_and_commit(self):
+        expected_modes = (
+            'normal',
+            'darken',
+            'multiply',
+            'color_burn',
+            'linear_burn',
+            'darker_color',
+            'lighten',
+            'screen',
+            'color_dodge',
+            'linear_dodge',
+            'lighter_color',
+        )
+
+        def leaf_actions(selector):
+            for root_action in selector.menu().actions():
+                submenu = root_action.menu()
+                if submenu is None:
+                    yield root_action
+                else:
+                    yield from submenu.actions()
+
         first = self._item(self._stack(
             StrokeEffect(blend_mode='normal'),
-            ShadowEffect(blend_mode='darken'),
-            GlowEffect(blend_mode='lighten'),
-            TextFillEffect(blend_mode='normal'),
+            ShadowEffect(blend_mode='multiply'),
+            GlowEffect(blend_mode='linear_dodge'),
+            TextFillEffect(blend_mode='darker_color'),
         ))
         self.panel.set_textblk_item(first)
         controls = self.panel.texteffect_panel
@@ -1562,27 +1634,54 @@ class TextEffectPanelTest(unittest.TestCase):
             controls.text_fill_cards[0],
         )
         self.assertEqual(
-            [card.blend_selector.currentData() for card in cards],
-            ['normal', 'darken', 'lighten', 'normal'],
+            [card.blend_selector.current_mode() for card in cards],
+            ['normal', 'multiply', 'linear_dodge', 'darker_color'],
         )
-        for card in cards:
+        for card, accessible_name in zip(cards, (
+            'Stroke Blend: Normal',
+            'Shadow Blend: Multiply',
+            'Glow Blend: Linear Dodge (Add)',
+            'Text Fill Blend: Darker Color',
+        )):
+            selector = card.blend_selector
+            root_actions = selector.menu().actions()
             self.assertEqual(
-                [
-                    card.blend_selector.itemData(index)
-                    for index in range(card.blend_selector.count())
-                ],
-                ['normal', 'darken', 'lighten'],
+                [action.text() for action in root_actions],
+                ['Normal', 'Darken', 'Lighten'],
+            )
+            self.assertEqual(root_actions[0].data(), 'normal')
+            self.assertIsNone(root_actions[0].menu())
+            self.assertEqual(
+                [action.data() for action in root_actions[1].menu().actions()],
+                list(expected_modes[1:6]),
+            )
+            self.assertEqual(
+                [action.data() for action in root_actions[2].menu().actions()],
+                list(expected_modes[6:]),
+            )
+            actions = list(leaf_actions(selector))
+            self.assertEqual(
+                [action.data() for action in actions], list(expected_modes)
+            )
+            self.assertEqual(
+                [action.data() for action in actions if action.isChecked()],
+                [selector.current_mode()],
+            )
+            self.assertEqual(selector.accessibleName(), accessible_name)
+            self.assertEqual(
+                selector.accessibleDescription(), selector.toolTip()
             )
 
-        changed_modes = ('lighten', 'normal', 'darken', 'lighten')
-        for card, mode in zip(cards, changed_modes):
-            card.blend_selector.setCurrentIndex(
-                card.blend_selector.findData(mode)
-            )
+        undo_count = self.canvas.stack.count()
+        stroke_actions = list(leaf_actions(cards[0].blend_selector))
+        next(
+            action for action in stroke_actions
+            if action.data() == 'color_burn'
+        ).trigger()
         self.assertEqual(
-            tuple(effect.blend_mode for effect in first.blk.fontformat.text_effects),
-            changed_modes,
+            first.blk.fontformat.text_effects[0].blend_mode, 'color_burn'
         )
+        self.assertEqual(self.canvas.stack.count(), undo_count + 1)
 
         second = self._item(self._stack(
             StrokeEffect(blend_mode='normal'),
@@ -1599,19 +1698,30 @@ class TextEffectPanelTest(unittest.TestCase):
             controls.text_fill_cards[0],
         )
         self.assertTrue(all(
-            card.blend_selector.currentIndex() == -1 for card in cards
+            card.blend_selector.current_mode() is None for card in cards
         ))
         self.assertTrue(all(
-            card.blend_selector.placeholderText() == 'Mixed'
+            card.blend_selector.text() == 'Mixed'
+            for card in cards
+        ))
+        self.assertTrue(all(
+            card.blend_selector.accessibleName().endswith(': Mixed')
+            for card in cards
+        ))
+        self.assertTrue(all(
+            not any(action.isChecked() for action in leaf_actions(
+                card.blend_selector
+            ))
             for card in cards
         ))
         undo_count = self.canvas.stack.count()
         fill_card = cards[-1]
-        fill_card.blend_selector.setCurrentIndex(
-            fill_card.blend_selector.findData('darken')
-        )
+        next(
+            action for action in leaf_actions(fill_card.blend_selector)
+            if action.data() == 'lighter_color'
+        ).trigger()
         self.assertTrue(all(
-            item.blk.fontformat.text_effects[3].blend_mode == 'darken'
+            item.blk.fontformat.text_effects[3].blend_mode == 'lighter_color'
             for item in (first, second)
         ))
         self.assertEqual(self.canvas.stack.count(), undo_count + 1)
@@ -1926,11 +2036,9 @@ class TextEffectPanelTest(unittest.TestCase):
             )
             for blend_card in blend_cards:
                 selector = blend_card.blend_selector
+                root_actions = selector.menu().actions()
                 self.assertEqual(
-                    [
-                        selector.itemText(index)
-                        for index in range(selector.count())
-                    ],
+                    [action.text() for action in root_actions],
                     [
                         'Localized Normal',
                         'Localized Darken',
@@ -1938,12 +2046,44 @@ class TextEffectPanelTest(unittest.TestCase):
                     ],
                 )
                 self.assertEqual(
-                    selector.placeholderText(), 'Localized Mixed'
+                    [
+                        action.text()
+                        for action in root_actions[1].menu().actions()
+                    ],
+                    [
+                        'Localized Darken',
+                        'Localized Multiply',
+                        'Localized Color Burn',
+                        'Localized Linear Burn',
+                        'Localized Darker Color',
+                    ],
+                )
+                self.assertEqual(
+                    [
+                        action.text()
+                        for action in root_actions[2].menu().actions()
+                    ],
+                    [
+                        'Localized Lighten',
+                        'Localized Screen',
+                        'Localized Color Dodge',
+                        'Localized Linear Dodge (Add)',
+                        'Localized Lighter Color',
+                    ],
                 )
                 self.assertEqual(
                     selector.toolTip(),
                     'Localized Blends with earlier output in the text-effect '
                     'stack, not the page image or backdrop.',
+                )
+                self.assertEqual(selector.text(), 'Localized Normal')
+                self.assertTrue(
+                    selector.accessibleName().endswith(': Localized Normal')
+                )
+                selector.set_mode(None)
+                self.assertEqual(selector.text(), 'Localized Mixed')
+                self.assertTrue(
+                    selector.accessibleName().endswith(': Localized Mixed')
                 )
 
             builtin = get_filter_registry().get_spec('builtin:noise')
