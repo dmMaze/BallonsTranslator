@@ -2337,6 +2337,24 @@ class TextEffectPanelTest(unittest.TestCase):
         transitions = []
         controls.color_dialog_active_changed.connect(transitions.append)
 
+        with patch.object(
+            QFileDialog, 'getOpenFileName'
+        ) as chooser:
+            action.trigger()
+
+        chooser.assert_not_called()
+        self.assertEqual(transitions, [])
+        self.assertFalse(self.panel.focusOnColorDialog)
+        self.assertEqual(item.blk.rendered_image, RenderedImageLayer())
+        self.assertEqual(self.canvas.stack.count(), 1)
+        card = controls.rendered_image_card
+        self.assertIsNotNone(card)
+        self.assertFalse(action.isEnabled())
+        self.assertEqual(card.title_label.text(), 'Image')
+        self.assertEqual(card.image_button.text(), 'Empty')
+        self.assertFalse(card.title_icon_label.pixmap().isNull())
+        self.assertIn('Hidden while editing', card.toolTip())
+
         def choose_first(*_args):
             self.assertTrue(self.panel.focusOnColorDialog)
             self.panel.set_textblk_item(None)
@@ -2346,20 +2364,13 @@ class TextEffectPanelTest(unittest.TestCase):
         with patch.object(
             QFileDialog, 'getOpenFileName', side_effect=choose_first
         ):
-            action.trigger()
-
+            card.image_button.click()
         self.assertEqual(transitions, [True, False])
-        self.assertFalse(self.panel.focusOnColorDialog)
         self.assertEqual(
             item.blk.rendered_image, RenderedImageLayer(first)
         )
-        self.assertEqual(self.canvas.stack.count(), 1)
-        card = controls.rendered_image_card
-        self.assertIsNotNone(card)
-        self.assertFalse(action.isEnabled())
-        self.assertEqual(card.title_label.text(), 'Rendered Image')
-        self.assertFalse(card.title_icon_label.pixmap().isNull())
-        self.assertIn('Hidden while editing', card.toolTip())
+        self.assertEqual(self.canvas.stack.count(), 2)
+
         project.resolve_raster_asset.return_value = None
         controls.refresh_rendered_image_state()
         self.assertTrue(card.image_button.text().startswith('Missing:'))
@@ -2386,13 +2397,13 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.blk.rendered_image.asset, second)
         self.assertEqual(item.blk.rendered_image.mode, 'overlay')
         self.assertFalse(item.blk.rendered_image.enabled)
-        self.assertEqual(self.canvas.stack.count(), 4)
+        self.assertEqual(self.canvas.stack.count(), 5)
 
         card.delete_button.click()
         self.assertIsNone(item.blk.rendered_image)
         self.assertIsNone(controls.rendered_image_card)
         self.assertTrue(action.isEnabled())
-        self.assertEqual(self.canvas.stack.count(), 5)
+        self.assertEqual(self.canvas.stack.count(), 6)
         self.canvas.stack.undo()
         self.assertEqual(item.blk.rendered_image.asset, second)
         self.assertIsNotNone(controls.rendered_image_card)
@@ -2496,7 +2507,7 @@ class TextEffectPanelTest(unittest.TestCase):
             ['/tmp/rendered.png', '/tmp/texture.png'],
         )
 
-    def test_rendered_image_is_single_project_item_only_and_cancel_balances(self):
+    def test_rendered_image_is_single_item_and_empty_until_valid_selection(self):
         controls = self.panel.texteffect_panel
         action = controls.add_effect_actions['rendered_image']
         self.assertFalse(action.isEnabled())
@@ -2515,12 +2526,23 @@ class TextEffectPanelTest(unittest.TestCase):
         transitions = []
         controls.color_dialog_active_changed.connect(transitions.append)
         with patch.object(
+            QFileDialog, 'getOpenFileName'
+        ) as chooser:
+            action.trigger()
+        chooser.assert_not_called()
+        self.assertEqual(transitions, [])
+        self.assertEqual(first.blk.rendered_image, RenderedImageLayer())
+        self.assertEqual(self.canvas.stack.count(), 1)
+        card = controls.rendered_image_card
+        self.assertEqual(card.image_button.text(), 'Empty')
+
+        with patch.object(
             QFileDialog, 'getOpenFileName', return_value=('', '')
         ):
-            action.trigger()
+            card.image_button.click()
         self.assertEqual(transitions, [True, False])
-        self.assertIsNone(first.blk.rendered_image)
-        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(first.blk.rendered_image, RenderedImageLayer())
+        self.assertEqual(self.canvas.stack.count(), 1)
 
         scene.imgtrans_proj.import_raster_asset.side_effect = ValueError(
             'broken image'
@@ -2536,10 +2558,12 @@ class TextEffectPanelTest(unittest.TestCase):
         ), patch.object(
             QMessageBox, 'warning', side_effect=warn_while_pinned
         ) as warning:
-            action.trigger()
+            card.image_button.click()
         warning.assert_called_once()
         self.assertFalse(self.panel.focusOnColorDialog)
         self.assertEqual(transitions[-2:], [True, False])
+        self.assertEqual(first.blk.rendered_image, RenderedImageLayer())
+        self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_text_fill_texture_import_mapping_preview_cancel_and_commit(self):
         asset = RasterAssetRef(
@@ -2552,25 +2576,46 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.text_fill_cards[0]
 
-        with patch.object(card, '_choose_texture_file', return_value=False):
+        with patch.object(card, '_choose_texture_file') as chooser:
             card.fill_type_selector.setCurrentIndex(
                 card.fill_type_selector.findData('texture')
             )
-        self.assertEqual(card.fill_type_selector.currentData(), 'solid')
+        chooser.assert_not_called()
+        self.assertEqual(card.fill_type_selector.currentData(), 'texture')
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].paint, TexturePaint()
+        )
+        self.assertEqual(card.texture_button.text(), 'Empty')
+        self.assertEqual(self.canvas.stack.count(), 1)
 
+        project.import_raster_asset.side_effect = ValueError('not an image')
+        with patch(
+            'ballontranslator.ui.text_engine.effects.panel.'
+            'QMessageBox.warning'
+        ) as warning:
+            card.texture_file_requested.emit(card.index, '/tmp/broken.png')
+        warning.assert_called_once()
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].paint, TexturePaint()
+        )
+        self.assertEqual(card.texture_button.text(), 'Empty')
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        project.import_raster_asset.side_effect = None
+        project.import_raster_asset.reset_mock()
         card.texture_file_requested.emit(card.index, '/tmp/paper.png')
 
         paint = item.blk.fontformat.text_effects[0].paint
         self.assertEqual(paint, TexturePaint(asset))
         project.import_raster_asset.assert_called_once_with('/tmp/paper.png')
-        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertEqual(self.canvas.stack.count(), 2)
         card.texture_mapping_selector.setCurrentIndex(
             card.texture_mapping_selector.findData('tile')
         )
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint.mapping, 'tile'
         )
-        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertEqual(self.canvas.stack.count(), 3)
 
         editor = card.texture_scale_control.editor
         editor.setText('150.0%')
@@ -2590,7 +2635,7 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.textEdited.emit('150.0%')
         editor.returnPressed.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint.scale, 1.5)
-        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertEqual(self.canvas.stack.count(), 4)
 
         project.import_raster_asset.side_effect = ValueError('not an image')
         with patch(
@@ -2599,7 +2644,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ) as warning:
             card.texture_file_requested.emit(card.index, '/tmp/broken.png')
         warning.assert_called_once()
-        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertEqual(self.canvas.stack.count(), 4)
 
     def test_text_fill_texture_errors_route_by_current_card_index(self):
         project = Mock()

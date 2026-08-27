@@ -239,11 +239,20 @@ class TextEffectEditSession:
                 parameters['paint'] = value
             elif param_name == 'paint_type':
                 paint_type, mixed_values = value
-                parameters['paint'] = (
-                    TextEffectEditSession._convert_effect_paint(
-                        effect.paint, paint_type, mixed_values
+                if paint_type == 'texture':
+                    if (
+                        mixed_values
+                        or not isinstance(effect.paint, TexturePaint)
+                    ):
+                        parameters['paint'] = TexturePaint()
+                    else:
+                        parameters['paint'] = effect.paint
+                else:
+                    parameters['paint'] = (
+                        TextEffectEditSession._convert_effect_paint(
+                            effect.paint, paint_type, mixed_values
+                        )
                     )
-                )
             elif param_name in {'texture_mapping', 'texture_scale'}:
                 if not isinstance(effect.paint, TexturePaint):
                     raise TypeError('texture controls require Texture paint')

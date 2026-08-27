@@ -26,7 +26,7 @@ declared params are passed to the plug-in; a missing or invalid known value
 uses its validated metadata default while the persisted value stays unchanged.
 
 Stroke, Shadow, Glow, and Filter cards share one top-to-bottom application
-order in the panel. A Filter transforms the fixed Text Fill/Rendered Image base
+order in the panel. A Filter transforms the fixed Text Fill/Image base
 plus generated layers accumulated above its card; cards below it run afterward.
 The persisted tuple remains topmost-first for compatibility, so the renderer
 traverses that tuple in reverse. Consecutive Filters execute panel top-to-bottom
@@ -64,7 +64,7 @@ obsolete keys naturally disappear. Rename or reinterpret a parameter only with
 a schema-version increment and `migrate_params`; absent or failed migration
 bypasses interactively and fails strict export without corrupting saved data.
 
-Rendered Image is suppressed during native editing, but ordinary Filters stay
+Image is suppressed during native editing, but ordinary Filters stay
 active in both writing modes. Qt feedback is painted afterward and is never
 visible to plug-ins. Enabled requested filters remain strict-export eligible
 even when the text is empty or the implementation cannot be resolved.

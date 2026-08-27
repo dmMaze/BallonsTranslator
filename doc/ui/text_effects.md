@@ -11,7 +11,7 @@ tests are authoritative for individual controls and raster algorithms.
 QTextDocument + settled SceneTextLayout
   -> canonical glyph source, including Glyph Slant when active
   -> canonical rich foreground or repeatable Fill base group, unless Hollow
-  -> TextBlock-owned Rendered Image base (Replace or Overlay)
+  -> TextBlock-owned Image base (Replace or Overlay)
   -> ordered Stroke / Shadow / Glow / Filter cards, panel top-to-bottom
   -> TextBlock-owned alpha mask
   -> Overall Opacity
@@ -45,7 +45,7 @@ for the presentation remapping.
 | Content-addressed raster import and safe project-relative resolution | [`utils/proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
 | Style persistence, legacy migration, and compatibility views | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Block-owned alpha-mask persistence | [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py), [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
-| Block-owned Rendered Image persistence | [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
+| Block-owned Image persistence | [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
 | Lazy filter metadata, active runtime resolution, and built-ins | [`ui/text_engine/effects/filters/`](../../ballontranslator/ui/text_engine/effects/filters/), [Text filters](text_filters.md) |
 | Composition, padding, raster policy, preview namespaces, and caches | [`ui/text_engine/effects/renderer.py`](../../ballontranslator/ui/text_engine/effects/renderer.py), [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
 | Selection-scoped effect preview and commit | [`ui/text_engine/effects/edit_session.py`](../../ballontranslator/ui/text_engine/effects/edit_session.py) |
@@ -74,9 +74,10 @@ submenu. These modes add no mode-specific parameter row; each effect's existing
 Opacity remains independent. Stroke Position and Shadow/Glow Type follow the
 card title. Fill stays in the left control column; Solid shows its swatch
 opposite, Gradient expands the shared stop editor below it, and Fill
-additionally offers Texture with an image chooser plus Fill/Fit/Crop/Tile
-mapping. Fill puts Opacity and Blend in the compact row below its paint
-row. The Texture choice exists only for concrete project-item selections;
+additionally offers Texture with an Empty state, an explicit image chooser,
+and Fill/Fit/Crop/Tile mapping. Selecting Texture does not open the chooser.
+Fill puts Opacity and Blend in the compact row below its paint row. The Texture
+choice exists only for concrete project-item selections;
 global and itemless formatting never offers it. For a mixed Texture selection,
 asset, mapping, and scale compare independently. The chooser remains enabled
 when assets differ and selecting a file changes only the asset, retaining each
@@ -96,14 +97,15 @@ column width. Editor and current-selector values are centered. Two-column rows
 use equal columns and an 8 px inter-column gap. There is no redundant Flip
 action.
 
-The panel projects the complete visible execution order as Fill, Rendered
-Image, movable Stroke/Shadow/Glow/Filter cards, then Eraser. Rendered Image is
+The panel projects the complete visible execution order as Fill, Image,
+movable Stroke/Shadow/Glow/Filter cards, then Eraser. Image is
 a fixed item-specific base card after Fill and before the movable stack.
 It exists only for one concrete project TextBlock and therefore never appears
 in global formatting, presets, or multi-selection. Its Image and
 Replace/Overlay controls use the same two equal-column, natural-label-spacing
-card rows and shared pinned project-image chooser. The card tooltip explains
-that the layer is intentionally hidden during native text editing.
+card rows and shared pinned project-image chooser. Adding the card leaves its
+asset Empty without opening that chooser. The card tooltip explains that the
+layer is intentionally hidden during native text editing.
 
 ## Model, sources, and ordered composition
 
@@ -122,10 +124,10 @@ Filter are repeatable. Hollow is unique.
 | Filter | Ordered pixel transform, repeatable | Transforms the base and generated layers accumulated above its visible card. Consecutive Filters execute panel top-to-bottom through one RGBA bridge. Alpha is non-expanding by default; an explicitly declared expander is halo-bounded and adds matching effect padding. |
 
 `RenderedImageLayer` is not a `TextEffectStack` node or paint. It is one
-immutable versioned `TextBlock` value containing `enabled`, a generic
-`RasterAssetRef`, and `mode=replace|overlay`. Replace clears the entire isolated
-text/effect surface, including padded Stroke/Shadow overflow, then maps the
-image exactly into the unpadded logical text rectangle. Transparent source
+immutable versioned `TextBlock` Image value containing `enabled`, an optional
+generic `RasterAssetRef`, and `mode=replace|overlay`. Replace clears the entire
+isolated text/effect surface, including padded Stroke/Shadow overflow, then maps
+the image exactly into the unpadded logical text rectangle. Transparent source
 pixels remain transparent. Overlay source-over composites above Text Fill and
 below the movable stack. Neither mode expands padding.
 
@@ -138,11 +140,12 @@ each glyph, effect layer, or tile, so writing modes and render paths agree.
 If no enabled Text Fill can render, the canonical rich foreground remains. If
 at least one can render, the transparent fill group replaces that foreground.
 An enabled transparent or zero-Opacity Text Fill is renderable and therefore
-can intentionally erase the face. A missing or invalid Texture is bypassed
+can intentionally erase the face. A Texture with no selected asset is neutral.
+A missing or invalid Texture is bypassed
 interactively; it does not cause replacement by itself, but valid sibling
 fills still do. Strict export reports the missing asset instead.
 
-`TexturePaint` stores one generic immutable `RasterAssetRef` from
+`TexturePaint` stores an optional generic immutable `RasterAssetRef` from
 `utils/raster_assets.py`. Project import snapshots the selected source once in
 the validated assets directory, hashes and fully decodes that same snapshot,
 then atomically installs it as `assets/<sha256>.<actual-format>`. An existing
@@ -189,7 +192,7 @@ effective stack as follows:
    Fills in visible order on a transparent surface, apply their paint/effect
    alpha, clip the group once with cached canonical glyph coverage, and use the
    group in place of canonical foreground.
-2. Apply the optional block-owned Rendered Image base. Overlay sits above Text
+2. Apply the optional block-owned Image base. Overlay sits above Text
    Fill; valid Replace skips canonical and generated-layer raster work.
 3. Walk movable cards top-to-bottom as displayed by the panel (the reverse of
    their compatibility-preserved tuple order). Batch adjacent Stroke/Shadow/Glow
@@ -216,7 +219,7 @@ Inside/Outside pixels visible.
 | --- | --- |
 | No active pixel effects and no active mask | Native Qt foreground and group opacity; no effect raster state |
 | Solid Center Stroke without a completed-surface consumer | Native/direct Stroke and foreground fast path |
-| Positioned or gradient Stroke, Shadow/Glow, Text Fill, Hollow, Rendered Image, Filter, or active mask | One bounded completed effect surface, full or tiled |
+| Positioned or gradient Stroke, Shadow/Glow, Text Fill, Hollow, Image, Filter, or active mask | One bounded completed effect surface, full or tiled |
 | Effects or mask plus an active nonlinear transform | Their completed source surface is warped once by the geometry owner |
 | Strict export | Independent exact-quality namespace; incomplete output is reported rather than silently omitted |
 
@@ -224,18 +227,19 @@ Interactive allocation failure may fall back to a bounded tile or compatible
 direct-Stroke path for the frame. Export must not turn that degradation into a
 successful but incomplete image.
 
-A missing optional Texture or Rendered Image asset is warned about and visibly
+An Empty Texture or Image performs no lookup and remains valid during strict
+export. A nonempty reference whose file is missing is warned about and visibly
 bypassed during interactive rendering. A missing Texture leaves canonical
-foreground when no sibling fill renders; a missing Rendered Image leaves its
-upstream surface in place. Its card shows the missing filename. Strict export
-fails the render transaction instead of silently exporting the bypass. Strict export
-SHA-256-verifies the file even when interactive rendering already populated the
-decoded cache. The strict hash and matching cache reuse or decode share one
-before/after file-signature bracket, so replacement during verification fails
-the render transaction. Every interactive cache reuse still checks file
-existence and containment. Unchanged warm entries avoid digest hashing, while
-cold or stat-changed files are SHA-256-verified before decode; corrupt bytes and
-a different valid image at the content-addressed path therefore bypass visibly.
+foreground when no sibling fill renders; a missing Image leaves its upstream
+surface in place. Its card shows the missing filename. Strict export fails the
+render transaction instead of silently exporting the bypass and SHA-256-verifies
+the file even when interactive rendering already populated the decoded cache.
+The strict hash and matching cache reuse or decode share one before/after
+file-signature bracket, so replacement during verification fails the render
+transaction. Every interactive cache reuse still checks file existence and
+containment. Unchanged warm entries avoid digest hashing, while cold or
+stat-changed files are SHA-256-verified before decode; corrupt bytes and a
+different valid image at the content-addressed path therefore bypass visibly.
 Missing and failed interactive reads are not cached; after deletion plus
 invalidation the rich foreground is visible, and after restore plus invalidation
 the texture returns without a page reload.
@@ -248,9 +252,9 @@ project cache, keeping decode out of subsequent paint. Opening an older project
 may perform one bounded synchronous decode on the first uncached use; v1 does
 not add a worker or asset registry for that narrow case.
 
-Texture and Rendered Image scaling interpolate premultiplied RGBA in absolute
-logical coordinates, then return to straight RGBA for composition. Rendered
-Image samples only the logical intersection of each bounded full/tile surface
+Texture and Image scaling interpolate premultiplied RGBA in absolute
+logical coordinates, then return to straight RGBA for composition. Image
+samples only the logical intersection of each bounded full/tile surface
 and draws the synchronous `QImage` directly, avoiding transparent-edge color
 fringes and a redundant padded pixmap. The project decode cache lazily retains
 an immutable premultiplied companion only for transparent assets, so full and
@@ -349,8 +353,8 @@ canvas mask brush
      -> cancel incomplete stroke: restore committed mask, no command
      -> release: one SetTextAlphaMaskCommand for the target
 
-Rendered Image card
-  -> chooser / mode / eye / delete
+Image card
+  -> add Empty / chooser / mode / eye / delete
      -> one SetRenderedImageLayerCommand for the target; no preview session
 ```
 
@@ -386,11 +390,11 @@ group state and does not require rebuilding effect pixels. Reshape temporarily
 omits effects, invalidates geometry-sensitive caches, and rebuilds the effective
 namespace once geometry settles.
 
-While native text editing is active, Rendered Image is intentionally omitted
+While native text editing is active, Image is intentionally omitted
 for both writing modes so the editable source, selection, caret, IME, and
 annotations remain coherent. Ending the edit restores the exact settled layer;
 strict export still includes it. Selection and the deferred caret remain after
-all completed pixel phases. Starting a Rendered Image chooser or discrete card
+all completed pixel phases. Starting an Image chooser or discrete card
 edit also deactivates the Eraser brush session.
 Ordinary Filters remain active during horizontal and vertical native editing;
 selection, caret, and IME feedback are painted afterward and never enter their
@@ -415,13 +419,13 @@ is instead shared at the project asset boundary:
 
 | Cached work | Reuse and invalidation boundary |
 | --- | --- |
-| Final full surface or visible tiles | Separate committed, preview, and export namespaces; key by effective effects, active Rendered Image, mask generation, document/layout/render state, transform, writing mode, bounds, and quality tier |
+| Final full surface or visible tiles | Separate committed, preview, and export namespaces; key by effective effects, active Image, mask generation, document/layout/render state, transform, writing mode, bounds, and quality tier |
 | Complete pre-mask surface | At most two entries per namespace; reuse across mask-only previews while upstream effects and geometry match |
 | Complete below-filter prefix | At most two entries per namespace; filter-only previews reuse the fixed base and generated nodes below the bottom Filter. The key includes that boundary and canonical Stroke dependencies of cached exterior layers. Upper generated layers are cheaply recomposited from retained canonical/coverage caches. |
 | Canonical glyph pixmap and lazy alpha | At most two entries; reuse across paint-only, Fill Opacity, and Blend previews while document, layout, source geometry, transform state, and render scale match. Repeated fills share this source and its mask rather than rerasterizing glyphs. |
 | Positioned Stroke coverage | At most two read-only alpha planes; key by canonical-source inputs plus Stroke width and position, excluding paint and opacity |
 | Gradient compiled kernel | Runtime acceleration only; the byte-identical NumPy path remains the pre-warm, unavailable, and quality-oracle fallback |
-| Decoded project raster | At most two positive entries per project, shared by Texture and Rendered Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached |
+| Decoded project raster | At most two positive entries per project, shared by Texture and Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached |
 
 Within one composite, reuse the same colored positioned Stroke band for its
 visible pass and exterior silhouette. Paint-only edits must not rerasterize the

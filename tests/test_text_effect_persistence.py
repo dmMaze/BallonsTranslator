@@ -62,6 +62,15 @@ class TextEffectPersistenceTest(unittest.TestCase):
         restored = TextBlock(**payload)
         self.assertEqual(restored.rendered_image, layer)
 
+        empty_payload = json.loads(json.dumps(
+            TextBlock(rendered_image=RenderedImageLayer()),
+            cls=TextBlkEncoder,
+        ))
+        self.assertEqual(
+            TextBlock(**empty_payload).rendered_image,
+            RenderedImageLayer(),
+        )
+
         payload['rendered_image']['version'] = 99
         malformed = TextBlock(**payload)
         self.assertIsNone(malformed.rendered_image)

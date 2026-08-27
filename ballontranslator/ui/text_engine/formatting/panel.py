@@ -825,6 +825,9 @@ class FontFormatPanel(Widget):
         self.texteffect_panel.rendered_image_file_requested.connect(
             self._import_rendered_image
         )
+        self.texteffect_panel.rendered_image_add_requested.connect(
+            self._add_rendered_image
+        )
         self.texteffect_panel.rendered_image_enabled_requested.connect(
             self._set_rendered_image_enabled
         )
@@ -1172,7 +1175,7 @@ class FontFormatPanel(Widget):
         try:
             if project is None:
                 raise ValueError(
-                    'Open a project before importing a Rendered Image.'
+                    'Open a project before importing an Image.'
                 )
             asset = project.import_raster_asset(source_path)
             before = item.blk.rendered_image
@@ -1186,8 +1189,11 @@ class FontFormatPanel(Widget):
                 # though the immutable block value needs no undo command.
                 self.texteffect_panel.project_assets_changed()
         except (OSError, TypeError, ValueError) as error:
-            LOGGER.warning('Unable to import Rendered Image: %s', error)
+            LOGGER.warning('Unable to import Image: %s', error)
             self.texteffect_panel.show_rendered_image_import_error(str(error))
+
+    def _add_rendered_image(self) -> None:
+        self._commit_rendered_image(RenderedImageLayer())
 
     def _set_rendered_image_enabled(self, enabled: bool) -> None:
         item = self.texteffect_panel.rendered_image_item()

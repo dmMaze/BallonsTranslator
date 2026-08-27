@@ -58,6 +58,7 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
+from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
@@ -832,6 +833,28 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         pixel = pixmap2ndarray(group, keep_alpha=True)[0, 0]
         np.testing.assert_allclose(pixel, (20, 60, 220, 255), atol=1)
+
+    def test_empty_texture_and_image_do_not_enter_the_raster_path(self):
+        stack = TextEffectStack(effects=(TextFillEffect(
+            paint=TexturePaint()
+        ),))
+        item = self._item(stack)
+        item.blk.rendered_image = RenderedImageLayer()
+        renderer = item.effect_renderer
+
+        self.assertFalse(stack.has_active_effects)
+        self.assertFalse(renderer.has_raster_effects())
+        with patch.object(renderer, '_project_raster') as project_raster:
+            pixels = self._render(item)
+        project_raster.assert_not_called()
+        self.assertGreater(np.count_nonzero(pixels[..., 3]), 0)
+
+        item.set_export_effect_render(True)
+        try:
+            self._render(item)
+            self.assertIsNone(item.export_effect_error)
+        finally:
+            item.set_export_effect_render(False)
 
     def test_generated_layers_apply_blend_modes_in_isolated_surface(self):
         item = self._item(TextEffectStack())

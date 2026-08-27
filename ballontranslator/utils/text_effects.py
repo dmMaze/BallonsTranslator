@@ -202,16 +202,22 @@ class TexturePaint:
     ...     RasterAssetRef('assets/' + 'a' * 64 + '.png'), mapping='tile'
     ... ).paint_type
     'texture'
+    >>> TexturePaint().asset is None
+    True
     """
 
-    asset: RasterAssetRef
+    asset: Optional[RasterAssetRef] = None
     mapping: str = 'fill'
     scale: float = 1.0
     paint_type: str = field(init=False, default='texture')
 
     def __post_init__(self) -> None:
-        if not isinstance(self.asset, RasterAssetRef):
-            raise TypeError('texture paint asset must be RasterAssetRef')
+        if self.asset is not None and not isinstance(
+            self.asset, RasterAssetRef
+        ):
+            raise TypeError(
+                'texture paint asset must be RasterAssetRef or None'
+            )
         if self.mapping not in {'fill', 'fit', 'crop', 'tile'}:
             raise ValueError('unsupported texture mapping')
         object.__setattr__(
@@ -223,7 +229,11 @@ class TexturePaint:
     def to_serializable_dict(self) -> dict:
         return {
             'paint_type': self.paint_type,
-            'asset': self.asset.to_serializable_dict(),
+            'asset': (
+                None
+                if self.asset is None
+                else self.asset.to_serializable_dict()
+            ),
             'mapping': self.mapping,
             'scale': self.scale,
         }
@@ -534,7 +544,13 @@ class TextFillEffect:
         }
 
     def is_neutral(self) -> bool:
-        return not self.enabled
+        return (
+            not self.enabled
+            or (
+                isinstance(self.paint, TexturePaint)
+                and self.paint.asset is None
+            )
+        )
 
 
 def _filter_params_tuple(value: object) -> FilterParams:
@@ -802,7 +818,10 @@ def _coerce_effect_paint(value: object) -> EffectPaint:
         _unexpected_fields(
             payload, ('asset', 'mapping', 'scale'), 'texture paint'
         )
-        payload['asset'] = coerce_raster_asset_ref(payload.get('asset'))
+        asset = payload.get('asset')
+        payload['asset'] = (
+            None if asset is None else coerce_raster_asset_ref(asset)
+        )
         return TexturePaint(**payload)
     raise ValueError('unsupported or missing effect paint type')
 

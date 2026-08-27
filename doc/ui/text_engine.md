@@ -24,7 +24,7 @@ Project JSON
 
 | Concern | Owner | Main files |
 | --- | --- | --- |
-| Block content, logical rectangle, angle, metadata, Rendered Image, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
+| Block content, logical rectangle, angle, metadata, Image, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
 | Persistent typography, transforms, and immutable effect stack | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py), [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
@@ -43,7 +43,7 @@ owner instead of adding a parallel path.
 ## State boundaries
 
 - **Persistent state:** `TextBlock` and `FontFormat`; only this belongs in
-  project JSON. Rendered Image and the immutable alpha-mask history are
+  project JSON. Image and the immutable alpha-mask history are
   block-owned, never part of a typography style or preset.
 - **Live editing state:** `QTextDocument`, cursor, selection, IME state, and
   paired-editor synchronization.
@@ -138,11 +138,11 @@ hit testing; adapting only one consumer creates visible drift or broken editing.
 `FontFormat.text_effects` owns the canonical immutable style stack;
 `TextBlock.rendered_image` and `TextBlock.text_alpha_mask` separately own the
 item-specific full-RGBA layer and structural alpha. `TextEffectRenderer`
-composes the repeatable Text Fill base group and optional Rendered Image, then
+composes the repeatable Text Fill base group and optional Image, then
 walks generated layers and lazy Filters bottom-to-top around one canonical
 glyph source before the block mask, and hands that padded source to the
-geometry owner. The panel shows that execution sequence as Text Fill, Rendered
-Image, movable generated/Filter cards, then Eraser. Text Fills apply in their
+geometry owner. The panel shows that execution sequence as Text Fill, Image,
+movable generated/Filter cards, then Eraser. Text Fills apply in their
 visible order and may move only among themselves; a new Fill is visible and
 applied last even though the compatibility tuple stores it at index zero. If
 any enabled Fill can render, its transparent group replaces canonical rich
@@ -162,7 +162,9 @@ backdrop. Paint alpha and effect Opacity multiply coverage once. Passive loading
 warns and falls back to Normal for an invalid mode without dropping the effect;
 live values remain strict.
 
-Text Fill textures use immutable project-relative `RasterAssetRef` values.
+Text Fill textures use optional immutable project-relative `RasterAssetRef`
+values. Selecting Texture creates a neutral Empty paint without opening a file
+dialog; choosing a valid image later activates it.
 The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`
 remains text-effect-specific. `ProjImgTrans` owns one-snapshot validated import
 into the project `assets/` directory, path-safe resolution, digest verification,
@@ -181,7 +183,8 @@ for transparent sources, avoiding a full-source copy on every tile. It retains
 at most two entries and is also byte-bounded to 512 MiB, enough for two maximum
 opaque sources or one maximum transparent source.
 
-Rendered Image reuses that same asset decoder and existing completed surface.
+Image reuses that same asset decoder and existing completed surface. Adding
+the card creates a neutral Empty layer without opening a file dialog.
 Replace skips canonical/generated rasterization and replaces the fixed base,
 including overflow, with an image mapped into the unpadded logical rectangle;
 Overlay source-over composites it above Text Fill and below the movable stack.
@@ -197,10 +200,10 @@ returns exactly after editing ends and remains active for strict export.
 Texture Text Fill is project-only in v1. Itemless/global formatting cannot
 select it, and application-global presets/config strip only project Texture
 fills at their load/edit/save boundaries because there is no global asset
-registry. Concrete project TextBlocks keep valid and valid-but-missing refs on
-passive load. Newly imported images are decoded while the chooser/import chain
-keeps the formatting panel pinned; an old uncached asset may incur one bounded
-synchronous first decode (32 MiB source, 64 Mpx, 256 MiB RGBA8).
+registry. Concrete project TextBlocks keep empty, valid, and valid-but-missing
+refs on passive load. Newly imported images are decoded while the chooser/import
+chain keeps the formatting panel pinned; an old uncached asset may incur one
+bounded synchronous first decode (32 MiB source, 64 Mpx, 256 MiB RGBA8).
 
 Effect padding expands source paint bounds only. Ordinary shape and hit testing
 remain on the logical box plus layout-owned ink overhang. Qt stays authoritative
@@ -259,7 +262,7 @@ Refresh from the first owner whose input changed:
 | Metrics, spacing, writing mode | Layout |
 | Typed effect stack/paint or Overall Opacity | Effect renderer |
 | Filter-only parameter preview | Effect renderer below-filter prefix plus canonical/Stroke-coverage caches; recompose only generated layers above it |
-| TextBlock Rendered Image replacement | Effect renderer pre-mask surface; retain canonical source cache |
+| TextBlock Image replacement | Effect renderer pre-mask surface; retain canonical source cache |
 | TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |

@@ -485,6 +485,13 @@ class TextEffectDomainTest(unittest.TestCase):
             'path': asset.path,
             'display_name': 'paper.png',
         })
+        empty = TextFillEffect(paint=TexturePaint())
+        self.assertTrue(empty.is_neutral())
+        empty_loaded = coerce_text_effect_stack(
+            TextEffectStack(effects=(empty,)).to_serializable_dict()
+        )
+        self.assertEqual(empty_loaded.effects, (empty,))
+        self.assertIsNone(empty.paint.to_serializable_dict()['asset'])
         for effect_type in (StrokeEffect, ShadowEffect, GlowEffect):
             with self.subTest(effect_type=effect_type.__name__):
                 with self.assertRaises(TypeError):
@@ -497,6 +504,7 @@ class TextEffectDomainTest(unittest.TestCase):
             ),
             lambda: TexturePaint(asset, mapping='future'),
             lambda: TexturePaint(asset, scale=0.09),
+            lambda: TexturePaint('paper.png'),
         ):
             with self.subTest(constructor=constructor):
                 with self.assertRaises((TypeError, ValueError)):

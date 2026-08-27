@@ -84,6 +84,9 @@ class TextAlphaMaskEditSession(QObject):
         controls.rendered_image_enabled_requested.connect(
             self._on_effect_edit_started
         )
+        controls.rendered_image_add_requested.connect(
+            self._on_effect_edit_started
+        )
         controls.rendered_image_mode_requested.connect(
             self._on_effect_edit_started
         )

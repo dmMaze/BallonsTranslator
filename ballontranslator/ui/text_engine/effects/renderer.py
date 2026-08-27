@@ -313,7 +313,11 @@ class TextEffectRenderer:
         return (
             any(self._effect_flags())
             or self._renders_completed_foreground()
-            or bool(layer is not None and layer.enabled)
+            or bool(
+                layer is not None
+                and layer.enabled
+                and layer.asset is not None
+            )
             or any(
                 isinstance(effect, FilterEffect) and effect.enabled
                 for effect in self.canonical_text_effects().effects
@@ -345,6 +349,7 @@ class TextEffectRenderer:
         if (
             layer is None
             or not layer.enabled
+            or layer.asset is None
             or (self.item.isEditing() and not self.export_render)
         ):
             return None
@@ -445,7 +450,7 @@ class TextEffectRenderer:
             rendered_image is not None
             and rendered_image.mode == 'replace'
             and self._project_raster(
-                rendered_image.asset, 'Rendered Image layer'
+                rendered_image.asset, 'Image layer'
             ) is not None
         )
         nodes = []
@@ -951,7 +956,11 @@ class TextEffectRenderer:
                 isinstance(text_fill.paint, TexturePaint)
                 for text_fill in text_fills
             )
-            and (layer is None or not layer.enabled)
+            and (
+                layer is None
+                or not layer.enabled
+                or layer.asset is None
+            )
         ):
             return
         self._verified_export_assets.clear()
@@ -2657,7 +2666,7 @@ class TextEffectRenderer:
             None
             if rendered_image is None
             else self._project_raster(
-                rendered_image.asset, 'Rendered Image layer'
+                rendered_image.asset, 'Image layer'
             )
         )
         replace_surface = bool(
@@ -3310,6 +3319,7 @@ class TextEffectRenderer:
         render_scale: float,
     ) -> None:
         """Map one RGBA8 asset with tile-stable bilinear coordinates."""
+        assert layer.asset is not None
         logical_rect = self.logical_unpadded_rect()
         surface_width = max(
             1, math.ceil(surface_rect.width() * render_scale)
@@ -3359,7 +3369,7 @@ class TextEffectRenderer:
         )
         if image.isNull():
             raise EffectRasterAllocationError(
-                'unable to allocate Rendered Image pixels'
+                'unable to allocate Image pixels'
             )
         if render_scale >= 1.0:
             image.setDevicePixelRatio(render_scale)
@@ -3401,7 +3411,10 @@ class TextEffectRenderer:
                     self._project_raster(
                         text_fill.paint.asset, 'Text Fill texture'
                     )
-                    if isinstance(text_fill.paint, TexturePaint)
+                    if (
+                        isinstance(text_fill.paint, TexturePaint)
+                        and text_fill.paint.asset is not None
+                    )
                     else None
                 )
                 if (

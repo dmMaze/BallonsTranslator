@@ -272,7 +272,7 @@ class SetTextAlphaMaskCommand(QUndoCommand):
 
 
 class SetRenderedImageLayerCommand(QUndoCommand):
-    """Replace one TextBlock-owned Rendered Image layer atomically.
+    """Replace one TextBlock-owned Image layer atomically.
 
     >>> hasattr(SetRenderedImageLayerCommand, 'create')
     True

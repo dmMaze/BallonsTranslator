@@ -2068,19 +2068,32 @@ class TextFillEffectCard(_EffectCard):
             textures = [
                 paint for paint in paints if isinstance(paint, TexturePaint)
             ]
+            has_common_asset = bool(
+                textures
+                and all(
+                    value.asset == textures[0].asset for value in textures
+                )
+            )
             common_asset = (
                 textures[0].asset
-                if textures
-                and all(value.asset == textures[0].asset for value in textures)
+                if has_common_asset
                 else None
             )
-            if common_asset is None:
+            if not has_common_asset:
                 self.texture_button.setText(self.tr('Mixed'))
                 self.texture_button.setToolTip(
                     self.tr('Choose one image for the selected text items')
                 )
                 self.texture_button.setAccessibleName(
                     self.tr('Mixed Fill Images')
+                )
+            elif common_asset is None:
+                self.texture_button.setText(self.tr('Empty'))
+                self.texture_button.setToolTip(
+                    self.tr('Choose an image for this Fill')
+                )
+                self.texture_button.setAccessibleName(
+                    self.tr('Empty Fill Image')
                 )
             else:
                 name = (
@@ -2158,20 +2171,9 @@ class TextFillEffectCard(_EffectCard):
         if combo_index < 0:
             return
         paint_type = self.fill_type_selector.itemData(combo_index)
-        if paint_type == 'texture':
-            if not self._choose_texture_file():
-                with QSignalBlocker(self.fill_type_selector):
-                    self.fill_type_selector.setCurrentIndex(
-                        -1
-                        if self._paint_seed is None
-                        else self.fill_type_selector.findData(
-                            self._paint_seed.paint_type
-                        )
-                    )
-        else:
-            self.value_commit_requested.emit(
-                self.index, 'paint_type', paint_type
-            )
+        self.value_commit_requested.emit(
+            self.index, 'paint_type', paint_type
+        )
 
     def _on_paint_clicked(self) -> None:
         if not isinstance(self._paint_seed, SolidPaint):
@@ -2544,7 +2546,7 @@ class RenderedImageCard(_EffectCard):
         self.title_icon_label = _effect_icon_label(
             'text-effect-rendered-image.svg', self
         )
-        self.title_label = QLabel(self.tr('Rendered Image'), self)
+        self.title_label = QLabel(self.tr('Image'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
@@ -2555,8 +2557,8 @@ class RenderedImageCard(_EffectCard):
         self.setToolTip(self._editing_hint)
         self.title_label.setToolTip(self._editing_hint)
         self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Rendered Image'),
-            self.tr('Hide Rendered Image'),
+            self.tr('Show Image'),
+            self.tr('Hide Image'),
             self,
         )
         self.visibility_button.visibility_requested.connect(
@@ -2567,9 +2569,9 @@ class RenderedImageCard(_EffectCard):
         self.delete_button.setIcon(
             QIcon(themed_icon_path('titlebar_close.svg'))
         )
-        self.delete_button.setToolTip(self.tr('Delete Rendered Image'))
+        self.delete_button.setToolTip(self.tr('Delete Image'))
         self.delete_button.setAccessibleName(
-            self.tr('Delete Rendered Image')
+            self.tr('Delete Image')
         )
         self.delete_button.clicked.connect(self.remove_requested.emit)
         actions = _effect_action_widget(self, (self.delete_button,))
@@ -2608,7 +2610,7 @@ class RenderedImageCard(_EffectCard):
             self, text_alignment=Qt.AlignmentFlag.AlignCenter
         )
         self.mode_selector.setObjectName('TextEffectParamEditor')
-        self.mode_selector.setAccessibleName(self.tr('Rendered Image Mode'))
+        self.mode_selector.setAccessibleName(self.tr('Image Mode'))
         self.mode_selector.addItem(self.tr('Replace'), 'replace')
         self.mode_selector.addItem(self.tr('Overlay'), 'overlay')
         self.mode_selector.currentIndexChanged.connect(
@@ -2640,19 +2642,24 @@ class RenderedImageCard(_EffectCard):
         self, layer: RenderedImageLayer, available: bool
     ) -> None:
         self.visibility_button.set_visibility(layer.enabled)
-        name = (
-            layer.asset.display_name
-            or layer.asset.path.rsplit('/', 1)[-1]
-        )
-        self.image_button.setText(
-            name
-            if available
-            else self.tr('Missing: {name}').format(name=name)
-        )
-        self.image_button.setToolTip(
-            name + '\n' + layer.asset.path + '\n' + self._editing_hint
-        )
-        self.image_button.setAccessibleName(name)
+        if layer.asset is None:
+            self.image_button.setText(self.tr('Empty'))
+            self.image_button.setToolTip(self._editing_hint)
+            self.image_button.setAccessibleName(self.tr('Empty Image'))
+        else:
+            name = (
+                layer.asset.display_name
+                or layer.asset.path.rsplit('/', 1)[-1]
+            )
+            self.image_button.setText(
+                name
+                if available
+                else self.tr('Missing: {name}').format(name=name)
+            )
+            self.image_button.setToolTip(
+                name + '\n' + layer.asset.path + '\n' + self._editing_hint
+            )
+            self.image_button.setAccessibleName(name)
         with QSignalBlocker(self.mode_selector):
             self.mode_selector.setCurrentIndex(
                 self.mode_selector.findData(layer.mode)
@@ -2870,6 +2877,7 @@ class TextEffectPanel(PanelArea):
     mask_remove_requested = Signal()
     texture_file_requested = Signal(int, str)
     rendered_image_file_requested = Signal(str)
+    rendered_image_add_requested = Signal()
     rendered_image_enabled_requested = Signal(bool)
     rendered_image_mode_requested = Signal(str)
     rendered_image_remove_requested = Signal()
@@ -2987,7 +2995,7 @@ class TextEffectPanel(PanelArea):
                 'text-effect-gradient.svg',
             ),
             (
-                self.tr('Rendered Image'),
+                self.tr('Image'),
                 'rendered_image',
                 'text-effect-rendered-image.svg',
             ),
@@ -3195,7 +3203,8 @@ class TextEffectPanel(PanelArea):
             scene = item.scene()
             project = getattr(scene, 'imgtrans_proj', None)
             available = bool(
-                project is not None
+                layer.asset is not None
+                and project is not None
                 and project.resolve_raster_asset(layer.asset) is not None
             )
             self.rendered_image_card.set_value(layer, available)
@@ -3207,7 +3216,7 @@ class TextEffectPanel(PanelArea):
         self.color_dialog_active_changed.emit(True)
         try:
             path = _choose_project_raster(
-                self, self.tr('Choose Rendered Image')
+                self, self.tr('Choose Image')
             )
             if path:
                 # The synchronous import/error chain stays pinned too.
@@ -3522,6 +3531,7 @@ class TextEffectPanel(PanelArea):
             not paints
             or not all(isinstance(paint, TexturePaint) for paint in paints)
             or any(paint.asset != paints[0].asset for paint in paints[1:])
+            or paints[0].asset is None
             or not self._block_items
         ):
             return None
@@ -3611,7 +3621,7 @@ class TextEffectPanel(PanelArea):
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
         if action is not None and action.data() == 'rendered_image':
-            self._choose_rendered_image_file()
+            self.rendered_image_add_requested.emit()
             return
         if action is not None and action.data() in {
             'stroke', 'shadow', 'glow', 'text_fill'
