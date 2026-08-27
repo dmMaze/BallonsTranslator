@@ -163,7 +163,7 @@ class TextEffectEditSession:
         if isinstance(effect, StrokeEffect):
             if param_name not in {
                 'enabled', 'width', 'opacity', 'paint', 'paint_type',
-                'position',
+                'position', 'blend_mode',
             }:
                 raise ValueError('unknown Stroke field')
             if param_name == 'paint':
@@ -186,7 +186,7 @@ class TextEffectEditSession:
                 parameters['offset'] = tuple(offset)
             elif param_name not in {
                 'enabled', 'opacity', 'shadow_type', 'paint', 'paint_type',
-                'blur', 'spread',
+                'blur', 'spread', 'blend_mode',
             }:
                 raise ValueError('unknown Shadow field')
             elif param_name == 'paint':
@@ -205,7 +205,7 @@ class TextEffectEditSession:
         elif isinstance(effect, GlowEffect):
             if param_name not in {
                 'enabled', 'opacity', 'glow_type', 'paint', 'paint_type',
-                'size', 'spread',
+                'size', 'spread', 'blend_mode',
             }:
                 raise ValueError('unknown Glow field')
             if param_name == 'paint':
@@ -228,7 +228,7 @@ class TextEffectEditSession:
         elif isinstance(effect, TextFillEffect):
             if param_name not in {
                 'enabled', 'paint', 'paint_type', 'texture_mapping',
-                'texture_scale',
+                'texture_scale', 'opacity', 'blend_mode',
             }:
                 raise ValueError('unknown Text Fill field')
             if param_name == 'paint':
@@ -560,9 +560,10 @@ class TextEffectEditSession:
     def _insertion_index(
         state: TextEffectStack, effect: TextEffect
     ) -> int:
-        if isinstance(effect, (HollowEffect, TextFillEffect)):
+        if isinstance(effect, HollowEffect):
             return len(state.effects)
-        # Index zero renders last and is projected as the final panel card.
+        # Raw order is topmost-first. New movable effects and structural Fills
+        # therefore land at zero so reverse/application order appends them.
         return 0
 
     def add_effect(self, effect_type: str) -> bool:
@@ -578,19 +579,7 @@ class TextEffectEditSession:
             'text_fill': TextFillEffect,
         }
         constructor = constructors.get(effect_type)
-        unique_type = {
-            'text_fill': TextFillEffect,
-        }.get(effect_type)
-        if constructor is None or (
-            unique_type is not None
-            and any(
-                any(
-                    isinstance(effect, unique_type)
-                    for effect in state.effects
-                )
-                for state in before
-            )
-        ):
+        if constructor is None:
             self._sync_effect_ui()
             return False
         after = []

@@ -37,10 +37,12 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.text_effects import (
+    GlowEffect,
     HollowEffect,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    TextFillEffect,
     TextEffectStack,
 )
 from ballontranslator.utils.textblock import TextBlock
@@ -280,6 +282,47 @@ class TextEffectPreviewTest(unittest.TestCase):
             observed,
             [(0.3, (0, 0, 255), 0.75), (0.1, (255, 0, 0), 0.25)],
         )
+
+    def test_edit_session_handles_blend_and_fill_opacity_preview_commit(self):
+        effects = (
+            StrokeEffect(),
+            ShadowEffect(),
+            GlowEffect(),
+            TextFillEffect(),
+        )
+        owner = SimpleNamespace(text_effects=TextEffectStack(effects=effects))
+        session = TextEffectEditSession(SimpleNamespace(global_format=owner))
+
+        for index in range(len(effects)):
+            updated = session._with_value(
+                owner.text_effects, index, 'blend_mode', 'lighten'
+            )
+            self.assertEqual(updated.effects[index].blend_mode, 'lighten')
+
+        session.preview_value(3, 'opacity', 0.25)
+        self.assertEqual(owner.text_effects.effects[3].opacity, 0.25)
+        self.assertTrue(session.cancel_preview())
+        self.assertEqual(owner.text_effects.effects[3].opacity, 1.0)
+        self.assertTrue(session.commit_value(3, 'blend_mode', 'darken'))
+        self.assertEqual(owner.text_effects.effects[3].blend_mode, 'darken')
+
+    def test_add_text_fill_is_repeatable_and_applied_last(self):
+        old_fill = TextFillEffect(paint=SolidPaint((10, 20, 30)))
+        stroke = StrokeEffect()
+        owner = SimpleNamespace(text_effects=TextEffectStack(
+            effects=(stroke, old_fill)
+        ))
+        session = TextEffectEditSession(SimpleNamespace(global_format=owner))
+
+        self.assertTrue(session.add_effect('text_fill'))
+
+        self.assertIsInstance(owner.text_effects.effects[0], TextFillEffect)
+        self.assertEqual(owner.text_effects.effects[1:], (stroke, old_fill))
+        self.assertTrue(session.add_effect('text_fill'))
+        self.assertEqual(sum(
+            isinstance(effect, TextFillEffect)
+            for effect in owner.text_effects.effects
+        ), 3)
 
     def test_one_session_commit_is_one_canvas_undo_without_document_history(self):
         before = self._stack()

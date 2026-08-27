@@ -20,6 +20,7 @@ from qtpy.QtGui import (
     QInputMethodEvent,
     QPainter,
     QPalette,
+    QPixmap,
     QTextCharFormat,
     QTextCursor,
 )
@@ -629,6 +630,141 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             GradientStop(0.0, color, stop_opacity),
             GradientStop(1.0, color, stop_opacity),
         ))
+
+    @staticmethod
+    def _solid_pixmap(color) -> QPixmap:
+        pixmap = QPixmap(1, 1)
+        pixmap.fill(QColor(*color))
+        return pixmap
+
+    def test_repeatable_text_fill_order_blend_and_opacity(self):
+        bottom = TextFillEffect(paint=SolidPaint((100, 150, 200)))
+        top_colors = {
+            'normal': (200, 50, 100),
+            'darken': (100, 50, 100),
+            'lighten': (200, 150, 200),
+        }
+        item = self._item(TextEffectStack(effects=(
+            TextFillEffect(paint=SolidPaint((200, 50, 100))),
+            StrokeEffect(enabled=False),
+            bottom,
+        )))
+        renderer = item.effect_renderer
+        rect = QRectF(0, 0, 1, 1)
+        canonical = self._solid_pixmap((12, 34, 56, 255))
+
+        self.assertEqual(renderer._active_text_fills(), (
+            bottom, item.blk.fontformat.text_effects.effects[0]
+        ))
+        for blend_mode, expected in top_colors.items():
+            with self.subTest(blend_mode=blend_mode):
+                top = TextFillEffect(
+                    blend_mode=blend_mode,
+                    paint=SolidPaint((200, 50, 100)),
+                )
+                group = renderer._text_fill_group_pixmap(
+                    canonical, rect, 1.0, (bottom, top)
+                )
+                pixel = pixmap2ndarray(group, keep_alpha=True)[0, 0]
+                np.testing.assert_allclose(pixel[:3], expected, atol=1)
+                self.assertEqual(pixel[3], 255)
+
+        partial_canonical = self._solid_pixmap((12, 34, 56, 128))
+        repeated = renderer._text_fill_group_pixmap(
+            partial_canonical, rect, 1.0, (bottom, bottom)
+        )
+        self.assertEqual(
+            pixmap2ndarray(repeated, keep_alpha=True)[0, 0, 3], 128
+        )
+
+        half = renderer._text_fill_group_pixmap(
+            canonical,
+            rect,
+            1.0,
+            (TextFillEffect(opacity=0.5, paint=SolidPaint((1, 2, 3))),),
+        )
+        quarter = renderer._text_fill_group_pixmap(
+            canonical,
+            rect,
+            1.0,
+            (TextFillEffect(
+                opacity=0.5,
+                paint=self._constant_gradient((1, 2, 3), 0.5),
+            ),),
+        )
+        erased = renderer._text_fill_group_pixmap(
+            canonical,
+            rect,
+            1.0,
+            (TextFillEffect(opacity=0.0),),
+        )
+        self.assertEqual(pixmap2ndarray(half, keep_alpha=True)[0, 0, 3], 128)
+        self.assertEqual(
+            pixmap2ndarray(quarter, keep_alpha=True)[0, 0, 3], 64
+        )
+        self.assertEqual(
+            pixmap2ndarray(erased, keep_alpha=True)[0, 0, 3], 0
+        )
+
+    def test_missing_texture_fill_is_skipped_without_hiding_valid_sibling(self):
+        item = self._item(TextEffectStack())
+        renderer = item.effect_renderer
+        rect = QRectF(0, 0, 1, 1)
+        canonical = self._solid_pixmap((12, 34, 56, 255))
+        missing = TextFillEffect(paint=TexturePaint(RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'missing.png'
+        )))
+        valid = TextFillEffect(paint=SolidPaint((20, 60, 220)))
+
+        with patch.object(renderer, '_project_raster', return_value=None):
+            self.assertIsNone(renderer._text_fill_group_pixmap(
+                canonical, rect, 1.0, (missing,)
+            ))
+            group = renderer._text_fill_group_pixmap(
+                canonical, rect, 1.0, (valid, missing)
+            )
+
+        pixel = pixmap2ndarray(group, keep_alpha=True)[0, 0]
+        np.testing.assert_allclose(pixel, (20, 60, 220, 255), atol=1)
+
+    def test_generated_layers_apply_native_blend_modes_in_isolated_surface(self):
+        item = self._item(TextEffectStack())
+        renderer = item.effect_renderer
+        rect = QRectF(0, 0, 1, 1)
+        source = self._solid_pixmap((100, 150, 200, 255))
+        layer = self._solid_pixmap((200, 50, 100, 255))
+        alpha = np.full((1, 1), 255, dtype=np.uint8)
+        expected_colors = {
+            'normal': (200, 50, 100),
+            'darken': (100, 50, 100),
+            'lighten': (200, 150, 200),
+        }
+
+        for blend_mode, expected in expected_colors.items():
+            with self.subTest(blend_mode=blend_mode), patch.object(
+                renderer,
+                '_cached_effect_source',
+                return_value=(source, alpha),
+            ), patch.object(
+                renderer, '_generated_effect_pixmap', return_value=layer
+            ):
+                effect = ShadowEffect(blend_mode=blend_mode)
+                result = renderer._composite_generated_layer_batch(
+                    source, ((0, effect),), rect, 1.0
+                )
+            pixel = pixmap2ndarray(result, keep_alpha=True)[0, 0]
+            np.testing.assert_allclose(pixel[:3], expected, atol=1)
+            self.assertEqual(pixel[3], 255)
+
+        stroke_item = self._item(TextEffectStack(effects=(StrokeEffect(
+            blend_mode='darken', position='center'
+        ),)))
+        self.assertEqual(stroke_item.effect_renderer._effect_flags(), (
+            True, True
+        ))
+        self.assertFalse(
+            stroke_item.effect_renderer._all_strokes_vector_compatible()
+        )
 
     def test_gradient_replaces_foreground_and_stop_opacity_overwrites_alpha(self):
         plain = self._item(TextEffectStack())
@@ -2460,6 +2596,18 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     def test_forced_tiles_match_full_typed_effect_surface(self):
         stacks = (
             TextEffectStack(effects=(
+                TextFillEffect(
+                    opacity=0.7,
+                    blend_mode='darken',
+                    paint=LinearGradientPaint(
+                        stops=(
+                            GradientStop(0.0, (220, 180, 40), 0.6),
+                            GradientStop(1.0, (40, 200, 180), 0.9),
+                        ),
+                        angle=149.0,
+                        scale=1.2,
+                    ),
+                ),
                 ShadowEffect(
                     offset=(0.18, 0.12),
                     blur=0.08,
@@ -2474,6 +2622,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 StrokeEffect(
                     width=0.12,
                     position='outside',
+                    blend_mode='lighten',
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, (255, 0, 0), 0.25),

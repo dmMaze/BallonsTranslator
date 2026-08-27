@@ -12,6 +12,7 @@ from .raster_assets import RasterAssetRef, coerce_raster_asset_ref
 SHADOW_OFFSET_LIMIT = 10.0
 SHADOW_BLUR_LIMIT = 10.0
 SHADOW_SPREAD_LIMIT = 10.0
+TEXT_EFFECT_BLEND_MODES = ('normal', 'darken', 'lighten')
 FilterScalar = Union[None, bool, int, float, str]
 FilterParams = Tuple[Tuple[str, FilterScalar], ...]
 
@@ -63,6 +64,14 @@ def _offset_tuple(value: Sequence[Real]) -> Tuple[float, float]:
             -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT,
         ),
     )
+
+
+def _validated_blend_mode(name: str, value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f'{name} blend mode must be a string')
+    if value not in TEXT_EFFECT_BLEND_MODES:
+        raise ValueError(f'unsupported {name} blend mode')
+    return value
 
 
 @dataclass(frozen=True)
@@ -272,8 +281,11 @@ class StrokeEffect:
             'opacity',
             _float_in_range('stroke opacity', self.opacity, 0.0, 1.0),
         )
-        if self.blend_mode != 'normal':
-            raise ValueError('unsupported stroke blend mode')
+        object.__setattr__(
+            self,
+            'blend_mode',
+            _validated_blend_mode('stroke', self.blend_mode),
+        )
         object.__setattr__(
             self,
             'width',
@@ -333,8 +345,11 @@ class ShadowEffect:
             'opacity',
             _float_in_range('shadow opacity', self.opacity, 0.0, 1.0),
         )
-        if self.blend_mode != 'normal':
-            raise ValueError('unsupported shadow blend mode')
+        object.__setattr__(
+            self,
+            'blend_mode',
+            _validated_blend_mode('shadow', self.blend_mode),
+        )
         if self.shadow_type not in {'drop', 'inner', 'long'}:
             raise ValueError('unsupported shadow type')
         if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
@@ -405,8 +420,11 @@ class GlowEffect:
             'opacity',
             _float_in_range('glow opacity', self.opacity, 0.0, 1.0),
         )
-        if self.blend_mode != 'normal':
-            raise ValueError('unsupported glow blend mode')
+        object.__setattr__(
+            self,
+            'blend_mode',
+            _validated_blend_mode('glow', self.blend_mode),
+        )
         if self.glow_type not in {'outer', 'inner'}:
             raise ValueError('unsupported glow type')
         if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
@@ -472,13 +490,14 @@ class HollowEffect:
 
 @dataclass(frozen=True)
 class TextFillEffect:
-    """Replace the canonical rich foreground with a typed paint.
+    """One layer in the structural canonical-face Fill sub-stack.
 
     >>> TextFillEffect().effect_type
     'text_fill'
     """
 
     enabled: bool = True
+    opacity: float = 1.0
     blend_mode: str = 'normal'
     paint: EffectPaint = field(default_factory=SolidPaint)
     effect_type: str = field(init=False, default='text_fill')
@@ -486,8 +505,16 @@ class TextFillEffect:
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
             raise TypeError('text fill enabled must be a bool')
-        if self.blend_mode != 'normal':
-            raise ValueError('unsupported text fill blend mode')
+        object.__setattr__(
+            self,
+            'opacity',
+            _float_in_range('text fill opacity', self.opacity, 0.0, 1.0),
+        )
+        object.__setattr__(
+            self,
+            'blend_mode',
+            _validated_blend_mode('text fill', self.blend_mode),
+        )
         if not isinstance(
             self.paint, (SolidPaint, LinearGradientPaint, TexturePaint)
         ):
@@ -497,6 +524,7 @@ class TextFillEffect:
         return {
             'effect_type': self.effect_type,
             'enabled': self.enabled,
+            'opacity': self.opacity,
             'blend_mode': self.blend_mode,
             'paint': self.paint.to_serializable_dict(),
         }
@@ -669,12 +697,6 @@ class TextEffectStack:
             raise TypeError('text effect stack requires typed effect values')
         if sum(isinstance(effect, HollowEffect) for effect in effects) > 1:
             raise ValueError('text effect stack accepts at most one Hollow')
-        if sum(
-            isinstance(effect, TextFillEffect) for effect in effects
-        ) > 1:
-            raise ValueError(
-                'text effect stack accepts at most one Text Fill'
-            )
         object.__setattr__(self, 'effects', effects)
 
     def __iter__(self) -> Iterator[TextEffect]:
@@ -707,7 +729,7 @@ def without_project_texture_paints(
 ) -> TextEffectStack:
     """Remove project-only Texture fills at application-style boundaries.
 
-    The Text Fill itself is removed so the original rich foreground survives.
+    Texture Fill entries are removed; portable Fill siblings remain intact.
 
     >>> asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
     >>> stack = TextEffectStack(effects=(
@@ -876,7 +898,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
     if effect_type == 'text_fill':
         _unexpected_fields(
             payload,
-            ('effect_type', 'enabled', 'blend_mode', 'paint'),
+            ('effect_type', 'enabled', 'opacity', 'blend_mode', 'paint'),
             'Text Fill effect',
         )
         payload.pop('effect_type')
@@ -939,6 +961,30 @@ def _coerce_filter_effect_passive(payload: Mapping[str, object]) -> FilterEffect
     return FilterEffect(filter_id, schema_version, enabled, params)
 
 
+def _coerce_text_effect_passive(value: object) -> TextEffect:
+    """Recover an invalid persisted blend mode without losing the effect."""
+    if not isinstance(value, Mapping):
+        return coerce_text_effect(value)
+    payload = dict(value)
+    effect_type = payload.get('effect_type')
+    if (
+        isinstance(effect_type, str)
+        and effect_type in {
+            'stroke', 'shadow', 'glow', 'text_fill',
+            'gradient', 'gradient_overlay',
+        }
+        and 'blend_mode' in payload
+        and payload['blend_mode'] not in TEXT_EFFECT_BLEND_MODES
+    ):
+        LOGGER.warning(
+            'Ignoring invalid %s blend mode (%r); using normal.',
+            effect_type,
+            payload['blend_mode'],
+        )
+        payload['blend_mode'] = 'normal'
+    return coerce_text_effect(payload)
+
+
 def coerce_text_effect_stack(
     value: Union[TextEffectStack, dict],
 ) -> TextEffectStack:
@@ -990,25 +1036,18 @@ def coerce_text_effect_stack(
         raw_effects = ()
     effects = []
     hollow_loaded = False
-    text_fill_loaded = False
     for index, raw_effect in enumerate(raw_effects):
         try:
             effect = (
                 _coerce_filter_effect_passive(raw_effect)
                 if isinstance(raw_effect, Mapping)
                 and raw_effect.get('effect_type') == 'filter'
-                else coerce_text_effect(raw_effect)
+                else _coerce_text_effect_passive(raw_effect)
             )
             if isinstance(effect, HollowEffect):
                 if hollow_loaded:
                     raise ValueError('text effect stack accepts at most one Hollow')
                 hollow_loaded = True
-            if isinstance(effect, TextFillEffect):
-                if text_fill_loaded:
-                    raise ValueError(
-                        'text effect stack accepts at most one Text Fill'
-                    )
-                text_fill_loaded = True
             effects.append(effect)
         except (TypeError, ValueError) as error:
             LOGGER.warning(

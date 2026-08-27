@@ -482,6 +482,32 @@ class TextEffectPersistenceTest(unittest.TestCase):
         self.assertEqual(malformed.text_effects, TextEffectStack())
         warning.assert_called_once()
 
+    def test_repeatable_text_fills_round_trip_with_old_opacity_default(self):
+        first = TextFillEffect(
+            opacity=0.4,
+            blend_mode='darken',
+            paint=SolidPaint((10, 20, 30)),
+        )
+        second = TextFillEffect(
+            blend_mode='lighten',
+            paint=SolidPaint((200, 180, 160)),
+        )
+        payload = FontFormat(
+            text_effects=TextEffectStack(effects=(first, second))
+        ).to_serializable_dict()
+
+        restored = FontFormat(**payload)
+
+        self.assertEqual(restored.text_effects.effects, (first, second))
+        old_single = second.to_serializable_dict()
+        old_single.pop('opacity')
+        self.assertEqual(
+            FontFormat(text_effects={
+                'effects': [old_single]
+            }).text_effects.effects,
+            (second,),
+        )
+
     def test_legacy_views_and_merge_use_only_the_canonical_stack(self):
         fontformat = FontFormat()
         fontformat.srgb = [10, 20, 30]

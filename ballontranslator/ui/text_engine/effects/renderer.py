@@ -82,6 +82,11 @@ _VECTOR_EFFECT_RENDER_HINTS = (
     QPainter.RenderHint.Antialiasing
     | QPainter.RenderHint.TextAntialiasing
 )
+_BLEND_COMPOSITION_MODES = {
+    'normal': QPainter.CompositionMode.CompositionMode_SourceOver,
+    'darken': QPainter.CompositionMode.CompositionMode_Darken,
+    'lighten': QPainter.CompositionMode.CompositionMode_Lighten,
+}
 _FILTER_HALO_MAX_PIXELS = 512
 _FILTER_WARNING_LIMIT = 64
 _FilterExecutionPlan = Tuple[
@@ -389,18 +394,15 @@ class TextEffectRenderer:
             if isinstance(effect, StrokeEffect) and not effect.is_neutral()
         )
 
-    def _active_text_fill(
+    def _active_text_fills(
         self, stack: Optional[TextEffectStack] = None
-    ) -> Optional[TextFillEffect]:
+    ) -> Tuple[TextFillEffect, ...]:
         active = self.effective_text_effects() if stack is None else stack
-        return next(
-            (
-                effect
-                for effect in active.effects
-                if isinstance(effect, TextFillEffect)
-                and not effect.is_neutral()
-            ),
-            None,
+        return tuple(
+            effect
+            for effect in reversed(active.effects)
+            if isinstance(effect, TextFillEffect)
+            and not effect.is_neutral()
         )
 
     def _active_filters(
@@ -783,6 +785,7 @@ class TextEffectRenderer:
     def _all_strokes_vector_compatible(self) -> bool:
         return all(
             stroke.position == 'center'
+            and stroke.blend_mode == 'normal'
             and not isinstance(stroke.paint, LinearGradientPaint)
             for stroke in self._active_strokes()
         )
@@ -915,10 +918,13 @@ class TextEffectRenderer:
 
     def project_assets_changed(self) -> None:
         """Invalidate project raster output after attachment/file recovery."""
-        text_fill = self._active_text_fill()
+        text_fills = self._active_text_fills()
         layer = self.canonical_rendered_image_layer()
         if (
-            (text_fill is None or not isinstance(text_fill.paint, TexturePaint))
+            not any(
+                isinstance(text_fill.paint, TexturePaint)
+                for text_fill in text_fills
+            )
             and (layer is None or not layer.enabled)
         ):
             return
@@ -1444,7 +1450,7 @@ class TextEffectRenderer:
             or bool(self._compiled_phase_effects('interior'))
             or self._mask_requires_surface()
             or self._has_inside_strokes()
-            or self._active_text_fill() is not None
+            or bool(self._active_text_fills())
             or self._active_rendered_image_layer() is not None
             or bool(self._active_filters())
         )
@@ -2147,12 +2153,13 @@ class TextEffectRenderer:
             or self._mask_requires_surface()
             or (
                 not self._hollow_enabled()
-                and self._active_text_fill() is not None
+                and bool(self._active_text_fills())
             )
             or self._active_rendered_image_layer() is not None
             or bool(self._active_filters())
             or any(
                 stroke.position != 'center'
+                or stroke.blend_mode != 'normal'
                 or isinstance(stroke.paint, LinearGradientPaint)
                 for stroke in strokes
             ),
@@ -2594,16 +2601,17 @@ class TextEffectRenderer:
             self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
             if canonical is not None:
-                text_fill = self._active_text_fill()
-                face = (
-                    canonical
-                    if text_fill is None
-                    else self._text_fill_pixmap(
-                        canonical, surface_rect, render_scale, text_fill
-                    )
+                text_fill_group = self._text_fill_group_pixmap(
+                    canonical,
+                    surface_rect,
+                    render_scale,
+                    self._active_text_fills(),
                 )
                 self._draw_surface_pixmap(
-                    painter, surface_rect, face, render_scale
+                    painter,
+                    surface_rect,
+                    canonical if text_fill_group is None else text_fill_group,
+                    render_scale,
                 )
             if rendered_image is not None and rendered_raster is not None:
                 self._paint_rendered_image(
@@ -2747,6 +2755,9 @@ class TextEffectRenderer:
             self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
             for _index, effect in nodes:
+                painter.setCompositionMode(
+                    _BLEND_COMPOSITION_MODES[effect.blend_mode]
+                )
                 if isinstance(effect, StrokeEffect):
                     self._paint_one_stroke_layer(
                         painter,
@@ -3281,66 +3292,113 @@ class TextEffectRenderer:
         finally:
             painter.restore()
 
-    def _text_fill_pixmap(
+    def _text_fill_group_pixmap(
         self,
         canonical: QPixmap,
         surface_rect: QRectF,
         render_scale: float,
-        text_fill: TextFillEffect,
-    ) -> QPixmap:
-        """Replace canonical rich foreground with one Text Fill paint.
+        text_fills: Tuple[TextFillEffect, ...],
+    ) -> Optional[QPixmap]:
+        """Compose renderable Text Fills over a transparent face surface.
 
-        >>> hasattr(TextEffectRenderer, '_text_fill_pixmap')
+        >>> hasattr(TextEffectRenderer, '_text_fill_group_pixmap')
         True
         """
+        if not text_fills:
+            return None
+        painter = None
         try:
-            rgba = pixmap2ndarray(canonical, keep_alpha=True)
-            if rgba is None:
-                raise EffectRasterAllocationError(
-                    'unable to access Text Fill source pixels'
+            target = None
+            rgba = None
+            for text_fill in text_fills:
+                texture = (
+                    self._project_raster(
+                        text_fill.paint.asset, 'Text Fill texture'
+                    )
+                    if isinstance(text_fill.paint, TexturePaint)
+                    else None
                 )
-            texture = (
-                self._project_raster(
-                    text_fill.paint.asset, 'Text Fill texture'
+                if (
+                    isinstance(text_fill.paint, TexturePaint)
+                    and texture is None
+                ):
+                    continue
+                # Compose paint alpha first, then apply glyph coverage once so
+                # repeated Fills cannot thicken antialiased face edges.
+                if rgba is None:
+                    rgba = np.empty(
+                        (canonical.height(), canonical.width(), 4),
+                        dtype=np.uint8,
+                    )
+                rgba[..., 3] = 255
+                if isinstance(text_fill.paint, TexturePaint):
+                    assert texture is not None
+                    colorize_texture_paint_rgba(
+                        text_fill.paint,
+                        rgba,
+                        texture,
+                        surface_rect,
+                        self.logical_unpadded_rect(),
+                        render_scale,
+                        texture_premultiplied=True,
+                    )
+                else:
+                    colorize_effect_paint_rgba(
+                        text_fill.paint,
+                        rgba,
+                        surface_rect,
+                        self.logical_unpadded_rect(),
+                        render_scale,
+                    )
+                if text_fill.opacity != 1.0:
+                    product = rgba[..., 3].astype(np.uint16)
+                    product *= int(round(text_fill.opacity * 255.0))
+                    product += 127
+                    product //= 255
+                    rgba[..., 3] = product.astype(np.uint8)
+                layer = ndarray2pixmap(rgba)
+                if layer is None or layer.isNull():
+                    raise EffectRasterAllocationError(
+                        'unable to allocate Text Fill layer'
+                    )
+                if render_scale >= 1.0:
+                    layer.setDevicePixelRatio(render_scale)
+                if target is None:
+                    target = self._new_effect_pixmap(
+                        render_scale, surface_rect
+                    )
+                    painter = QPainter(target)
+                    if not painter.isActive():
+                        raise EffectRasterAllocationError(
+                            'unable to begin Text Fill group painter'
+                        )
+                    self._prepare_effect_surface_painter(
+                        painter, render_scale
+                    )
+                    painter.translate(-surface_rect.topLeft())
+                painter.setCompositionMode(
+                    _BLEND_COMPOSITION_MODES[text_fill.blend_mode]
                 )
-                if isinstance(text_fill.paint, TexturePaint)
-                else None
-            )
-            if isinstance(text_fill.paint, TexturePaint) and texture is None:
-                return canonical
-            if isinstance(text_fill.paint, TexturePaint):
-                assert texture is not None
-                colorize_texture_paint_rgba(
-                    text_fill.paint,
-                    rgba,
-                    texture,
-                    surface_rect,
-                    self.logical_unpadded_rect(),
-                    render_scale,
-                    texture_premultiplied=True,
+                self._draw_surface_pixmap(
+                    painter, surface_rect, layer, render_scale
                 )
-            else:
-                colorize_effect_paint_rgba(
-                    text_fill.paint,
-                    rgba,
-                    surface_rect,
-                    self.logical_unpadded_rect(),
-                    render_scale,
+            if target is not None:
+                painter.setCompositionMode(
+                    QPainter.CompositionMode.CompositionMode_DestinationIn
                 )
-            result = ndarray2pixmap(rgba)
-            if result is None or result.isNull():
-                raise EffectRasterAllocationError(
-                    'unable to allocate Text Fill surface'
+                self._draw_surface_pixmap(
+                    painter, surface_rect, canonical, render_scale
                 )
-            if render_scale >= 1.0:
-                result.setDevicePixelRatio(render_scale)
-            return result
+            return target
         except RASTER_BOUNDARY_FAILURES as error:
             if isinstance(error, EffectRasterAllocationError):
                 raise
             raise EffectRasterAllocationError(
                 'unable to render Text Fill'
             ) from error
+        finally:
+            if painter is not None and painter.isActive():
+                painter.end()
 
     def _stroke_silhouette(
         self,

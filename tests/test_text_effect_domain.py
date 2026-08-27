@@ -325,23 +325,25 @@ class TextEffectDomainTest(unittest.TestCase):
             ),
         )
 
-    def test_text_fill_is_strict_unique_and_neutral(self):
+    def test_text_fill_is_repeatable_strict_and_replacement_active(self):
         transparent = LinearGradientPaint(stops=(
             GradientStop(0.0, (255, 0, 0), 0.0),
             GradientStop(1.0, (0, 0, 255), 0.0),
         ))
         self.assertTrue(TextFillEffect(enabled=False).is_neutral())
+        self.assertFalse(TextFillEffect(opacity=0.0).is_neutral())
         self.assertFalse(
             TextFillEffect(paint=transparent).is_neutral()
         )
         self.assertEqual(effect_phase(TextFillEffect()), 'foreground')
+        fills = (TextFillEffect(), TextFillEffect(opacity=0.5))
+        self.assertEqual(TextEffectStack(effects=fills).effects, fills)
         for constructor in (
             lambda: TextFillEffect(enabled=1),
             lambda: TextFillEffect(blend_mode='multiply'),
+            lambda: TextFillEffect(opacity=-0.01),
+            lambda: TextFillEffect(opacity=1.01),
             lambda: TextFillEffect(paint=object()),
-            lambda: TextEffectStack(effects=(
-                TextFillEffect(), TextFillEffect()
-            )),
         ):
             with self.subTest(constructor=constructor):
                 with self.assertRaises((TypeError, ValueError)):
@@ -364,6 +366,7 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(payload['effects'][1], {
             'effect_type': 'text_fill',
             'enabled': True,
+            'opacity': 1.0,
             'blend_mode': 'normal',
             'paint': text_fill.paint.to_serializable_dict(),
         })
@@ -372,10 +375,11 @@ class TextEffectDomainTest(unittest.TestCase):
             (StrokeEffect(width=0.2), text_fill),
         )
         for legacy_type in ('gradient', 'gradient_overlay'):
-            legacy_payload = payload['effects'][1] | {
+            legacy_payload = dict(payload['effects'][1])
+            legacy_payload.update({
                 'effect_type': legacy_type,
                 'opacity': 0.4,
-            }
+            })
             self.assertEqual(
                 coerce_text_effect_stack({
                     'effects': [legacy_payload]
@@ -383,9 +387,18 @@ class TextEffectDomainTest(unittest.TestCase):
                 (text_fill,),
             )
 
+        old_single_payload = dict(payload['effects'][1])
+        old_single_payload.pop('opacity')
+        self.assertEqual(
+            coerce_text_effect_stack({
+                'effects': [old_single_payload]
+            }).effects,
+            (text_fill,),
+        )
+
         malformed = {'effects': [
             payload['effects'][1],
-            {'effect_type': 'text_fill', 'opacity': 0.4},
+            {'effect_type': 'text_fill', 'opacity': -0.1},
             {'effect_type': 'stroke', 'width': 0.3},
             {
                 'effect_type': 'text_fill',
@@ -399,8 +412,47 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(loaded.effects, (
             text_fill,
             StrokeEffect(width=0.3, position='center'),
+            TextFillEffect(paint=SolidPaint((1, 2, 3))),
         ))
-        self.assertEqual(warning.call_count, 2)
+        warning.assert_called_once()
+
+    def test_blend_modes_are_strict_live_and_recover_on_passive_load(self):
+        constructors = (
+            StrokeEffect,
+            ShadowEffect,
+            GlowEffect,
+            TextFillEffect,
+        )
+        for constructor in constructors:
+            for blend_mode in ('normal', 'darken', 'lighten'):
+                with self.subTest(
+                    effect=constructor.__name__, blend_mode=blend_mode
+                ):
+                    self.assertEqual(
+                        constructor(blend_mode=blend_mode).blend_mode,
+                        blend_mode,
+                    )
+            with self.subTest(effect=constructor.__name__, invalid='strict'):
+                with self.assertRaises(ValueError):
+                    constructor(blend_mode='multiply')
+
+        payloads = []
+        for constructor in constructors:
+            payload = constructor().to_serializable_dict()
+            payload['blend_mode'] = 'future-mode'
+            payloads.append(payload)
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            loaded = coerce_text_effect_stack({'effects': payloads})
+
+        self.assertEqual(
+            tuple(type(effect) for effect in loaded.effects), constructors
+        )
+        self.assertTrue(all(
+            effect.blend_mode == 'normal' for effect in loaded.effects
+        ))
+        self.assertEqual(warning.call_count, len(constructors))
 
     def test_texture_paint_round_trip_and_asset_reference_validation(self):
         asset = RasterAssetRef(
