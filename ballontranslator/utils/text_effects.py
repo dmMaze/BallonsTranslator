@@ -12,7 +12,11 @@ from .raster_assets import RasterAssetRef, coerce_raster_asset_ref
 SHADOW_OFFSET_LIMIT = 10.0
 SHADOW_BLUR_LIMIT = 10.0
 SHADOW_SPREAD_LIMIT = 10.0
-TEXT_EFFECT_BLEND_MODES = ('normal', 'darken', 'lighten')
+TEXT_EFFECT_BLEND_MODES = (
+    'normal',
+    'darken', 'multiply', 'color_burn', 'linear_burn', 'darker_color',
+    'lighten', 'screen', 'color_dodge', 'linear_dodge', 'lighter_color',
+)
 FilterScalar = Union[None, bool, int, float, str]
 FilterParams = Tuple[Tuple[str, FilterScalar], ...]
 

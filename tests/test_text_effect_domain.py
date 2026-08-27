@@ -16,6 +16,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    TEXT_EFFECT_BLEND_MODES,
     TextEffectStack,
     TexturePaint,
     coerce_text_effect_stack,
@@ -340,7 +341,7 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(TextEffectStack(effects=fills).effects, fills)
         for constructor in (
             lambda: TextFillEffect(enabled=1),
-            lambda: TextFillEffect(blend_mode='multiply'),
+            lambda: TextFillEffect(blend_mode='overlay'),
             lambda: TextFillEffect(opacity=-0.01),
             lambda: TextFillEffect(opacity=1.01),
             lambda: TextFillEffect(paint=object()),
@@ -417,6 +418,13 @@ class TextEffectDomainTest(unittest.TestCase):
         warning.assert_called_once()
 
     def test_blend_modes_are_strict_live_and_recover_on_passive_load(self):
+        self.assertEqual(TEXT_EFFECT_BLEND_MODES, (
+            'normal',
+            'darken', 'multiply', 'color_burn', 'linear_burn',
+            'darker_color',
+            'lighten', 'screen', 'color_dodge', 'linear_dodge',
+            'lighter_color',
+        ))
         constructors = (
             StrokeEffect,
             ShadowEffect,
@@ -424,7 +432,7 @@ class TextEffectDomainTest(unittest.TestCase):
             TextFillEffect,
         )
         for constructor in constructors:
-            for blend_mode in ('normal', 'darken', 'lighten'):
+            for blend_mode in TEXT_EFFECT_BLEND_MODES:
                 with self.subTest(
                     effect=constructor.__name__, blend_mode=blend_mode
                 ):
@@ -432,9 +440,16 @@ class TextEffectDomainTest(unittest.TestCase):
                         constructor(blend_mode=blend_mode).blend_mode,
                         blend_mode,
                     )
+                    effect = constructor(blend_mode=blend_mode)
+                    self.assertEqual(
+                        coerce_text_effect_stack({
+                            'effects': [effect.to_serializable_dict()]
+                        }).effects,
+                        (effect,),
+                    )
             with self.subTest(effect=constructor.__name__, invalid='strict'):
                 with self.assertRaises(ValueError):
-                    constructor(blend_mode='multiply')
+                    constructor(blend_mode='overlay')
 
         payloads = []
         for constructor in constructors:
@@ -517,7 +532,7 @@ class TextEffectDomainTest(unittest.TestCase):
         invalid_values = (
             lambda: GlowEffect(enabled=1),
             lambda: GlowEffect(opacity=1.01),
-            lambda: GlowEffect(blend_mode='multiply'),
+            lambda: GlowEffect(blend_mode='overlay'),
             lambda: GlowEffect(glow_type='future'),
             lambda: GlowEffect(paint=object()),
             lambda: GlowEffect(size=-0.01),
@@ -586,12 +601,12 @@ class TextEffectDomainTest(unittest.TestCase):
             lambda: StrokeEffect(enabled=1),
             lambda: StrokeEffect(opacity=-0.1),
             lambda: StrokeEffect(opacity=float('nan')),
-            lambda: StrokeEffect(blend_mode='multiply'),
+            lambda: StrokeEffect(blend_mode='overlay'),
             lambda: StrokeEffect(width=float('inf')),
             lambda: StrokeEffect(paint={'paint_type': 'solid'}),
             lambda: ShadowEffect(enabled=1),
             lambda: ShadowEffect(opacity=1.1),
-            lambda: ShadowEffect(blend_mode='multiply'),
+            lambda: ShadowEffect(blend_mode='overlay'),
             lambda: ShadowEffect(shadow_type='outer'),
             lambda: ShadowEffect(paint={'paint_type': 'solid'}),
             lambda: ShadowEffect(offset=(0, float('inf'))),

@@ -38,6 +38,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    TEXT_EFFECT_BLEND_MODES,
     TextEffectStack,
     TexturePaint,
     primary_stroke,
@@ -483,29 +484,28 @@ class TextEffectPersistenceTest(unittest.TestCase):
         warning.assert_called_once()
 
     def test_repeatable_text_fills_round_trip_with_old_opacity_default(self):
-        first = TextFillEffect(
-            opacity=0.4,
-            blend_mode='darken',
-            paint=SolidPaint((10, 20, 30)),
-        )
-        second = TextFillEffect(
-            blend_mode='lighten',
-            paint=SolidPaint((200, 180, 160)),
+        fills = tuple(
+            TextFillEffect(
+                opacity=0.4 if index == 0 else 1.0,
+                blend_mode=blend_mode,
+                paint=SolidPaint((10 + index, 20, 30)),
+            )
+            for index, blend_mode in enumerate(TEXT_EFFECT_BLEND_MODES)
         )
         payload = FontFormat(
-            text_effects=TextEffectStack(effects=(first, second))
+            text_effects=TextEffectStack(effects=fills)
         ).to_serializable_dict()
 
         restored = FontFormat(**payload)
 
-        self.assertEqual(restored.text_effects.effects, (first, second))
-        old_single = second.to_serializable_dict()
+        self.assertEqual(restored.text_effects.effects, fills)
+        old_single = fills[-1].to_serializable_dict()
         old_single.pop('opacity')
         self.assertEqual(
             FontFormat(text_effects={
                 'effects': [old_single]
             }).text_effects.effects,
-            (second,),
+            (fills[-1],),
         )
 
     def test_legacy_views_and_merge_use_only_the_canonical_stack(self):

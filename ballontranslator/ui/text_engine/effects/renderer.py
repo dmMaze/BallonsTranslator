@@ -44,6 +44,7 @@ from ...misc import ndarray2pixmap, pixmap2ndarray
 from ..horizontal_layout import HorizontalTextDocumentLayout
 from ..vertical_layout import VerticalTextDocumentLayout
 from .alpha_mask import render_text_alpha_mask
+from .blend import CUSTOM_BLEND_MODES, composite_custom_blend_rgba
 from .paint import (
     colorize_effect_paint_rgba,
     colorize_texture_paint_rgba,
@@ -85,7 +86,11 @@ _VECTOR_EFFECT_RENDER_HINTS = (
 _BLEND_COMPOSITION_MODES = {
     'normal': QPainter.CompositionMode.CompositionMode_SourceOver,
     'darken': QPainter.CompositionMode.CompositionMode_Darken,
+    'multiply': QPainter.CompositionMode.CompositionMode_Multiply,
+    'color_burn': QPainter.CompositionMode.CompositionMode_ColorBurn,
     'lighten': QPainter.CompositionMode.CompositionMode_Lighten,
+    'screen': QPainter.CompositionMode.CompositionMode_Screen,
+    'color_dodge': QPainter.CompositionMode.CompositionMode_ColorDodge,
 }
 _FILTER_HALO_MAX_PIXELS = 512
 _FILTER_WARNING_LIMIT = 64
@@ -1778,6 +1783,61 @@ class TextEffectRenderer:
         if render_scale < 1.0:
             painter.scale(render_scale, render_scale)
 
+    def _begin_effect_layer_painter(
+        self,
+        target: QPixmap,
+        surface_rect: QRectF,
+        render_scale: float,
+    ) -> QPainter:
+        """Begin one painter in the shared item-local surface space."""
+        painter: Optional[QPainter] = None
+        try:
+            painter = QPainter(target)
+            if not painter.isActive():
+                raise EffectRasterAllocationError(
+                    'unable to begin text-effect layer painter'
+                )
+            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            self._prepare_effect_surface_painter(painter, render_scale)
+            painter.translate(-surface_rect.topLeft())
+            return painter
+        except RASTER_BOUNDARY_FAILURES as error:
+            if painter is not None and painter.isActive():
+                try:
+                    painter.end()
+                except RASTER_BOUNDARY_FAILURES:
+                    pass
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to prepare text-effect layer painter'
+            ) from error
+
+    @staticmethod
+    def _custom_blend_surface_pixmaps(
+        destination: QPixmap,
+        source: QPixmap,
+        blend_mode: str,
+        render_scale: float,
+    ) -> QPixmap:
+        """Bridge one non-native blend without changing surface coordinates."""
+        destination_rgba = pixmap2ndarray(destination, keep_alpha=True)
+        source_rgba = pixmap2ndarray(source, keep_alpha=True)
+        if destination_rgba is None or source_rgba is None:
+            raise EffectRasterAllocationError(
+                'unable to read text-effect blend layers'
+            )
+        result = ndarray2pixmap(composite_custom_blend_rgba(
+            destination_rgba, source_rgba, blend_mode
+        ))
+        if result is None or result.isNull():
+            raise EffectRasterAllocationError(
+                'unable to allocate blended text-effect surface'
+            )
+        if render_scale >= 1.0:
+            result.setDevicePixelRatio(render_scale)
+        return result
+
     @staticmethod
     def _draw_surface_pixmap(
         painter: QPainter,
@@ -2741,49 +2801,53 @@ class TextEffectRenderer:
         # The prefix owner just allocated this base and no cache observes it
         # yet. Upper batches may receive cached/filter output and must detach.
         target = source if _source_is_fresh_base else QPixmap(source)
-        painter = QPainter(target)
-        if not painter.isActive():
-            raise EffectRasterAllocationError(
-                'unable to begin generated-layer painter'
-            )
+        painter: Optional[QPainter] = None
         previous_capture = self.capturing_surface
         previous_raster_error = self.surface_raster_error
         self.capturing_surface = True
         self.surface_raster_error = None
         try:
-            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
-            self._prepare_effect_surface_painter(painter, render_scale)
-            painter.translate(-surface_rect.topLeft())
+            painter = self._begin_effect_layer_painter(
+                target, surface_rect, render_scale
+            )
             for _index, effect in nodes:
-                painter.setCompositionMode(
-                    _BLEND_COMPOSITION_MODES[effect.blend_mode]
-                )
                 if isinstance(effect, StrokeEffect):
-                    self._paint_one_stroke_layer(
-                        painter,
+                    layer = self._stroke_layer_pixmap(
                         effect,
                         surface_rect,
                         render_scale,
                         canonical_alpha,
                         positioned_stroke_bands,
                     )
-                    continue
-                source_alpha = (
-                    exterior_alpha
-                    if effect_phase(effect) == 'exterior'
-                    else canonical_alpha
-                )
-                assert source_alpha is not None
-                layer = self._generated_effect_pixmap(
-                    source_alpha,
-                    effect,
-                    surface_rect,
-                    render_scale,
-                    canonical_alpha,
-                )
-                self._draw_surface_pixmap(
-                    painter, surface_rect, layer, render_scale
-                )
+                else:
+                    source_alpha = (
+                        exterior_alpha
+                        if effect_phase(effect) == 'exterior'
+                        else canonical_alpha
+                    )
+                    assert source_alpha is not None
+                    layer = self._generated_effect_pixmap(
+                        source_alpha,
+                        effect,
+                        surface_rect,
+                        render_scale,
+                        canonical_alpha,
+                    )
+                if effect.blend_mode in CUSTOM_BLEND_MODES:
+                    painter.end()
+                    target = self._custom_blend_surface_pixmaps(
+                        target, layer, effect.blend_mode, render_scale
+                    )
+                    painter = self._begin_effect_layer_painter(
+                        target, surface_rect, render_scale
+                    )
+                else:
+                    painter.setCompositionMode(
+                        _BLEND_COMPOSITION_MODES[effect.blend_mode]
+                    )
+                    self._draw_surface_pixmap(
+                        painter, surface_rect, layer, render_scale
+                    )
             if self.surface_raster_error is not None:
                 raise self.surface_raster_error
         except RASTER_BOUNDARY_FAILURES as error:
@@ -2795,7 +2859,8 @@ class TextEffectRenderer:
         finally:
             end_error = None
             try:
-                painter.end()
+                if painter is not None and painter.isActive():
+                    painter.end()
             except RASTER_BOUNDARY_FAILURES as error:
                 end_error = error
             self.capturing_surface = previous_capture
@@ -2806,18 +2871,17 @@ class TextEffectRenderer:
                 ) from end_error
         return target
 
-    def _paint_one_stroke_layer(
+    def _stroke_layer_pixmap(
         self,
-        painter: QPainter,
         stroke: StrokeEffect,
         surface_rect: QRectF,
         render_scale: float,
         canonical_alpha: Optional[np.ndarray],
         positioned_stroke_bands: Dict[StrokeEffect, QPixmap],
-    ) -> None:
-        """Paint one Stroke without consulting sibling visual order.
+    ) -> QPixmap:
+        """Return one Stroke layer without consulting sibling visual order.
 
-        >>> hasattr(TextEffectRenderer, '_paint_one_stroke_layer')
+        >>> hasattr(TextEffectRenderer, '_stroke_layer_pixmap')
         True
         """
         previous = self._render_stroke
@@ -2832,9 +2896,7 @@ class TextEffectRenderer:
                     canonical_alpha,
                 )
                 positioned_stroke_bands[stroke] = band
-            self._draw_surface_pixmap(
-                painter, surface_rect, band, render_scale
-            )
+            return band
         finally:
             self._render_stroke = previous
 
@@ -3364,24 +3426,37 @@ class TextEffectRenderer:
                 if render_scale >= 1.0:
                     layer.setDevicePixelRatio(render_scale)
                 if target is None:
+                    # Every blend mode is source identity over transparency.
+                    # Source-copy into an alpha-capable surface so the final
+                    # canonical clip can still reduce an opaque first layer.
                     target = self._new_effect_pixmap(
                         render_scale, surface_rect
                     )
-                    painter = QPainter(target)
-                    if not painter.isActive():
-                        raise EffectRasterAllocationError(
-                            'unable to begin Text Fill group painter'
-                        )
-                    self._prepare_effect_surface_painter(
-                        painter, render_scale
+                    painter = self._begin_effect_layer_painter(
+                        target, surface_rect, render_scale
                     )
-                    painter.translate(-surface_rect.topLeft())
-                painter.setCompositionMode(
-                    _BLEND_COMPOSITION_MODES[text_fill.blend_mode]
-                )
-                self._draw_surface_pixmap(
-                    painter, surface_rect, layer, render_scale
-                )
+                    painter.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_Source
+                    )
+                    self._draw_surface_pixmap(
+                        painter, surface_rect, layer, render_scale
+                    )
+                    continue
+                if text_fill.blend_mode in CUSTOM_BLEND_MODES:
+                    painter.end()
+                    target = self._custom_blend_surface_pixmaps(
+                        target, layer, text_fill.blend_mode, render_scale
+                    )
+                    painter = self._begin_effect_layer_painter(
+                        target, surface_rect, render_scale
+                    )
+                else:
+                    painter.setCompositionMode(
+                        _BLEND_COMPOSITION_MODES[text_fill.blend_mode]
+                    )
+                    self._draw_surface_pixmap(
+                        painter, surface_rect, layer, render_scale
+                    )
             if target is not None:
                 painter.setCompositionMode(
                     QPainter.CompositionMode.CompositionMode_DestinationIn

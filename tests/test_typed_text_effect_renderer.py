@@ -44,6 +44,10 @@ from ballontranslator.ui.text_engine.effects.paint import (
     effect_paint_preview_image,
     rasterize_effect_paint,
 )
+from ballontranslator.ui.text_engine.effects.blend import (
+    CUSTOM_BLEND_MODES,
+    composite_custom_blend_rgba,
+)
 from ballontranslator.ui.text_engine.effects.shadow import (
     render_glow_alpha,
     render_shadow_alpha,
@@ -64,6 +68,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    TEXT_EFFECT_BLEND_MODES,
     TextEffectStack,
     TexturePaint,
 )
@@ -71,6 +76,80 @@ from ballontranslator.utils.textblock import TextBlock
 
 
 class TypedShadowRasterTest(unittest.TestCase):
+    def test_custom_blends_use_straight_rgba_source_over(self):
+        destination = np.array(
+            [[[100, 150, 200, 128]]], dtype=np.uint8
+        )
+        source = np.array([[[200, 50, 100, 128]]], dtype=np.uint8)
+        expected = {
+            'linear_burn': [115, 66, 115, 192],
+            'darker_color': [167, 83, 133, 192],
+            'linear_dodge': [185, 134, 185, 192],
+            'lighter_color': [133, 117, 167, 192],
+        }
+        for blend_mode, pixel in expected.items():
+            with self.subTest(blend_mode=blend_mode):
+                result = composite_custom_blend_rgba(
+                    destination, source, blend_mode
+                )
+                self.assertEqual(result[0, 0].tolist(), pixel)
+                self.assertEqual(result[0, 0, 3], 192)
+
+        transparent = np.zeros((1, 1, 4), dtype=np.uint8)
+        for blend_mode in expected:
+            with self.subTest(blend_mode=blend_mode, identity='source'):
+                np.testing.assert_array_equal(
+                    composite_custom_blend_rgba(
+                        transparent, source, blend_mode
+                    ),
+                    source,
+                )
+            with self.subTest(blend_mode=blend_mode, identity='destination'):
+                np.testing.assert_array_equal(
+                    composite_custom_blend_rgba(
+                        destination, transparent, blend_mode
+                    ),
+                    destination,
+                )
+
+        tie_destination = np.array(
+            [[[10, 20, 30, 255]]], dtype=np.uint8
+        )
+        tie_source = np.array([[[30, 20, 10, 255]]], dtype=np.uint8)
+        for blend_mode in ('darker_color', 'lighter_color'):
+            with self.subTest(blend_mode=blend_mode, tie=True):
+                np.testing.assert_array_equal(
+                    composite_custom_blend_rgba(
+                        tie_destination, tie_source, blend_mode
+                    ),
+                    tie_destination,
+                )
+
+        adversarial_destination = np.array(
+            [[[166, 51, 173, 239]]], dtype=np.uint8
+        )
+        adversarial_source = np.array(
+            [[[201, 229, 136, 244]]], dtype=np.uint8
+        )
+        self.assertEqual(
+            composite_custom_blend_rgba(
+                adversarial_destination,
+                adversarial_source,
+                'lighter_color',
+            )[0, 0].tolist(),
+            [200, 222, 137, 254],
+        )
+        half_destination = np.array(
+            [[[204, 0, 0, 44]]], dtype=np.uint8
+        )
+        half_source = np.array([[[29, 0, 0, 44]]], dtype=np.uint8)
+        self.assertEqual(
+            composite_custom_blend_rgba(
+                half_destination, half_source, 'linear_dodge'
+            )[0, 0].tolist(),
+            [128, 0, 0, 80],
+        )
+
     def test_outer_and_inner_glow_alpha_clip_to_their_semantic_side(self):
         alpha = np.zeros((21, 21), dtype=np.uint8)
         alpha[7:14, 7:14] = 255
@@ -642,8 +721,17 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         top_colors = {
             'normal': (200, 50, 100),
             'darken': (100, 50, 100),
+            'multiply': (78, 29, 78),
+            'color_burn': (57, 0, 115),
+            'linear_burn': (45, 0, 45),
+            'darker_color': (200, 50, 100),
             'lighten': (200, 150, 200),
+            'screen': (222, 171, 222),
+            'color_dodge': (255, 187, 255),
+            'linear_dodge': (255, 200, 255),
+            'lighter_color': (100, 150, 200),
         }
+        self.assertEqual(tuple(top_colors), TEXT_EFFECT_BLEND_MODES)
         item = self._item(TextEffectStack(effects=(
             TextFillEffect(paint=SolidPaint((200, 50, 100))),
             StrokeEffect(enabled=False),
@@ -668,6 +756,24 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 pixel = pixmap2ndarray(group, keep_alpha=True)[0, 0]
                 np.testing.assert_allclose(pixel[:3], expected, atol=1)
                 self.assertEqual(pixel[3], 255)
+
+        custom_fill = TextFillEffect(
+            blend_mode='linear_dodge',
+            paint=SolidPaint((200, 50, 100)),
+        )
+        with patch.object(
+            renderer,
+            '_custom_blend_surface_pixmaps',
+            wraps=renderer._custom_blend_surface_pixmaps,
+        ) as custom_blend:
+            renderer._text_fill_group_pixmap(
+                canonical, rect, 1.0, (custom_fill,)
+            )
+            self.assertEqual(custom_blend.call_count, 0)
+            renderer._text_fill_group_pixmap(
+                canonical, rect, 1.0, (custom_fill, custom_fill)
+            )
+            self.assertEqual(custom_blend.call_count, 1)
 
         partial_canonical = self._solid_pixmap((12, 34, 56, 128))
         repeated = renderer._text_fill_group_pixmap(
@@ -727,7 +833,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         pixel = pixmap2ndarray(group, keep_alpha=True)[0, 0]
         np.testing.assert_allclose(pixel, (20, 60, 220, 255), atol=1)
 
-    def test_generated_layers_apply_native_blend_modes_in_isolated_surface(self):
+    def test_generated_layers_apply_blend_modes_in_isolated_surface(self):
         item = self._item(TextEffectStack())
         renderer = item.effect_renderer
         rect = QRectF(0, 0, 1, 1)
@@ -737,7 +843,15 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         expected_colors = {
             'normal': (200, 50, 100),
             'darken': (100, 50, 100),
+            'multiply': (78, 29, 78),
+            'color_burn': (57, 0, 115),
+            'linear_burn': (45, 0, 45),
+            'darker_color': (200, 50, 100),
             'lighten': (200, 150, 200),
+            'screen': (222, 171, 222),
+            'color_dodge': (255, 187, 255),
+            'linear_dodge': (255, 200, 255),
+            'lighter_color': (100, 150, 200),
         }
 
         for blend_mode, expected in expected_colors.items():
@@ -747,17 +861,25 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 return_value=(source, alpha),
             ), patch.object(
                 renderer, '_generated_effect_pixmap', return_value=layer
-            ):
+            ), patch.object(
+                renderer,
+                '_custom_blend_surface_pixmaps',
+                wraps=renderer._custom_blend_surface_pixmaps,
+            ) as custom_blend:
                 effect = ShadowEffect(blend_mode=blend_mode)
                 result = renderer._composite_generated_layer_batch(
                     source, ((0, effect),), rect, 1.0
+                )
+                self.assertEqual(
+                    custom_blend.call_count,
+                    int(blend_mode in CUSTOM_BLEND_MODES),
                 )
             pixel = pixmap2ndarray(result, keep_alpha=True)[0, 0]
             np.testing.assert_allclose(pixel[:3], expected, atol=1)
             self.assertEqual(pixel[3], 255)
 
         stroke_item = self._item(TextEffectStack(effects=(StrokeEffect(
-            blend_mode='darken', position='center'
+            blend_mode='linear_burn', position='center'
         ),)))
         self.assertEqual(stroke_item.effect_renderer._effect_flags(), (
             True, True
@@ -765,6 +887,52 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertFalse(
             stroke_item.effect_renderer._all_strokes_vector_compatible()
         )
+
+    def test_generated_layer_painter_setup_failure_restores_state(self):
+        item = self._item(TextEffectStack())
+        renderer = item.effect_renderer
+        rect = QRectF(0, 0, 1, 1)
+        source = self._solid_pixmap((100, 150, 200, 255))
+        alpha = np.full((1, 1), 255, dtype=np.uint8)
+        previous_error = EffectRasterAllocationError('previous')
+
+        with patch.object(
+            renderer,
+            '_prepare_effect_surface_painter',
+            side_effect=RuntimeError('setup failed'),
+        ):
+            with self.assertRaises(EffectRasterAllocationError) as direct:
+                renderer._begin_effect_layer_painter(source, rect, 1.0)
+            self.assertIsInstance(direct.exception.__cause__, RuntimeError)
+            probe = QPainter(source)
+            self.assertTrue(probe.isActive())
+            probe.end()
+
+        def fail_during_guarded_setup(
+            _painter: QPainter, _render_scale: float
+        ) -> None:
+            self.assertTrue(renderer.capturing_surface)
+            self.assertIsNone(renderer.surface_raster_error)
+            raise RuntimeError('guarded setup failed')
+
+        renderer.capturing_surface = False
+        renderer.surface_raster_error = previous_error
+        with patch.object(
+            renderer,
+            '_prepare_effect_surface_painter',
+            side_effect=fail_during_guarded_setup,
+        ), patch.object(
+            renderer,
+            '_cached_effect_source',
+            return_value=(source, alpha),
+        ), self.assertRaises(EffectRasterAllocationError) as composite:
+            renderer._composite_generated_layer_batch(
+                source, ((0, ShadowEffect()),), rect, 1.0
+            )
+
+        self.assertIsInstance(composite.exception.__cause__, RuntimeError)
+        self.assertFalse(renderer.capturing_surface)
+        self.assertIs(renderer.surface_raster_error, previous_error)
 
     def test_gradient_replaces_foreground_and_stop_opacity_overwrites_alpha(self):
         plain = self._item(TextEffectStack())
@@ -2598,7 +2766,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             TextEffectStack(effects=(
                 TextFillEffect(
                     opacity=0.7,
-                    blend_mode='darken',
+                    blend_mode='linear_burn',
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, (220, 180, 40), 0.6),
@@ -2609,12 +2777,14 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     ),
                 ),
                 ShadowEffect(
+                    blend_mode='darker_color',
                     offset=(0.18, 0.12),
                     blur=0.08,
                     spread=0.04,
                     paint=LinearGradientPaint(angle=41.0),
                 ),
                 GlowEffect(
+                    blend_mode='linear_dodge',
                     paint=LinearGradientPaint(angle=17.0),
                     size=0.08,
                     spread=0.03,
@@ -2622,7 +2792,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 StrokeEffect(
                     width=0.12,
                     position='outside',
-                    blend_mode='lighten',
+                    blend_mode='lighter_color',
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, (255, 0, 0), 0.25),
@@ -2634,6 +2804,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     ),
                 ),
                 ShadowEffect(
+                    blend_mode='multiply',
                     shadow_type='inner',
                     offset=(0.08, 0.04),
                     blur=0.06,
@@ -2641,12 +2812,14 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     paint=LinearGradientPaint(angle=203.0),
                 ),
                 GlowEffect(
+                    blend_mode='screen',
                     glow_type='inner',
                     paint=LinearGradientPaint(angle=113.0),
                     size=0.06,
                     spread=0.02,
                 ),
                 TextFillEffect(
+                    blend_mode='color_dodge',
                     paint=LinearGradientPaint(
                         stops=(
                             GradientStop(0.0, (40, 80, 220), 0.4),

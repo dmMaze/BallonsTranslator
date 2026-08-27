@@ -44,6 +44,7 @@ from ballontranslator.utils.text_effects import (
     StrokeEffect,
     TextFillEffect,
     TextEffectStack,
+    TEXT_EFFECT_BLEND_MODES,
 )
 from ballontranslator.utils.textblock import TextBlock
 
@@ -293,18 +294,22 @@ class TextEffectPreviewTest(unittest.TestCase):
         owner = SimpleNamespace(text_effects=TextEffectStack(effects=effects))
         session = TextEffectEditSession(SimpleNamespace(global_format=owner))
 
-        for index in range(len(effects)):
+        for index, blend_mode in enumerate(TEXT_EFFECT_BLEND_MODES[:4]):
             updated = session._with_value(
-                owner.text_effects, index, 'blend_mode', 'lighten'
+                owner.text_effects, index, 'blend_mode', blend_mode
             )
-            self.assertEqual(updated.effects[index].blend_mode, 'lighten')
+            self.assertEqual(updated.effects[index].blend_mode, blend_mode)
 
         session.preview_value(3, 'opacity', 0.25)
         self.assertEqual(owner.text_effects.effects[3].opacity, 0.25)
         self.assertTrue(session.cancel_preview())
         self.assertEqual(owner.text_effects.effects[3].opacity, 1.0)
-        self.assertTrue(session.commit_value(3, 'blend_mode', 'darken'))
-        self.assertEqual(owner.text_effects.effects[3].blend_mode, 'darken')
+        self.assertTrue(
+            session.commit_value(3, 'blend_mode', 'linear_dodge')
+        )
+        self.assertEqual(
+            owner.text_effects.effects[3].blend_mode, 'linear_dodge'
+        )
 
     def test_add_text_fill_is_repeatable_and_applied_last(self):
         old_fill = TextFillEffect(paint=SolidPaint((10, 20, 30)))
