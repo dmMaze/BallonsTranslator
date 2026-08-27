@@ -17,7 +17,7 @@ Project JSON
                + TextBlock.rendered_image
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
-  -> TextEffectRenderer                     ordered generated/filter stack + fill
+  -> TextEffectRenderer                     generated/filter stack + Fill sub-stack
   -> TextItemGeometryController             bounds and visual mapping
   -> QGraphicsScene                         interaction, view, export
 ```
@@ -138,13 +138,26 @@ hit testing; adapting only one consumer creates visible drift or broken editing.
 `FontFormat.text_effects` owns the canonical immutable style stack;
 `TextBlock.rendered_image` and `TextBlock.text_alpha_mask` separately own the
 item-specific full-RGBA layer and structural alpha. `TextEffectRenderer`
-composes a fixed Text Fill/Rendered Image base, then walks generated layers and
-lazy Filters bottom-to-top around one canonical glyph source before the block mask,
-and hands
-that padded source to the geometry owner. See [Text effects](text_effects.md)
+composes the repeatable Text Fill base group and optional Rendered Image, then
+walks generated layers and lazy Filters bottom-to-top around one canonical
+glyph source before the block mask, and hands that padded source to the
+geometry owner. Text Fills apply in their visible order and may move only among
+themselves; a new Fill is visible and applied last even though the compatibility
+tuple stores it at index zero. If any enabled Fill can render, its transparent
+group replaces canonical rich foreground and is clipped once with shared
+canonical glyph coverage. Otherwise canonical rich foreground remains; missing
+interactive Textures are bypassed, while strict export fails. See
+[Text effects](text_effects.md)
 for stack order, migration, preview/undo, mask editing, cache boundaries, and
 extension rules. See [Text filters](text_filters.md) for plug-in metadata,
 trusted-code runtime, and deterministic tile contracts.
+
+Stroke, Shadow, Glow, and Text Fill support only Normal, Darken, and Lighten.
+Their native QPainter composition destination is earlier output inside the
+isolated generated stack or transparent Fill group, never the page backdrop.
+Paint alpha and effect Opacity multiply coverage once. Passive loading warns
+and falls back to Normal for an invalid mode without dropping the effect; live
+values remain strict.
 
 Text Fill textures use immutable project-relative `RasterAssetRef` values.
 The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`
@@ -197,7 +210,8 @@ Pixel-changing previews use a bounded non-promotable 0.5x scratch surface,
 while commit and strict export rebuild at the requested quality. Reshape omits
 effects during pointer motion and rebuilds once geometry settles. All derived
 pixmaps, alpha planes, padding, and cache keys remain runtime-only and
-item-owned.
+item-owned. Repeated Fill paint, Opacity, and Blend changes reuse the cached
+canonical source/mask rather than rasterizing glyphs again.
 
 The Canvas-owned mask session freezes source mapping for each brush stroke,
 publishes only a derived complete-mask preview, and commits one immutable mask

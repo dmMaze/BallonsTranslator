@@ -276,6 +276,69 @@ def _effect_action_widget(
     return widget
 
 
+def _blend_control(
+    parent: QWidget,
+    accessible_name: str,
+) -> Tuple[QWidget, BottomBorderComboBox]:
+    """Build the shared three-choice blend-mode row."""
+    label = QLabel(
+        QCoreApplication.translate('TextEffectPanel', 'Blend'), parent
+    )
+    label.setObjectName('TextEffectParamLabel')
+    label.setAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    )
+    selector = BottomBorderComboBox(parent)
+    selector.setObjectName('TextEffectParamEditor')
+    selector.setPlaceholderText(
+        QCoreApplication.translate('TextEffectPanel', 'Mixed')
+    )
+    selector.setToolTip(QCoreApplication.translate(
+        'TextEffectPanel',
+        'Blends with earlier output in the text-effect stack, not the page '
+        'image or backdrop.',
+    ))
+    selector.setAccessibleName(accessible_name)
+    for text, value in (
+        (
+            QCoreApplication.translate('TextEffectPanel', 'Normal'),
+            'normal',
+        ),
+        (
+            QCoreApplication.translate('TextEffectPanel', 'Darken'),
+            'darken',
+        ),
+        (
+            QCoreApplication.translate('TextEffectPanel', 'Lighten'),
+            'lighten',
+        ),
+    ):
+        selector.addItem(text, value)
+    widget = QWidget(parent)
+    layout = QHBoxLayout(widget)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(4)
+    layout.addWidget(label)
+    layout.addWidget(selector, 1)
+    return widget, selector
+
+
+def _set_blend_values(
+    selector: BottomBorderComboBox,
+    effects: Sequence[object],
+) -> None:
+    values = [getattr(effect, 'blend_mode') for effect in effects]
+    common = (
+        values[0]
+        if values and all(value == values[0] for value in values)
+        else None
+    )
+    with QSignalBlocker(selector):
+        selector.setCurrentIndex(
+            -1 if common is None else selector.findData(common)
+        )
+
+
 def _choose_project_raster(parent: QWidget, title: str) -> str:
     """Run the shared native chooser for project-managed raster assets."""
     path, _selected_filter = QFileDialog.getOpenFileName(
@@ -509,6 +572,12 @@ class StrokeEffectCard(_EffectCard):
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
             self, decimals=1,
         )
+        blend_widget, self.blend_selector = _blend_control(
+            self, self.tr('Stroke Blend')
+        )
+        self.blend_selector.currentIndexChanged.connect(
+            self._on_blend_changed
+        )
 
         fill_label = QLabel(self.tr('Fill'), self)
         fill_label.setObjectName('TextEffectParamLabel')
@@ -580,7 +649,8 @@ class StrokeEffectCard(_EffectCard):
         controls.addWidget(self.width_control, 0, 0)
         controls.addWidget(self.opacity_control, 0, 1)
         controls.addLayout(paint_row, 1, 0, 1, 2)
-        controls.addWidget(self.gradient_editor, 2, 0, 1, 2)
+        controls.addWidget(blend_widget, 2, 0)
+        controls.addWidget(self.gradient_editor, 3, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
         self._controls_layout = controls
@@ -617,6 +687,7 @@ class StrokeEffectCard(_EffectCard):
             else None
         )
         self.visibility_button.set_visibility(enabled)
+        _set_blend_values(self.blend_selector, strokes)
 
         positions = [stroke.position for stroke in strokes]
         common_position = (
@@ -712,6 +783,14 @@ class StrokeEffectCard(_EffectCard):
                 self.index,
                 'paint_type',
                 self.fill_type_selector.itemData(combo_index),
+            )
+
+    def _on_blend_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'blend_mode',
+                self.blend_selector.itemData(combo_index),
             )
 
     def _on_control_commit(self, name: str, value) -> None:
@@ -873,6 +952,12 @@ class ShadowEffectCard(_EffectCard):
             SHADOW_SPREAD_LIMIT, '', 0.01,
             self, decimals=2,
         )
+        blend_widget, self.blend_selector = _blend_control(
+            self, self.tr('Shadow Blend')
+        )
+        self.blend_selector.currentIndexChanged.connect(
+            self._on_blend_changed
+        )
         for control in self.iter_controls():
             control.commit_requested.connect(self._on_control_commit)
             control.value_preview_requested.connect(self._on_value_preview)
@@ -943,6 +1028,7 @@ class ShadowEffectCard(_EffectCard):
         controls.addWidget(self.offset_x_control, 1, 0)
         controls.addWidget(self.offset_y_control, 1, 1)
         controls.addWidget(self.spread_control, 2, 0)
+        controls.addWidget(blend_widget, 2, 1)
         controls.addLayout(paint_row, 3, 0, 1, 2)
         controls.addWidget(self.gradient_editor, 4, 0, 1, 2)
         controls.setColumnStretch(0, 1)
@@ -981,6 +1067,7 @@ class ShadowEffectCard(_EffectCard):
             else None
         )
         self.visibility_button.set_visibility(enabled)
+        _set_blend_values(self.blend_selector, shadows)
 
         types = [shadow.shadow_type for shadow in shadows]
         common_type = (
@@ -1108,6 +1195,14 @@ class ShadowEffectCard(_EffectCard):
                 self.index,
                 'paint_type',
                 self.fill_type_selector.itemData(combo_index),
+            )
+
+    def _on_blend_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'blend_mode',
+                self.blend_selector.itemData(combo_index),
             )
 
     def _on_control_commit(self, name: str, value) -> None:
@@ -1250,6 +1345,12 @@ class GlowEffectCard(_EffectCard):
             self.tr('Spread'), 'spread', 1.0, 0.0,
             SHADOW_SPREAD_LIMIT, '', 0.01, self, decimals=2,
         )
+        blend_widget, self.blend_selector = _blend_control(
+            self, self.tr('Glow Blend')
+        )
+        self.blend_selector.currentIndexChanged.connect(
+            self._on_blend_changed
+        )
         for control in self.iter_controls():
             control.commit_requested.connect(self._on_control_commit)
             control.value_preview_requested.connect(self._on_value_preview)
@@ -1320,6 +1421,7 @@ class GlowEffectCard(_EffectCard):
         controls.addWidget(self.opacity_control, 0, 0)
         controls.addWidget(self.size_control, 0, 1)
         controls.addWidget(self.spread_control, 1, 0)
+        controls.addWidget(blend_widget, 1, 1)
         controls.addLayout(paint_row, 2, 0, 1, 2)
         controls.addWidget(self.gradient_editor, 3, 0, 1, 2)
         controls.setColumnStretch(0, 1)
@@ -1358,6 +1460,7 @@ class GlowEffectCard(_EffectCard):
             else None
         )
         self.visibility_button.set_visibility(enabled)
+        _set_blend_values(self.blend_selector, glows)
 
         types = [glow.glow_type for glow in glows]
         common_type = (
@@ -1477,6 +1580,14 @@ class GlowEffectCard(_EffectCard):
                 self.fill_type_selector.itemData(combo_index),
             )
 
+    def _on_blend_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'blend_mode',
+                self.blend_selector.itemData(combo_index),
+            )
+
     def _on_control_commit(self, name: str, value) -> None:
         self.value_commit_requested.emit(self.index, name, value)
 
@@ -1529,7 +1640,7 @@ class GlowEffectCard(_EffectCard):
 
 
 class TextFillEffectCard(_EffectCard):
-    """Edit the unique foreground Text Fill effect.
+    """Edit one foreground Text Fill effect.
 
     >>> TextFillEffectCard.__name__
     'TextFillEffectCard'
@@ -1541,6 +1652,7 @@ class TextFillEffectCard(_EffectCard):
     parameter_commit_requested = Signal(int, str, object)
     preview_canceled = Signal(int, str)
     remove_requested = Signal(int)
+    move_requested = Signal(int, int)
     color_dialog_active_changed = Signal(bool)
     texture_file_requested = Signal(int, str)
 
@@ -1569,19 +1681,25 @@ class TextFillEffectCard(_EffectCard):
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
-        self.delete_button = QToolButton(self)
+        self.move_up_button = self._action_button(
+            'chevron-up.svg', self.tr('Move Up'), -1
+        )
+        self.move_down_button = self._action_button(
+            'chevron-down.svg', self.tr('Move Down'), 1
+        )
+        self.delete_button = self._action_button(
+            'titlebar_close.svg', self.tr('Delete Text Fill'), 0
+        )
         self.delete_button.setObjectName('TextEffectCloseButton')
-        self.delete_button.setIcon(
-            QIcon(themed_icon_path('titlebar_close.svg'))
-        )
-        self.delete_button.setToolTip(self.tr('Delete Text Fill'))
-        self.delete_button.setAccessibleName(
-            self.tr('Delete Text Fill')
-        )
-        self.delete_button.setFixedSize(18, 18)
-        self.delete_button.clicked.connect(self._on_delete_clicked)
 
-        action_widget = _effect_action_widget(self, (self.delete_button,))
+        action_widget = _effect_action_widget(
+            self,
+            (
+                self.move_up_button,
+                self.move_down_button,
+                self.delete_button,
+            ),
+        )
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(6)
@@ -1681,23 +1799,26 @@ class TextFillEffectCard(_EffectCard):
             self.tr('Scale'), 'texture_scale', 100.0, 0.1, 4.0, '%', 1.0,
             self, decimals=1,
         )
-        self.texture_scale_control.commit_requested.connect(
-            self._on_control_commit
+        self.opacity_control = EffectNumericControl(
+            self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
+            self, decimals=1,
         )
-        self.texture_scale_control.value_preview_requested.connect(
-            self._on_value_preview
+        for control in self.iter_controls():
+            control.commit_requested.connect(self._on_control_commit)
+            control.value_preview_requested.connect(self._on_value_preview)
+            control.preview_requested.connect(self._on_parameter_preview)
+            control.drag_commit_requested.connect(
+                self._on_parameter_commit
+            )
+            control.preview_canceled.connect(self._on_preview_canceled)
+            control.value_preview_canceled.connect(
+                self._on_preview_canceled
+            )
+        blend_widget, self.blend_selector = _blend_control(
+            self, self.tr('Text Fill Blend')
         )
-        self.texture_scale_control.preview_requested.connect(
-            self._on_parameter_preview
-        )
-        self.texture_scale_control.drag_commit_requested.connect(
-            self._on_parameter_commit
-        )
-        self.texture_scale_control.preview_canceled.connect(
-            self._on_preview_canceled
-        )
-        self.texture_scale_control.value_preview_canceled.connect(
-            self._on_preview_canceled
+        self.blend_selector.currentIndexChanged.connect(
+            self._on_blend_changed
         )
 
         paint_row = QGridLayout()
@@ -1707,6 +1828,14 @@ class TextFillEffectCard(_EffectCard):
         paint_row.addWidget(self.paint_button, 0, 1)
         paint_row.setColumnStretch(0, 1)
         paint_row.setColumnStretch(1, 1)
+
+        blend_row = QGridLayout()
+        blend_row.setContentsMargins(0, 0, 0, 0)
+        blend_row.setHorizontalSpacing(8)
+        blend_row.addWidget(self.opacity_control, 0, 0)
+        blend_row.addWidget(blend_widget, 0, 1)
+        blend_row.setColumnStretch(0, 1)
+        blend_row.setColumnStretch(1, 1)
 
         texture_controls = QGridLayout()
         texture_controls.setContentsMargins(0, 0, 0, 0)
@@ -1725,6 +1854,7 @@ class TextFillEffectCard(_EffectCard):
         layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(paint_row)
+        layout.addLayout(blend_row)
         layout.addWidget(self.gradient_editor)
         layout.addWidget(self.texture_controls_widget)
         self.gradient_editor.hide()
@@ -1754,6 +1884,15 @@ class TextFillEffectCard(_EffectCard):
             else None
         )
         self.visibility_button.set_visibility(enabled)
+        _set_blend_values(self.blend_selector, fills)
+        opacity_values = [fill.opacity for fill in fills]
+        common_opacity = (
+            opacity_values[0]
+            if opacity_values
+            and all(value == opacity_values[0] for value in opacity_values)
+            else None
+        )
+        self.opacity_control.set_model_value(common_opacity, opacity_values)
         paints = [fill.paint for fill in fills]
         paint_types = [paint.paint_type for paint in paints]
         common_paint_type = (
@@ -1854,15 +1993,37 @@ class TextFillEffectCard(_EffectCard):
         self.updateGeometry()
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
-        return (self.texture_scale_control,)
+        return (self.opacity_control, self.texture_scale_control)
+
+    def _action_button(
+        self, icon_name: str, tooltip: str, direction: int
+    ) -> QToolButton:
+        button = QToolButton(self)
+        button.setObjectName('TextEffectMoveButton')
+        button.setIcon(QIcon(themed_icon_path(icon_name)))
+        button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
+        button.setProperty('move-direction', direction)
+        button.setFixedSize(18, 18)
+        button.clicked.connect(self._on_action_clicked)
+        return button
+
+    def set_move_enabled(self, up: bool, down: bool) -> None:
+        self.move_up_button.setEnabled(up)
+        self.move_down_button.setEnabled(down)
 
     def _on_enabled_clicked(self, enabled: bool) -> None:
         self.value_commit_requested.emit(
             self.index, 'enabled', bool(enabled)
         )
 
-    def _on_delete_clicked(self) -> None:
-        self.remove_requested.emit(self.index)
+    def _on_action_clicked(self) -> None:
+        button = self.sender()
+        direction = int(button.property('move-direction'))
+        if direction == 0:
+            self.remove_requested.emit(self.index)
+        else:
+            self.move_requested.emit(self.index, direction)
 
     def _on_fill_type_changed(self, combo_index: int) -> None:
         if combo_index < 0:
@@ -1925,6 +2086,14 @@ class TextFillEffectCard(_EffectCard):
                 self.index,
                 'texture_mapping',
                 self.texture_mapping_selector.itemData(combo_index),
+            )
+
+    def _on_blend_changed(self, combo_index: int) -> None:
+        if combo_index >= 0:
+            self.value_commit_requested.emit(
+                self.index,
+                'blend_mode',
+                self.blend_selector.itemData(combo_index),
             )
 
     def _on_control_commit(self, name: str, value) -> None:
@@ -2727,7 +2896,7 @@ class TextEffectPanel(PanelArea):
         self.stroke_cards = []
         self.shadow_cards = []
         self.glow_cards = []
-        self.text_fill_card = None
+        self.text_fill_cards = []
         self.filter_cards = []
         self._effect_types = None
         self.alpha_mask_card = None
@@ -2911,7 +3080,7 @@ class TextEffectPanel(PanelArea):
         self.stroke_cards = []
         self.shadow_cards = []
         self.glow_cards = []
-        self.text_fill_card = None
+        self.text_fill_cards = []
         self.filter_cards = []
 
     def _rebuild_effect_cards(
@@ -2948,7 +3117,7 @@ class TextEffectPanel(PanelArea):
                 card.texture_file_requested.connect(
                     self.texture_file_requested.emit
                 )
-                self.text_fill_card = card
+                self.text_fill_cards.append(card)
             elif effect_type == 'filter':
                 filter_effect = (
                     None
@@ -3007,6 +3176,7 @@ class TextEffectPanel(PanelArea):
                     StrokeEffectCard,
                     ShadowEffectCard,
                     GlowEffectCard,
+                    TextFillEffectCard,
                     FilterEffectCard,
                 ),
             ):
@@ -3088,6 +3258,11 @@ class TextEffectPanel(PanelArea):
                 for index, effect in enumerate(states[0].effects)
                 if isinstance(effect, movable_types)
             ]
+            fill_indices = [
+                index
+                for index, effect in enumerate(states[0].effects)
+                if isinstance(effect, TextFillEffect)
+            ]
             for card in self.effect_cards:
                 values = [state.effects[card.index] for state in states]
                 gradient_editor = getattr(card, 'gradient_editor', None)
@@ -3129,12 +3304,17 @@ class TextEffectPanel(PanelArea):
                         position + 1 < len(movable_indices),
                         position > 0,
                     )
+                elif isinstance(card, TextFillEffectCard):
+                    position = fill_indices.index(card.index)
+                    card.set_move_enabled(
+                        position + 1 < len(fill_indices),
+                        position > 0,
+                    )
             if gradient_visibility_changed:
                 self.cards_layout.invalidate()
                 self.content_layout.invalidate()
         self.add_effect_actions['text_fill'].setEnabled(
             not mixed and common_sequence is not None
-            and 'text_fill' not in common_sequence
         )
         self.filter_add_menu.setEnabled(not mixed)
         self._sync_content_height()
@@ -3197,8 +3377,7 @@ class TextEffectPanel(PanelArea):
         return True
 
     def show_texture_import_error(self, index: int, message: str) -> None:
-        card = self.text_fill_card
-        if card is None or card.index != index:
+        if not any(card.index == index for card in self.text_fill_cards):
             return
         QMessageBox.warning(
             self.window(),

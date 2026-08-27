@@ -724,8 +724,13 @@ class TextEffectEditSession:
         ):
             self._sync_effect_ui()
             return False
-        movable_types = (StrokeEffect, ShadowEffect, GlowEffect, FilterEffect)
-        if not isinstance(before[0].effects[index], movable_types):
+        effect = before[0].effects[index]
+        movable_types = (
+            (TextFillEffect,)
+            if isinstance(effect, TextFillEffect)
+            else (StrokeEffect, ShadowEffect, GlowEffect, FilterEffect)
+        )
+        if not isinstance(effect, movable_types):
             self._sync_effect_ui()
             return False
         movable_indices = [
