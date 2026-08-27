@@ -210,13 +210,15 @@ Hollow cannot alter editing feedback.
 
 The renderer keeps committed, preview, and export raster namespaces separate.
 Pixel-changing previews use requested quality by default and may be promoted
-on commit. The runtime-only Faster Preview toggle selects the existing bounded,
-non-promotable 0.5x scratch surface; commit and strict export still render at
-the requested quality. Reshape omits effects during pointer motion and rebuilds
-once geometry settles. All derived pixmaps, alpha planes, padding, and cache
-keys remain runtime-only and item-owned. Repeated Fill paint, Opacity, and
-Blend changes reuse the cached canonical source/mask rather than rasterizing
-glyphs again.
+on commit. Requested-quality preview rasterization waits for the next scene
+paint so the actual device scale is rendered once; a valid higher-tier surface
+may promote without a 1x commit rebuild. The runtime-only Faster Preview toggle
+selects the existing bounded, non-promotable 0.5x scratch surface; commit and
+strict export still render at the requested quality. Reshape omits effects
+during pointer motion and rebuilds once geometry settles. All derived pixmaps,
+alpha planes, padding, and cache keys remain runtime-only and item-owned.
+Repeated Fill paint, Opacity, and Blend changes reuse the cached canonical
+source/mask rather than rasterizing glyphs again.
 
 The Canvas-owned mask session freezes source mapping for each brush stroke,
 publishes only a derived complete-mask preview, and commits one immutable mask

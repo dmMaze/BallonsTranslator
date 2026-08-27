@@ -300,6 +300,10 @@ class TextEffectRenderer:
         """Return whether preview changes source-surface pixels or geometry."""
         return self._uses_preview_cache_namespace()
 
+    def uses_faster_preview_surface(self) -> bool:
+        """Return whether an effect-stack preview selected the 0.5x path."""
+        return self.faster_preview and self._effect_preview_changes_pixels()
+
     def has_active_effects(self) -> bool:
         return self.effective_text_effects().has_active_effects
 
@@ -714,7 +718,8 @@ class TextEffectRenderer:
     ) -> Optional[_EffectRasterState]:
         state = self._preview_effect_raster_state
         if (
-            state is None
+            self.faster_preview
+            or state is None
             or state.background_pixmap is None
             or state.cache_dirty
             or state.cache_rendered_generation != state.cache_generation
@@ -727,7 +732,7 @@ class TextEffectRenderer:
         )
         if (
             plan.mode != 'full'
-            or state.background_pixmap_scale != plan.tier
+            or state.background_pixmap_scale < plan.tier
         ):
             return None
         return state
@@ -774,8 +779,6 @@ class TextEffectRenderer:
         self.faster_preview = enabled
         if self._effect_preview_changes_pixels():
             self._mark_effect_cache_dirty()
-            if not self.reshaping:
-                self.repaint_background()
             self.item.update()
         return True
 
@@ -1083,7 +1086,9 @@ class TextEffectRenderer:
                     self._finish_effect_transition(False)
                     self.geometry_controller.restore_effect_preview_surface()
                     return True
-            self._finish_effect_transition(effects_changed)
+            self._finish_effect_transition(
+                effects_changed and self.faster_preview
+            )
             return True
 
         model_format = self.item.blk.fontformat
@@ -1157,6 +1162,7 @@ class TextEffectRenderer:
         self._finish_effect_transition(
             effects_changed
             and promoted_state is None
+            and preview_before != stack
             and not (
                 mask_preview_active
                 and preview_before == stack

@@ -451,6 +451,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             self._render(item)
             self.assertEqual(render.call_count, 0)
             item.set_text_effects(preview, preview=True)
+            self._render(item)
             self.assertEqual(render.call_count, 1)
             committed = renderer._effect_raster_state
             item.set_text_alpha_mask(self._erase_all())

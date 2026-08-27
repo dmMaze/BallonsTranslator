@@ -529,6 +529,7 @@ class TextFilterRendererTest(unittest.TestCase):
                 stroke, preview_filter, shadow
             ))
             item.set_text_effects(baseline, preview=True)
+            renderer.repaint_background()
 
             # The lower exterior prefix depends on every canonical Stroke,
             # including this one above the Filter.
@@ -546,8 +547,10 @@ class TextFilterRendererTest(unittest.TestCase):
                 wraps=renderer._render_pre_filter_effect_surface,
             ) as prefix:
                 item.set_text_effects(changed_stack, preview=True)
+                renderer.repaint_background()
             self.assertGreater(prefix.call_count, 0)
             item.set_text_effects(baseline, preview=True)
+            renderer.repaint_background()
 
             # Moving the Filter changes the below-filter prefix even though
             # the non-Filter values themselves are identical.
@@ -564,6 +567,7 @@ class TextFilterRendererTest(unittest.TestCase):
                 wraps=renderer._render_pre_filter_effect_surface,
             ) as prefix:
                 item.set_text_effects(moved_stack, preview=True)
+                renderer.repaint_background()
             self.assertGreater(prefix.call_count, 0)
 
             disabled = replace(preview_filter, enabled=False)
@@ -580,6 +584,7 @@ class TextFilterRendererTest(unittest.TestCase):
                 wraps=renderer._render_pre_filter_effect_surface,
             ) as prefix:
                 item.set_text_effects(disabled_stack, preview=True)
+                renderer.repaint_background()
             self.assertGreater(prefix.call_count, 0)
             disabled_pixels = pixmap2ndarray(
                 renderer._render_effect_surface(
@@ -618,6 +623,7 @@ class TextFilterRendererTest(unittest.TestCase):
             alignment_item.set_text_effects(TextEffectStack(effects=(
                 disabled_stroke, preview_filter
             )), preview=True)
+            alignment_renderer.repaint_background()
             with patch.object(
                 alignment_renderer,
                 '_render_pre_filter_effect_surface',
@@ -626,6 +632,7 @@ class TextFilterRendererTest(unittest.TestCase):
                 alignment_item.set_text_effects(TextEffectStack(effects=(
                     stroke, preview_filter
                 )), preview=True)
+                alignment_renderer.repaint_background()
         self.assertGreater(prefix.call_count, 0)
 
     def test_filter_only_preview_reuses_upper_stroke_geometry(self):
@@ -644,6 +651,7 @@ class TextFilterRendererTest(unittest.TestCase):
         item.set_text_effects(
             TextEffectStack(effects=(stroke, first_preview)), preview=True
         )
+        renderer.repaint_background()
         second_preview = replace(before, params={
             'amount': 0.8, 'mode': 'monochrome', 'seed': 1,
         })
@@ -662,6 +670,7 @@ class TextFilterRendererTest(unittest.TestCase):
                 TextEffectStack(effects=(stroke, second_preview)),
                 preview=True,
             )
+            renderer.repaint_background()
 
         self.assertEqual(paint_stroke.call_count, 0)
         self.assertEqual(capture.call_count, 0)

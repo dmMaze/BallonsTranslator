@@ -36,6 +36,10 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils import config as C
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
+from ballontranslator.utils.text_alpha_mask import (
+    AlphaBrushStroke,
+    TextAlphaMask,
+)
 from ballontranslator.utils.text_effects import (
     GlowEffect,
     HollowEffect,
@@ -124,6 +128,8 @@ class TextEffectPreviewTest(unittest.TestCase):
             position='inside',
         )
         item = self._item(stack=canonical)
+        scene = QGraphicsScene()
+        scene.addItem(item)
         before_json = json.dumps(item.blk, cls=TextBlkEncoder, sort_keys=True)
         renderer = item.effect_renderer
         committed_state = renderer._effect_raster_state
@@ -140,6 +146,7 @@ class TextEffectPreviewTest(unittest.TestCase):
         )
         self.assertIs(renderer._effect_raster_state, committed_state)
         self.assertIsNotNone(renderer._preview_effect_raster_state)
+        self._render_scene(scene)
         self.assertNotEqual(
             renderer._preview_effect_raster_state.background_pixmap.cacheKey(),
             committed_key,
@@ -152,11 +159,13 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertEqual(renderer.background_pixmap.cacheKey(), committed_key)
         self.assertFalse(item.clear_text_effect_preview())
 
-    def test_full_quality_preview_is_default_and_promotes_on_commit(self):
+    def test_full_quality_preview_renders_once_at_view_scale_and_promotes(self):
         canonical = self._stack()
         target = self._stack(0.24, (70, 80, 90), position='outside')
         item = self._item(stack=canonical)
         renderer = item.effect_renderer
+        scene = QGraphicsScene()
+        scene.addItem(item)
 
         with patch.object(
             renderer,
@@ -166,27 +175,85 @@ class TextEffectPreviewTest(unittest.TestCase):
             item.set_text_effects(target, preview=True)
             scratch = renderer._preview_effect_raster_state
             self.assertFalse(renderer.faster_preview)
-            self.assertEqual(scratch.background_pixmap_scale, 1.0)
+            self.assertEqual(render.call_count, 0)
+
+            self._render_scene(scene, 2.0)
+            self.assertEqual(scratch.background_pixmap_scale, 2.0)
 
             item.set_text_effects(target)
 
         self.assertEqual(render.call_count, 1)
+        self.assertEqual(render.call_args.args[1], 2.0)
         self.assertIs(renderer._effect_raster_state, scratch)
 
-    def test_faster_preview_toggle_rerenders_an_active_preview(self):
+    def test_faster_preview_toggle_defers_one_render_at_each_quality(self):
         item = self._item(stack=self._stack())
         renderer = item.effect_renderer
+        scene = QGraphicsScene()
+        scene.addItem(item)
         item.set_text_effects(self._stack(0.24), preview=True)
         scratch = renderer._preview_effect_raster_state
-        self.assertEqual(scratch.background_pixmap_scale, 1.0)
+        self._render_scene(scene, 2.0)
+        self.assertEqual(scratch.background_pixmap_scale, 2.0)
 
-        self.assertTrue(renderer.set_faster_preview(True))
+        with patch.object(
+            renderer,
+            '_render_effect_surface',
+            wraps=renderer._render_effect_surface,
+        ) as render:
+            self.assertTrue(renderer.set_faster_preview(True))
+            self.assertEqual(render.call_count, 0)
+            self._render_scene(scene, 2.0)
+            self.assertEqual(scratch.background_pixmap_scale, 0.5)
+            self.assertFalse(renderer.set_faster_preview(True))
+
+            self.assertTrue(renderer.set_faster_preview(False))
+            self.assertEqual(render.call_count, 1)
+            self._render_scene(scene, 2.0)
+            self.assertEqual(scratch.background_pixmap_scale, 2.0)
+
         self.assertIs(renderer._preview_effect_raster_state, scratch)
-        self.assertEqual(scratch.background_pixmap_scale, 0.5)
-        self.assertFalse(renderer.set_faster_preview(True))
+        self.assertEqual(
+            [call.args[1] for call in render.call_args_list],
+            [0.5, 2.0],
+        )
 
-        self.assertTrue(renderer.set_faster_preview(False))
-        self.assertEqual(scratch.background_pixmap_scale, 1.0)
+    def test_nonlinear_effect_preview_quality_follows_faster_toggle(self):
+        item = self._item(stack=self._stack())
+        item.set_text_transform(TextTransformStack((SineTextTransform(),)))
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        renderer = item.effect_renderer
+        surface = item.geometry_controller.surface_renderer
+
+        item.set_text_effects(self._stack(0.24), preview=True)
+        with patch.object(surface, 'paint', wraps=surface.paint) as paint:
+            self._render_scene(scene, 2.0)
+        self.assertIsNone(paint.call_args.kwargs['maximum_scale'])
+        self.assertTrue(paint.call_args.kwargs['high_quality'])
+
+        renderer.set_faster_preview(True)
+        with patch.object(surface, 'paint', wraps=surface.paint) as paint:
+            self._render_scene(scene, 2.0)
+        self.assertEqual(paint.call_args.kwargs['maximum_scale'], 0.5)
+        self.assertFalse(paint.call_args.kwargs['high_quality'])
+
+    def test_nonlinear_mask_preview_retains_responsive_quality(self):
+        item = self._item(stack=self._stack())
+        item.set_text_transform(TextTransformStack((SineTextTransform(),)))
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        surface = item.geometry_controller.surface_renderer
+        mask = TextAlphaMask(strokes=(
+            AlphaBrushStroke('erase', 16.0, ((40.0, 30.0),)),
+        ))
+
+        item.set_text_alpha_mask(mask, preview=True)
+        with patch.object(surface, 'paint', wraps=surface.paint) as paint:
+            self._render_scene(scene, 2.0)
+
+        self.assertEqual(paint.call_args.kwargs['maximum_scale'], 0.5)
+        self.assertFalse(paint.call_args.kwargs['high_quality'])
 
     def test_distinct_render_copy_is_mirrored_only_on_commit(self):
         canonical = self._stack()
@@ -659,6 +726,8 @@ class TextEffectPreviewTest(unittest.TestCase):
         item = self._item(stack=canonical)
         renderer = item.effect_renderer
         renderer.set_faster_preview(True)
+        scene = QGraphicsScene()
+        scene.addItem(item)
         with patch.object(
             renderer,
             '_render_effect_surface',
@@ -669,7 +738,10 @@ class TextEffectPreviewTest(unittest.TestCase):
             item.set_text_effects(target)
             persistent = renderer._effect_raster_state
             self.assertIsNot(persistent, scratch)
-            self.assertEqual(persistent.background_pixmap_scale, 1.0)
+            self.assertEqual(render.call_count, 1)
+
+            self._render_scene(scene, 2.0)
+            self.assertEqual(persistent.background_pixmap_scale, 2.0)
 
             renderer.repaint_background(4.0)
             self.assertEqual(persistent.background_pixmap_scale, 4.0)
@@ -684,7 +756,7 @@ class TextEffectPreviewTest(unittest.TestCase):
 
         self.assertEqual(
             [call.args[1] for call in render.call_args_list],
-            [0.5, 1.0, 4.0, 4.0],
+            [0.5, 2.0, 4.0, 4.0],
         )
         self.assertIs(renderer._effect_raster_state, persistent)
 

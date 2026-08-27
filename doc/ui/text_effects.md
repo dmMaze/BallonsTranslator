@@ -372,12 +372,19 @@ session updates the global format directly because there is no canvas state to
 put on the item undo stack.
 
 Pixel-changing effect previews use requested quality by default, allowing a
-valid full-quality preview surface to promote on commit. The runtime-only,
+valid full-quality preview surface, including a higher device-scale tier, to
+promote on commit. Requested-quality preview work is deferred to the next scene
+paint so it renders once at the painter's actual scale. A checked 0.5x preview
+also defers its exact committed rebuild to that paint instead of rebuilding at
+an intermediate 1x tier. The runtime-only,
 opt-in Faster Preview toggle selects a non-promotable 0.5x physical scratch
-surface instead. Commit and export always use the requested quality. Overall
-Opacity is native group state and does not require rebuilding effect pixels.
-Reshape temporarily omits effects, invalidates geometry-sensitive caches, and
-rebuilds the effective namespace once geometry settles.
+surface instead. The same choice controls the final nonlinear preview surface;
+unchecked effect previews remain uncapped there, while transform and Eraser
+previews retain their independent responsive 0.5x policy.
+Commit and export always use the requested quality. Overall Opacity is native
+group state and does not require rebuilding effect pixels. Reshape temporarily
+omits effects, invalidates geometry-sensitive caches, and rebuilds the effective
+namespace once geometry settles.
 
 While native text editing is active, Rendered Image is intentionally omitted
 for both writing modes so the editable source, selection, caret, IME, and

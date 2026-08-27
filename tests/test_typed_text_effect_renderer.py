@@ -2126,6 +2126,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                         scratch.background_pixmap_scale, 0.5
                     )
                     item.set_text_effects(after)
+                    renderer.repaint_background()
                     self.assertEqual(render.call_count, 2)
                     self.assertIsNot(
                         renderer._effect_raster_state, scratch
@@ -2198,6 +2199,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ) as native_outline:
                     for preview in previews:
                         item.set_text_effects(preview, preview=True)
+                        renderer.repaint_background()
 
         self.assertEqual(capture.call_count, 1)
         self.assertEqual(alpha.call_count, 1)
@@ -2220,6 +2222,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         cold_state.effect_source_cache.clear()
         cold_state.positioned_stroke_coverage_cache.clear()
         cold.set_text_effects(previews[-1], preview=True)
+        cold.effect_renderer.repaint_background()
         cold_pixels = pixmap2ndarray(
             cold.effect_renderer.background_pixmap, keep_alpha=True
         )

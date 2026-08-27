@@ -1107,16 +1107,21 @@ class TextItemGeometryController:
             finally:
                 layout.defer_cursor_paint = previous
 
+        low_quality_effect_preview = (
+            effect_renderer.uses_faster_preview_surface()
+        )
         interactive = (
             self.item.isEditing()
             or self.item.reshaping
             or self.preview is not None
-            or effect_renderer.uses_preview_surface()
+            or effect_renderer.has_text_alpha_mask_preview()
+            or low_quality_effect_preview
         )
         degraded = (
             self.item.reshaping
             or self.preview is not None
-            or effect_renderer.uses_preview_surface()
+            or effect_renderer.has_text_alpha_mask_preview()
+            or low_quality_effect_preview
         )
         if export_render:
             maximum_scale = None
@@ -1139,14 +1144,7 @@ class TextItemGeometryController:
                 ),
                 paint_source=paint_source,
                 maximum_scale=maximum_scale,
-                high_quality=(
-                    export_render
-                    or (
-                        not self.item.reshaping
-                        and self.preview is None
-                        and not effect_renderer.uses_preview_surface()
-                    )
-                ),
+                high_quality=export_render or not degraded,
             )
             if cache_hit and self.item.isEditing():
                 self._probe_surface_cursor(
