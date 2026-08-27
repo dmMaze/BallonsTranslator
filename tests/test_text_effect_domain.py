@@ -9,6 +9,7 @@ from ballontranslator.utils.text_effects import (
     TextFillEffect,
     GradientStop,
     HollowEffect,
+    ImageEffect,
     LinearGradientPaint,
     SHADOW_BLUR_LIMIT,
     SHADOW_OFFSET_LIMIT,
@@ -31,6 +32,23 @@ from ballontranslator.utils.text_effects import (
 
 
 class TextEffectDomainTest(unittest.TestCase):
+    def test_image_effect_is_repeatable_hashable_strict_and_neutral_empty(self):
+        asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
+        effect = ImageEffect(asset, mode='background')
+        stack = coerce_text_effect_stack({'effects': (
+            effect.to_serializable_dict(),
+            ImageEffect().to_serializable_dict(),
+            {'effect_type': 'image', 'mode': 'invalid'},
+        )})
+
+        self.assertEqual(stack.effects, (effect, ImageEffect()))
+        self.assertEqual(effect_phase(effect), 'image')
+        self.assertEqual(hash(effect), hash(ImageEffect(asset, mode='background')))
+        self.assertTrue(ImageEffect().is_neutral())
+        self.assertEqual(ImageEffect().mode, 'replace')
+        with self.assertRaises(ValueError):
+            ImageEffect(asset, mode='overlay')
+
     def test_filter_effect_is_repeatable_hashable_and_structurally_typed(self):
         noise = FilterEffect(
             'builtin:noise', params={'seed': 7, 'amount': 0.25}

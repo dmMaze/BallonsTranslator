@@ -39,7 +39,7 @@ from qtpy.QtWidgets import (
 )
 
 from ballontranslator.utils.fontformat import FontFormat
-from ballontranslator.utils.rendered_image import RenderedImageLayer
+from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     EffectPaint,
@@ -48,6 +48,7 @@ from ballontranslator.utils.text_effects import (
     GlowEffect,
     LinearGradientPaint,
     HollowEffect,
+    ImageEffect,
     SHADOW_BLUR_LIMIT,
     SHADOW_OFFSET_LIMIT,
     SHADOW_SPREAD_LIMIT,
@@ -58,10 +59,11 @@ from ballontranslator.utils.text_effects import (
     TextEffectStack,
     TexturePaint,
     effect_structure_key,
-    without_project_texture_paints,
+    without_project_raster_effects,
 )
 
 from ...custom_widget import PanelArea
+from ... import shared_widget as SW
 from ...custom_widget.combobox import BottomBorderComboBox
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
@@ -2523,20 +2525,21 @@ class FilterEffectCard(_EffectCard):
             self.move_requested.emit(self.index, direction)
 
 
-class RenderedImageCard(_EffectCard):
-    """Edit the unique TextBlock-owned full-RGBA layer.
+class ImageEffectCard(_EffectCard):
+    """Edit one project-owned Image effect at its stack index.
 
-    >>> RenderedImageCard.__name__
-    'RenderedImageCard'
+    >>> ImageEffectCard.__name__
+    'ImageEffectCard'
     """
 
-    enabled_requested = Signal(bool)
-    mode_requested = Signal(str)
-    image_requested = Signal()
-    remove_requested = Signal()
+    value_commit_requested = Signal(int, str, object)
+    image_requested = Signal(int)
+    remove_requested = Signal(int)
+    move_requested = Signal(int, int)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, index: int, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.index = int(index)
         self.setObjectName('TextEffectParameterPanel')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(
@@ -2544,7 +2547,7 @@ class RenderedImageCard(_EffectCard):
         )
 
         self.title_icon_label = _effect_icon_label(
-            'text-effect-rendered-image.svg', self
+            'text-effect-image.svg', self
         )
         self.title_label = QLabel(self.tr('Image'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
@@ -2554,6 +2557,10 @@ class RenderedImageCard(_EffectCard):
         self._editing_hint = self.tr(
             'Hidden while editing so the caret and selection match the text.'
         )
+        self._choose_hint = self.tr('Choose an image...')
+        self._choose_mixed_hint = self.tr(
+            'Choose one image for all selected text...'
+        )
         self.setToolTip(self._editing_hint)
         self.title_label.setToolTip(self._editing_hint)
         self.visibility_button = EffectVisibilityButton(
@@ -2562,19 +2569,26 @@ class RenderedImageCard(_EffectCard):
             self,
         )
         self.visibility_button.visibility_requested.connect(
-            self.enabled_requested.emit
+            self._on_enabled_clicked
         )
-        self.delete_button = QToolButton(self)
+        self.move_up_button = self._action_button(
+            'chevron-up.svg', self.tr('Move Up'), -1
+        )
+        self.move_down_button = self._action_button(
+            'chevron-down.svg', self.tr('Move Down'), 1
+        )
+        self.delete_button = self._action_button(
+            'titlebar_close.svg', self.tr('Delete Image'), 0
+        )
         self.delete_button.setObjectName('TextEffectCloseButton')
-        self.delete_button.setIcon(
-            QIcon(themed_icon_path('titlebar_close.svg'))
+        actions = _effect_action_widget(
+            self,
+            (
+                self.move_up_button,
+                self.move_down_button,
+                self.delete_button,
+            ),
         )
-        self.delete_button.setToolTip(self.tr('Delete Image'))
-        self.delete_button.setAccessibleName(
-            self.tr('Delete Image')
-        )
-        self.delete_button.clicked.connect(self.remove_requested.emit)
-        actions = _effect_action_widget(self, (self.delete_button,))
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -2596,7 +2610,7 @@ class RenderedImageCard(_EffectCard):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
         )
         self.image_button.setFixedHeight(24)
-        self.image_button.clicked.connect(self.image_requested.emit)
+        self.image_button.clicked.connect(self._on_image_requested)
         image_widget = QWidget(self)
         image_row = QHBoxLayout(image_widget)
         image_row.setContentsMargins(0, 0, 0, 0)
@@ -2612,7 +2626,8 @@ class RenderedImageCard(_EffectCard):
         self.mode_selector.setObjectName('TextEffectParamEditor')
         self.mode_selector.setAccessibleName(self.tr('Image Mode'))
         self.mode_selector.addItem(self.tr('Replace'), 'replace')
-        self.mode_selector.addItem(self.tr('Overlay'), 'overlay')
+        self.mode_selector.addItem(self.tr('Foreground'), 'foreground')
+        self.mode_selector.addItem(self.tr('Background'), 'background')
         self.mode_selector.currentIndexChanged.connect(
             self._on_mode_changed
         )
@@ -2638,37 +2653,105 @@ class RenderedImageCard(_EffectCard):
         layout.addLayout(header)
         layout.addLayout(controls)
 
-    def set_value(
-        self, layer: RenderedImageLayer, available: bool
+    def _action_button(
+        self, icon_name: str, tooltip: str, direction: int
+    ) -> QToolButton:
+        button = QToolButton(self)
+        button.setObjectName('TextEffectMoveButton')
+        button.setIcon(QIcon(themed_icon_path(icon_name)))
+        button.setToolTip(tooltip)
+        button.setAccessibleName(tooltip)
+        button.setProperty('move-direction', direction)
+        button.setFixedSize(18, 18)
+        button.clicked.connect(self._on_action_clicked)
+        return button
+
+    def set_move_enabled(self, up: bool, down: bool) -> None:
+        self.move_up_button.setEnabled(up)
+        self.move_down_button.setEnabled(down)
+
+    def iter_controls(self) -> tuple:
+        return ()
+
+    def set_values(
+        self, effects: Sequence[ImageEffect], available: Optional[bool]
     ) -> None:
-        self.visibility_button.set_visibility(layer.enabled)
-        if layer.asset is None:
+        enabled_values = [effect.enabled for effect in effects]
+        enabled = (
+            enabled_values[0]
+            if enabled_values
+            and all(value == enabled_values[0] for value in enabled_values)
+            else None
+        )
+        self.visibility_button.set_visibility(enabled)
+        assets = [effect.asset for effect in effects]
+        common_asset = (
+            assets[0]
+            if assets and all(asset == assets[0] for asset in assets)
+            else None
+        )
+        assets_mixed = bool(assets) and any(
+            asset != assets[0] for asset in assets[1:]
+        )
+        if assets_mixed:
+            self.image_button.setText(self.tr('Mixed'))
+            self.image_button.setToolTip(
+                self._choose_mixed_hint + '\n' + self._editing_hint
+            )
+            self.image_button.setAccessibleName(self.tr('Mixed Images'))
+        elif common_asset is None:
             self.image_button.setText(self.tr('Empty'))
-            self.image_button.setToolTip(self._editing_hint)
+            self.image_button.setToolTip(
+                self._choose_hint + '\n' + self._editing_hint
+            )
             self.image_button.setAccessibleName(self.tr('Empty Image'))
         else:
             name = (
-                layer.asset.display_name
-                or layer.asset.path.rsplit('/', 1)[-1]
+                common_asset.display_name
+                or common_asset.path.rsplit('/', 1)[-1]
             )
-            self.image_button.setText(
-                name
-                if available
+            display_name = (
+                name if available is not False
                 else self.tr('Missing: {name}').format(name=name)
             )
+            self.image_button.setText(display_name)
             self.image_button.setToolTip(
-                name + '\n' + layer.asset.path + '\n' + self._editing_hint
+                name + '\n' + common_asset.path + '\n' + self._editing_hint
             )
-            self.image_button.setAccessibleName(name)
+            self.image_button.setAccessibleName(display_name)
+        modes = [effect.mode for effect in effects]
+        common_mode = (
+            modes[0]
+            if modes and all(mode == modes[0] for mode in modes)
+            else None
+        )
         with QSignalBlocker(self.mode_selector):
             self.mode_selector.setCurrentIndex(
-                self.mode_selector.findData(layer.mode)
+                -1
+                if common_mode is None
+                else self.mode_selector.findData(common_mode)
             )
 
     def _on_mode_changed(self, index: int) -> None:
         mode = self.mode_selector.itemData(index)
-        if mode in {'replace', 'overlay'}:
-            self.mode_requested.emit(mode)
+        if mode in {'replace', 'foreground', 'background'}:
+            self.value_commit_requested.emit(self.index, 'mode', mode)
+
+    def _on_enabled_clicked(self, enabled: bool) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'enabled', bool(enabled)
+        )
+
+    def _on_image_requested(self) -> None:
+        self.image_requested.emit(self.index)
+
+    def _on_action_clicked(self) -> None:
+        button = self.sender()
+        direction = int(button.property('move-direction'))
+        if direction == 0:
+            self.remove_requested.emit(self.index)
+        else:
+            self.move_requested.emit(self.index, direction)
 
 
 class AlphaMaskCard(_EffectCard):
@@ -2876,11 +2959,7 @@ class TextEffectPanel(PanelArea):
     mask_clear_requested = Signal()
     mask_remove_requested = Signal()
     texture_file_requested = Signal(int, str)
-    rendered_image_file_requested = Signal(str)
-    rendered_image_add_requested = Signal()
-    rendered_image_enabled_requested = Signal(bool)
-    rendered_image_mode_requested = Signal(str)
-    rendered_image_remove_requested = Signal()
+    image_file_requested = Signal(int, str)
 
     MAX_CONTENT_HEIGHT = 480
 
@@ -2996,8 +3075,8 @@ class TextEffectPanel(PanelArea):
             ),
             (
                 self.tr('Image'),
-                'rendered_image',
-                'text-effect-rendered-image.svg',
+                'image',
+                'text-effect-image.svg',
             ),
         ):
             action = add_menu.addAction(
@@ -3018,7 +3097,7 @@ class TextEffectPanel(PanelArea):
             action.setData(spec.filter_id)
             action.triggered.connect(self._on_add_filter_triggered)
         self.add_effect_button.setMenu(add_menu)
-        self.add_effect_actions['rendered_image'].setEnabled(False)
+        self.add_effect_actions['image'].setEnabled(False)
 
         self.faster_preview_toggle = QCheckBox(
             self.tr('Faster Preview'), self.view_widget.title_label
@@ -3063,14 +3142,12 @@ class TextEffectPanel(PanelArea):
         self.shadow_cards = []
         self.glow_cards = []
         self.text_fill_cards = []
+        self.image_cards = []
         self.filter_cards = []
         self._effect_types = None
         self.alpha_mask_card = None
-        self.rendered_image_card = None
         self._block_items = ()
         self._alpha_mask_session = None
-        self.rendered_card_layout = QVBoxLayout()
-        self.rendered_card_layout.setContentsMargins(0, 0, 0, 0)
         self.base_card_layout = QVBoxLayout()
         self.base_card_layout.setContentsMargins(0, 0, 0, 0)
         self.mask_card_layout = QVBoxLayout()
@@ -3082,7 +3159,6 @@ class TextEffectPanel(PanelArea):
         layout.addLayout(top_row)
         layout.addWidget(self.mixed_label)
         layout.addLayout(self.base_card_layout)
-        layout.addLayout(self.rendered_card_layout)
         layout.addLayout(self.cards_layout)
         layout.addLayout(self.mask_card_layout)
         self.setContentLayout(layout)
@@ -3154,64 +3230,8 @@ class TextEffectPanel(PanelArea):
             )
         self._sync_content_height()
 
-    def rendered_image_item(self) -> Optional["TextBlkItem"]:
-        """Return the sole concrete project item eligible for this layer."""
-        if len(self._block_items) != 1:
-            return None
-        item = self._block_items[0]
-        try:
-            scene = item.scene()
-        except RuntimeError:
-            return None
-        if scene is None or getattr(scene, 'imgtrans_proj', None) is None:
-            return None
-        return item
-
-    def _set_rendered_image_card(self, present: bool) -> None:
-        if present and self.rendered_image_card is None:
-            card = RenderedImageCard(self.scrollContent)
-            card.enabled_requested.connect(
-                self.rendered_image_enabled_requested.emit
-            )
-            card.mode_requested.connect(
-                self.rendered_image_mode_requested.emit
-            )
-            card.image_requested.connect(
-                self._choose_rendered_image_file
-            )
-            card.remove_requested.connect(
-                self.rendered_image_remove_requested.emit
-            )
-            self.rendered_card_layout.addWidget(card)
-            card.show()
-            self.rendered_image_card = card
-        elif not present and self.rendered_image_card is not None:
-            card = self.rendered_image_card
-            self.rendered_image_card = None
-            self.rendered_card_layout.removeWidget(card)
-            card.setParent(None)
-            card.deleteLater()
-
-    def refresh_rendered_image_state(self) -> None:
-        item = self.rendered_image_item()
-        layer = None if item is None else item.blk.rendered_image
-        self._set_rendered_image_card(layer is not None)
-        self.add_effect_actions['rendered_image'].setEnabled(
-            item is not None and layer is None
-        )
-        if layer is not None and self.rendered_image_card is not None:
-            scene = item.scene()
-            project = getattr(scene, 'imgtrans_proj', None)
-            available = bool(
-                layer.asset is not None
-                and project is not None
-                and project.resolve_raster_asset(layer.asset) is not None
-            )
-            self.rendered_image_card.set_value(layer, available)
-        self._sync_content_height()
-
-    def _choose_rendered_image_file(self) -> None:
-        if self.rendered_image_item() is None:
+    def _choose_image_file(self, index: int) -> None:
+        if not self._block_items:
             return
         self.color_dialog_active_changed.emit(True)
         try:
@@ -3220,11 +3240,13 @@ class TextEffectPanel(PanelArea):
             )
             if path:
                 # The synchronous import/error chain stays pinned too.
-                self.rendered_image_file_requested.emit(path)
+                self.image_file_requested.emit(index, path)
         finally:
             self.color_dialog_active_changed.emit(False)
 
-    def show_rendered_image_import_error(self, message: str) -> None:
+    def show_image_import_error(self, index: int, message: str) -> None:
+        if not any(card.index == index for card in self.image_cards):
+            return
         QMessageBox.warning(
             self.window(),
             self.tr('Unable to Import Image'),
@@ -3248,6 +3270,7 @@ class TextEffectPanel(PanelArea):
         self.shadow_cards = []
         self.glow_cards = []
         self.text_fill_cards = []
+        self.image_cards = []
         self.filter_cards = []
 
     def _rebuild_effect_cards(
@@ -3285,6 +3308,10 @@ class TextEffectPanel(PanelArea):
                     self.texture_file_requested.emit
                 )
                 self.text_fill_cards.append(card)
+            elif effect_type == 'image':
+                card = ImageEffectCard(index, self.scrollContent)
+                card.image_requested.connect(self._choose_image_file)
+                self.image_cards.append(card)
             elif effect_type == 'filter':
                 filter_effect = (
                     None
@@ -3344,6 +3371,7 @@ class TextEffectPanel(PanelArea):
                     ShadowEffectCard,
                     GlowEffectCard,
                     TextFillEffectCard,
+                    ImageEffectCard,
                     FilterEffectCard,
                 ),
             ):
@@ -3418,7 +3446,8 @@ class TextEffectPanel(PanelArea):
             self._rebuild_effect_cards(common_sequence, states[0])
             gradient_visibility_changed = False
             movable_types = (
-                StrokeEffect, ShadowEffect, GlowEffect, FilterEffect
+                StrokeEffect, ShadowEffect, GlowEffect,
+                ImageEffect, FilterEffect,
             )
             movable_indices = [
                 index
@@ -3451,6 +3480,11 @@ class TextEffectPanel(PanelArea):
                         values,
                         texture_available=self._texture_available(values),
                     )
+                elif isinstance(card, ImageEffectCard):
+                    card.set_values(
+                        values,
+                        available=self._image_available(values),
+                    )
                 elif isinstance(card, FilterEffectCard):
                     card.set_values(values)
                 else:
@@ -3464,6 +3498,7 @@ class TextEffectPanel(PanelArea):
                     StrokeEffectCard,
                     ShadowEffectCard,
                     GlowEffectCard,
+                    ImageEffectCard,
                     FilterEffectCard,
                 )):
                     position = movable_indices.index(card.index)
@@ -3483,17 +3518,22 @@ class TextEffectPanel(PanelArea):
         self.add_effect_actions['text_fill'].setEnabled(
             not mixed and common_sequence is not None
         )
+        self.add_effect_actions['image'].setEnabled(
+            bool(self._block_items)
+            and getattr(SW.canvas, 'imgtrans_proj', None) is not None
+            and not mixed
+            and common_sequence is not None
+        )
         self.filter_add_menu.setEnabled(not mixed)
         self._sync_content_height()
 
     def set_active_format(self, font_format: FontFormat) -> None:
         self._block_items = ()
-        portable_effects = without_project_texture_paints(
+        portable_effects = without_project_raster_effects(
             font_format.text_effects
         )
         self._set_effect_states([portable_effects])
         self.refresh_alpha_mask_state()
-        self.refresh_rendered_image_state()
 
     def set_effect_items(self, items: Sequence["TextBlkItem"]) -> None:
         self._block_items = tuple(items)
@@ -3504,7 +3544,6 @@ class TextEffectPanel(PanelArea):
             [item.blk.fontformat.text_effects for item in items]
         )
         self.refresh_alpha_mask_state()
-        self.refresh_rendered_image_state()
 
     def project_assets_changed(self) -> None:
         """Refresh imported rasters without changing immutable model values."""
@@ -3515,13 +3554,11 @@ class TextEffectPanel(PanelArea):
                 item.blk.fontformat.text_effects
                 for item in self._block_items
             ])
-        self.refresh_rendered_image_state()
 
     def set_alpha_mask_items(self, items: Sequence["TextBlkItem"]) -> None:
         """Refresh only the TextBlock-owned mask target boundary."""
         self._block_items = tuple(items)
         self.refresh_alpha_mask_state()
-        self.refresh_rendered_image_state()
 
     def _texture_available(
         self, fills: Sequence[TextFillEffect]
@@ -3530,8 +3567,27 @@ class TextEffectPanel(PanelArea):
         if (
             not paints
             or not all(isinstance(paint, TexturePaint) for paint in paints)
-            or any(paint.asset != paints[0].asset for paint in paints[1:])
-            or paints[0].asset is None
+        ):
+            return None
+        return self._common_project_asset_available(
+            [paint.asset for paint in paints]
+        )
+
+    def _image_available(
+        self, effects: Sequence[ImageEffect]
+    ) -> Optional[bool]:
+        return self._common_project_asset_available(
+            [effect.asset for effect in effects]
+        )
+
+    def _common_project_asset_available(
+        self, assets: Sequence[Optional[RasterAssetRef]]
+    ) -> Optional[bool]:
+        """Resolve one common card asset across current project targets."""
+        if (
+            not assets
+            or any(asset != assets[0] for asset in assets[1:])
+            or assets[0] is None
             or not self._block_items
         ):
             return None
@@ -3542,7 +3598,7 @@ class TextEffectPanel(PanelArea):
             )
             if (
                 project is None
-                or project.resolve_raster_asset(paints[0].asset) is None
+                or project.resolve_raster_asset(assets[0]) is None
             ):
                 return False
         return True
@@ -3620,11 +3676,8 @@ class TextEffectPanel(PanelArea):
 
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
-        if action is not None and action.data() == 'rendered_image':
-            self.rendered_image_add_requested.emit()
-            return
         if action is not None and action.data() in {
-            'stroke', 'shadow', 'glow', 'text_fill'
+            'stroke', 'shadow', 'glow', 'text_fill', 'image'
         }:
             self.add_effect_requested.emit(action.data())
 

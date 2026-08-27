@@ -58,13 +58,13 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
     TextFillEffect,
     GradientStop,
     HollowEffect,
+    ImageEffect,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
@@ -837,9 +837,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     def test_empty_texture_and_image_do_not_enter_the_raster_path(self):
         stack = TextEffectStack(effects=(TextFillEffect(
             paint=TexturePaint()
-        ),))
+        ), ImageEffect()))
         item = self._item(stack)
-        item.blk.rendered_image = RenderedImageLayer()
         renderer = item.effect_renderer
 
         self.assertFalse(stack.has_active_effects)

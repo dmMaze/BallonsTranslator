@@ -25,11 +25,11 @@ from ballontranslator.ui.text_engine.rendering.raster import (
 )
 from ballontranslator.utils.fontformat import SineTextTransform, TextTransformStack
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_alpha_mask import AlphaBrushStroke, TextAlphaMask
 from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
+    ImageEffect,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -160,6 +160,76 @@ class TextFilterRendererTest(unittest.TestCase):
         self.assertEqual(calls, ['second', 'first'])
         self.assertEqual(to_array.call_count, 1)
         self.assertEqual(to_pixmap.call_count, 1)
+
+    def test_replace_image_then_custom_filter_then_eraser(self):
+        effect = FilterEffect('custom:image-filter')
+        order = []
+
+        def filter_image(rgba, _params, _context):
+            visible = rgba[:, :, 3] > 200
+            self.assertGreater(np.count_nonzero(visible), 0)
+            self.assertGreater(
+                np.mean(rgba[:, :, 2][visible]),
+                np.mean(rgba[:, :, 0][visible]),
+            )
+            order.append('filter')
+            rgba[:, :, 1] = 220
+            return rgba
+
+        registry = _RuntimeRegistry({
+            effect.filter_id: _runtime(effect, filter_image)
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            project = ProjImgTrans()
+            project.directory = directory
+            asset = self._import_asset(
+                project,
+                directory,
+                np.full((3, 5, 4), (20, 60, 230, 255), np.uint8),
+            )
+            item = self._item(TextEffectStack(effects=(
+                effect,
+                ImageEffect(asset, mode='replace'),
+            )), text='')
+            item.blk.text_alpha_mask = TextAlphaMask(strokes=(
+                AlphaBrushStroke('erase', 1000, ((160, 90),)),
+            ))
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            scene.addItem(item)
+            renderer = item.effect_renderer
+            renderer.project_assets_changed()
+            original_mask = renderer._apply_text_alpha_mask
+
+            def apply_mask(*args, **kwargs):
+                order.append('eraser')
+                return original_mask(*args, **kwargs)
+
+            with patch(
+                'ballontranslator.ui.text_engine.effects.renderer.'
+                'get_filter_registry',
+                return_value=registry,
+            ), patch.object(
+                renderer,
+                '_capture_effect_source',
+                wraps=renderer._capture_effect_source,
+            ) as capture, patch.object(
+                renderer,
+                '_apply_text_alpha_mask',
+                side_effect=apply_mask,
+            ):
+                renderer.release_caches()
+                rendered = pixmap2ndarray(
+                    renderer._render_effect_surface(
+                        renderer.boundingRect(), 1.0
+                    ),
+                    keep_alpha=True,
+                )
+
+            self.assertEqual(order, ['filter', 'eraser'])
+            self.assertEqual(capture.call_count, 0)
+            self.assertEqual(np.count_nonzero(rendered[:, :, 3]), 0)
+            scene.removeItem(item)
 
     def test_global_order_selects_stroke_and_glow_filter_input(self):
         effect = FilterEffect('custom:blackout')
@@ -786,68 +856,6 @@ class TextFilterRendererTest(unittest.TestCase):
             renderer._render_effect_surface(bounds, 1.0)
         self.assertEqual(upstream.call_count, 0)
         self.assertEqual(capture.call_count, 0)
-
-    def test_rendered_image_then_filter_then_eraser_and_replace_fast_path(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = ProjImgTrans()
-            project.directory = directory
-            asset = self._import_asset(
-                project,
-                directory,
-                np.full((4, 5, 4), (20, 80, 220, 255), np.uint8),
-            )
-            effect = FilterEffect('custom:record')
-            order = []
-
-            def apply(rgba, _params, _context):
-                order.append('filter')
-                rgba[:, :, :3] //= 2
-                return rgba
-
-            item = self._item(
-                TextEffectStack(effects=(effect,)), text=''
-            )
-            item.blk.rendered_image = RenderedImageLayer(asset, mode='replace')
-            item.blk.text_alpha_mask = TextAlphaMask(strokes=(
-                AlphaBrushStroke('erase', 20, ((160, 90),)),
-            ))
-            scene = QGraphicsScene()
-            scene.imgtrans_proj = project
-            scene.addItem(item)
-            renderer = item.effect_renderer
-            registry = _RuntimeRegistry({effect.filter_id: _runtime(effect, apply)})
-            real_rendered = renderer._paint_rendered_image
-            real_mask = renderer._apply_text_alpha_mask
-
-            def paint_rendered(*args, **kwargs):
-                order.append('rendered')
-                return real_rendered(*args, **kwargs)
-
-            def paint_mask(*args, **kwargs):
-                order.append('mask')
-                return real_mask(*args, **kwargs)
-
-            with patch(
-                'ballontranslator.ui.text_engine.effects.renderer.'
-                'get_filter_registry',
-                return_value=registry,
-            ), patch.object(
-                renderer, '_paint_rendered_image', side_effect=paint_rendered
-            ), patch.object(
-                renderer, '_apply_text_alpha_mask', side_effect=paint_mask
-            ), patch.object(
-                renderer, '_capture_effect_source',
-                wraps=renderer._capture_effect_source,
-            ) as capture:
-                pixels = pixmap2ndarray(
-                    renderer._render_effect_surface(
-                        renderer.boundingRect(), 1.0
-                    ),
-                    keep_alpha=True,
-                )
-            self.assertEqual(order, ['rendered', 'filter', 'mask'])
-            self.assertEqual(capture.call_count, 0)
-            self.assertGreater(np.count_nonzero(pixels[:, :, 3]), 0)
 
     def test_plugin_failures_bypass_interactively_and_fail_strict(self):
         def expand_alpha(rgba, _params, _context):

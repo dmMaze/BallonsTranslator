@@ -15,7 +15,7 @@ from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import default_profiles, load_profiles, migrate_module_llm_profiles, profile_by_id, profile_to_dict, LLMProfile
 from .secret_store import SecretStore
-from .text_effects import without_project_texture_paints
+from .text_effects import without_project_raster_effects
 
 class RunStatus:
     FIN_DET = 1
@@ -429,12 +429,12 @@ class ProgramConfig(Config):
         warn_ignored_legacy_effects(effect_notices, 'program config')
 
         config = ProgramConfig(**config_dict)
-        portable_effects = without_project_texture_paints(
+        portable_effects = without_project_raster_effects(
             config.global_fontformat.text_effects
         )
         if portable_effects != config.global_fontformat.text_effects:
             LOGGER.warning(
-                'Discard project-only Texture paint from global FontFormat.'
+                'Discard project-only raster effects from global FontFormat.'
             )
             config.global_fontformat.text_effects = portable_effects
         return config
@@ -463,12 +463,12 @@ def load_textstyle_from(p: str, raise_exception = False):
                     )
                     effect_notices.update(notices)
                     style_format = FontFormat(**normalized)
-                    portable_effects = without_project_texture_paints(
+                    portable_effects = without_project_raster_effects(
                         style_format.text_effects
                     )
                     if portable_effects != style_format.text_effects:
                         LOGGER.warning(
-                            'Discard project-only Texture paint from text style.'
+                            'Discard project-only raster effects from text style.'
                         )
                         style_format.text_effects = portable_effects
                     styles_loaded.append(style_format)
@@ -541,7 +541,7 @@ def json_dump_program_config(obj, **kwargs):
 def save_config():
     global pcfg
     try:
-        pcfg.global_fontformat.text_effects = without_project_texture_paints(
+        pcfg.global_fontformat.text_effects = without_project_raster_effects(
             pcfg.global_fontformat.text_effects
         )
         config_dir = osp.dirname(shared.CONFIG_PATH)
@@ -563,7 +563,7 @@ def save_text_styles(raise_exception = False):
     global pcfg, text_styles
     try:
         for style in text_styles:
-            style.text_effects = without_project_texture_paints(
+            style.text_effects = without_project_raster_effects(
                 style.text_effects
             )
         style_dir = osp.dirname(pcfg.text_styles_path)

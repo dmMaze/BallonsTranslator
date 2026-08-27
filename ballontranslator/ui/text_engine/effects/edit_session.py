@@ -12,6 +12,7 @@ from ballontranslator.utils.text_effects import (
     GlowEffect,
     GradientStop,
     HollowEffect,
+    ImageEffect,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
@@ -22,7 +23,7 @@ from ballontranslator.utils.text_effects import (
     TexturePaint,
     effect_structure_key,
     effect_paint_fallback_color,
-    without_project_texture_paints,
+    without_project_raster_effects,
 )
 from .filters import FilterUnavailableError, get_filter_registry
 
@@ -75,6 +76,7 @@ class TextEffectEditSession:
             controls.remove_effect_requested.connect(self.remove_effect)
             controls.move_effect_requested.connect(self.move_effect)
             controls.texture_file_requested.connect(self.import_texture)
+            controls.image_file_requested.connect(self.import_image)
 
     @staticmethod
     def _state_for_item(item: "TextBlkItem") -> TextEffectStack:
@@ -265,6 +267,10 @@ class TextEffectEditSession:
                 )
             else:
                 parameters[param_name] = value
+        elif isinstance(effect, ImageEffect):
+            if param_name not in {'asset', 'enabled', 'mode'}:
+                raise ValueError('unknown Image field')
+            parameters[param_name] = value
         elif isinstance(effect, FilterEffect):
             if param_name == 'enabled':
                 parameters['enabled'] = value
@@ -316,7 +322,7 @@ class TextEffectEditSession:
         return getattr(effect, param_name)
 
     def _set_global_effects(self, state: TextEffectStack) -> None:
-        state = without_project_texture_paints(state)
+        state = without_project_raster_effects(state)
         self.host.global_format.text_effects = state
         active = C.active_format
         if active is self.host.global_format:
@@ -357,7 +363,7 @@ class TextEffectEditSession:
         after = tuple(after)
         if not self.items:
             after = tuple(
-                without_project_texture_paints(state) for state in after
+                without_project_raster_effects(state) for state in after
             )
             changed = before != after
             self._set_global_effects(after[0])
@@ -586,9 +592,16 @@ class TextEffectEditSession:
             'shadow': ShadowEffect,
             'glow': GlowEffect,
             'text_fill': TextFillEffect,
+            'image': ImageEffect,
         }
         constructor = constructors.get(effect_type)
-        if constructor is None:
+        if constructor is None or (
+            constructor is ImageEffect
+            and (
+                not self.items
+                or getattr(SW.canvas, 'imgtrans_proj', None) is None
+            )
+        ):
             self._sync_effect_ui()
             return False
         after = []
@@ -624,6 +637,18 @@ class TextEffectEditSession:
 
     def import_texture(self, index: int, source_path: str) -> bool:
         """Import a managed texture and commit it as one complete-stack edit."""
+        return self._import_project_raster(index, source_path, 'texture')
+
+    def import_image(self, index: int, source_path: str) -> bool:
+        """Import one managed asset across matching selected Image cards."""
+        return self._import_project_raster(index, source_path, 'image')
+
+    def _import_project_raster(
+        self, index: int, source_path: str, kind: str
+    ) -> bool:
+        """Run one project import and whole-stack commit transaction."""
+        if kind not in {'texture', 'image'}:
+            raise ValueError('unsupported project raster effect kind')
         self._prepare_structure_change()
         if not self.items:
             self._sync_effect_ui()
@@ -633,35 +658,48 @@ class TextEffectEditSession:
             self._sync_effect_ui()
             return False
         project = getattr(SW.canvas, 'imgtrans_proj', None)
+        label = 'Text Fill texture' if kind == 'texture' else 'Image'
         try:
             if project is None:
-                raise ValueError('Open a project before importing a texture.')
+                article = 'an' if kind == 'image' else 'a'
+                raise ValueError(
+                    f'Open a project before importing {article} {label}.'
+                )
             asset = project.import_raster_asset(source_path)
             after = []
             for state in before:
                 if index < 0 or index >= len(state.effects):
-                    raise IndexError('Text Fill index is no longer current')
+                    raise IndexError(f'{label} index is no longer current')
                 effect = state.effects[index]
-                if not isinstance(effect, TextFillEffect):
-                    raise TypeError('selected effect is not Text Fill')
-                paint = (
-                    replace(effect.paint, asset=asset)
-                    if isinstance(effect.paint, TexturePaint)
-                    else TexturePaint(asset)
-                )
+                if kind == 'texture':
+                    if not isinstance(effect, TextFillEffect):
+                        raise TypeError('selected effect is not Text Fill')
+                    paint = (
+                        replace(effect.paint, asset=asset)
+                        if isinstance(effect.paint, TexturePaint)
+                        else TexturePaint(asset)
+                    )
+                    replacement = replace(effect, paint=paint)
+                else:
+                    if not isinstance(effect, ImageEffect):
+                        raise TypeError('selected effect is not Image')
+                    replacement = replace(effect, asset=asset)
                 effects = list(state.effects)
-                effects[index] = replace(effect, paint=paint)
+                effects[index] = replacement
                 after.append(replace(state, effects=tuple(effects)))
         except (IndexError, OSError, TypeError, ValueError) as error:
-            LOGGER.warning('Unable to import Text Fill texture: %s', error)
+            LOGGER.warning('Unable to import %s: %s', label, error)
             self._sync_effect_ui()
             if self.controls is not None:
-                self.controls.show_texture_import_error(index, str(error))
+                if kind == 'texture':
+                    self.controls.show_texture_import_error(index, str(error))
+                else:
+                    self.controls.show_image_import_error(index, str(error))
             return False
         changed = self._commit_complete_states(before, after)
         if not changed and self.controls is not None:
-            # A same-digest import can restore a missing managed file without
-            # changing the immutable TexturePaint value.
+            # Same-digest import can restore a missing managed file without
+            # changing the immutable effect value.
             self.controls.project_assets_changed()
         return changed
 
@@ -737,7 +775,10 @@ class TextEffectEditSession:
         movable_types = (
             (TextFillEffect,)
             if isinstance(effect, TextFillEffect)
-            else (StrokeEffect, ShadowEffect, GlowEffect, FilterEffect)
+            else (
+                StrokeEffect, ShadowEffect, GlowEffect,
+                ImageEffect, FilterEffect,
+            )
         )
         if not isinstance(effect, movable_types):
             self._sync_effect_ui()

@@ -504,15 +504,10 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
 
             for signal, argument in (
                 (controls.add_filter_requested, 'builtin:noise'),
-                (controls.rendered_image_enabled_requested, False),
-                (controls.rendered_image_mode_requested, 'overlay'),
-                (controls.rendered_image_remove_requested, None),
+                (controls.add_effect_requested, 'image'),
             ):
                 self.assertTrue(self.session.activate(self.item))
-                if argument is None:
-                    signal.emit()
-                else:
-                    signal.emit(argument)
+                signal.emit(argument)
                 self.assertFalse(self.session.active)
 
             second_block = TextBlock([0, 0, 100, 80])

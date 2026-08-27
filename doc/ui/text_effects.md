@@ -11,8 +11,7 @@ tests are authoritative for individual controls and raster algorithms.
 QTextDocument + settled SceneTextLayout
   -> canonical glyph source, including Glyph Slant when active
   -> canonical rich foreground or repeatable Fill base group, unless Hollow
-  -> TextBlock-owned Image base (Replace or Overlay)
-  -> ordered Stroke / Shadow / Glow / Filter cards, panel top-to-bottom
+  -> ordered Image / Stroke / Shadow / Glow / Filter cards, panel top-to-bottom
   -> TextBlock-owned alpha mask
   -> Overall Opacity
   -> ordered global Text Transform
@@ -45,7 +44,6 @@ for the presentation remapping.
 | Content-addressed raster import and safe project-relative resolution | [`utils/proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
 | Style persistence, legacy migration, and compatibility views | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
 | Block-owned alpha-mask persistence | [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py), [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
-| Block-owned Image persistence | [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
 | Lazy filter metadata, active runtime resolution, and built-ins | [`ui/text_engine/effects/filters/`](../../ballontranslator/ui/text_engine/effects/filters/), [Text filters](text_filters.md) |
 | Composition, padding, raster policy, preview namespaces, and caches | [`ui/text_engine/effects/renderer.py`](../../ballontranslator/ui/text_engine/effects/renderer.py), [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
 | Selection-scoped effect preview and commit | [`ui/text_engine/effects/edit_session.py`](../../ballontranslator/ui/text_engine/effects/edit_session.py) |
@@ -59,9 +57,9 @@ state. `TextBlkItem` is the Qt boundary, while `TextEffectRenderer` owns the
 completed effect surface. Add behavior at those existing owners instead of
 introducing a second effect model, renderer, or edit session.
 
-The fixed top row is Add, Eraser, Hollow, a spacer, Opacity, then the opt-in
-Faster Preview checkbox. Faster Preview is a runtime panel preference, not a
-project/style value or an undoable effect edit.
+The fixed top row is Add, Eraser, Hollow, a spacer, then Opacity. The opt-in
+Faster Preview checkbox lives in the Text Effect expander header. It is a
+runtime panel preference, not a project/style value or an undoable effect edit.
 
 Effect and Transform cards share `BottomBorderComboBox`, the compact selector
 used by the Run dialog. The Blend control uses the same transparent
@@ -97,22 +95,22 @@ column width. Editor and current-selector values are centered. Two-column rows
 use equal columns and an 8 px inter-column gap. There is no redundant Flip
 action.
 
-The panel projects the complete visible execution order as Fill, Image,
-movable Stroke/Shadow/Glow/Filter cards, then Eraser. Image is
-a fixed item-specific base card after Fill and before the movable stack.
-It exists only for one concrete project TextBlock and therefore never appears
-in global formatting, presets, or multi-selection. Its Image and
-Replace/Overlay controls use the same two equal-column, natural-label-spacing
-card rows and shared pinned project-image chooser. Adding the card leaves its
-asset Empty without opening that chooser. The card tooltip explains that the
-layer is intentionally hidden during native text editing.
+The panel projects Fill structural cards first, followed by the complete
+movable Image/Stroke/Shadow/Glow/Filter execution order and finally Eraser.
+Image is project-only, repeatable, reorderable, and available for matching
+single- or multi-item project selections; global formatting and presets strip
+it. Its Image and Replace/Foreground/Background controls use the same compact
+card rows and pinned project-image chooser. Adding a card leaves its asset
+Empty without opening that chooser and defaults its eventual mode to Replace.
+The card tooltip explains that Image is intentionally hidden during native
+text editing.
 
 ## Model, sources, and ordered composition
 
 `FontFormat.text_effects` contains one immutable `TextEffectStack`. Its
 `overall_opacity` applies to the completed item, while `effects` preserves the
-semantic order of typed immutable values. Stroke, Shadow, Glow, Text Fill, and
-Filter are repeatable. Hollow is unique.
+semantic order of typed immutable values. Stroke, Shadow, Glow, Text Fill,
+Image, and Filter are repeatable. Hollow is unique.
 
 | Effect | Phase and source | Important semantics |
 | --- | --- | --- |
@@ -121,15 +119,18 @@ Filter are repeatable. Hollow is unique.
 | Glow | Ordered generated layer; exterior source for Outer, interior source for Inner | Outer Glow uses the canonical Stroke-inclusive silhouette. Inner Glow uses canonical glyph alpha and is suppressed by Hollow. |
 | Text Fill | Structural base-fill sub-stack, repeatable | Enabled renderable fills compose in visible order on one transparent face group. Solid or Gradient paints the logical rectangle; Texture maps one managed raster over it. The completed group is clipped once by canonical glyph coverage and replaces the rich foreground as a group. Paint alpha and effect Opacity each multiply alpha once. Stroke and generated effects continue using their earlier canonical/source alpha. |
 | Hollow | Foreground modifier, unique | Removes the canonical face, Text Fill, and interior phase while retaining Stroke and exterior output. It is a toggle, not an independent painted layer. |
+| Image | Ordered project-raster layer, repeatable | Empty or disabled is neutral. Replace source-copies at its ordered position, Foreground source-over composites above accumulated pixels, and Background destination-over composites behind them so existing text remains visible. It does not change generated layers' canonical glyph sources. |
 | Filter | Ordered pixel transform, repeatable | Transforms the base and generated layers accumulated above its visible card. Consecutive Filters execute panel top-to-bottom through one RGBA bridge. Alpha is non-expanding by default; an explicitly declared expander is halo-bounded and adds matching effect padding. |
 
-`RenderedImageLayer` is not a `TextEffectStack` node or paint. It is one
-immutable versioned `TextBlock` Image value containing `enabled`, an optional
-generic `RasterAssetRef`, and `mode=replace|overlay`. Replace clears the entire
-isolated text/effect surface, including padded Stroke/Shadow overflow, then maps
-the image exactly into the unpadded logical text rectangle. Transparent source
-pixels remain transparent. Overlay source-over composites above Text Fill and
-below the movable stack. Neither mode expands padding.
+`ImageEffect` is an immutable `TextEffectStack` node containing `enabled`, an
+optional generic `RasterAssetRef`, and
+`mode=replace|foreground|background`. A valid Replace discards every earlier
+accumulated node, including padded overflow, then maps the image exactly into
+the unpadded logical text rectangle. Transparent source pixels remain
+transparent. Foreground and Background keep the existing prefix and composite
+at the card's actual position. Neither mode expands padding. The renderer does
+not resolve or rasterize a prefix discarded by the last valid Replace; later
+cards, including Filters, still process its result.
 
 Stroke, Shadow, and Glow use either `SolidPaint` or `LinearGradientPaint`.
 Text Fill uses `SolidPaint`, `LinearGradientPaint`, or `TexturePaint`. A
@@ -192,20 +193,19 @@ effective stack as follows:
    Fills in visible order on a transparent surface, apply their paint/effect
    alpha, clip the group once with cached canonical glyph coverage, and use the
    group in place of canonical foreground.
-2. Apply the optional block-owned Image base. Overlay sits above Text
-   Fill; valid Replace skips canonical and generated-layer raster work.
-3. Walk movable cards top-to-bottom as displayed by the panel (the reverse of
+2. Walk movable cards top-to-bottom as displayed by the panel (the reverse of
    their compatibility-preserved tuple order). Batch adjacent Stroke/Shadow/Glow
-   cards in one painter segment and adjacent Filters in one straight-RGBA8
-   bridge.
-4. Generate every typed layer from its canonical source: exterior Shadow/Glow
+   or Image cards in one painter segment and adjacent Filters in one
+   straight-RGBA8 bridge. Replace discards its accumulated prefix; Foreground
+   and Background compose at their exact positions.
+3. Generate every typed layer from its canonical source: exterior Shadow/Glow
    use the complete canonical Stroke-inclusive silhouette, while interior
    effects use canonical glyph alpha. Drop/Long Shadow clip outside the
    canonical face, while Outer Glow clips outside its full source silhouette,
    at generation time. Hollow therefore only suppresses the base and interior
    layers; it needs no extra clipping pass.
-5. Multiply the completed composite by the block-owned alpha mask.
-6. Apply group Overall Opacity and hand the completed source to the global
+4. Multiply the completed composite by the block-owned alpha mask.
+5. Apply group Overall Opacity and hand the completed source to the global
    transform path described in [Composable text transforms](text_transforms.md).
 
 On coverage-producing layers, effect opacity and gradient-stop opacity each
@@ -234,6 +234,11 @@ foreground when no sibling fill renders; a missing Image leaves its upstream
 surface in place. Its card shows the missing filename. Strict export fails the
 render transaction instead of silently exporting the bypass and SHA-256-verifies
 the file even when interactive rendering already populated the decoded cache.
+The exception is an Image or Filter in a prefix discarded by a later valid
+Replace: dead nodes are not resolved and cannot fail export.
+Raster decode, allocation, array-bridge, and OpenCV failures are contained
+inside Qt paint/bounds callbacks. Strict export records the failure there and
+raises it immediately after the Canvas returns to its Python boundary.
 The strict hash and matching cache reuse or decode share one before/after
 file-signature bracket, so replacement during verification fails the render
 transaction. Every interactive cache reuse still checks file existence and
@@ -274,6 +279,10 @@ includes effect padding or transformed overflow.
 - Exterior effects expand source padding from the visible source silhouette.
   Glyph-distorting paths use layout-owned ink bounds; ordinary paths use the
   conservative symmetric padding calculation.
+- Image contributes the unpadded logical rectangle to accumulated distorted
+  bounds. A later alpha-expanding Filter grows that rectangle even for empty
+  horizontal or vertical text; generated Shadow/Glow sources remain glyph-
+  and Stroke-owned rather than sampling Image pixels.
 - Every linear gradient and texture remains anchored to the unpadded logical
   rectangle, even when a tile renders only part of the effect surface.
 - Alpha-mask points are relative to the unpadded logical origin. They may erase
@@ -290,8 +299,7 @@ masked, shadowed, or included in cached effect pixels.
 
 | State | Persistent owner | Transfer behavior |
 | --- | --- | --- |
-| `TextEffectStack` | `FontFormat` | Reusable typography style; presets and multi-selection formatting may copy portable values, while project Texture fills remain item/project-only |
-| `RenderedImageLayer` | `TextBlock` | Item-specific full-RGBA replacement/overlay; copied only with the TextBlock, never through formatting or presets |
+| `TextEffectStack` | `FontFormat` | Reusable typography style plus project-only Image/Texture values on concrete items; global formatting and presets strip project raster entries |
 | `TextAlphaMask` history | `TextBlock` | Item-specific structural alpha; never copy it through a style or preset |
 | Preview stacks, preview masks, pixmaps, alpha planes, padding, and cache keys | Runtime owners only | Never serialize |
 
@@ -319,15 +327,19 @@ Compatibility rules are intentional:
   `opacity` is deliberately ignored. Older `text_fill` payloads default their
   newly supported effect Opacity to `1.0`. New serialization writes repeatable
   `text_fill` entries with Opacity and Blend.
-- Malformed Raster asset data discards only the optional Text Fill or Rendered
-  Image value that owns it on passive load. Valid-but-missing files remain
+- Malformed Raster asset data discards only the optional Text Fill or Image
+  entry that owns it on passive load. Valid-but-missing files remain
   referenced so the project can recover when its `assets/` contents are
   restored.
 - Application-global formatting and reusable presets have no project asset
-  registry in v1. They strip only `TextFillEffect(TexturePaint)` on passive
-  load, edit, update, and save boundaries while preserving every other effect.
+  registry in v1. They strip `TextFillEffect(TexturePaint)` and `ImageEffect`
+  on passive load, edit, update, and save boundaries while preserving every
+  portable effect.
   Project TextBlocks retain valid Texture refs, and the absence of Text Fill
   keeps the original rich foreground.
+- The removed singleton `TextBlock.rendered_image` payload is ignored on
+  passive load. It is not migrated or exposed through a compatibility model;
+  `ImageEffect` is the only live Image owner.
 - Unknown filter IDs, schemas, and opaque scalar params remain portable through
   passive project/config/preset loading without importing plug-in code. Active
   resolution passes only declared params; invalid known values fall back to
@@ -354,8 +366,8 @@ canvas mask brush
      -> release: one SetTextAlphaMaskCommand for the target
 
 Image card
-  -> add Empty / chooser / mode / eye / delete
-     -> one SetRenderedImageLayerCommand for the target; no preview session
+  -> add Empty / chooser / mode / eye / reorder / delete
+     -> same complete-stack session and one SetTextEffectStackCommand
 ```
 
 An effect preview replaces the complete effective stack at the item boundary;
@@ -363,8 +375,8 @@ it never mutates committed `FontFormat`, project JSON, `QTextDocument` history,
 or the paired editor. A parameter switch first cancels an incompatible active
 preview. Structural add, remove, move, or Hollow changes settle pending inputs
 and cancel transient previews before changing indices. Reordering swaps
-adjacent movable Stroke/Shadow/Glow/Filter cards while skipping structural Text
-Fill and Hollow values. A Text Fill reorder separately swaps adjacent fills,
+adjacent movable Stroke/Shadow/Glow/Image/Filter cards while skipping
+structural Text Fill and Hollow values. A Text Fill reorder separately swaps adjacent fills,
 even when generated entries occupy raw tuple positions between them; it never
 changes generated-layer order.
 
@@ -390,12 +402,15 @@ group state and does not require rebuilding effect pixels. Reshape temporarily
 omits effects, invalidates geometry-sensitive caches, and rebuilds the effective
 namespace once geometry settles.
 
-While native text editing is active, Image is intentionally omitted
+While native text editing is active, every Image node is intentionally omitted
 for both writing modes so the editable source, selection, caret, IME, and
 annotations remain coherent. Ending the edit restores the exact settled layer;
 strict export still includes it. Selection and the deferred caret remain after
 all completed pixel phases. Starting an Image chooser or discrete card
 edit also deactivates the Eraser brush session.
+Effective Image visibility is part of both the completed-surface and nonlinear
+source cache identities, so editing cannot reuse settled Image pixels and
+leaving edit cannot reuse the Image-free editing surface.
 Ordinary Filters remain active during horizontal and vertical native editing;
 selection, caret, and IME feedback are painted afterward and never enter their
 input pixels.
@@ -419,18 +434,23 @@ is instead shared at the project asset boundary:
 
 | Cached work | Reuse and invalidation boundary |
 | --- | --- |
-| Final full surface or visible tiles | Separate committed, preview, and export namespaces; key by effective effects, active Image, mask generation, document/layout/render state, transform, writing mode, bounds, and quality tier |
+| Final full surface or visible tiles | Separate committed, preview, and export namespaces; key by effective effects, mask generation, document/layout/render state, transform, writing mode, bounds, and quality tier |
 | Complete pre-mask surface | At most two entries per namespace; reuse across mask-only previews while upstream effects and geometry match |
-| Complete below-filter prefix | At most two entries per namespace; filter-only previews reuse the fixed base and generated nodes below the bottom Filter. The key includes that boundary and canonical Stroke dependencies of cached exterior layers. Upper generated layers are cheaply recomposited from retained canonical/coverage caches. |
+| Complete below-filter prefix | At most two entries per namespace; filter-only previews reuse the fixed base and retained nodes below the first effective Filter. The key follows Replace dead-prefix trimming, exact retained node order, and canonical Stroke dependencies of cached exterior layers. Upper generated layers are cheaply recomposited from retained canonical/coverage caches. |
 | Canonical glyph pixmap and lazy alpha | At most two entries; reuse across paint-only, Fill Opacity, and Blend previews while document, layout, source geometry, transform state, and render scale match. Repeated fills share this source and its mask rather than rerasterizing glyphs. |
 | Positioned Stroke coverage | At most two read-only alpha planes; key by canonical-source inputs plus Stroke width and position, excluding paint and opacity |
 | Gradient compiled kernel | Runtime acceleration only; the byte-identical NumPy path remains the pre-warm, unavailable, and quality-oracle fallback |
-| Decoded project raster | At most two positive entries per project, shared by Texture and Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached |
+| Decoded project raster | At most two positive entries per project, shared by Texture and Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached. One top-level paint shares one asset-keyed Image lookup map through its gates and full/visible-tile composite. |
 
 Within one composite, reuse the same colored positioned Stroke band for its
 visible pass and exterior silhouette. Paint-only edits must not rerasterize the
 native glyph outline. Shadow and Glow alpha are intentionally generated on
 demand; their measured cost does not justify another invalidation surface.
+After a valid Replace, discarded generated layers and Filters contribute no
+flags, padding, interaction bounds, tile overlap, resolution, or raster work.
+A retained exterior Shadow/Glow still keeps its deliberate canonical
+Stroke-inclusive silhouette dependency even when that source Stroke is not a
+painted retained node.
 
 Keep antialiasing enabled. Faster Preview's 0.5x tier provides the optional
 speed/quality tradeoff; disabling painter antialiasing did not materially
@@ -472,6 +492,8 @@ Start with the suites matching the ownership changed:
 - `tests/test_text_effect_panel.py`
 - `tests/test_text_effect_preview.py`
 - `tests/test_typed_text_effect_renderer.py`
+- `tests/test_image_effect.py`
+- `tests/test_image_effect_rendering.py`
 - `tests/test_text_alpha_mask.py`
 - `tests/test_text_alpha_mask_renderer.py`
 - `tests/test_text_alpha_mask_edit_session.py`

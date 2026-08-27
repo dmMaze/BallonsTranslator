@@ -438,9 +438,19 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
         item = self._item(stack, self._partial_mask())
         renderer = item.effect_renderer
         key = renderer._effect_cache_input_key()
-        self.assertIsNone(key[1])
-        self.assertIsInstance(key[2], int)
+        semantics = renderer.surface_semantic_state()
+        self.assertEqual(semantics[0], stack.effects)
         self.assertNotIn(item.blk.text_alpha_mask, key)
+        item.set_text_alpha_mask(self._erase_all(), preview=True)
+        preview_key = renderer._effect_cache_input_key()
+        self.assertNotEqual(
+            renderer.surface_semantic_state(), semantics
+        )
+        self.assertEqual(
+            renderer._effect_cache_key_without_mask(preview_key),
+            renderer._effect_cache_key_without_mask(key),
+        )
+        item.clear_text_alpha_mask_preview()
 
         with patch.object(
             renderer,
@@ -574,7 +584,16 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                 committed.cache_input_key[0],
                 item.blk.fontformat.text_effects.effects,
             )
-            self.assertGreaterEqual(committed.cache_input_key[2], 0)
+            self.assertEqual(
+                renderer._effect_cache_key_without_mask(
+                    committed.cache_input_key
+                ),
+                renderer._effect_cache_key_without_mask(
+                    renderer._effect_cache_input_key(
+                        item.blk.fontformat.text_effects
+                    )
+                ),
+            )
 
     def _assert_active_scratch_is_current(self, item: TextBlkItem) -> None:
         renderer = item.effect_renderer

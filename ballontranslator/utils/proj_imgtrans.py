@@ -20,7 +20,6 @@ from .textblock import (
 from .fontformat import warn_ignored_legacy_effects
 from .raster_assets import RasterAssetRef
 from .rgba import premultiply_rgba_in_place
-from .rendered_image import RenderedImageLayer
 from .text_alpha_mask import AlphaBrushStroke, TextAlphaMask
 from .config import pcfg, RunStatus
 from . import shared
@@ -119,8 +118,6 @@ class TextBlkEncoder(NumpyEncoder):
         elif isinstance(obj, FontFormat):
             return obj.to_serializable_dict()
         elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke)):
-            return obj.to_serializable_dict()
-        elif isinstance(obj, RenderedImageLayer):
             return obj.to_serializable_dict()
         return NumpyEncoder.default(self, obj)
 

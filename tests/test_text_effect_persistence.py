@@ -26,11 +26,11 @@ from ballontranslator.utils.raster_assets import (
     RasterAssetRef,
     coerce_raster_asset_ref,
 )
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.rgba import premultiply_rgba_in_place
 from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
+    ImageEffect,
     TextFillEffect,
     GradientStop,
     HollowEffect,
@@ -50,32 +50,25 @@ from ballontranslator.utils.textblock import (
 
 
 class TextEffectPersistenceTest(unittest.TestCase):
-    def test_rendered_image_layer_round_trip_and_permissive_failure(self):
+    def test_image_effect_round_trip_and_legacy_field_is_discarded(self):
         asset = RasterAssetRef(
             'assets/' + 'c' * 64 + '.png', 'rendered.png'
         )
-        layer = RenderedImageLayer(asset, enabled=False, mode='overlay')
-        block = TextBlock(rendered_image=layer)
+        effect = ImageEffect(asset, enabled=False, mode='background')
+        block = TextBlock()
+        block.fontformat.text_effects = TextEffectStack(effects=(effect,))
         block.translation = 'preserved'
 
         payload = json.loads(json.dumps(block, cls=TextBlkEncoder))
-        restored = TextBlock(**payload)
-        self.assertEqual(restored.rendered_image, layer)
+        normalized, _ = normalize_textblock_effect_payload(payload)
+        restored = TextBlock(**normalized)
+        self.assertEqual(restored.fontformat.text_effects.effects, (effect,))
 
-        empty_payload = json.loads(json.dumps(
-            TextBlock(rendered_image=RenderedImageLayer()),
-            cls=TextBlkEncoder,
-        ))
-        self.assertEqual(
-            TextBlock(**empty_payload).rendered_image,
-            RenderedImageLayer(),
-        )
-
-        payload['rendered_image']['version'] = 99
-        malformed = TextBlock(**payload)
-        self.assertIsNone(malformed.rendered_image)
-        self.assertEqual(malformed.translation, 'preserved')
-        self.assertIsNone(TextBlock().rendered_image)
+        payload['rendered_image'] = {'removed': True}
+        normalized, _ = normalize_textblock_effect_payload(payload)
+        restored = TextBlock(**normalized)
+        self.assertEqual(restored.translation, 'preserved')
+        self.assertFalse(hasattr(restored, 'rendered_image'))
 
     def test_raster_asset_payload_coercion_is_shared_and_strict(self):
         payload = {'path': 'assets/' + 'd' * 64 + '.webp'}
@@ -380,11 +373,12 @@ class TextEffectPersistenceTest(unittest.TestCase):
             with self.assertRaises(FileNotFoundError):
                 project.resolve_raster_asset(asset, strict=True)
 
-    def test_application_styles_discard_only_project_texture_fills(self):
+    def test_application_styles_discard_project_raster_effects(self):
         asset = RasterAssetRef('assets/' + 'a' * 64 + '.png', 'paper.png')
         stack = TextEffectStack(effects=(
             StrokeEffect(width=0.25),
             TextFillEffect(paint=TexturePaint(asset)),
+            ImageEffect(asset),
             GlowEffect(size=0.2),
         ))
         payload = FontFormat(text_effects=stack).to_serializable_dict()

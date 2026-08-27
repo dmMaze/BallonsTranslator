@@ -21,9 +21,9 @@ from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_effects import (
     SolidPaint,
+    TextEffect,
     TextEffectStack,
     primary_stroke,
     with_primary_stroke,
@@ -535,13 +535,16 @@ class TextBlkItem(QGraphicsTextItem):
             self._sync_order_badge()
         return result
 
-    def refresh_cache_policy(self) -> bool:
+    def refresh_cache_policy(
+        self,
+        effect_nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> bool:
         """Apply the sole QGraphicsItem cache policy for live text items."""
         use_no_cache = (
             self.isEditing()
             or self.geometry_controller.requires_no_cache()
             or self.geometry_controller.has_layout_distortion()
-            or self.effect_renderer.requires_no_item_cache()
+            or self.effect_renderer.requires_no_item_cache(effect_nodes)
         )
         cache_mode = (
             QGraphicsItem.CacheMode.NoCache
@@ -593,12 +596,6 @@ class TextBlkItem(QGraphicsTextItem):
         return self.effect_renderer.set_text_alpha_mask(
             mask, preview=preview
         )
-
-    def set_rendered_image_layer(
-        self, layer: Optional[RenderedImageLayer]
-    ) -> bool:
-        """Replace the TextBlock-owned full-RGBA layer."""
-        return self.effect_renderer.set_rendered_image_layer(layer)
 
     def clear_text_alpha_mask_preview(self) -> bool:
         return self.effect_renderer.clear_text_alpha_mask_preview()

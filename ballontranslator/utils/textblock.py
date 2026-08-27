@@ -28,7 +28,6 @@ from .text_effects import (
     with_primary_stroke,
 )
 from .text_alpha_mask import TextAlphaMask, load_text_alpha_mask
-from .rendered_image import RenderedImageLayer, load_rendered_image_layer
 
 
 LANG_LIST = ['eng', 'ja', 'unknown']
@@ -130,7 +129,6 @@ class TextBlock:
     region_inpaint_dict: Dict = None
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
-    rendered_image: Optional[RenderedImageLayer] = None
     text_alpha_mask: Optional[TextAlphaMask] = None
 
     # 字体识别相关属性
@@ -284,7 +282,6 @@ class TextBlock:
         self.fontformat.alignment = value
 
     def __post_init__(self) -> None:
-        self.rendered_image = load_rendered_image_layer(self.rendered_image)
         self.text_alpha_mask = load_text_alpha_mask(self.text_alpha_mask)
         if self.xyxy is not None:
             self.xyxy = [int(num) for num in self.xyxy]

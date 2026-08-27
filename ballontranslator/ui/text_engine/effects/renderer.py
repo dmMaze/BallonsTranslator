@@ -22,12 +22,12 @@ from qtpy.QtWidgets import QStyle, QStyleOptionGraphicsItem, QWidget
 from ballontranslator.utils.fontformat import pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.raster_assets import RasterAssetRef
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
     HollowEffect,
+    ImageEffect,
     LinearGradientPaint,
     ShadowEffect,
     StrokeEffect,
@@ -187,6 +187,7 @@ class TextEffectRenderer:
         self.faster_preview = False
         self._render_stroke = None
         self._outline_only_stroke = False
+        self._native_stroke_alignment = False
         self.refreshing_effect_padding = False
         self._verified_export_assets: Set[
             Tuple[object, RasterAssetRef]
@@ -309,15 +310,12 @@ class TextEffectRenderer:
 
     def has_raster_effects(self) -> bool:
         """Return whether strict export must own the complete effect output."""
-        layer = self.canonical_rendered_image_layer()
         return (
             any(self._effect_flags())
             or self._renders_completed_foreground()
-            or bool(
-                layer is not None
-                and layer.enabled
-                and layer.asset is not None
-            )
+            or bool(self._active_image_effects(
+                self.canonical_text_effects(), suppress_editing=False
+            ))
             or any(
                 isinstance(effect, FilterEffect) and effect.enabled
                 for effect in self.canonical_text_effects().effects
@@ -331,29 +329,40 @@ class TextEffectRenderer:
     def surface_semantic_state(self) -> tuple:
         """Return effect values that change completed source-surface pixels."""
         return (
-            self.effective_text_effects().effects,
-            self._active_rendered_image_layer(),
+            self._surface_effect_values(self.effective_text_effects()),
             self._effective_mask_generation(),
         )
 
-    def canonical_rendered_image_layer(
-        self,
-    ) -> Optional[RenderedImageLayer]:
-        block = getattr(self.item, 'blk', None)
-        return None if block is None else block.rendered_image
+    def _surface_effect_values(
+        self, stack: TextEffectStack
+    ) -> Tuple[TextEffect, ...]:
+        """Return stack values after native-edit Image suppression."""
+        if not self.item.isEditing() or self.export_render:
+            return stack.effects
+        return tuple(
+            effect
+            for effect in stack.effects
+            if not isinstance(effect, ImageEffect)
+        )
 
-    def _active_rendered_image_layer(
+    def _active_image_effects(
         self,
-    ) -> Optional[RenderedImageLayer]:
-        layer = self.canonical_rendered_image_layer()
+        stack: Optional[TextEffectStack] = None,
+        *,
+        suppress_editing: bool = True,
+    ) -> Tuple[ImageEffect, ...]:
+        active = self.effective_text_effects() if stack is None else stack
         if (
-            layer is None
-            or not layer.enabled
-            or layer.asset is None
-            or (self.item.isEditing() and not self.export_render)
+            suppress_editing
+            and self.item.isEditing()
+            and not self.export_render
         ):
-            return None
-        return layer
+            return ()
+        return tuple(
+            effect
+            for effect in active.effects
+            if isinstance(effect, ImageEffect) and not effect.is_neutral()
+        )
 
     def canonical_text_alpha_mask(self) -> Optional[TextAlphaMask]:
         block = getattr(self.item, 'blk', None)
@@ -434,6 +443,10 @@ class TextEffectRenderer:
         self,
         *,
         target_stroke: bool = True,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
+        strict_assets: bool = True,
     ) -> Tuple[Tuple[int, TextEffect], ...]:
         """Return visible stack nodes in bottom-to-top execution order.
 
@@ -444,38 +457,110 @@ class TextEffectRenderer:
         >>> hasattr(TextEffectRenderer, '_ordered_surface_nodes')
         True
         """
+        if image_rasters is None:
+            image_rasters = {}
         hollow = self._hollow_enabled()
-        rendered_image = self._active_rendered_image_layer()
-        replace_surface = bool(
-            rendered_image is not None
-            and rendered_image.mode == 'replace'
-            and self._project_raster(
-                rendered_image.asset, 'Image layer'
-            ) is not None
-        )
+        editing = self.item.isEditing() and not self.export_render
         nodes = []
         for index, effect in reversed(tuple(enumerate(
             self.effective_text_effects().effects
         ))):
+            if isinstance(effect, ImageEffect):
+                if editing or effect.is_neutral():
+                    continue
+                nodes.append((index, effect))
+                continue
             if isinstance(effect, FilterEffect):
                 if effect.enabled:
                     nodes.append((index, effect))
                 continue
             if isinstance(effect, StrokeEffect):
                 if (
-                    not replace_surface
-                    and target_stroke
+                    target_stroke
                     and not effect.is_neutral()
                 ):
                     nodes.append((index, effect))
                 continue
             if isinstance(effect, (ShadowEffect, GlowEffect)):
-                if replace_surface or effect.is_neutral():
+                if effect.is_neutral():
                     continue
                 if hollow and effect_phase(effect) == 'interior':
                     continue
                 nodes.append((index, effect))
-        return tuple(nodes)
+        last_replace = None
+        for position in range(len(nodes) - 1, -1, -1):
+            effect = nodes[position][1]
+            if (
+                isinstance(effect, ImageEffect)
+                and effect.mode == 'replace'
+                and self._image_raster(
+                    effect, image_rasters, strict_export=strict_assets
+                ) is not None
+            ):
+                last_replace = position
+                break
+        retained = nodes if last_replace is None else nodes[last_replace:]
+        return tuple(
+            node
+            for node in retained
+            if not isinstance(node[1], ImageEffect)
+            or self._image_raster(
+                node[1], image_rasters, strict_export=strict_assets
+            ) is not None
+        )
+
+    def _retained_strokes(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> Tuple[StrokeEffect, ...]:
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
+        return tuple(
+            effect
+            for _index, effect in retained
+            if isinstance(effect, StrokeEffect)
+        )
+
+    def _retained_phase_effects(
+        self,
+        phase: str,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> Tuple[TextEffect, ...]:
+        if phase not in {'exterior', 'interior'}:
+            raise ValueError('generated phase must be exterior or interior')
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
+        return tuple(
+            effect
+            for _index, effect in retained
+            if isinstance(effect, (ShadowEffect, GlowEffect))
+            and effect_phase(effect) == phase
+        )
+
+    def _stroke_sources_for_nodes(
+        self,
+        nodes: Tuple[Tuple[int, TextEffect], ...],
+    ) -> Tuple[StrokeEffect, ...]:
+        """Return painted Strokes plus canonical exterior dependencies."""
+        if self._retained_phase_effects('exterior', nodes):
+            return self._active_strokes()
+        return self._retained_strokes(nodes)
+
+    @staticmethod
+    def _retained_filter_indices(
+        nodes: Tuple[Tuple[int, TextEffect], ...],
+    ) -> frozenset[int]:
+        return frozenset(
+            index
+            for index, effect in nodes
+            if isinstance(effect, FilterEffect)
+        )
 
     def _compiled_phase_effects(
         self, phase: str
@@ -488,18 +573,7 @@ class TextEffectRenderer:
         >>> hasattr(TextEffectRenderer, '_compiled_phase_effects')
         True
         """
-        if phase not in {'exterior', 'interior'}:
-            raise ValueError('generated phase must be exterior or interior')
-        if phase == 'interior' and self._hollow_enabled():
-            return ()
-        active = self.effective_text_effects()
-        return tuple(
-            effect
-            for effect in active.effects
-            if isinstance(effect, (ShadowEffect, GlowEffect))
-            and not effect.is_neutral()
-            and effect_phase(effect) == phase
-        )
+        return self._retained_phase_effects(phase)
 
     def _hollow_enabled(
         self, stack: Optional[TextEffectStack] = None
@@ -520,8 +594,7 @@ class TextEffectRenderer:
             else self.geometry_controller.layout_renderer.render_cache_key()
         )
         return (
-            active.effects,
-            self._active_rendered_image_layer(),
+            self._surface_effect_values(active),
             self._effective_mask_generation(),
             self.document().revision(),
             layout_generation,
@@ -535,23 +608,25 @@ class TextEffectRenderer:
 
     @staticmethod
     def _effect_cache_semantic_key(cache_key: tuple) -> tuple:
-        layout_render_key = cache_key[5]
+        layout_render_key = cache_key[4]
         if isinstance(layout_render_key, tuple) and layout_render_key:
             layout_render_key = layout_render_key[1:]
         return (
             cache_key[0],
             cache_key[1],
             cache_key[2],
-            cache_key[3],
             layout_render_key,
-        ) + cache_key[6:]
+        ) + cache_key[5:]
 
     @staticmethod
     def _effect_cache_key_without_mask(cache_key: tuple) -> tuple:
-        return cache_key[:2] + cache_key[3:]
+        return cache_key[:1] + cache_key[2:]
 
     @staticmethod
-    def _effect_cache_key_before_bottom_filter(cache_key: tuple) -> tuple:
+    def _effect_cache_key_before_bottom_filter(
+        cache_key: tuple,
+        ordered_nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> tuple:
         """Describe the reusable base and layers below the bottom Filter.
 
         Filter values themselves are deliberately excluded so parameter-only
@@ -563,23 +638,57 @@ class TextEffectRenderer:
         True
         """
         effects = cache_key[0]
-        filter_indices = tuple(
-            index
-            for index, effect in enumerate(effects)
-            if isinstance(effect, FilterEffect) and effect.enabled
-        )
-        boundary = max(filter_indices) if filter_indices else -1
-        structural = tuple(
-            effect
-            for effect in effects
-            if isinstance(effect, (HollowEffect, TextFillEffect))
-        )
-        generated_below = tuple(
-            effect
-            for index, effect in enumerate(effects)
-            if index > boundary
-            and isinstance(effect, (StrokeEffect, ShadowEffect, GlowEffect))
-        )
+        if ordered_nodes is None:
+            filter_indices = tuple(
+                index
+                for index, effect in enumerate(effects)
+                if isinstance(effect, FilterEffect) and effect.enabled
+            )
+            boundary = max(filter_indices) if filter_indices else -1
+            structural = tuple(
+                effect
+                for effect in effects
+                if isinstance(
+                    effect, (HollowEffect, TextFillEffect, ImageEffect)
+                )
+            )
+            generated_below = tuple(
+                effect
+                for index, effect in enumerate(effects)
+                if index > boundary
+                and isinstance(
+                    effect, (StrokeEffect, ShadowEffect, GlowEffect)
+                )
+            )
+        else:
+            first_filter = next(
+                (
+                    position
+                    for position, (_index, effect)
+                    in enumerate(ordered_nodes)
+                    if isinstance(effect, FilterEffect)
+                ),
+                len(ordered_nodes),
+            )
+            prefix = ordered_nodes[:first_filter]
+            boundary = (
+                -1
+                if first_filter == len(ordered_nodes)
+                else ordered_nodes[first_filter][0]
+            )
+            structural = (
+                tuple(
+                    effect
+                    for effect in effects
+                    if isinstance(effect, (HollowEffect, TextFillEffect))
+                ),
+                prefix,
+            )
+            generated_below = tuple(
+                effect
+                for _index, effect in prefix
+                if isinstance(effect, (StrokeEffect, ShadowEffect, GlowEffect))
+            )
         exterior_stroke_source = (
             tuple(
                 effect
@@ -595,9 +704,13 @@ class TextEffectRenderer:
             )
             else ()
         )
-        canonical_stroke_alignment = any(
+        canonical_stroke_alignment = bool(exterior_stroke_source) or any(
             isinstance(effect, StrokeEffect) and not effect.is_neutral()
-            for effect in effects
+            for effect in (
+                effects
+                if ordered_nodes is None
+                else tuple(effect for _index, effect in ordered_nodes)
+            )
         )
         return (
             (
@@ -607,18 +720,18 @@ class TextEffectRenderer:
                 canonical_stroke_alignment,
                 boundary,
             ),
-            cache_key[1],
-        ) + cache_key[3:]
+        ) + cache_key[2:]
 
     def _pre_filter_cache_key(
         self,
         surface_rect: QRectF,
         render_scale: float,
         target_stroke: bool,
+        nodes: Tuple[Tuple[int, TextEffect], ...],
     ) -> tuple:
         return (
             self._effect_cache_key_before_bottom_filter(
-                self._effect_cache_input_key()
+                self._effect_cache_input_key(), nodes
             ),
             float(render_scale),
             round(surface_rect.left(), 6),
@@ -675,7 +788,7 @@ class TextEffectRenderer:
             layout_render_key,
             self.geometry_controller.effective(),
             self.fontformat.vertical,
-            bool(self._active_strokes()),
+            self._native_stroke_alignment,
             (
                 logical_rect.x(), logical_rect.y(),
                 logical_rect.width(), logical_rect.height(),
@@ -813,17 +926,25 @@ class TextEffectRenderer:
         # keeps the established pen width and allocation-free paint path.
         return stroke.width * (2.0 if stroke.position != 'center' else 1.0)
 
-    def _all_strokes_vector_compatible(self) -> bool:
+    def _all_strokes_vector_compatible(
+        self,
+        strokes: Optional[Tuple[StrokeEffect, ...]] = None,
+    ) -> bool:
+        active = self._retained_strokes() if strokes is None else strokes
         return all(
             stroke.position == 'center'
             and stroke.blend_mode == 'normal'
             and not isinstance(stroke.paint, LinearGradientPaint)
-            for stroke in self._active_strokes()
+            for stroke in active
         )
 
-    def _has_inside_strokes(self) -> bool:
+    def _has_inside_strokes(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> bool:
         return any(
-            stroke.position == 'inside' for stroke in self._active_strokes()
+            stroke.position == 'inside'
+            for stroke in self._retained_strokes(nodes)
         )
 
     def _paint_strokes(
@@ -921,9 +1042,12 @@ class TextEffectRenderer:
         self.background_pixmap = None
         self.background_pixmap_scale = None
 
-    def requires_no_item_cache(self) -> bool:
+    def requires_no_item_cache(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> bool:
         """Let the effect raster cache see the actual paint-device scale."""
-        return any(self._effect_flags())
+        return any(self._effect_flags(nodes))
 
     def release_caches(self) -> None:
         """Release every item-owned raster cache before page removal."""
@@ -950,17 +1074,12 @@ class TextEffectRenderer:
     def project_assets_changed(self) -> None:
         """Invalidate project raster output after attachment/file recovery."""
         text_fills = self._active_text_fills()
-        layer = self.canonical_rendered_image_layer()
         if (
             not any(
                 isinstance(text_fill.paint, TexturePaint)
                 for text_fill in text_fills
             )
-            and (
-                layer is None
-                or not layer.enabled
-                or layer.asset is None
-            )
+            and not self._active_image_effects(suppress_editing=False)
         ):
             return
         self._verified_export_assets.clear()
@@ -1034,16 +1153,24 @@ class TextEffectRenderer:
     def _finish_effect_transition(self, repaint: bool) -> None:
         self._apply_effective_opacity()
         self._sync_legacy_primary_stroke_view()
+        image_rasters: Dict[RasterAssetRef, Optional[np.ndarray]] = {}
+        nodes = self._ordered_surface_nodes(
+            image_rasters=image_rasters,
+            strict_assets=self.export_render,
+        )
         was_repainting = self.repainting
         self.repainting = True
         try:
-            self._sync_native_stroke_alignment()
+            self._sync_native_stroke_alignment(nodes)
         finally:
             self.repainting = was_repainting
-        self._update_effect_padding()
-        self.item.refresh_cache_policy()
+        self._update_effect_padding(nodes)
+        self.item.refresh_cache_policy(nodes)
         if repaint and not self.reshaping:
-            self.repaint_background()
+            self.repaint_background(
+                nodes=nodes,
+                image_rasters=image_rasters,
+            )
         self.item.update()
 
     def set_text_effects(
@@ -1371,21 +1498,6 @@ class TextEffectRenderer:
         self.item.update()
         return True
 
-    def set_rendered_image_layer(
-        self, layer: Optional[RenderedImageLayer]
-    ) -> bool:
-        """Replace the committed TextBlock-owned full-RGBA layer."""
-        if layer is not None and not isinstance(layer, RenderedImageLayer):
-            raise TypeError(
-                'live rendered image requires RenderedImageLayer or None'
-            )
-        if self.canonical_rendered_image_layer() == layer:
-            return False
-        self.item.blk.rendered_image = layer
-        self._mark_effect_cache_dirty()
-        self._finish_effect_transition(not self.reshaping)
-        return True
-
     def clear_text_effect_preview(self) -> bool:
         if self.preview is None:
             return False
@@ -1446,12 +1558,13 @@ class TextEffectRenderer:
 
     def paint_item(self, painter: QPainter, option, widget: QWidget, base_paint) -> None:
         """Paint effects around the host item's normal text pass."""
+        if self.reshaping and not self._export_active:
+            option.state = QStyle.State_None
+            base_paint(painter, option, widget)
+            return
         if (
-            (self.reshaping and not self._export_active)
-            or (
-                not any(self._effect_flags())
-                and not self._renders_completed_foreground()
-            )
+            not self.has_active_effects()
+            and self._active_text_alpha_mask() is None
         ):
             option.state = QStyle.State_None
             base_paint(painter, option, widget)
@@ -1462,11 +1575,30 @@ class TextEffectRenderer:
         was_in_graphics_paint = self.in_graphics_paint
         self.in_graphics_paint = True
         try:
+            image_rasters: Dict[
+                RasterAssetRef, Optional[np.ndarray]
+            ] = {}
+            nodes = self._ordered_surface_nodes(
+                image_rasters=image_rasters,
+                strict_assets=self.export_render,
+            )
+            flags = self._effect_flags(nodes)
+            renders_foreground = self._renders_completed_foreground(nodes)
+            if not any(flags) and not renders_foreground:
+                option.state = QStyle.State_None
+                base_paint(painter, option, widget)
+                return
             interaction_option = QStyleOptionGraphicsItem(option)
-            if any(self._effect_flags()):
-                self._draw_effects(painter, option.exposedRect)
+            if any(flags):
+                self._draw_effects(
+                    painter,
+                    option.exposedRect,
+                    nodes=nodes,
+                    image_rasters=image_rasters,
+                    flags=flags,
+                )
             replace_foreground = self._hollow_enabled() or (
-                self._renders_completed_foreground()
+                renders_foreground
                 and (
                     self.export_render
                     or self._completed_foreground_ready()
@@ -1482,15 +1614,25 @@ class TextEffectRenderer:
         finally:
             self.in_graphics_paint = was_in_graphics_paint
 
-    def _renders_completed_foreground(self) -> bool:
+    def _renders_completed_foreground(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> bool:
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
         return (
             self._hollow_enabled()
-            or bool(self._compiled_phase_effects('interior'))
+            or bool(self._retained_phase_effects('interior', retained))
             or self._mask_requires_surface()
-            or self._has_inside_strokes()
+            or self._has_inside_strokes(retained)
             or bool(self._active_text_fills())
-            or self._active_rendered_image_layer() is not None
-            or bool(self._active_filters())
+            or any(
+                isinstance(effect, (ImageEffect, FilterEffect))
+                for _index, effect in retained
+            )
         )
 
     def _completed_foreground_ready(self) -> bool:
@@ -1683,9 +1825,12 @@ class TextEffectRenderer:
         context.selections = selections
         return context
 
-    def _stroke_outset(self) -> float:
+    def _stroke_outset(
+        self,
+        strokes: Optional[Tuple[StrokeEffect, ...]] = None,
+    ) -> float:
         """Return the maximum visible Stroke reach outside glyph alpha."""
-        strokes = self._active_strokes()
+        strokes = self._retained_strokes() if strokes is None else strokes
         if not strokes:
             return 0.0
         font_size = self.layout.max_font_size(to_px=True)
@@ -1700,9 +1845,12 @@ class TextEffectRenderer:
             for stroke in strokes
         )
 
-    def _stroke_generation_reach(self) -> float:
+    def _stroke_generation_reach(
+        self,
+        strokes: Optional[Tuple[StrokeEffect, ...]] = None,
+    ) -> float:
         """Return the halo needed to generate positioned Stroke tiles."""
-        strokes = self._active_strokes()
+        strokes = self._retained_strokes() if strokes is None else strokes
         if not strokes:
             return 0.0
         font_size = self.layout.max_font_size(to_px=True)
@@ -1713,11 +1861,21 @@ class TextEffectRenderer:
             for stroke in strokes
         )
 
-    def _sync_native_stroke_alignment(self) -> None:
+    def _sync_native_stroke_alignment(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> None:
         """Keep fill and stroke on Qt's same native glyph raster path."""
         if self.layout is None:
+            self._native_stroke_alignment = False
             return
-        enabled = bool(self._active_strokes())
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
+        enabled = bool(self._stroke_sources_for_nodes(retained))
+        self._native_stroke_alignment = enabled
         changed = False
         alignment_format = None
         block = self.document().firstBlock()
@@ -2106,37 +2264,72 @@ class TextEffectRenderer:
             return QRectF()
         return self.geometry_controller.layout_ink_bounds()
 
-    def _effect_padding(self) -> float:
-        paint_stroke, _paint_non_stroke = self._effect_flags()
+    def _effect_padding(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> float:
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
         layout_distorted = self._has_layout_distortion()
         if not layout_distorted:
-            return self._conservative_effect_padding()
+            return self._conservative_effect_padding(retained)
         ink_bounds = self._logical_ink_bounds()
-        if ink_bounds.isEmpty():
-            return 0.0
-        stroke_outset = self._stroke_outset()
         logical_rect = self.logical_unpadded_rect()
-        effect_bounds = ink_bounds.adjusted(
-            -stroke_outset if paint_stroke else 0.0,
-            -stroke_outset if paint_stroke else 0.0,
-            stroke_outset if paint_stroke else 0.0,
-            stroke_outset if paint_stroke else 0.0,
+        retained_strokes = self._retained_strokes(retained)
+        painted_stroke_outset = self._stroke_outset(retained_strokes)
+        source_stroke_outset = self._stroke_outset(
+            self._stroke_sources_for_nodes(retained)
         )
-        exterior_source_bounds = QRectF(effect_bounds)
-        exterior = self._compiled_phase_effects('exterior')
-        for effect in exterior:
-            effect_bounds = effect_bounds.united(
-                self._exterior_effect_bounds(exterior_source_bounds, effect)
-            )
-        filter_padding = self._filter_expansion_padding()
-        if filter_padding > 0.0:
-            effect_bounds = effect_bounds.adjusted(
-                -filter_padding,
-                -filter_padding,
-                filter_padding,
-                filter_padding,
-            )
-        if stroke_outset > 0.0 or exterior:
+        painted_stroke_bounds = ink_bounds.adjusted(
+            -painted_stroke_outset,
+            -painted_stroke_outset,
+            painted_stroke_outset,
+            painted_stroke_outset,
+        )
+        exterior_source_bounds = ink_bounds.adjusted(
+            -source_stroke_outset,
+            -source_stroke_outset,
+            source_stroke_outset,
+            source_stroke_outset,
+        )
+        filter_expansion = self._filter_expansion_by_index(retained)
+        effect_bounds = QRectF(ink_bounds)
+        exterior = False
+        for index, effect in retained:
+            if isinstance(effect, ImageEffect):
+                effect_bounds = (
+                    QRectF(logical_rect)
+                    if effect.mode == 'replace'
+                    else effect_bounds.united(logical_rect)
+                )
+            elif isinstance(effect, StrokeEffect):
+                if not ink_bounds.isEmpty():
+                    effect_bounds = effect_bounds.united(
+                        painted_stroke_bounds
+                    )
+            elif (
+                isinstance(effect, (ShadowEffect, GlowEffect))
+                and effect_phase(effect) == 'exterior'
+            ):
+                if not ink_bounds.isEmpty():
+                    exterior = True
+                    effect_bounds = effect_bounds.united(
+                        self._exterior_effect_bounds(
+                            exterior_source_bounds, effect
+                        )
+                    )
+            elif isinstance(effect, FilterEffect):
+                expansion = filter_expansion.get(index, 0.0)
+                if expansion > 0.0 and not effect_bounds.isEmpty():
+                    effect_bounds = effect_bounds.adjusted(
+                        -expansion, -expansion, expansion, expansion
+                    )
+        if effect_bounds.isEmpty():
+            return 0.0
+        if painted_stroke_outset > 0.0 or exterior:
             effect_bounds = effect_bounds.adjusted(
                 -EFFECT_RASTER_GUARD,
                 -EFFECT_RASTER_GUARD,
@@ -2151,13 +2344,21 @@ class TextEffectRenderer:
             effect_bounds.bottom() - logical_rect.bottom(),
         )
 
-    def _conservative_effect_padding(self) -> float:
+    def _conservative_effect_padding(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> float:
         """Return cheap symmetric padding for non-distorting glyph paths."""
         if self.layout is None:
             return 0.0
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
         max_font_size = max(0.0, self.layout.max_font_size(to_px=True))
         stroke_outset = 0.0
-        active_strokes = self._active_strokes()
+        active_strokes = self._stroke_sources_for_nodes(retained)
         if active_strokes:
             stroke_outset = max(
                 max_font_size
@@ -2171,7 +2372,7 @@ class TextEffectRenderer:
             )
         padding = stroke_outset
         exterior_padding = None
-        for effect in self._compiled_phase_effects('exterior'):
+        for effect in self._retained_phase_effects('exterior', retained):
             if isinstance(effect, ShadowEffect):
                 blur, spread, xoffset, yoffset = self._shadow_metrics(effect)
                 effect_padding = (
@@ -2195,21 +2396,38 @@ class TextEffectRenderer:
             padding = max(
                 padding, exterior_padding + EFFECT_RASTER_GUARD
             )
-        return padding + self._filter_expansion_padding()
+        return padding + self._filter_expansion_padding(retained)
 
-    def _filter_expansion_padding(self) -> float:
+    def _filter_expansion_padding(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> float:
         """Return conservative logical padding for declared alpha growers."""
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
+        return sum(self._filter_expansion_by_index(retained).values())
+
+    def _filter_expansion_by_index(
+        self,
+        nodes: Tuple[Tuple[int, TextEffect], ...],
+    ) -> Dict[int, float]:
+        """Return each retained alpha grower's worst logical halo."""
+        included_filters = self._retained_filter_indices(nodes)
+        expansion: Dict[int, float] = {}
         # Interactive effect previews render at 0.5x. Account for physical
         # halo rounding there as well as in settled 1x+ rendering.
-        return max(
-            sum(
-                halo / scale
-                for _index, _effect, runtime, halo
-                in self._filter_execution_plan(scale)
-                if getattr(runtime.spec, 'expands_alpha', False)
-            )
-            for scale in (0.5, 1.0)
-        )
+        for scale in (0.5, 1.0):
+            for index, _effect, runtime, halo in self._filter_execution_plan(
+                scale, included_filters=included_filters
+            ):
+                if getattr(runtime.spec, 'expands_alpha', False):
+                    expansion[index] = max(
+                        expansion.get(index, 0.0), halo / scale
+                    )
+        return expansion
 
     def _commit_effect_padding(
         self,
@@ -2221,12 +2439,15 @@ class TextEffectRenderer:
             else False
         )
 
-    def _update_effect_padding(self):
+    def _update_effect_padding(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ):
         if self.refreshing_effect_padding or self.layout is None:
             return False
         self.refreshing_effect_padding = True
         try:
-            padding = self._effect_padding()
+            padding = self._effect_padding(nodes)
             # QTextLayout stores coordinates at 26.6 fixed-point precision.
             # Round outward so relayout and undo cycles converge.
             if padding > 0.0:
@@ -2236,20 +2457,38 @@ class TextEffectRenderer:
         finally:
             self.refreshing_effect_padding = False
 
-    def _effect_flags(self) -> Tuple[bool, bool]:
+    def _effect_flags(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> Tuple[bool, bool]:
         """Return active Stroke and generated completed-surface flags."""
-        strokes = self._active_strokes()
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
+        strokes = self._retained_strokes(retained)
+        exterior = self._retained_phase_effects('exterior', retained)
+        interior = self._retained_phase_effects('interior', retained)
+        images = any(
+            isinstance(effect, ImageEffect)
+            for _index, effect in retained
+        )
+        filters = any(
+            isinstance(effect, FilterEffect)
+            for _index, effect in retained
+        )
         return (
             bool(strokes),
-            bool(self._compiled_phase_effects('exterior'))
-            or bool(self._compiled_phase_effects('interior'))
+            bool(exterior)
+            or bool(interior)
             or self._mask_requires_surface()
             or (
                 not self._hollow_enabled()
                 and bool(self._active_text_fills())
             )
-            or self._active_rendered_image_layer() is not None
-            or bool(self._active_filters())
+            or images
+            or filters
             or any(
                 stroke.position != 'center'
                 or stroke.blend_mode != 'normal'
@@ -2258,12 +2497,22 @@ class TextEffectRenderer:
             ),
         )
 
-    def _effect_tile_overlap(self) -> float:
-        stroke_reach = self._stroke_generation_reach()
+    def _effect_tile_overlap(
+        self,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+    ) -> float:
+        retained = (
+            self._ordered_surface_nodes(strict_assets=False)
+            if nodes is None
+            else nodes
+        )
+        stroke_reach = self._stroke_generation_reach(
+            self._stroke_sources_for_nodes(retained)
+        )
         overlap = stroke_reach + EFFECT_RASTER_GUARD
         for effect in (
-            self._compiled_phase_effects('exterior')
-            + self._compiled_phase_effects('interior')
+            self._retained_phase_effects('exterior', retained)
+            + self._retained_phase_effects('interior', retained)
         ):
             if isinstance(effect, ShadowEffect):
                 blur, spread, xoffset, yoffset = self._shadow_metrics(effect)
@@ -2376,11 +2625,15 @@ class TextEffectRenderer:
         self,
         render_scale: float,
         skipped_filters: frozenset[int] = frozenset(),
+        included_filters: Optional[frozenset[int]] = None,
     ) -> _FilterExecutionPlan:
         """Resolve active filters bottom-to-top and validate bounded halos."""
         resolved = []
         for index, effect in reversed(self._active_filters()):
-            if index in skipped_filters:
+            if index in skipped_filters or (
+                included_filters is not None
+                and index not in included_filters
+            ):
                 continue
             try:
                 runtime = get_filter_registry().resolve(effect)
@@ -2504,6 +2757,10 @@ class TextEffectRenderer:
         target_stroke: bool = True,
         skipped_filters: frozenset[int] = frozenset(),
         filter_plan: Optional[_FilterExecutionPlan] = None,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
     ) -> QPixmap:
         """Render or reuse the ordered stack, then apply the final block mask.
 
@@ -2522,6 +2779,8 @@ class TextEffectRenderer:
                 target_stroke=target_stroke,
                 skipped_filters=skipped_filters,
                 filter_plan=filter_plan,
+                nodes=nodes,
+                image_rasters=image_rasters,
             )
             state.pre_mask_cache[pre_mask_key] = target_map
             while len(state.pre_mask_cache) > 2:
@@ -2577,13 +2836,22 @@ class TextEffectRenderer:
         target_stroke: bool = True,
         skipped_filters: frozenset[int] = frozenset(),
         filter_plan: Optional[_FilterExecutionPlan] = None,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
     ) -> QPixmap:
         """Compose ordered generated-layer batches and Filter chains.
 
         >>> hasattr(TextEffectRenderer, '_render_pre_mask_effect_surface')
         True
         """
-        nodes = self._ordered_surface_nodes(target_stroke=target_stroke)
+        image_rasters = {} if image_rasters is None else image_rasters
+        if nodes is None:
+            nodes = self._ordered_surface_nodes(
+                target_stroke=target_stroke,
+                image_rasters=image_rasters,
+            )
         first_filter = next(
             (
                 position
@@ -2594,11 +2862,15 @@ class TextEffectRenderer:
         )
         if first_filter is None:
             return self._render_pre_filter_effect_surface(
-                surface_rect, render_scale, target_stroke=target_stroke
+                surface_rect,
+                render_scale,
+                target_stroke=target_stroke,
+                nodes=nodes,
+                image_rasters=image_rasters,
             )
         state = self._raster_state()
         key = self._pre_filter_cache_key(
-            surface_rect, render_scale, target_stroke
+            surface_rect, render_scale, target_stroke, nodes
         )
         upstream = state.pre_filter_cache.get(key)
         if upstream is None:
@@ -2606,6 +2878,8 @@ class TextEffectRenderer:
                 surface_rect,
                 render_scale,
                 target_stroke=target_stroke,
+                nodes=nodes,
+                image_rasters=image_rasters,
             )
             state.pre_filter_cache[key] = upstream
             while len(state.pre_filter_cache) > 2:
@@ -2617,6 +2891,7 @@ class TextEffectRenderer:
             render_scale,
             skipped_filters=skipped_filters,
             filter_plan=filter_plan,
+            image_rasters=image_rasters,
         )
 
     def _render_pre_filter_effect_surface(
@@ -2625,13 +2900,22 @@ class TextEffectRenderer:
         render_scale: float,
         *,
         target_stroke: bool = True,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
     ) -> QPixmap:
         """Render the fixed base and layers below the bottom active Filter.
 
         >>> hasattr(TextEffectRenderer, '_render_pre_filter_effect_surface')
         True
         """
-        nodes = self._ordered_surface_nodes(target_stroke=target_stroke)
+        if nodes is None:
+            image_rasters = {} if image_rasters is None else image_rasters
+            nodes = self._ordered_surface_nodes(
+                target_stroke=target_stroke,
+                image_rasters=image_rasters,
+            )
         first_filter = next(
             (
                 position
@@ -2640,42 +2924,41 @@ class TextEffectRenderer:
             ),
             len(nodes),
         )
-        target = self._render_effect_base(surface_rect, render_scale)
+        starts_with_replace = bool(
+            nodes
+            and isinstance(nodes[0][1], ImageEffect)
+            and nodes[0][1].mode == 'replace'
+        )
+        target = self._render_effect_base(
+            surface_rect,
+            render_scale,
+            include_canonical=not starts_with_replace,
+        )
         return self._composite_generated_layer_batch(
             target,
             nodes[:first_filter],
             surface_rect,
             render_scale,
             _source_is_fresh_base=True,
+            image_rasters=image_rasters,
         )
 
     def _render_effect_base(
         self,
         surface_rect: QRectF,
         render_scale: float,
+        *,
+        include_canonical: bool = True,
     ) -> QPixmap:
-        """Render canonical Text Fill and the fixed block-owned image base.
+        """Render the structural canonical Text Fill base.
 
         >>> hasattr(TextEffectRenderer, '_render_effect_base')
         True
         """
         target = self._new_effect_pixmap(render_scale, surface_rect)
         hollow = self._hollow_enabled()
-        rendered_image = self._active_rendered_image_layer()
-        rendered_raster = (
-            None
-            if rendered_image is None
-            else self._project_raster(
-                rendered_image.asset, 'Image layer'
-            )
-        )
-        replace_surface = bool(
-            rendered_image is not None
-            and rendered_raster is not None
-            and rendered_image.mode == 'replace'
-        )
         canonical = None
-        if not hollow and not replace_surface:
+        if include_canonical and not hollow:
             canonical, _canonical_alpha = self._cached_effect_source(
                 surface_rect, render_scale, needs_alpha=False
             )
@@ -2704,14 +2987,6 @@ class TextEffectRenderer:
                     painter,
                     surface_rect,
                     canonical if text_fill_group is None else text_fill_group,
-                    render_scale,
-                )
-            if rendered_image is not None and rendered_raster is not None:
-                self._paint_rendered_image(
-                    painter,
-                    rendered_image,
-                    rendered_raster,
-                    surface_rect,
                     render_scale,
                 )
             if self.surface_raster_error is not None:
@@ -2745,14 +3020,24 @@ class TextEffectRenderer:
         *,
         skipped_filters: frozenset[int],
         filter_plan: Optional[_FilterExecutionPlan],
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
     ) -> QPixmap:
         """Alternate the minimum contiguous generated and Filter segments.
 
         >>> hasattr(TextEffectRenderer, '_compose_ordered_surface_nodes')
         True
         """
+        included_filters = frozenset(
+            index
+            for index, effect in nodes
+            if isinstance(effect, FilterEffect)
+        )
         plan = (
-            self._filter_execution_plan(render_scale, skipped_filters)
+            self._filter_execution_plan(
+                render_scale, skipped_filters, included_filters
+            )
             if filter_plan is None
             else filter_plan
         )
@@ -2783,7 +3068,11 @@ class TextEffectRenderer:
                 )
             else:
                 target = self._composite_generated_layer_batch(
-                    target, segment, surface_rect, render_scale
+                    target,
+                    segment,
+                    surface_rect,
+                    render_scale,
+                    image_rasters=image_rasters,
                 )
             position = end
         return target
@@ -2796,6 +3085,9 @@ class TextEffectRenderer:
         render_scale: float,
         *,
         _source_is_fresh_base: bool = False,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
     ) -> QPixmap:
         """Source-over one contiguous canonical generated-layer batch.
 
@@ -2804,19 +3096,24 @@ class TextEffectRenderer:
         """
         if not nodes:
             return source
-        needs_canonical_alpha = any(
-            isinstance(effect, (ShadowEffect, GlowEffect))
-            or isinstance(effect, StrokeEffect)
-            for _index, effect in nodes
+        generated_nodes = tuple(
+            (index, effect)
+            for index, effect in nodes
+            if isinstance(effect, (StrokeEffect, ShadowEffect, GlowEffect))
         )
-        canonical, canonical_alpha = self._cached_effect_source(
-            surface_rect,
-            render_scale,
-            needs_alpha=needs_canonical_alpha,
-        )
+        needs_canonical_alpha = bool(generated_nodes)
+        if generated_nodes:
+            canonical, canonical_alpha = self._cached_effect_source(
+                surface_rect,
+                render_scale,
+                needs_alpha=needs_canonical_alpha,
+            )
+        else:
+            canonical = None
+            canonical_alpha = None
         positioned_stroke_bands: Dict[StrokeEffect, QPixmap] = {}
         exterior_alpha = canonical_alpha
-        if any(
+        if canonical is not None and any(
             isinstance(effect, (ShadowEffect, GlowEffect))
             and effect_phase(effect) == 'exterior'
             for _index, effect in nodes
@@ -2844,7 +3141,19 @@ class TextEffectRenderer:
                 target, surface_rect, render_scale
             )
             for _index, effect in nodes:
+                if isinstance(effect, ImageEffect):
+                    rgba = self._image_raster(effect, image_rasters)
+                    if rgba is not None:
+                        self._paint_image_effect(
+                            painter,
+                            effect,
+                            rgba,
+                            surface_rect,
+                            render_scale,
+                        )
+                    continue
                 if isinstance(effect, StrokeEffect):
+                    assert canonical is not None
                     layer = self._stroke_layer_pixmap(
                         effect,
                         surface_rect,
@@ -2853,6 +3162,7 @@ class TextEffectRenderer:
                         positioned_stroke_bands,
                     )
                 else:
+                    assert canonical is not None
                     source_alpha = (
                         exterior_alpha
                         if effect_phase(effect) == 'exterior'
@@ -3273,19 +3583,30 @@ class TextEffectRenderer:
         return cached
 
     def _project_raster(
-        self, asset: RasterAssetRef, label: str
+        self,
+        asset: RasterAssetRef,
+        label: str,
+        *,
+        strict_export: bool = True,
     ) -> Optional[np.ndarray]:
         """Read one project-cached raster, verifying once per strict export."""
         scene = self.item.scene()
         project = None if scene is None else getattr(scene, 'imgtrans_proj', None)
         if project is None:
-            if self.export_render:
-                raise EffectRasterAllocationError(
-                    f'strict export cannot resolve the {label}'
-                )
+            if self.export_render and strict_export:
+                if self._raise_or_defer_export_effect_error(
+                    EffectRasterAllocationError(
+                        f'strict export cannot resolve the {label}'
+                    )
+                ):
+                    return None
             return None
         key = (getattr(project, 'load_identity', None), asset)
-        strict = self.export_render and key not in self._verified_export_assets
+        strict = (
+            self.export_render
+            and strict_export
+            and key not in self._verified_export_assets
+        )
         try:
             image = project.load_raster_asset(
                 asset, strict=strict, premultiplied=True
@@ -3297,29 +3618,53 @@ class TextEffectRenderer:
                 or image.shape[2] != 4
             ):
                 raise ValueError('project raster cache did not return RGBA8')
-            if image is None and self.export_render:
-                raise EffectRasterAllocationError(
-                    f'unable to decode Raster asset: {asset.path}'
-                )
-        except (OSError, TypeError, ValueError) as error:
-            if self.export_render:
-                raise EffectRasterAllocationError(str(error)) from error
+            if image is None and self.export_render and strict_export:
+                if self._raise_or_defer_export_effect_error(
+                    EffectRasterAllocationError(
+                        f'unable to decode Raster asset: {asset.path}'
+                    )
+                ):
+                    return None
+        except (OSError,) + RASTER_BOUNDARY_FAILURES as error:
+            if self.export_render and strict_export:
+                if self._raise_or_defer_export_effect_error(error):
+                    return None
             LOGGER.warning('Unable to load %s: %s', label, error)
             image = None
         if strict and image is not None:
             self._verified_export_assets.add(key)
         return image
 
-    def _paint_rendered_image(
+    def _image_raster(
+        self,
+        effect: ImageEffect,
+        resolved: Optional[Dict[RasterAssetRef, Optional[np.ndarray]]],
+        *,
+        strict_export: bool = True,
+    ) -> Optional[np.ndarray]:
+        """Resolve an Image at most once within one surface composite."""
+        assert effect.asset is not None
+        if resolved is not None and effect.asset in resolved:
+            return resolved[effect.asset]
+        rgba = self._project_raster(
+            effect.asset,
+            'Image effect',
+            strict_export=strict_export,
+        )
+        if resolved is not None:
+            resolved[effect.asset] = rgba
+        return rgba
+
+    def _paint_image_effect(
         self,
         painter: QPainter,
-        layer: RenderedImageLayer,
+        effect: ImageEffect,
         rgba: np.ndarray,
         surface_rect: QRectF,
         render_scale: float,
     ) -> None:
         """Map one RGBA8 asset with tile-stable bilinear coordinates."""
-        assert layer.asset is not None
+        assert effect.asset is not None
         logical_rect = self.logical_unpadded_rect()
         surface_width = max(
             1, math.ceil(surface_rect.width() * render_scale)
@@ -3352,7 +3697,7 @@ class TextEffectRenderer:
         mapped = np.empty((height, width, 4), dtype=np.uint8)
         mapped[..., 3] = 255
         colorize_texture_paint_rgba(
-            TexturePaint(layer.asset),
+            TexturePaint(effect.asset),
             mapped,
             rgba,
             mapped_rect,
@@ -3376,9 +3721,15 @@ class TextEffectRenderer:
         painter.save()
         try:
             painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_Source
-                if layer.mode == 'replace'
-                else QPainter.CompositionMode.CompositionMode_SourceOver
+                {
+                    'replace': QPainter.CompositionMode.CompositionMode_Source,
+                    'foreground': (
+                        QPainter.CompositionMode.CompositionMode_SourceOver
+                    ),
+                    'background': (
+                        QPainter.CompositionMode.CompositionMode_DestinationOver
+                    ),
+                }[effect.mode]
             )
             painter.setClipRect(logical_rect)
             if render_scale < 1.0:
@@ -3698,9 +4049,15 @@ class TextEffectRenderer:
             )
         raise TypeError('generated effect must be Shadow or Glow')
 
-    def repaint_background(self, render_scale: float = 1.0) -> None:
-        self.item.refresh_cache_policy()
-        empty = self.document().isEmpty()
+    def repaint_background(
+        self,
+        render_scale: float = 1.0,
+        *,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
+    ) -> None:
         if (
             self.repainting
             or (self.reshaping and not self._export_active)
@@ -3710,20 +4067,37 @@ class TextEffectRenderer:
             # cache because PaintContext cannot exclude active preedit glyphs.
             return
 
+        planned_here = nodes is None
+        if image_rasters is None:
+            image_rasters = {}
+        retained = (
+            self._ordered_surface_nodes(
+                image_rasters=image_rasters,
+                strict_assets=self.export_render,
+            )
+            if planned_here
+            else nodes
+        )
+        if planned_here:
+            self.item.refresh_cache_policy(retained)
+        empty = self.document().isEmpty()
+
         self.repainting = True
         try:
-            self._sync_native_stroke_alignment()
+            self._sync_native_stroke_alignment(retained)
         finally:
             self.repainting = False
-        self._update_effect_padding()
+        self._update_effect_padding(retained)
 
-        paint_stroke, paint_non_stroke = self._effect_flags()
+        paint_stroke, paint_non_stroke = self._effect_flags(retained)
         if (
             not paint_non_stroke and not paint_stroke
             or (
                 empty
-                and self._active_rendered_image_layer() is None
-                and not self._active_filters()
+                and not any(
+                    isinstance(effect, (ImageEffect, FilterEffect))
+                    for _index, effect in retained
+                )
             )
         ):
             changed = self.background_pixmap is not None
@@ -3753,15 +4127,23 @@ class TextEffectRenderer:
                 # Visible tiles are intentionally deferred until QPainter's
                 # exposed/clip rectangle is available.
                 return
+            render_kwargs = {
+                'nodes': retained,
+                'image_rasters': image_rasters,
+            }
             try:
-                target_map = self._render_effect_surface(br, plan.tier)
+                target_map = self._render_effect_surface(
+                    br, plan.tier, **render_kwargs
+                )
             except EFFECT_RASTER_FAILURES as error:
                 # A higher tier may fail despite satisfying the deterministic
                 # caps. Retry the smallest full tier before degrading.
                 retry = plan_effect_raster(br.width(), br.height(), 1.0)
                 if plan.tier > 1.0 and retry.mode == 'full':
                     try:
-                        target_map = self._render_effect_surface(br, 1.0)
+                        target_map = self._render_effect_surface(
+                            br, 1.0, **render_kwargs
+                        )
                         plan = retry
                     except EFFECT_RASTER_FAILURES as retry_error:
                         error = retry_error
@@ -3782,7 +4164,9 @@ class TextEffectRenderer:
                         return
                     self.direct_stroke = (
                         paint_stroke
-                        and self._all_strokes_vector_compatible()
+                        and self._all_strokes_vector_compatible(
+                            self._retained_strokes(retained)
+                        )
                     )
                     self._warn_effect_allocation_once(error)
                     return
@@ -3839,20 +4223,34 @@ class TextEffectRenderer:
         painter: QPainter,
         plan: EffectRasterPlan,
         exposed_rect: QRectF = None,
+        *,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
     ) -> None:
         br = self.boundingRect()
         visible = self._visible_effect_rect(painter, exposed_rect)
         if visible.isEmpty():
             return
 
-        paint_stroke, paint_non_stroke = self._effect_flags()
+        if image_rasters is None:
+            image_rasters = {}
+        if nodes is None:
+            nodes = self._ordered_surface_nodes(
+                image_rasters=image_rasters,
+                strict_assets=self.export_render,
+            )
+        retained_strokes = self._retained_strokes(nodes)
+        paint_stroke, paint_non_stroke = self._effect_flags(nodes)
         stroke_overlap = (
-            self._stroke_generation_reach() + EFFECT_RASTER_GUARD
+            self._stroke_generation_reach(retained_strokes)
+            + EFFECT_RASTER_GUARD
         )
         vector_stroke_direct = (
             paint_stroke
             and not paint_non_stroke
-            and self._all_strokes_vector_compatible()
+            and self._all_strokes_vector_compatible(retained_strokes)
             # The vector fallback cannot apply the block-wide alpha mask.
             and self._active_text_alpha_mask() is None
             and 2 * math.ceil(stroke_overlap * plan.tier)
@@ -3861,7 +4259,7 @@ class TextEffectRenderer:
         target_overlap = (
             EFFECT_RASTER_GUARD
             if vector_stroke_direct
-            else self._effect_tile_overlap()
+            else self._effect_tile_overlap(nodes)
         )
         if vector_stroke_direct:
             self.tile_cache.clear()
@@ -3873,10 +4271,13 @@ class TextEffectRenderer:
             )
             self.force_tiles = False
             return
-        filter_plan = self._filter_execution_plan(plan.tier)
-        skipped_filters = {
-            index for index, _effect in self._active_filters()
-        } - {index for index, _effect, _runtime, _halo in filter_plan}
+        included_filters = self._retained_filter_indices(nodes)
+        filter_plan = self._filter_execution_plan(
+            plan.tier, included_filters=included_filters
+        )
+        skipped_filters = set(included_filters) - {
+            index for index, _effect, _runtime, _halo in filter_plan
+        }
         overlap_px = math.ceil(target_overlap * plan.tier)
         allocated_filter_plan = []
         for entry in filter_plan:
@@ -3906,7 +4307,8 @@ class TextEffectRenderer:
                 return
             self._warn_effect_allocation_once(error)
             self.direct_stroke = (
-                paint_stroke and self._all_strokes_vector_compatible()
+                paint_stroke
+                and self._all_strokes_vector_compatible(retained_strokes)
             )
             return
         core_edge = core_edge_px / plan.tier
@@ -4011,6 +4413,8 @@ class TextEffectRenderer:
                             target_stroke=not vector_stroke_direct,
                             skipped_filters=skipped_filters,
                             filter_plan=filter_plan,
+                            nodes=nodes,
+                            image_rasters=image_rasters,
                         )
                         cached = (QRectF(surface), pixmap)
                         self.tile_cache[key] = cached
@@ -4058,7 +4462,8 @@ class TextEffectRenderer:
         if raster_failure is not None:
             self.tile_cache.clear()
             self.direct_stroke = (
-                paint_stroke and self._all_strokes_vector_compatible()
+                paint_stroke
+                and self._all_strokes_vector_compatible(retained_strokes)
             )
             self.cache_dirty = True
             self.cache_rendered_generation = -1
@@ -4105,11 +4510,31 @@ class TextEffectRenderer:
             self._outline_only_stroke = previous
 
     def _draw_effects(
-        self, painter: QPainter, exposed_rect: QRectF = None
+        self,
+        painter: QPainter,
+        exposed_rect: QRectF = None,
+        *,
+        nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
+        image_rasters: Optional[
+            Dict[RasterAssetRef, Optional[np.ndarray]]
+        ] = None,
+        flags: Optional[Tuple[bool, bool]] = None,
     ) -> None:
         painter.save()
         try:
-            paint_stroke, paint_non_stroke = self._effect_flags()
+            if image_rasters is None:
+                image_rasters = {}
+            retained = (
+                self._ordered_surface_nodes(
+                    image_rasters=image_rasters,
+                    strict_assets=self.export_render,
+                )
+                if nodes is None
+                else nodes
+            )
+            paint_stroke, paint_non_stroke = (
+                self._effect_flags(retained) if flags is None else flags
+            )
             if not paint_stroke and not paint_non_stroke:
                 return
             # A preview can park committed pixels while content or another
@@ -4142,14 +4567,22 @@ class TextEffectRenderer:
                         or stale
                     )
                 ):
-                    self.repaint_background(requested_scale)
+                    self.repaint_background(
+                        requested_scale,
+                        nodes=retained,
+                        image_rasters=image_rasters,
+                    )
                 if self.force_tiles:
                     tile_plan = EffectRasterPlan(
                         'tiles', min(1.0, plan.tier), 0, 0,
                         EFFECT_TILE_MAX_EDGE,
                     )
                     self._draw_tiled_effects(
-                        painter, tile_plan, exposed_rect
+                        painter,
+                        tile_plan,
+                        exposed_rect,
+                        nodes=retained,
+                        image_rasters=image_rasters,
                     )
                     if self.direct_stroke:
                         self._draw_direct_stroke(painter)
@@ -4173,7 +4606,13 @@ class TextEffectRenderer:
                 # over a new huge local surface.
                 self.background_pixmap = None
                 self.background_pixmap_scale = None
-                self._draw_tiled_effects(painter, plan, exposed_rect)
+                self._draw_tiled_effects(
+                    painter,
+                    plan,
+                    exposed_rect,
+                    nodes=retained,
+                    image_rasters=image_rasters,
+                )
                 if self.direct_stroke:
                     self._draw_direct_stroke(painter)
         finally:

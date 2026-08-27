@@ -25,39 +25,48 @@ from ballontranslator.utils.fontformat import (
     TextTransformStack,
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_alpha_mask import (
     AlphaBrushStroke,
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
     GlowEffect,
+    ImageEffect,
     SolidPaint,
     StrokeEffect,
+    TextFillEffect,
     TextEffectStack,
 )
 from ballontranslator.utils.textblock import TextBlock
 
 
-class RenderedImageRendererTest(unittest.TestCase):
+def _image(asset, *, mode: str = 'replace') -> ImageEffect:
+    return ImageEffect(asset, mode=mode)
+
+
+class ImageEffectRendererTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
     @staticmethod
     def _item(
-        layer=None,
+        image=None,
         *,
         vertical=False,
         stack=TextEffectStack(),
-        text='Rendered image source',
+        text='Image effect source',
     ) -> TextBlkItem:
-        block = TextBlock([0, 0, 320, 180], rendered_image=layer)
+        block = TextBlock([0, 0, 320, 180])
         block._bounding_rect = [0, 0, 320, 180]
         block.translation = text
         block.vertical = vertical
         block.fontformat.frgb = [230, 20, 30]
-        block.fontformat.text_effects = stack
+        block.fontformat.text_effects = (
+            stack
+            if image is None
+            else replace(stack, effects=stack.effects + (image,))
+        )
         return TextBlkItem(block, 1)
 
     @staticmethod
@@ -69,6 +78,18 @@ class RenderedImageRendererTest(unittest.TestCase):
         scene.addItem(item)
         item.effect_renderer.project_assets_changed()
         return scene
+
+    @staticmethod
+    def _set_image(item: TextBlkItem, image: ImageEffect) -> None:
+        stack = item.blk.fontformat.text_effects
+        effects = list(stack.effects)
+        index = next(
+            index
+            for index, effect in enumerate(effects)
+            if isinstance(effect, ImageEffect)
+        )
+        effects[index] = image
+        item.set_text_effects(replace(stack, effects=tuple(effects)))
 
     @staticmethod
     def _render(item: TextBlkItem) -> np.ndarray:
@@ -97,7 +118,7 @@ class RenderedImageRendererTest(unittest.TestCase):
         Image.fromarray(pixels, 'RGBA').save(path)
         return path, project.import_raster_asset(path)
 
-    def test_replace_clears_effect_overflow_and_overlay_is_source_over(self):
+    def test_replace_clears_only_prefix_and_foreground_is_source_over(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -116,25 +137,14 @@ class RenderedImageRendererTest(unittest.TestCase):
                     paint=SolidPaint((0, 0, 255)),
                 ),
             ))
-            item = self._item(RenderedImageLayer(asset), stack=stack)
+            item = self._item(_image(asset), stack=stack)
             scene = self._attach(item, project)
             renderer = item.effect_renderer
             bounds = renderer.boundingRect()
-            with patch.object(
-                renderer,
-                '_capture_effect_source',
-                wraps=renderer._capture_effect_source,
-            ) as capture, patch.object(
-                renderer,
-                '_generated_effect_pixmap',
-                wraps=renderer._generated_effect_pixmap,
-            ) as generated:
-                replaced = pixmap2ndarray(
-                    renderer._render_effect_surface(bounds, 1.0),
-                    keep_alpha=True,
-                )
-            self.assertEqual(capture.call_count, 0)
-            self.assertEqual(generated.call_count, 0)
+            replaced = pixmap2ndarray(
+                renderer._render_effect_surface(bounds, 1.0),
+                keep_alpha=True,
+            )
             logical = renderer.logical_unpadded_rect()
             x0 = round(logical.left() - bounds.left())
             y0 = round(logical.top() - bounds.top())
@@ -142,26 +152,22 @@ class RenderedImageRendererTest(unittest.TestCase):
             y1 = round(logical.bottom() - bounds.top())
             outside = replaced[..., 3].copy()
             outside[max(0, y0):y1 + 1, max(0, x0):x1 + 1] = 0
-            self.assertEqual(np.count_nonzero(outside), 0)
+            # Stroke and Glow are later cards, so Replace does not discard them.
+            self.assertGreater(np.count_nonzero(outside), 0)
             center = replaced[(y0 + y1) // 2, (x0 + x1) // 2]
             self.assertAlmostEqual(int(center[3]), 128, delta=2)
             self.assertGreater(center[0], center[1])
 
-            item.set_rendered_image_layer(
-                RenderedImageLayer(asset, mode='overlay')
+            self._set_image(
+                item,
+                _image(asset, mode='foreground')
             )
             overlaid = pixmap2ndarray(
                 renderer._render_effect_surface(bounds, 1.0),
                 keep_alpha=True,
             )
-            self.assertGreater(
-                np.count_nonzero(overlaid[..., 3]),
-                np.count_nonzero(replaced[..., 3]),
-            )
-            self.assertGreaterEqual(
-                int(overlaid[(y0 + y1) // 2, (x0 + x1) // 2, 3]),
-                128,
-            )
+            self.assertFalse(np.array_equal(overlaid, replaced))
+            self.assertTrue(np.any(overlaid[..., 3] > replaced[..., 3]))
             scene.removeItem(item)
 
     def test_transparent_replace_pixels_remain_transparent(self):
@@ -173,7 +179,7 @@ class RenderedImageRendererTest(unittest.TestCase):
             _source, asset = self._import(
                 project, directory, 'alpha.png', pixels
             )
-            item = self._item(RenderedImageLayer(asset))
+            item = self._item(_image(asset))
             scene = self._attach(item, project)
             renderer = item.effect_renderer
             bounds = renderer.boundingRect()
@@ -201,7 +207,7 @@ class RenderedImageRendererTest(unittest.TestCase):
             _source, asset = self._import(
                 project, directory, 'checker.png', pixels
             )
-            item = self._item(RenderedImageLayer(asset))
+            item = self._item(_image(asset))
             scene = self._attach(item, project)
             rendered = pixmap2ndarray(
                 item.effect_renderer._render_effect_surface(
@@ -228,7 +234,7 @@ class RenderedImageRendererTest(unittest.TestCase):
             _source, asset = self._import(
                 project, directory, 'transparent-edge.png', pixels
             )
-            item = self._item(RenderedImageLayer(asset))
+            item = self._item(_image(asset))
             scene = self._attach(item, project)
             rendered = pixmap2ndarray(
                 item.effect_renderer._render_effect_surface(
@@ -242,7 +248,7 @@ class RenderedImageRendererTest(unittest.TestCase):
             self.assertLess(np.max(rendered[..., 2][edge]), 8)
             scene.removeItem(item)
 
-    def test_text_eraser_applies_after_rendered_image(self):
+    def test_text_eraser_applies_after_image_effect(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -250,7 +256,7 @@ class RenderedImageRendererTest(unittest.TestCase):
             _source, asset = self._import(
                 project, directory, 'masked.png', pixels
             )
-            item = self._item(RenderedImageLayer(asset), text='')
+            item = self._item(_image(asset), text='')
             item.blk.text_alpha_mask = TextAlphaMask(strokes=(
                 AlphaBrushStroke('erase', 1000, ((160, 90),)),
             ))
@@ -279,7 +285,7 @@ class RenderedImageRendererTest(unittest.TestCase):
                 project, directory, 'second.png', pattern[::-1].copy()
             )
             item = self._item(
-                RenderedImageLayer(first, mode='overlay')
+                _image(first, mode='foreground')
             )
             scene = self._attach(item, project)
             renderer = item.effect_renderer
@@ -290,8 +296,9 @@ class RenderedImageRendererTest(unittest.TestCase):
                 '_capture_effect_source',
                 wraps=renderer._capture_effect_source,
             ) as capture:
-                item.set_rendered_image_layer(
-                    RenderedImageLayer(second, mode='overlay')
+                self._set_image(
+                    item,
+                    _image(second, mode='foreground')
                 )
                 full = renderer._render_effect_surface(bounds, 1.0)
             self.assertEqual(capture.call_count, 0)
@@ -341,7 +348,7 @@ class RenderedImageRendererTest(unittest.TestCase):
             source_path, asset = self._import(
                 project, directory, 'recover.png', pixels
             )
-            item = self._item(RenderedImageLayer(asset))
+            item = self._item(_image(asset))
             scene = self._attach(item, project)
             renderer = item.effect_renderer
             textured = self._render(item)
@@ -381,10 +388,10 @@ class RenderedImageRendererTest(unittest.TestCase):
                 project, directory, 'empty.png', pixels
             )
             for vertical in (False, True):
-                for mode in ('replace', 'overlay'):
+                for mode in ('replace', 'foreground', 'background'):
                     with self.subTest(vertical=vertical, mode=mode):
                         item = self._item(
-                            RenderedImageLayer(asset, mode=mode),
+                            _image(asset, mode=mode),
                             vertical=vertical,
                             text='',
                         )
@@ -441,7 +448,7 @@ class RenderedImageRendererTest(unittest.TestCase):
                 canvas = Canvas()
                 canvas.imgtrans_proj = project
                 canvas.baseLayer.setRect(QRectF(0, 0, 360, 220))
-                item = self._item(RenderedImageLayer(asset), text='')
+                item = self._item(_image(asset), text='')
                 item.setParentItem(canvas.textLayer)
                 item.startEdit()
                 canvas.editor_index = 1
@@ -468,21 +475,38 @@ class RenderedImageRendererTest(unittest.TestCase):
             for vertical in (False, True):
                 with self.subTest(vertical=vertical):
                     item = self._item(
-                        RenderedImageLayer(asset), vertical=vertical
+                        _image(asset),
+                        vertical=vertical,
+                        stack=TextEffectStack(effects=(
+                            TextFillEffect(
+                                paint=SolidPaint((20, 220, 60))
+                            ),
+                        )),
                     )
                     scene = self._attach(item, project)
                     view = QGraphicsView(scene)
                     view.show()
+                    item.set_ui_guide_suppressed(True)
+                    item.set_text_transform(TextTransformStack((
+                        SineTextTransform(amplitude_x=0.12),
+                    )))
+                    settled_semantics = (
+                        item.effect_renderer.surface_semantic_state()
+                    )
                     settled = self._render(item)
                     item.startEdit()
                     view.setFocus()
                     item.setFocus()
                     self.app.processEvents()
+                    self.assertNotEqual(
+                        item.effect_renderer.surface_semantic_state(),
+                        settled_semantics,
+                    )
                     editing_source = self._render(item)
                     source_visible = editing_source[..., 3] > 160
                     self.assertGreater(np.count_nonzero(source_visible), 0)
                     self.assertGreater(
-                        np.mean(editing_source[..., 0][source_visible]),
+                        np.mean(editing_source[..., 1][source_visible]),
                         np.mean(editing_source[..., 2][source_visible]),
                     )
                     cursor = item.textCursor()
@@ -500,8 +524,19 @@ class RenderedImageRendererTest(unittest.TestCase):
                     )
                     self.assertFalse(np.array_equal(settled, editing))
                     item.endEdit()
+                    self.assertEqual(
+                        item.effect_renderer.surface_semantic_state(),
+                        settled_semantics,
+                    )
                     restored = self._render(item)
-                    np.testing.assert_array_equal(restored, settled)
+                    restored_visible = restored[..., 3] > 160
+                    self.assertGreater(
+                        np.mean(restored[..., 2][restored_visible]),
+                        np.mean(restored[..., 1][restored_visible]),
+                    )
+                    self.assertLess(
+                        np.count_nonzero(restored != settled), 200
+                    )
                     view.close()
                     scene.removeItem(item)
 

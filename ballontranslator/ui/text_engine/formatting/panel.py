@@ -38,8 +38,6 @@ from ballontranslator.utils.fontformat import (
     font_weight_to_qt,
 )
 from ballontranslator.utils.font_registry import FontEntry
-from ballontranslator.utils.logger import logger as LOGGER
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ...custom_widget import (
     AlignmentChecker,
     CheckableLabel,
@@ -64,7 +62,6 @@ from .advanced import TextAdvancedFormatPanel
 from ..effects.panel import TextEffectPanel
 from ..transforms.edit_session import TextTransformEditSession
 from ..effects.edit_session import TextEffectEditSession
-from ..editing.commands import SetRenderedImageLayerCommand
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
 from .commands import (
@@ -822,21 +819,6 @@ class FontFormatPanel(Widget):
         self.text_effect_session = TextEffectEditSession(
             self, self.texteffect_panel
         )
-        self.texteffect_panel.rendered_image_file_requested.connect(
-            self._import_rendered_image
-        )
-        self.texteffect_panel.rendered_image_add_requested.connect(
-            self._add_rendered_image
-        )
-        self.texteffect_panel.rendered_image_enabled_requested.connect(
-            self._set_rendered_image_enabled
-        )
-        self.texteffect_panel.rendered_image_mode_requested.connect(
-            self._set_rendered_image_mode
-        )
-        self.texteffect_panel.rendered_image_remove_requested.connect(
-            self._remove_rendered_image
-        )
         self.alpha_mask_session = getattr(
             SW.canvas, 'alpha_mask_edit_session', None
         )
@@ -1146,71 +1128,6 @@ class FontFormatPanel(Widget):
 
     def _on_effect_color_dialog_active_changed(self, active: bool) -> None:
         self.focusOnColorDialog = bool(active)
-
-    def _commit_rendered_image(
-        self, layer: Optional[RenderedImageLayer]
-    ) -> bool:
-        item = self.texteffect_panel.rendered_image_item()
-        if item is None:
-            return False
-        command = SetRenderedImageLayerCommand.create(
-            item,
-            item.blk.rendered_image,
-            layer,
-            self.texteffect_panel.refresh_rendered_image_state,
-        )
-        if command is None:
-            return False
-        SW.canvas.push_undo_command(command)
-        return True
-
-    def _import_rendered_image(self, source_path: str) -> None:
-        item = self.texteffect_panel.rendered_image_item()
-        if item is None:
-            return
-        scene = item.scene()
-        project = None if scene is None else getattr(
-            scene, 'imgtrans_proj', None
-        )
-        try:
-            if project is None:
-                raise ValueError(
-                    'Open a project before importing an Image.'
-                )
-            asset = project.import_raster_asset(source_path)
-            before = item.blk.rendered_image
-            after = (
-                RenderedImageLayer(asset)
-                if before is None
-                else replace(before, asset=asset)
-            )
-            if not self._commit_rendered_image(after):
-                # Reimporting the same digest may have restored its file even
-                # though the immutable block value needs no undo command.
-                self.texteffect_panel.project_assets_changed()
-        except (OSError, TypeError, ValueError) as error:
-            LOGGER.warning('Unable to import Image: %s', error)
-            self.texteffect_panel.show_rendered_image_import_error(str(error))
-
-    def _add_rendered_image(self) -> None:
-        self._commit_rendered_image(RenderedImageLayer())
-
-    def _set_rendered_image_enabled(self, enabled: bool) -> None:
-        item = self.texteffect_panel.rendered_image_item()
-        layer = None if item is None else item.blk.rendered_image
-        if layer is not None:
-            self._commit_rendered_image(
-                replace(layer, enabled=bool(enabled))
-            )
-
-    def _set_rendered_image_mode(self, mode: str) -> None:
-        item = self.texteffect_panel.rendered_image_item()
-        layer = None if item is None else item.blk.rendered_image
-        if layer is not None:
-            self._commit_rendered_image(replace(layer, mode=mode))
-
-    def _remove_rendered_image(self) -> None:
-        self._commit_rendered_image(None)
 
     def onColorLabelChanged(self, is_valid=True):
         self.focusOnColorDialog = False

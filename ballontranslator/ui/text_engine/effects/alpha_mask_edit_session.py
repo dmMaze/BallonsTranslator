@@ -81,18 +81,6 @@ class TextAlphaMaskEditSession(QObject):
         controls.add_filter_requested.connect(self._on_effect_edit_started)
         controls.remove_effect_requested.connect(self._on_effect_edit_started)
         controls.move_effect_requested.connect(self._on_effect_edit_started)
-        controls.rendered_image_enabled_requested.connect(
-            self._on_effect_edit_started
-        )
-        controls.rendered_image_add_requested.connect(
-            self._on_effect_edit_started
-        )
-        controls.rendered_image_mode_requested.connect(
-            self._on_effect_edit_started
-        )
-        controls.rendered_image_remove_requested.connect(
-            self._on_effect_edit_started
-        )
         controls.color_dialog_active_changed.connect(
             self._on_effect_color_dialog_active_changed
         )

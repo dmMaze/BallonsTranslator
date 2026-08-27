@@ -553,6 +553,47 @@ class TextFillEffect:
         )
 
 
+@dataclass(frozen=True)
+class ImageEffect:
+    """One project-owned raster layer in the ordered effect stack.
+
+    >>> ImageEffect().is_neutral()
+    True
+    >>> ImageEffect(mode='background').effect_type
+    'image'
+    """
+
+    asset: Optional[RasterAssetRef] = None
+    enabled: bool = True
+    mode: str = 'replace'
+    effect_type: str = field(init=False, default='image')
+
+    def __post_init__(self) -> None:
+        if self.asset is not None and not isinstance(
+            self.asset, RasterAssetRef
+        ):
+            raise TypeError('image effect asset must be RasterAssetRef or None')
+        if not isinstance(self.enabled, bool):
+            raise TypeError('image effect enabled must be a bool')
+        if self.mode not in {'replace', 'foreground', 'background'}:
+            raise ValueError('unsupported image effect mode')
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'asset': (
+                None
+                if self.asset is None
+                else self.asset.to_serializable_dict()
+            ),
+            'enabled': self.enabled,
+            'mode': self.mode,
+        }
+
+    def is_neutral(self) -> bool:
+        return not self.enabled or self.asset is None
+
+
 def _filter_params_tuple(value: object) -> FilterParams:
     """Return sorted, hashable flat JSON scalar filter parameters.
 
@@ -637,6 +678,7 @@ TextEffect = Union[
     GlowEffect,
     HollowEffect,
     TextFillEffect,
+    ImageEffect,
     FilterEffect,
 ]
 
@@ -659,6 +701,8 @@ def effect_phase(effect: TextEffect) -> str:
         return 'stroke'
     if isinstance(effect, (HollowEffect, TextFillEffect)):
         return 'foreground'
+    if isinstance(effect, ImageEffect):
+        return 'image'
     if isinstance(effect, FilterEffect):
         return 'filter'
     raise TypeError('effect_phase requires a typed text effect')
@@ -709,6 +753,7 @@ class TextEffectStack:
                     GlowEffect,
                     HollowEffect,
                     TextFillEffect,
+                    ImageEffect,
                     FilterEffect,
                 ),
             )
@@ -744,29 +789,33 @@ class TextEffectStack:
         }
 
 
-def without_project_texture_paints(
+def without_project_raster_effects(
     stack: TextEffectStack,
 ) -> TextEffectStack:
-    """Remove project-only Texture fills at application-style boundaries.
+    """Remove project-only raster effects at application-style boundaries.
 
-    Texture Fill entries are removed; portable Fill siblings remain intact.
+    Texture Fill and Image entries are removed; portable siblings remain.
 
     >>> asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
     >>> stack = TextEffectStack(effects=(
     ...     StrokeEffect(), TextFillEffect(paint=TexturePaint(asset)),
+    ...     ImageEffect(asset),
     ... ))
-    >>> filtered = without_project_texture_paints(stack)
+    >>> filtered = without_project_raster_effects(stack)
     >>> tuple(type(effect).__name__ for effect in filtered)
     ('StrokeEffect',)
     """
     if not isinstance(stack, TextEffectStack):
-        raise TypeError('project texture filtering requires TextEffectStack')
+        raise TypeError('project raster filtering requires TextEffectStack')
     effects = tuple(
         effect
         for effect in stack.effects
         if not (
-            isinstance(effect, TextFillEffect)
-            and isinstance(effect.paint, TexturePaint)
+            isinstance(effect, ImageEffect)
+            or (
+                isinstance(effect, TextFillEffect)
+                and isinstance(effect.paint, TexturePaint)
+            )
         )
     )
     return stack if effects == stack.effects else replace(stack, effects=effects)
@@ -840,6 +889,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             GlowEffect,
             HollowEffect,
             TextFillEffect,
+            ImageEffect,
             FilterEffect,
         ),
     ):
@@ -928,6 +978,18 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         if 'paint' in payload:
             payload['paint'] = _coerce_effect_paint(payload['paint'])
         return TextFillEffect(**payload)
+    if effect_type == 'image':
+        _unexpected_fields(
+            payload,
+            ('effect_type', 'asset', 'enabled', 'mode'),
+            'Image effect',
+        )
+        payload.pop('effect_type')
+        asset = payload.get('asset')
+        payload['asset'] = (
+            None if asset is None else coerce_raster_asset_ref(asset)
+        )
+        return ImageEffect(**payload)
     if effect_type == 'filter':
         _unexpected_fields(
             payload,

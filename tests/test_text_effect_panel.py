@@ -6,6 +6,8 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+import numpy as np
+
 from qtpy.QtCore import (
     QCoreApplication,
     QEvent,
@@ -68,7 +70,6 @@ from ballontranslator.utils.fontformat import (
     TextTransformStack,
 )
 from ballontranslator.utils.raster_assets import RasterAssetRef
-from ballontranslator.utils.rendered_image import RenderedImageLayer
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     FilterEffect,
@@ -76,6 +77,7 @@ from ballontranslator.utils.text_effects import (
     TextFillEffect,
     GradientStop,
     HollowEffect,
+    ImageEffect,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
@@ -2277,293 +2279,195 @@ class TextEffectPanelTest(unittest.TestCase):
             (GlowEffect, FilterEffect, ShadowEffect),
         )
 
-    def test_visual_order_projects_base_then_movable_stack_and_eraser(self):
+    def test_image_effect_is_repeatable_project_only_and_uses_stack_undo(self):
         asset = RasterAssetRef(
-            'assets/' + 'a' * 64 + '.png', 'rendered.png'
-        )
-        block = TextBlock([0, 0, 320, 180])
-        block._bounding_rect = [0, 0, 320, 180]
-        block.translation = 'Phase order'
-        block.fontformat.text_effects = self._stack(
-            StrokeEffect(), TextFillEffect(), FilterEffect('builtin:noise')
-        )
-        block.rendered_image = RenderedImageLayer(asset)
-        block.text_alpha_mask = TextAlphaMask()
-        item = TextBlkItem(block, 1)
-        scene = QGraphicsScene()
-        scene.imgtrans_proj = Mock()
-        scene.imgtrans_proj.resolve_raster_asset.return_value = '/asset.png'
-        scene.addItem(item)
-        self.panel.set_textblk_item(item)
-        controls = self.panel.texteffect_panel
-        controls.resize(420, 480)
-        controls.show()
-        controls.content_layout.activate()
-        self.app.processEvents()
-        cards = (
-            controls.text_fill_cards[0],
-            controls.rendered_image_card,
-            controls.filter_cards[0],
-            controls.stroke_cards[0],
-            controls.alpha_mask_card,
-        )
-        positions = [
-            card.mapTo(controls.scrollContent, QPoint(0, 0)).y()
-            for card in cards
-        ]
-        self.assertEqual(positions, sorted(positions))
-
-    def test_rendered_image_add_edit_replace_remove_and_dialog_pin(self):
-        first = RasterAssetRef(
-            'assets/' + 'e' * 64 + '.png', 'first.png'
-        )
-        second = RasterAssetRef(
-            'assets/' + 'f' * 64 + '.png', 'second.png'
+            'assets/' + 'e' * 64 + '.png', 'image.png'
         )
         project = Mock()
-        project.import_raster_asset.side_effect = (first, second)
+        project.import_raster_asset.return_value = asset
         project.resolve_raster_asset.return_value = '/project/assets/image.png'
-        scene = QGraphicsScene()
-        scene.imgtrans_proj = project
-        item = self._item()
-        scene.addItem(item)
-        self.panel.set_textblk_item(item)
-        controls = self.panel.texteffect_panel
-        action = controls.add_effect_actions['rendered_image']
-        self.assertTrue(action.isEnabled())
-        self.assertIsNone(controls.rendered_image_card)
-        initial_height = controls.content_layout.sizeHint().height()
-
-        transitions = []
-        controls.color_dialog_active_changed.connect(transitions.append)
-
-        with patch.object(
-            QFileDialog, 'getOpenFileName'
-        ) as chooser:
-            action.trigger()
-
-        chooser.assert_not_called()
-        self.assertEqual(transitions, [])
-        self.assertFalse(self.panel.focusOnColorDialog)
-        self.assertEqual(item.blk.rendered_image, RenderedImageLayer())
-        self.assertEqual(self.canvas.stack.count(), 1)
-        card = controls.rendered_image_card
-        self.assertIsNotNone(card)
-        self.assertFalse(action.isEnabled())
-        self.assertEqual(card.title_label.text(), 'Image')
-        self.assertEqual(card.image_button.text(), 'Empty')
-        self.assertFalse(card.title_icon_label.pixmap().isNull())
-        self.assertIn('Hidden while editing', card.toolTip())
-
-        def choose_first(*_args):
-            self.assertTrue(self.panel.focusOnColorDialog)
-            self.panel.set_textblk_item(None)
-            self.assertIs(self.panel.textblk_item, item)
-            return '/tmp/first.png', ''
-
-        with patch.object(
-            QFileDialog, 'getOpenFileName', side_effect=choose_first
-        ):
-            card.image_button.click()
-        self.assertEqual(transitions, [True, False])
-        self.assertEqual(
-            item.blk.rendered_image, RenderedImageLayer(first)
-        )
-        self.assertEqual(self.canvas.stack.count(), 2)
-
-        project.resolve_raster_asset.return_value = None
-        controls.refresh_rendered_image_state()
-        self.assertTrue(card.image_button.text().startswith('Missing:'))
-        project.resolve_raster_asset.return_value = '/project/assets/image.png'
-        controls.refresh_rendered_image_state()
-        controls.content_layout.activate()
-        self.assertGreater(
-            controls.content_layout.sizeHint().height(), initial_height
-        )
-
-        card.mode_selector.setCurrentIndex(
-            card.mode_selector.findData('overlay')
-        )
-        self.assertEqual(item.blk.rendered_image.mode, 'overlay')
-        card.visibility_button.click()
-        self.assertFalse(item.blk.rendered_image.enabled)
-
-        with patch.object(
-            QFileDialog,
-            'getOpenFileName',
-            return_value=('/tmp/second.png', ''),
-        ):
-            card.image_button.click()
-        self.assertEqual(item.blk.rendered_image.asset, second)
-        self.assertEqual(item.blk.rendered_image.mode, 'overlay')
-        self.assertFalse(item.blk.rendered_image.enabled)
-        self.assertEqual(self.canvas.stack.count(), 5)
-
-        card.delete_button.click()
-        self.assertIsNone(item.blk.rendered_image)
-        self.assertIsNone(controls.rendered_image_card)
-        self.assertTrue(action.isEnabled())
-        self.assertEqual(self.canvas.stack.count(), 6)
-        self.canvas.stack.undo()
-        self.assertEqual(item.blk.rendered_image.asset, second)
-        self.assertIsNotNone(controls.rendered_image_card)
-
-    def test_rendered_image_section_is_once_before_movable_and_eraser(self):
-        asset = RasterAssetRef(
-            'assets/' + 'e' * 64 + '.png', 'section.png'
-        )
-        project = Mock()
-        project.resolve_raster_asset.return_value = (
-            '/project/assets/section.png'
-        )
-        scene = QGraphicsScene()
-        scene.imgtrans_proj = project
-        item = self._item(self._stack(StrokeEffect()))
-        item.blk.rendered_image = RenderedImageLayer(asset)
-        item.blk.text_alpha_mask = TextAlphaMask()
-        scene.addItem(item)
-        self.panel.set_textblk_item(item)
-        controls = self.panel.texteffect_panel
-        controls.view_widget.resize(420, 600)
-        controls.view_widget.show()
-        self.app.processEvents()
-
-        stroke = controls.stroke_cards[0]
-        rendered = controls.rendered_image_card
-        eraser = controls.alpha_mask_card
-        self.assertIsNotNone(rendered)
-        self.assertIsNotNone(eraser)
-        self.assertEqual(
-            len(controls.scrollContent.findChildren(type(rendered))), 1
-        )
-        y_positions = tuple(
-            card.mapTo(controls.scrollContent, QPoint(0, 0)).y()
-            for card in (rendered, stroke, eraser)
-        )
-        self.assertLess(y_positions[0], y_positions[1])
-        self.assertLess(y_positions[1], y_positions[2])
-
-    def test_same_asset_reimport_refreshes_rendered_and_texture_state(self):
-        rendered_asset = RasterAssetRef(
-            'assets/' + 'e' * 64 + '.png', 'rendered.png'
-        )
-        texture_asset = RasterAssetRef(
-            'assets/' + 'f' * 64 + '.png', 'texture.png'
-        )
-        available = set()
-        project = Mock()
-        project.import_raster_asset.side_effect = (
-            rendered_asset,
-            texture_asset,
-        )
-        project.resolve_raster_asset.side_effect = lambda asset: (
-            f'/project/{asset.path}' if asset in available else None
+        project.load_raster_asset.return_value = np.full(
+            (2, 2, 4), (20, 60, 230, 255), dtype=np.uint8
         )
         self.canvas.imgtrans_proj = project
         scene = QGraphicsScene()
         scene.imgtrans_proj = project
-        item = self._item(self._stack(TextFillEffect(
-            paint=TexturePaint(texture_asset)
-        )))
-        item.blk.rendered_image = RenderedImageLayer(rendered_asset)
-        scene.addItem(item)
-        self.panel.set_textblk_item(item)
-        controls = self.panel.texteffect_panel
-        fill_card = controls.text_fill_cards[0]
-        self.assertTrue(
-            controls.rendered_image_card.image_button.text().startswith(
-                'Missing:'
-            )
-        )
-        self.assertTrue(fill_card.texture_button.text().startswith('Missing:'))
-
-        with patch.object(
-            item.effect_renderer, 'project_assets_changed'
-        ) as assets_changed:
-            available.add(rendered_asset)
-            controls.rendered_image_file_requested.emit('/tmp/rendered.png')
-            self.assertFalse(
-                controls.rendered_image_card.image_button.text().startswith(
-                    'Missing:'
-                )
-            )
-            self.assertTrue(
-                fill_card.texture_button.text().startswith('Missing:')
-            )
-            self.assertEqual(self.canvas.stack.count(), 0)
-
-            available.add(texture_asset)
-            fill_card.texture_file_requested.emit(
-                fill_card.index, '/tmp/texture.png'
-            )
-            self.assertFalse(
-                fill_card.texture_button.text().startswith('Missing:')
-            )
-            self.assertEqual(assets_changed.call_count, 2)
-
-        self.assertEqual(self.canvas.stack.count(), 0)
-        self.assertEqual(
-            [call.args[0] for call in project.import_raster_asset.call_args_list],
-            ['/tmp/rendered.png', '/tmp/texture.png'],
-        )
-
-    def test_rendered_image_is_single_item_and_empty_until_valid_selection(self):
-        controls = self.panel.texteffect_panel
-        action = controls.add_effect_actions['rendered_image']
-        self.assertFalse(action.isEnabled())
-
-        scene = QGraphicsScene()
-        scene.imgtrans_proj = Mock()
-        first = self._item()
-        second = self._item()
+        first = self._item(self._stack(StrokeEffect()))
+        second = self._item(self._stack(StrokeEffect()))
         scene.addItem(first)
         scene.addItem(second)
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        self.assertFalse(action.isEnabled())
+        controls = self.panel.texteffect_panel
+        action = controls.add_effect_actions['image']
 
-        self.panel.set_textblk_item(first)
-        transitions = []
-        controls.color_dialog_active_changed.connect(transitions.append)
-        with patch.object(
-            QFileDialog, 'getOpenFileName'
-        ) as chooser:
+        with patch.object(QFileDialog, 'getOpenFileName') as chooser:
             action.trigger()
         chooser.assert_not_called()
-        self.assertEqual(transitions, [])
-        self.assertEqual(first.blk.rendered_image, RenderedImageLayer())
         self.assertEqual(self.canvas.stack.count(), 1)
-        card = controls.rendered_image_card
+        for item in (first, second):
+            self.assertEqual(
+                item.blk.fontformat.text_effects.effects,
+                (ImageEffect(), StrokeEffect()),
+            )
+            self.assertEqual(
+                item.blk.fontformat.text_effects.effects[0].mode,
+                'replace',
+            )
+        self.assertEqual(len(controls.image_cards), 1)
+        card = controls.image_cards[0]
         self.assertEqual(card.image_button.text(), 'Empty')
+        self.assertIn('Choose an image', card.image_button.toolTip())
+        self.assertIn('Hidden while editing', card.image_button.toolTip())
+        other_asset = RasterAssetRef(
+            'assets/' + 'f' * 64 + '.png', 'other.png'
+        )
+        card.set_values(
+            (ImageEffect(asset), ImageEffect(other_asset)), None
+        )
+        self.assertEqual(card.image_button.text(), 'Mixed')
+        self.assertIn('selected text', card.image_button.toolTip())
+        self.assertIn('Hidden while editing', card.image_button.toolTip())
+
+        with patch.object(
+            QFileDialog,
+            'getOpenFileName',
+            return_value=('/tmp/image.png', ''),
+        ):
+            card.image_button.click()
+        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertTrue(all(
+            item.blk.fontformat.text_effects.effects[0].asset == asset
+            for item in (first, second)
+        ))
+
+        card.mode_selector.setCurrentIndex(
+            card.mode_selector.findData('background')
+        )
+        self.assertEqual(self.canvas.stack.count(), 3)
+        card.move_up_button.click()
+        self.assertEqual(self.canvas.stack.count(), 4)
+        self.assertTrue(all(
+            isinstance(
+                item.blk.fontformat.text_effects.effects[1], ImageEffect
+            )
+            for item in (first, second)
+        ))
+        card = controls.image_cards[0]
+        card.delete_button.click()
+        self.assertEqual(self.canvas.stack.count(), 5)
+        self.assertFalse(any(
+            isinstance(effect, ImageEffect)
+            for effect in first.blk.fontformat.text_effects.effects
+        ))
+        self.canvas.stack.undo()
+        self.assertEqual(len(controls.image_cards), 1)
+
+        action.trigger()
+        self.assertEqual(len(controls.image_cards), 2)
+
+    def test_image_add_is_disabled_without_project_item_context(self):
+        controls = self.panel.texteffect_panel
+        self.panel.set_active_format(self.panel.global_format)
+        self.assertFalse(controls.add_effect_actions['image'].isEnabled())
+
+        item = self._item(self._stack(StrokeEffect()))
+        self.panel.set_textblk_item(item)
+        self.assertFalse(controls.add_effect_actions['image'].isEnabled())
+        self.assertFalse(self.panel.text_effect_session.add_effect('image'))
+        self.assertEqual(self.canvas.stack.count(), 0)
+
+    def test_image_chooser_cancel_and_error_preserve_owner_and_value(self):
+        old_asset = RasterAssetRef(
+            'assets/' + 'a' * 64 + '.png', 'old.png'
+        )
+        project = Mock()
+        project.resolve_raster_asset.return_value = '/project/assets/old.png'
+        self.canvas.imgtrans_proj = project
+        item = self._item(self._stack(ImageEffect(old_asset)))
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        card = controls.image_cards[0]
 
         with patch.object(
             QFileDialog, 'getOpenFileName', return_value=('', '')
         ):
             card.image_button.click()
-        self.assertEqual(transitions, [True, False])
-        self.assertEqual(first.blk.rendered_image, RenderedImageLayer())
-        self.assertEqual(self.canvas.stack.count(), 1)
-
-        scene.imgtrans_proj.import_raster_asset.side_effect = ValueError(
-            'broken image'
+        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].asset, old_asset
         )
 
-        def warn_while_pinned(*_args):
+        project.import_raster_asset.side_effect = ValueError('bad image')
+
+        def choose_while_selection_clears(*_args):
             self.assertTrue(self.panel.focusOnColorDialog)
+            self.panel.set_textblk_item(None)
+            self.assertIs(self.panel.textblk_item, item)
+            return '/tmp/broken.png', 'Images'
+
+        def warning_while_pinned(*_args):
+            self.assertTrue(self.panel.focusOnColorDialog)
+            self.assertIs(self.panel.textblk_item, item)
 
         with patch.object(
             QFileDialog,
             'getOpenFileName',
-            return_value=('/tmp/broken.png', ''),
+            side_effect=choose_while_selection_clears,
         ), patch.object(
-            QMessageBox, 'warning', side_effect=warn_while_pinned
-        ) as warning:
+            QMessageBox, 'warning', side_effect=warning_while_pinned
+        ):
             card.image_button.click()
-        warning.assert_called_once()
+
         self.assertFalse(self.panel.focusOnColorDialog)
-        self.assertEqual(transitions[-2:], [True, False])
-        self.assertEqual(first.blk.rendered_image, RenderedImageLayer())
-        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(
+            item.blk.fontformat.text_effects[0].asset, old_asset
+        )
+
+    def test_image_missing_recovery_and_same_digest_refresh_without_undo(self):
+        asset = RasterAssetRef(
+            'assets/' + 'b' * 64 + '.png', 'restored.png'
+        )
+        project = Mock()
+        project.resolve_raster_asset.return_value = None
+        project.import_raster_asset.return_value = asset
+        project.load_raster_asset.return_value = np.full(
+            (2, 2, 4), (20, 60, 230, 255), dtype=np.uint8
+        )
+        self.canvas.imgtrans_proj = project
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(ImageEffect(asset)))
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        controls = self.panel.texteffect_panel
+        card = controls.image_cards[0]
+        self.assertEqual(card.image_button.text(), 'Missing: restored.png')
+        self.assertEqual(
+            card.image_button.accessibleName(), 'Missing: restored.png'
+        )
+
+        project.resolve_raster_asset.return_value = (
+            '/project/assets/restored.png'
+        )
+        controls.project_assets_changed()
+        self.assertEqual(card.image_button.text(), 'restored.png')
+
+        with patch.object(
+            controls,
+            'project_assets_changed',
+            wraps=controls.project_assets_changed,
+        ) as refresh:
+            with patch.object(
+                QFileDialog,
+                'getOpenFileName',
+                return_value=('/tmp/restored.png', 'Images'),
+            ):
+                controls._choose_image_file(card.index)
+        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(refresh.call_count, 1)
+        scene.removeItem(item)
 
     def test_text_fill_texture_import_mapping_preview_cancel_and_commit(self):
         asset = RasterAssetRef(

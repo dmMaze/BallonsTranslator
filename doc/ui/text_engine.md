@@ -14,7 +14,6 @@ Projective, Bend, Sine Wave, Grid, and Glyph Slant.
 Project JSON
   -> TextBlock + FontFormat.text_effects    persistent state
                + TextBlock.text_alpha_mask
-               + TextBlock.rendered_image
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
   -> TextEffectRenderer                     generated/filter stack + Fill sub-stack
@@ -24,7 +23,7 @@ Project JSON
 
 | Concern | Owner | Main files |
 | --- | --- | --- |
-| Block content, logical rectangle, angle, metadata, Image, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/rendered_image.py`](../../ballontranslator/utils/rendered_image.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
+| Block content, logical rectangle, angle, metadata, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
 | Persistent typography, transforms, and immutable effect stack | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py), [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
@@ -43,8 +42,9 @@ owner instead of adding a parallel path.
 ## State boundaries
 
 - **Persistent state:** `TextBlock` and `FontFormat`; only this belongs in
-  project JSON. Image and the immutable alpha-mask history are
-  block-owned, never part of a typography style or preset.
+  project JSON. Project-only Image effects live in each concrete item's
+  `FontFormat.text_effects`; the immutable alpha-mask history is block-owned.
+  Global formatting and presets strip project raster values.
 - **Live editing state:** `QTextDocument`, cursor, selection, IME state, and
   paired-editor synchronization.
 - **Derived state:** layout records, padding, visual mappings, previews,
@@ -135,14 +135,14 @@ Never write a source or visual bounding box back into the model. Layout-owned
 placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
-`FontFormat.text_effects` owns the canonical immutable style stack;
-`TextBlock.rendered_image` and `TextBlock.text_alpha_mask` separately own the
-item-specific full-RGBA layer and structural alpha. `TextEffectRenderer`
-composes the repeatable Text Fill base group and optional Image, then
-walks generated layers and lazy Filters bottom-to-top around one canonical
+`FontFormat.text_effects` owns the canonical immutable stack, including
+repeatable project-only Image nodes; `TextBlock.text_alpha_mask` separately
+owns item-specific structural alpha. `TextEffectRenderer` composes the
+repeatable Text Fill base group, then walks Image, generated layers, and lazy
+Filters bottom-to-top around one canonical
 glyph source before the block mask, and hands that padded source to the
-geometry owner. The panel shows that execution sequence as Text Fill, Image,
-movable generated/Filter cards, then Eraser. Text Fills apply in their
+geometry owner. The panel shows Fill structural cards, the movable
+Image/generated/Filter execution sequence, then Eraser. Text Fills apply in their
 visible order and may move only among themselves; a new Fill is visible and
 applied last even though the compatibility tuple stores it at index zero. If
 any enabled Fill can render, its transparent group replaces canonical rich
@@ -183,12 +183,14 @@ for transparent sources, avoiding a full-source copy on every tile. It retains
 at most two entries and is also byte-bounded to 512 MiB, enough for two maximum
 opaque sources or one maximum transparent source.
 
-Image reuses that same asset decoder and existing completed surface. Adding
-the card creates a neutral Empty layer without opening a file dialog.
-Replace skips canonical/generated rasterization and replaces the fixed base,
-including overflow, with an image mapped into the unpadded logical rectangle;
-Overlay source-over composites it above Text Fill and below the movable stack.
-Scaling uses premultiplied-alpha,
+Image reuses that same asset decoder and existing completed surface. It is a
+repeatable project-only `ImageEffect` in the ordinary movable stack. Adding a
+card creates a neutral Empty layer without opening a file dialog and defaults
+to Replace. Replace discards the accumulated prefix at its ordered position,
+Foreground source-over composites above it, and Background destination-over
+places the image behind it so existing text remains visible. Later cards and
+Filters process the composed result. Generated effects still use canonical
+glyph sources. Scaling uses premultiplied-alpha,
 global-coordinate bilinear sampling over only the logical intersection, keeping
 transparent edges and full/tiled output stable without a padded image copy. The
 fixed downstream order is Text Eraser alpha, Overall Opacity, global
@@ -196,14 +198,21 @@ transform, then interaction
 feedback. During native horizontal or vertical text editing the layer is
 suppressed so the editable source, selection, caret, and IME stay coherent; it
 returns exactly after editing ends and remains active for strict export.
+Editing visibility participates in completed-surface and nonlinear cache keys.
+A valid Replace also trims discarded generated layers and Filters before
+padding, bounds, halo, resolution, and rendering decisions; only a retained
+exterior Shadow/Glow may keep its canonical Stroke-silhouette dependency.
 
-Texture Text Fill is project-only in v1. Itemless/global formatting cannot
-select it, and application-global presets/config strip only project Texture
-fills at their load/edit/save boundaries because there is no global asset
-registry. Concrete project TextBlocks keep empty, valid, and valid-but-missing
-refs on passive load. Newly imported images are decoded while the chooser/import
-chain keeps the formatting panel pinned; an old uncached asset may incur one
+Texture Text Fill and Image are project-only in v1. Itemless/global formatting
+cannot select them, and application-global presets/config strip both project
+raster forms at their load/edit/save boundaries because there is no global
+asset registry. Concrete project TextBlocks keep empty, valid, and
+valid-but-missing refs on passive load. Newly imported images are decoded while
+the chooser/import chain keeps the formatting panel pinned; an old uncached
+asset may incur one
 bounded synchronous first decode (32 MiB source, 64 Mpx, 256 MiB RGBA8).
+The removed singleton `TextBlock.rendered_image` value is ignored rather than
+migrated; no live compatibility owner, card, command, or renderer path remains.
 
 Effect padding expands source paint bounds only. Ordinary shape and hit testing
 remain on the logical box plus layout-owned ink overhang. Qt stays authoritative
@@ -262,7 +271,7 @@ Refresh from the first owner whose input changed:
 | Metrics, spacing, writing mode | Layout |
 | Typed effect stack/paint or Overall Opacity | Effect renderer |
 | Filter-only parameter preview | Effect renderer below-filter prefix plus canonical/Stroke-coverage caches; recompose only generated layers above it |
-| TextBlock Image replacement | Effect renderer pre-mask surface; retain canonical source cache |
+| Image effect asset or mode | Effect renderer pre-mask surface; retain canonical source cache |
 | TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |
