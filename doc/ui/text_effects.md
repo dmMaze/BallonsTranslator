@@ -84,10 +84,11 @@ their natural width and a fixed local gap, while editors/selectors absorb spare
 column width. Two-column rows use equal columns and an 8 px inter-column gap.
 There is no redundant Flip action.
 
-Rendered Image is a fixed item-specific base card after globally movable cards,
-above the fixed Text Fill area and before Eraser. It exists only for one
-concrete project TextBlock and therefore never appears in global formatting,
-presets, or multi-selection. Its Image and
+The panel projects the complete visible execution order as Text Fill, Rendered
+Image, movable Stroke/Shadow/Glow/Filter cards, then Eraser. Rendered Image is
+a fixed item-specific base card after Text Fill and before the movable stack.
+It exists only for one concrete project TextBlock and therefore never appears
+in global formatting, presets, or multi-selection. Its Image and
 Replace/Overlay controls use the same two equal-column, natural-label-spacing
 card rows and shared pinned project-image chooser. The card tooltip explains
 that the layer is intentionally hidden during native text editing.

@@ -141,12 +141,14 @@ item-specific full-RGBA layer and structural alpha. `TextEffectRenderer`
 composes the repeatable Text Fill base group and optional Rendered Image, then
 walks generated layers and lazy Filters bottom-to-top around one canonical
 glyph source before the block mask, and hands that padded source to the
-geometry owner. Text Fills apply in their visible order and may move only among
-themselves; a new Fill is visible and applied last even though the compatibility
-tuple stores it at index zero. If any enabled Fill can render, its transparent
-group replaces canonical rich foreground and is clipped once with shared
-canonical glyph coverage. Otherwise canonical rich foreground remains; missing
-interactive Textures are bypassed, while strict export fails. See
+geometry owner. The panel shows that execution sequence as Text Fill, Rendered
+Image, movable generated/Filter cards, then Eraser. Text Fills apply in their
+visible order and may move only among themselves; a new Fill is visible and
+applied last even though the compatibility tuple stores it at index zero. If
+any enabled Fill can render, its transparent group replaces canonical rich
+foreground and is clipped once with shared canonical glyph coverage. Otherwise
+canonical rich foreground remains; missing interactive Textures are bypassed,
+while strict export fails. See
 [Text effects](text_effects.md)
 for stack order, migration, preview/undo, mask editing, cache boundaries, and
 extension rules. See [Text filters](text_filters.md) for plug-in metadata,

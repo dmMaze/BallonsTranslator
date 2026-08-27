@@ -2119,7 +2119,7 @@ class TextEffectPanelTest(unittest.TestCase):
             (GlowEffect, FilterEffect, ShadowEffect),
         )
 
-    def test_visual_order_projects_movable_stack_then_fixed_base_and_eraser(self):
+    def test_visual_order_projects_base_then_movable_stack_and_eraser(self):
         asset = RasterAssetRef(
             'assets/' + 'a' * 64 + '.png', 'rendered.png'
         )
@@ -2143,10 +2143,10 @@ class TextEffectPanelTest(unittest.TestCase):
         controls.content_layout.activate()
         self.app.processEvents()
         cards = (
+            controls.text_fill_cards[0],
+            controls.rendered_image_card,
             controls.filter_cards[0],
             controls.stroke_cards[0],
-            controls.rendered_image_card,
-            controls.text_fill_cards[0],
             controls.alpha_mask_card,
         )
         positions = [
@@ -2239,7 +2239,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.blk.rendered_image.asset, second)
         self.assertIsNotNone(controls.rendered_image_card)
 
-    def test_rendered_image_section_is_once_between_effects_and_eraser(self):
+    def test_rendered_image_section_is_once_before_movable_and_eraser(self):
         asset = RasterAssetRef(
             'assets/' + 'e' * 64 + '.png', 'section.png'
         )
@@ -2269,7 +2269,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         y_positions = tuple(
             card.mapTo(controls.scrollContent, QPoint(0, 0)).y()
-            for card in (stroke, rendered, eraser)
+            for card in (rendered, stroke, eraser)
         )
         self.assertLess(y_positions[0], y_positions[1])
         self.assertLess(y_positions[1], y_positions[2])

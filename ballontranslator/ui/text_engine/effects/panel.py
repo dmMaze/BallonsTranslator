@@ -2915,9 +2915,9 @@ class TextEffectPanel(PanelArea):
         layout.setSpacing(8)
         layout.addLayout(top_row)
         layout.addWidget(self.mixed_label)
-        layout.addLayout(self.cards_layout)
-        layout.addLayout(self.rendered_card_layout)
         layout.addLayout(self.base_card_layout)
+        layout.addLayout(self.rendered_card_layout)
+        layout.addLayout(self.cards_layout)
         layout.addLayout(self.mask_card_layout)
         self.setContentLayout(layout)
         self.content_layout = layout
