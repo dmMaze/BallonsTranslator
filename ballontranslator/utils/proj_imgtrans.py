@@ -1,4 +1,5 @@
 import hashlib
+import io
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
 import tempfile
 import warnings
@@ -7,7 +8,7 @@ from docx import Document
 import piexif.helper
 import numpy as np
 import os.path as osp
-from typing import Optional, Tuple, Union, List, Dict
+from typing import BinaryIO, Optional, Tuple, Union, List, Dict
 from PIL import Image
 
 from .logger import logger as LOGGER
@@ -407,18 +408,12 @@ class ProjImgTrans:
         assert cached[2] is not None
         return cached[2]
 
-    def import_raster_asset(self, source_path: str) -> RasterAssetRef:
-        """Snapshot and validate one raster before content-addressing it.
-
-        The source is opened once. Hashing and decoding both use the bounded
-        temporary copy, so a concurrently replaced source cannot split the
-        identity from the pixels that were validated.
-
-        >>> callable(ProjImgTrans.import_raster_asset)
-        True
-        """
-        if not isinstance(source_path, str) or not osp.isfile(source_path):
-            raise ValueError('raster asset source must be an existing file')
+    def _import_raster_asset_stream(
+        self,
+        source: BinaryIO,
+        display_name: str,
+    ) -> RasterAssetRef:
+        """Validate and atomically install one already-open raster stream."""
         assets_dir = self._resolved_assets_root(create=True)
         temporary_path = None
         try:
@@ -426,7 +421,7 @@ class ProjImgTrans:
             total = 0
             with tempfile.NamedTemporaryFile(
                 mode='wb', prefix='.import-', dir=assets_dir, delete=False
-            ) as temporary, open(source_path, 'rb') as source:
+            ) as temporary:
                 temporary_path = temporary.name
                 for chunk in iter(lambda: source.read(1024 * 1024), b''):
                     total += len(chunk)
@@ -458,7 +453,7 @@ class ProjImgTrans:
                 os.replace(temporary_path, destination)
                 temporary_path = None
             asset = RasterAssetRef(
-                f'assets/{filename}', osp.basename(source_path)
+                f'assets/{filename}', osp.basename(display_name)
             )
             self._cache_raster_asset(
                 asset, rgba, self._raster_asset_signature(destination)
@@ -473,6 +468,39 @@ class ProjImgTrans:
         finally:
             if temporary_path is not None and osp.exists(temporary_path):
                 os.unlink(temporary_path)
+
+    def import_raster_asset(self, source_path: str) -> RasterAssetRef:
+        """Snapshot and validate one raster before content-addressing it.
+
+        The source is opened once. Hashing and decoding both use the bounded
+        temporary copy, so a concurrently replaced source cannot split the
+        identity from the pixels that were validated.
+
+        >>> callable(ProjImgTrans.import_raster_asset)
+        True
+        """
+        if not isinstance(source_path, str) or not osp.isfile(source_path):
+            raise ValueError('raster asset source must be an existing file')
+        with open(source_path, 'rb') as source:
+            return self._import_raster_asset_stream(source, source_path)
+
+    def import_raster_asset_bytes(
+        self,
+        payload: bytes,
+        display_name: str = 'generated.png',
+    ) -> RasterAssetRef:
+        """Import generated raster bytes through the normal asset boundary.
+
+        >>> callable(ProjImgTrans.import_raster_asset_bytes)
+        True
+        """
+        if not isinstance(payload, bytes) or not payload:
+            raise ValueError('raster asset payload must be non-empty bytes')
+        if not isinstance(display_name, str) or not display_name.strip():
+            raise ValueError('raster asset display name must be non-empty')
+        return self._import_raster_asset_stream(
+            io.BytesIO(payload), display_name
+        )
 
     def _resolve_raster_asset_path(
         self,

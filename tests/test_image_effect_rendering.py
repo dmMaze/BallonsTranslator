@@ -42,7 +42,7 @@ from ballontranslator.utils.text_effects import (
 from ballontranslator.utils.textblock import TextBlock
 
 
-def _image(asset, *, mode: str = 'replace') -> ImageEffect:
+def _image(asset, *, mode: str = 'foreground') -> ImageEffect:
     return ImageEffect(asset, mode=mode)
 
 
@@ -120,7 +120,7 @@ class ImageEffectRendererTest(unittest.TestCase):
         Image.fromarray(pixels, 'RGBA').save(path)
         return path, project.import_raster_asset(path)
 
-    def test_replace_clears_only_prefix_and_foreground_is_source_over(self):
+    def test_foreground_preserves_prior_effects_and_is_source_over(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -143,7 +143,7 @@ class ImageEffectRendererTest(unittest.TestCase):
             scene = self._attach(item, project)
             renderer = item.effect_renderer
             bounds = renderer.boundingRect()
-            replaced = pixmap2ndarray(
+            rendered = pixmap2ndarray(
                 renderer._render_effect_surface(bounds, 1.0),
                 keep_alpha=True,
             )
@@ -152,50 +152,10 @@ class ImageEffectRendererTest(unittest.TestCase):
             y0 = round(logical.top() - bounds.top())
             x1 = round(logical.right() - bounds.left())
             y1 = round(logical.bottom() - bounds.top())
-            outside = replaced[..., 3].copy()
+            outside = rendered[..., 3].copy()
             outside[max(0, y0):y1 + 1, max(0, x0):x1 + 1] = 0
-            # Stroke and Glow are later cards, so Replace does not discard them.
             self.assertGreater(np.count_nonzero(outside), 0)
-            center = replaced[(y0 + y1) // 2, (x0 + x1) // 2]
-            self.assertAlmostEqual(int(center[3]), 128, delta=2)
-            self.assertGreater(center[0], center[1])
-
-            self._set_image(
-                item,
-                _image(asset, mode='foreground')
-            )
-            overlaid = pixmap2ndarray(
-                renderer._render_effect_surface(bounds, 1.0),
-                keep_alpha=True,
-            )
-            self.assertFalse(np.array_equal(overlaid, replaced))
-            self.assertTrue(np.any(overlaid[..., 3] > replaced[..., 3]))
-            scene.removeItem(item)
-
-    def test_transparent_replace_pixels_remain_transparent(self):
-        with tempfile.TemporaryDirectory() as directory:
-            project = ProjImgTrans()
-            project.directory = directory
-            pixels = np.full((8, 8, 4), (40, 80, 220, 255), np.uint8)
-            pixels[:4, :4] = 0
-            _source, asset = self._import(
-                project, directory, 'alpha.png', pixels
-            )
-            item = self._item(_image(asset))
-            scene = self._attach(item, project)
-            renderer = item.effect_renderer
-            bounds = renderer.boundingRect()
-            rendered = pixmap2ndarray(
-                renderer._render_effect_surface(bounds, 1.0),
-                keep_alpha=True,
-            )
-            logical = renderer.logical_unpadded_rect()
-            x = round(logical.left() - bounds.left() + logical.width() * 0.2)
-            y = round(logical.top() - bounds.top() + logical.height() * 0.2)
-            self.assertEqual(rendered[y, x, 3], 0)
-            x = round(logical.left() - bounds.left() + logical.width() * 0.8)
-            y = round(logical.top() - bounds.top() + logical.height() * 0.8)
-            self.assertGreater(rendered[y, x, 3], 240)
+            self.assertTrue(np.any(rendered[..., 3] > 128))
             scene.removeItem(item)
 
     def test_non_integer_scaling_interpolates_source_pixels(self):
@@ -209,7 +169,7 @@ class ImageEffectRendererTest(unittest.TestCase):
             _source, asset = self._import(
                 project, directory, 'checker.png', pixels
             )
-            item = self._item(_image(asset))
+            item = self._item(_image(asset), text='')
             scene = self._attach(item, project)
             rendered = pixmap2ndarray(
                 item.effect_renderer._render_effect_surface(
@@ -236,7 +196,7 @@ class ImageEffectRendererTest(unittest.TestCase):
             _source, asset = self._import(
                 project, directory, 'transparent-edge.png', pixels
             )
-            item = self._item(_image(asset))
+            item = self._item(_image(asset), text='')
             scene = self._attach(item, project)
             rendered = pixmap2ndarray(
                 item.effect_renderer._render_effect_surface(
@@ -390,7 +350,7 @@ class ImageEffectRendererTest(unittest.TestCase):
                 project, directory, 'empty.png', pixels
             )
             for vertical in (False, True):
-                for mode in ('replace', 'foreground', 'background'):
+                for mode in ('foreground', 'background'):
                     with self.subTest(vertical=vertical, mode=mode):
                         item = self._item(
                             _image(asset, mode=mode),

@@ -2447,7 +2447,49 @@ QToolButton#TextEffectPaintButton:hover {
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
+QLineEdit#TextEffectRasterAssetField {
+    min-height: 24px;
+    max-height: 24px;
+    font-size: 12px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    padding-left: 4px;
+}
+
+QLineEdit#TextEffectRasterAssetField:hover,
+QLineEdit#TextEffectRasterAssetField:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QPushButton#TextEffectRasterFileButton {
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+}
+
+QPushButton#TextEffectRasterFileButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
+    border: none;
+}
+
+QLabel#TextEffectGenerateSectionTitle {
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QToolButton#TextEffectGenerationModelSelector,
 QToolButton#TextEffectBlendSelector {
+    min-width: 0px;
     min-height: 20px;
     max-height: 20px;
     color: @qwidgetForegroundColor;
@@ -2456,16 +2498,38 @@ QToolButton#TextEffectBlendSelector {
     border-bottom: 1px solid @borderColor;
     border-radius: 0px;
     padding-left: 4px;
-    padding-right: 20px;
     font-size: 12px;
     text-align: center;
 }
 
+QToolButton#TextEffectGenerationModelSelector:hover,
+QToolButton#TextEffectGenerationModelSelector:focus,
 QToolButton#TextEffectBlendSelector:hover,
 QToolButton#TextEffectBlendSelector:focus,
 QToolButton#TextEffectBlendSelector:open {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QToolButton#TextEffectGenerationModelSelector {
+    padding-right: 16px;
+}
+
+QPlainTextEdit#TextEffectGenerationPromptEditor {
+    color: @qwidgetForegroundColor;
+    background-color: @transtexteditBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    padding: 3px;
+    font-size: 12px;
+}
+
+QPlainTextEdit#TextEffectGenerationPromptEditor:focus {
+    border: 1px solid rgb(30, 147, 229);
+}
+
+QToolButton#TextEffectBlendSelector {
+    padding-right: 20px;
 }
 
 QToolButton#TextEffectBlendSelector::menu-indicator {
@@ -2500,7 +2564,8 @@ QToolButton#GradientStopActionButton:hover {
 }
 
 QToolButton#AddTextTransformButton,
-QToolButton#AddTextEffectButton {
+QToolButton#AddTextEffectButton,
+QToolButton#TextEffectGenerateButton {
     min-height: 24px;
     max-height: 24px;
     color: white;
@@ -2521,13 +2586,21 @@ QToolButton#AddTextEffectButton {
 }
 
 QToolButton#AddTextTransformButton:hover,
-QToolButton#AddTextEffectButton:hover {
+QToolButton#AddTextEffectButton:hover,
+QToolButton#TextEffectGenerateButton:hover {
     background-color: #4ba7ee;
 }
 
 QToolButton#AddTextTransformButton:pressed,
-QToolButton#AddTextEffectButton:pressed {
+QToolButton#AddTextEffectButton:pressed,
+QToolButton#TextEffectGenerateButton:pressed {
     background-color: #187fc3;
+}
+
+QToolButton#TextEffectGenerateButton[running="true"] {
+    color: @qwidgetForegroundColor;
+    border-color: @borderColor;
+    background-color: @borderColor;
 }
 
 QToolButton#AddTextTransformButton::menu-indicator,

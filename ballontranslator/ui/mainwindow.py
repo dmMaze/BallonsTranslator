@@ -795,6 +795,7 @@ class MainWindow(mainwindow_cls):
         # Pending numeric edits are not dirty until they commit. Resolve them
         # before the close-time dirty check and final config snapshot.
         self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
+        self.st_manager.formatpanel.stop_text_effect_generation_for_shutdown()
         if self.auto_tate_chu_yoko_thread.isRunning():
             self.auto_tate_chu_yoko_thread.request_stop()
             self.auto_tate_chu_yoko_thread.wait()

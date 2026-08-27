@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import tempfile
@@ -31,6 +32,7 @@ from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
     ImageEffect,
+    ImageGenerationRecipe,
     TextFillEffect,
     GradientStop,
     HollowEffect,
@@ -54,7 +56,17 @@ class TextEffectPersistenceTest(unittest.TestCase):
         asset = RasterAssetRef(
             'assets/' + 'c' * 64 + '.png', 'rendered.png'
         )
-        effect = ImageEffect(asset, enabled=False, mode='background')
+        effect = ImageEffect(
+            asset,
+            enabled=False,
+            mode='background',
+            generation=ImageGenerationRecipe(
+                profile_id='artist',
+                model='image-model',
+                context='none',
+                prompt='Draw it',
+            ),
+        )
         block = TextBlock()
         block.fontformat.text_effects = TextEffectStack(effects=(effect,))
         block.translation = 'preserved'
@@ -107,6 +119,23 @@ class TextEffectPersistenceTest(unittest.TestCase):
             np.testing.assert_array_equal(
                 project.load_raster_asset(asset), red
             )
+
+    def test_generated_raster_bytes_use_the_managed_asset_boundary(self):
+        pixels = np.full((3, 4, 4), (20, 80, 220, 170), np.uint8)
+        buffer = io.BytesIO()
+        Image.fromarray(pixels).save(buffer, format='PNG')
+        payload = buffer.getvalue()
+        with tempfile.TemporaryDirectory() as directory:
+            project = ProjImgTrans()
+            project.directory = directory
+
+            asset = project.import_raster_asset_bytes(
+                payload, 'generated.png'
+            )
+
+            self.assertEqual(asset.digest, hashlib.sha256(payload).hexdigest())
+            self.assertEqual(asset.display_name, 'generated.png')
+            np.testing.assert_array_equal(project.load_raster_asset(asset), pixels)
 
     def test_raster_import_rejects_resource_bombs_and_wide_channels(self):
         with tempfile.TemporaryDirectory() as directory:

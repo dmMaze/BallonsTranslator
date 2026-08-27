@@ -1,6 +1,8 @@
 import os
 from dataclasses import replace
 from types import SimpleNamespace
+import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -14,6 +16,7 @@ from qtpy.QtCore import (
     QPoint,
     QPointF,
     QRectF,
+    QTimer,
     QTranslator,
     Qt,
 )
@@ -51,6 +54,11 @@ from ballontranslator.ui.text_engine.effects.panel import (
     TextFillEffectCard,
     TextEffectPanel,
 )
+from ballontranslator.ui.text_engine.effects.image_generation import (
+    ImageGenerationBackend,
+    ImageGenerationRequest,
+)
+from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.formatting.presets import TextStyleLabel
 from ballontranslator.ui.text_engine.effects.gradient_editor import (
@@ -79,6 +87,7 @@ from ballontranslator.utils.text_effects import (
     GradientStop,
     HollowEffect,
     ImageEffect,
+    ImageGenerationRecipe,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
@@ -88,6 +97,7 @@ from ballontranslator.utils.text_effects import (
     with_primary_stroke,
 )
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.llm_profiles import default_profile
 
 
 class _PanelCanvas:
@@ -104,6 +114,18 @@ class _PanelCanvas:
 
     def clear_text_transform_controls(self) -> None:
         pass
+
+
+class _BlockedImageBackend(ImageGenerationBackend):
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def generate(self, request, stop_event) -> np.ndarray:
+        del request, stop_event
+        self.started.set()
+        self.release.wait()
+        return np.full((2, 3, 4), 255, np.uint8)
 
 
 class TextEffectPanelTest(unittest.TestCase):
@@ -148,6 +170,16 @@ class TextEffectPanelTest(unittest.TestCase):
         if stack is not None:
             block.fontformat.text_effects = stack
         return TextBlkItem(block, 1)
+
+    def _wait_until(self, predicate, timeout: float = 2.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if predicate():
+                return True
+            time.sleep(0.005)
+        self.app.processEvents()
+        return bool(predicate())
 
     def test_item_typed_preview_commit_escape_and_one_undo(self):
         before = self._stack(
@@ -2333,20 +2365,41 @@ class TextEffectPanelTest(unittest.TestCase):
             )
             self.assertEqual(
                 item.blk.fontformat.text_effects.effects[0].mode,
-                'replace',
+                'foreground',
             )
         self.assertEqual(len(controls.image_cards), 1)
         card = controls.image_cards[0]
-        self.assertEqual(card.image_button.text(), 'Empty')
+        self.assertEqual(card.image_field.text(), '')
+        self.assertEqual(card.image_button.text(), '')
+        self.assertFalse(card.image_button.icon().isNull())
+        self.assertIs(card.image_button.parent(), card.image_field)
         self.assertIn('Choose an image', card.image_button.toolTip())
         self.assertIn('Hidden while editing', card.image_button.toolTip())
+        placement_hints = [
+            card.mode_selector.itemData(
+                index, Qt.ItemDataRole.ToolTipRole
+            )
+            for index in range(card.mode_selector.count())
+        ]
+        self.assertTrue(all(placement_hints))
+        self.assertEqual(
+            [
+                card.mode_selector.itemText(index)
+                for index in range(card.mode_selector.count())
+            ],
+            ['In Front', 'Behind'],
+        )
+        self.assertEqual(
+            card.mode_selector.toolTip(), placement_hints[0]
+        )
         other_asset = RasterAssetRef(
             'assets/' + 'f' * 64 + '.png', 'other.png'
         )
         card.set_values(
             (ImageEffect(asset), ImageEffect(other_asset)), None
         )
-        self.assertEqual(card.image_button.text(), 'Mixed')
+        self.assertEqual(card.image_field.text(), 'Mixed')
+        self.assertEqual(card.image_field.cursorPosition(), 0)
         self.assertIn('selected text', card.image_button.toolTip())
         self.assertIn('Hidden while editing', card.image_button.toolTip())
 
@@ -2365,6 +2418,7 @@ class TextEffectPanelTest(unittest.TestCase):
         card.mode_selector.setCurrentIndex(
             card.mode_selector.findData('background')
         )
+        self.assertIn('behind', card.mode_selector.toolTip())
         self.assertEqual(self.canvas.stack.count(), 3)
         card.move_up_button.click()
         self.assertEqual(self.canvas.stack.count(), 4)
@@ -2386,6 +2440,472 @@ class TextEffectPanelTest(unittest.TestCase):
 
         action.trigger()
         self.assertEqual(len(controls.image_cards), 2)
+
+    def test_image_generation_is_single_item_and_panel_globally_busy(self):
+        old_profiles = pcfg.module.llm_profiles
+        old_profile_id = pcfg.module.inpaint_llm_id
+        profile = default_profile('OpenRouter')
+        profile.support_image = True
+        profile.image_model = 'image-v2'
+        profile.image_model_options = ['image-v2']
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.inpaint_llm_id = profile.id
+        try:
+            project = Mock()
+            self.canvas.imgtrans_proj = project
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            first = self._item(self._stack(ImageEffect(), ImageEffect()))
+            second = self._item(self._stack(ImageEffect(), ImageEffect()))
+            scene.addItem(first)
+            scene.addItem(second)
+
+            self.panel.set_textblk_item(first)
+            controls = self.panel.texteffect_panel
+            self.assertTrue(controls.image_cards[0].generate_button.isEnabled())
+            controls.set_image_generation_state(0, 'running')
+            active_card = next(
+                card for card in controls.image_cards if card.index == 0
+            )
+            other_card = next(
+                card for card in controls.image_cards if card.index != 0
+            )
+            self.assertEqual(active_card.generate_button.text(), 'Stop')
+            self.assertTrue(active_card.generate_button.isEnabled())
+            self.assertFalse(other_card.generate_button.isEnabled())
+            self.assertFalse(other_card.model_selector.isEnabled())
+            self.assertIn(
+                'Another Image generation',
+                other_card.generate_button.toolTip(),
+            )
+
+            controls.detach_image_generation_card()
+            first.blk.fontformat.text_effects = self._stack(
+                StrokeEffect(), ImageEffect(), ImageEffect()
+            )
+            controls.set_effect_items((first,))
+            self.assertTrue(all(
+                not card.generate_button.isEnabled()
+                for card in controls.image_cards
+            ))
+            self.assertTrue(all(
+                card.generate_button.text() == 'Generate'
+                for card in controls.image_cards
+            ))
+
+            controls.set_image_generation_state(0, 'idle')
+            self.canvas.selected = [first, second]
+            first.blk.fontformat.text_effects = self._stack(
+                ImageEffect(), ImageEffect()
+            )
+            self.panel.set_textblk_item(None, multi_select=True)
+            multi_card = controls.image_cards[0]
+            self.assertFalse(multi_card.generate_button.isEnabled())
+            self.assertTrue(multi_card.image_button.isEnabled())
+            self.assertIn('exactly one', multi_card.generate_button.toolTip())
+        finally:
+            pcfg.module.llm_profiles = old_profiles
+            pcfg.module.inpaint_llm_id = old_profile_id
+
+    def test_image_generation_draft_fields_are_local_to_owned_popup(self):
+        old_profiles = pcfg.module.llm_profiles
+        old_profile_id = pcfg.module.inpaint_llm_id
+        old_inpainter = pcfg.module.inpainter
+        first_profile = default_profile('OpenRouter')
+        second_profile = default_profile('OpenAI')
+        second_profile.image_model = 'image-v2'
+        second_profile.image_model_options = ['image-v2']
+        pcfg.module.llm_profiles = [first_profile, second_profile]
+        pcfg.module.inpaint_llm_id = first_profile.id
+        pcfg.module.inpainter = 'lama_large_512px'
+        try:
+            project = Mock()
+            self.canvas.imgtrans_proj = project
+            scene = QGraphicsScene()
+            scene.imgtrans_proj = project
+            item = self._item(self._stack(ImageEffect(
+                generation=ImageGenerationRecipe(
+                    profile_id=first_profile.id,
+                    model=first_profile.image_model_options[0],
+                    prompt='Persisted prompt',
+                )
+            )))
+            scene.addItem(item)
+            self.panel.set_textblk_item(item)
+            card = self.panel.texteffect_panel.image_cards[0]
+            selector = card.model_selector
+
+            before = item.blk.fontformat.text_effects
+            with patch.object(
+                item, 'set_text_effects', wraps=item.set_text_effects
+            ) as set_effects, patch.object(
+                self.canvas,
+                'push_undo_command',
+                wraps=self.canvas.push_undo_command,
+            ) as push_undo:
+                # The custom menu pins the formatting owner for its complete
+                # popup transaction, including QMenu's hide notification.
+                self.panel.show()
+
+                def clear_selection_while_closing() -> None:
+                    self.assertTrue(self.panel.focusOnColorDialog)
+                    self.panel.set_textblk_item(None)
+                    self.assertIs(self.panel.textblk_item, item)
+                    self.assertIs(
+                        self.panel.texteffect_panel.image_cards[0], card
+                    )
+
+                selector.menu.aboutToHide.connect(
+                    clear_selection_while_closing
+                )
+
+                def choose_model() -> None:
+                    self.assertIs(
+                        QApplication.activePopupWidget(), selector.menu
+                    )
+                    self.assertTrue(self.panel.focusOnColorDialog)
+                    self.panel.set_textblk_item(None)
+                    self.assertIs(self.panel.textblk_item, item)
+                    self.assertIs(
+                        self.panel.texteffect_panel.image_cards[0], card
+                    )
+                    action = next(
+                        child
+                        for parent in selector.menu.actions()
+                        if parent.menu() is not None
+                        for child in parent.menu().actions()
+                        if child.data()
+                        == (second_profile.id, 'image-v2')
+                    )
+                    action.trigger()
+                    selector.menu.close()
+
+                QTimer.singleShot(0, choose_model)
+                selector.click()
+                self.assertFalse(self.panel.focusOnColorDialog)
+
+                # Native combo popups are top-level windows whose focused
+                # list view still belongs to the formatting panel through
+                # parentWidget(). Keep the same card if selection clears.
+                card.context_selector.showPopup()
+                self.app.processEvents()
+                self.assertIsNotNone(QApplication.activePopupWidget())
+                self.panel.set_textblk_item(None)
+                self.assertIs(self.panel.textblk_item, item)
+                self.assertIs(
+                    self.panel.texteffect_panel.image_cards[0], card
+                )
+                card.context_selector.hidePopup()
+
+                card.context_selector.setCurrentIndex(
+                    card.context_selector.findData('none')
+                )
+                card.prompt_editor.setPlainText('Keep this draft')
+                self.app.processEvents()
+
+                self.assertEqual(set_effects.call_count, 0)
+                self.assertEqual(push_undo.call_count, 0)
+
+            self.assertIs(self.panel.texteffect_panel.image_cards[0], card)
+            self.assertEqual(selector.profile_id, second_profile.id)
+            self.assertEqual(selector.model, 'image-v2')
+            self.assertEqual(
+                card._generation_draft.model,
+                'image-v2',
+            )
+            self.assertEqual(card.context_selector.currentData(), 'none')
+            self.assertEqual(
+                card.prompt_editor.toPlainText(), 'Keep this draft'
+            )
+            self.assertEqual(item.blk.fontformat.text_effects, before)
+            self.assertEqual(self.canvas.stack.count(), 0)
+            self.assertEqual(pcfg.module.inpaint_llm_id, first_profile.id)
+            self.assertEqual(pcfg.module.inpainter, 'lama_large_512px')
+
+            generation_request = Mock()
+            card.generate_requested.disconnect()
+            card.generate_requested.connect(generation_request)
+            card.generate_button.click()
+            recipe = generation_request.call_args.args[1]
+            self.assertEqual(recipe.profile_id, second_profile.id)
+            self.assertEqual(recipe.model, 'image-v2')
+            self.assertEqual(recipe.context, 'none')
+            self.assertEqual(recipe.prompt, 'Keep this draft')
+            self.assertEqual(item.blk.fontformat.text_effects, before)
+            self.assertEqual(self.canvas.stack.count(), 0)
+
+            # A real target change projects the persisted recipe normally.
+            other = self._item(self._stack(ImageEffect()))
+            scene.addItem(other)
+            self.panel.set_textblk_item(other)
+            self.panel.set_textblk_item(item)
+            reset = self.panel.texteffect_panel.image_cards[0]
+            self.assertEqual(reset.model_selector.profile_id, first_profile.id)
+            self.assertNotEqual(reset.model_selector.model, 'image-v2')
+            self.assertEqual(
+                reset.prompt_editor.toPlainText(), 'Persisted prompt'
+            )
+        finally:
+            pcfg.module.llm_profiles = old_profiles
+            pcfg.module.inpaint_llm_id = old_profile_id
+            pcfg.module.inpainter = old_inpainter
+
+    def test_generated_image_recipe_asset_and_history_use_one_command(self):
+        old_asset = RasterAssetRef(
+            'assets/' + '1' * 64 + '.png', 'old.png'
+        )
+        new_asset = RasterAssetRef(
+            'assets/' + '2' * 64 + '.png', 'generated.png'
+        )
+        old_recipe = ImageGenerationRecipe(
+            profile_id='old-profile',
+            model='old-model',
+            prompt='Old prompt',
+        )
+        new_recipe = ImageGenerationRecipe(
+            profile_id='new-profile',
+            model='new-model',
+            context='none',
+            prompt='New prompt',
+        )
+        original = ImageEffect(old_asset, generation=old_recipe)
+        project = Mock()
+        project.load_identity = object()
+        project.current_img = 'page.png'
+        project.resolve_raster_asset.return_value = '/project/assets/old.png'
+        project.import_raster_asset_bytes.return_value = new_asset
+        self.canvas.imgtrans_proj = project
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(original))
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        card = self.panel.texteffect_panel.image_cards[0]
+        card._generation_draft = new_recipe
+        card._generation_draft_dirty = True
+        card.model_selector.set_recipe(new_recipe)
+        card.context_selector.setCurrentIndex(
+            card.context_selector.findData('none')
+        )
+        card.prompt_editor.setPlainText('New prompt')
+        session._pending_image_generation = (
+            item,
+            0,
+            original,
+            project,
+            project.load_identity,
+            project.current_img,
+            new_recipe,
+        )
+
+        session._finish_image_generation(0, b'generated-png')
+
+        self.assertEqual(self.canvas.stack.count(), 1)
+        generated = item.blk.fontformat.text_effects[0]
+        self.assertEqual(generated.asset, new_asset)
+        self.assertEqual(generated.generation, new_recipe)
+        card = self.panel.texteffect_panel.image_cards[0]
+        self.assertEqual(card.prompt_editor.toPlainText(), 'New prompt')
+        self.assertFalse(card._generation_draft_dirty)
+        project.import_raster_asset_bytes.assert_called_once_with(
+            b'generated-png', 'generated.png'
+        )
+
+        self.canvas.stack.undo()
+        card = self.panel.texteffect_panel.image_cards[0]
+        self.assertEqual(item.blk.fontformat.text_effects[0], original)
+        self.assertEqual(card.prompt_editor.toPlainText(), 'Old prompt')
+        self.assertEqual(card.model_selector.model, 'old-model')
+        self.canvas.stack.redo()
+        card = self.panel.texteffect_panel.image_cards[0]
+        self.assertEqual(card.prompt_editor.toPlainText(), 'New prompt')
+        self.assertEqual(card.context_selector.currentData(), 'none')
+
+    def test_same_generation_asset_refreshes_project_without_undo(self):
+        asset = RasterAssetRef(
+            'assets/' + '5' * 64 + '.png', 'generated.png'
+        )
+        recipe = ImageGenerationRecipe(
+            profile_id='artist', model='image-v2', prompt='Texture'
+        )
+        effect = ImageEffect(asset, generation=recipe)
+        project = Mock()
+        project.load_identity = object()
+        project.current_img = 'page.png'
+        project.import_raster_asset_bytes.return_value = asset
+        self.canvas.imgtrans_proj = project
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(effect))
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        session._pending_image_generation = (
+            item,
+            0,
+            effect,
+            project,
+            project.load_identity,
+            project.current_img,
+            recipe,
+        )
+
+        with patch.object(
+            self.panel.texteffect_panel, 'project_assets_changed'
+        ) as refresh_assets:
+            session._finish_image_generation(0, b'same-generated-png')
+
+        self.assertEqual(self.canvas.stack.count(), 0)
+        self.assertEqual(item.blk.fontformat.text_effects[0], effect)
+        project.import_raster_asset_bytes.assert_called_once_with(
+            b'same-generated-png', 'generated.png'
+        )
+        refresh_assets.assert_called_once_with()
+
+    def test_generation_preserves_mode_and_visibility_edits_made_in_flight(self):
+        old_asset = RasterAssetRef(
+            'assets/' + '3' * 64 + '.png', 'old.png'
+        )
+        new_asset = RasterAssetRef(
+            'assets/' + '4' * 64 + '.png', 'generated.png'
+        )
+        recipe = ImageGenerationRecipe(
+            profile_id='artist', model='image-v2', prompt='Texture'
+        )
+        original = ImageEffect(old_asset, generation=recipe)
+        project = Mock()
+        project.load_identity = object()
+        project.current_img = 'page.png'
+        project.resolve_raster_asset.return_value = '/project/assets/old.png'
+        project.import_raster_asset_bytes.return_value = new_asset
+        self.canvas.imgtrans_proj = project
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(original))
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        session._pending_image_generation = (
+            item,
+            0,
+            original,
+            project,
+            project.load_identity,
+            project.current_img,
+            recipe,
+        )
+
+        self.assertTrue(session.commit_value(0, 'mode', 'background'))
+        self.assertTrue(session.commit_value(0, 'enabled', False))
+        session._finish_image_generation(0, b'generated-png')
+
+        generated = item.blk.fontformat.text_effects[0]
+        self.assertEqual(generated.asset, new_asset)
+        self.assertEqual(generated.mode, 'background')
+        self.assertFalse(generated.enabled)
+        self.assertEqual(self.canvas.stack.count(), 3)
+        self.canvas.stack.undo()
+        previous = item.blk.fontformat.text_effects[0]
+        self.assertEqual(previous.asset, old_asset)
+        self.assertEqual(previous.mode, 'background')
+        self.assertFalse(previous.enabled)
+
+    def test_deleted_generation_target_is_stale_and_history_stops_worker(self):
+        effect = ImageEffect()
+        project = Mock()
+        project.load_identity = object()
+        project.current_img = 'page.png'
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(effect))
+        block = item.blk
+        original_stack = block.fontformat.text_effects
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        session._pending_image_generation = (
+            item,
+            0,
+            effect,
+            project,
+            project.load_identity,
+            project.current_img,
+            ImageGenerationRecipe(),
+        )
+        with patch.object(session, 'stop_image_generation') as stop:
+            session.resolve_for_history_change()
+        stop.assert_called_once_with(detach_card=True)
+        item.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+
+        self.assertFalse(session._generation_target_is_current())
+        session._finish_image_generation(0, b'stale-png')
+        project.import_raster_asset_bytes.assert_not_called()
+        self.assertEqual(block.fontformat.text_effects, original_stack)
+        self.assertIsNone(session._pending_image_generation)
+        session.items = []
+
+    def test_image_generation_context_memory_error_is_reported(self):
+        project = Mock()
+        project.load_identity = object()
+        project.current_img = 'page.png'
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(ImageEffect()))
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        recipe = ImageGenerationRecipe(
+            profile_id='unused', model='unused', context='source'
+        )
+
+        with patch(
+            'ballontranslator.ui.text_engine.effects.edit_session.'
+            'prepare_image_generation_context',
+            side_effect=MemoryError('crop allocation failed'),
+        ), patch.object(
+            self.panel.texteffect_panel,
+            'show_image_generation_context_error',
+        ) as show_error:
+            self.assertFalse(session.generate_image(0, recipe))
+
+        show_error.assert_called_once_with(0, 'crop allocation failed')
+        self.assertIsNone(session._pending_image_generation)
+
+    def test_missing_project_generation_error_uses_translation_context(self):
+        class PrefixTranslator(QTranslator):
+            def translate(
+                self, context, source_text, disambiguation=None, n=-1
+            ):
+                del disambiguation, n
+                if context == 'TextEffectEditSession':
+                    return 'Localized ' + source_text
+                return source_text
+
+        scene = QGraphicsScene()
+        item = self._item(self._stack(ImageEffect()))
+        scene.addItem(item)
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        translator = PrefixTranslator()
+        self.app.installTranslator(translator)
+        try:
+            with patch.object(
+                self.panel.texteffect_panel,
+                'show_image_generation_context_error',
+            ) as show_error:
+                self.assertFalse(session.generate_image(
+                    0,
+                    ImageGenerationRecipe(
+                        profile_id='unused', model='unused'
+                    ),
+                ))
+            message = show_error.call_args.args[1]
+            self.assertTrue(message.startswith('Localized '))
+        finally:
+            self.app.removeTranslator(translator)
 
     def test_image_add_is_disabled_without_project_item_context(self):
         controls = self.panel.texteffect_panel
@@ -2412,8 +2932,13 @@ class TextEffectPanelTest(unittest.TestCase):
 
         with patch.object(
             QFileDialog, 'getOpenFileName', return_value=('', '')
-        ):
-            card.image_button.click()
+        ) as chooser:
+            QTest.mouseClick(
+                card.image_field,
+                Qt.MouseButton.LeftButton,
+                pos=QPoint(4, card.image_field.height() // 2),
+            )
+        chooser.assert_called_once()
         self.assertEqual(self.canvas.stack.count(), 0)
         self.assertEqual(
             item.blk.fontformat.text_effects[0].asset, old_asset
@@ -2464,16 +2989,18 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
         card = controls.image_cards[0]
-        self.assertEqual(card.image_button.text(), 'Missing: restored.png')
         self.assertEqual(
-            card.image_button.accessibleName(), 'Missing: restored.png'
+            card.image_field.text(), 'Missing: restored.png'
+        )
+        self.assertEqual(
+            card.image_field.accessibleName(), 'Missing: restored.png'
         )
 
         project.resolve_raster_asset.return_value = (
             '/project/assets/restored.png'
         )
         controls.project_assets_changed()
-        self.assertEqual(card.image_button.text(), 'restored.png')
+        self.assertEqual(card.image_field.text(), 'restored.png')
 
         with patch.object(
             controls,
@@ -2507,8 +3034,21 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint, TexturePaint()
         )
-        self.assertEqual(card.texture_button.text(), 'Empty')
+        self.assertEqual(card.texture_field.text(), '')
+        self.assertEqual(card.texture_button.text(), '')
+        self.assertFalse(card.texture_button.icon().isNull())
+        self.assertIs(card.texture_button.parent(), card.texture_field)
         self.assertEqual(self.canvas.stack.count(), 0)
+
+        with patch.object(
+            QFileDialog, 'getOpenFileName', return_value=('', '')
+        ) as chooser:
+            QTest.mouseClick(
+                card.texture_field,
+                Qt.MouseButton.LeftButton,
+                pos=QPoint(4, card.texture_field.height() // 2),
+            )
+        chooser.assert_called_once()
 
         project.import_raster_asset.side_effect = ValueError('not an image')
         with patch(
@@ -2520,7 +3060,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint, TexturePaint()
         )
-        self.assertEqual(card.texture_button.text(), 'Empty')
+        self.assertEqual(card.texture_field.text(), '')
         self.assertEqual(self.canvas.stack.count(), 0)
 
         project.import_raster_asset.side_effect = None
@@ -2696,7 +3236,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(None, multi_select=True)
         card = self.panel.texteffect_panel.text_fill_cards[0]
 
-        self.assertIn('paper.png', card.texture_button.text())
+        self.assertIn('paper.png', card.texture_field.text())
         self.assertTrue(card.texture_button.isEnabled())
         self.assertEqual(card.texture_mapping_selector.currentIndex(), -1)
         self.assertFalse(card.texture_scale_control.isHidden())
@@ -2708,7 +3248,7 @@ class TextEffectPanelTest(unittest.TestCase):
         second.fontformat.text_effects = second_stack
         self.panel.set_textblk_item(None, multi_select=True)
         card = self.panel.texteffect_panel.text_fill_cards[0]
-        self.assertEqual(card.texture_button.text(), 'Mixed')
+        self.assertEqual(card.texture_field.text(), 'Mixed')
         self.assertTrue(card.texture_button.isEnabled())
 
         project = Mock()
@@ -2774,7 +3314,9 @@ class TextEffectPanelTest(unittest.TestCase):
         }
         self.assertEqual(set(cards), {'Gradient', 'Texture'})
         self.assertIsNotNone(cards['Gradient'].gradient_editor)
+        self.assertIsNone(cards['Gradient'].texture_field)
         self.assertIsNone(cards['Gradient'].texture_button)
+        self.assertIsNotNone(cards['Texture'].texture_field)
         self.assertIsNotNone(cards['Texture'].texture_button)
         self.assertTrue(cards['Texture'].texture_scale_control.isHidden())
 
@@ -2868,6 +3410,83 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(mixed_card.type_selector.currentIndex(), -1)
         self.assertTrue(mixed_card.move_up_button.isEnabled())
         self.assertFalse(mixed_card.move_down_button.isEnabled())
+
+    def test_shutdown_stops_generation_but_ordinary_save_does_not(self):
+        session = self.panel.text_effect_session
+        with patch.object(session, 'stop_image_generation') as stop:
+            self.panel.resolve_text_transform_edits_for_save()
+            stop.assert_not_called()
+
+            self.panel.stop_text_effect_generation_for_shutdown()
+
+        stop.assert_called_once_with(detach_card=True)
+
+    def test_whole_format_application_detaches_blocked_generation(self):
+        asset = RasterAssetRef(
+            'assets/' + '6' * 64 + '.png', 'old.png'
+        )
+        recipe = ImageGenerationRecipe(
+            profile_id='artist', model='image-v2', prompt='Texture'
+        )
+        effect = ImageEffect(asset, generation=recipe)
+        project = Mock()
+        project.load_identity = object()
+        project.current_img = 'page.png'
+        self.canvas.imgtrans_proj = project
+        scene = QGraphicsScene()
+        scene.imgtrans_proj = project
+        item = self._item(self._stack(effect))
+        scene.addItem(item)
+        self.canvas.selected = [item]
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+        session._pending_image_generation = (
+            item,
+            0,
+            effect,
+            project,
+            project.load_identity,
+            project.current_img,
+            recipe,
+        )
+        backend = _BlockedImageBackend()
+        controller = session._image_generation_controller
+        self.assertTrue(controller.start(
+            0,
+            backend,
+            ImageGenerationRequest(recipe, None),
+        ))
+        self.assertTrue(backend.started.wait(1.0))
+        editor = Mock()
+        manager = SimpleNamespace(
+            canvas=self.canvas,
+            formatpanel=self.panel,
+            pairwidget_list=[None, SimpleNamespace(e_trans=editor)],
+        )
+        replacement = FontFormat(text_effects=self._stack(
+            StrokeEffect(width=0.4),
+            ImageEffect(asset, generation=recipe),
+        ))
+        try:
+            SceneTextManager.apply_fontformat(manager, replacement)
+            self.assertTrue(controller.active)
+            self.assertEqual(
+                self.panel.texteffect_panel._image_generation_state,
+                'stopping',
+            )
+            self.assertEqual(
+                item.blk.fontformat.text_effects,
+                replacement.text_effects,
+            )
+        finally:
+            backend.release.set()
+        self.assertTrue(self._wait_until(lambda: not controller.active))
+        project.import_raster_asset_bytes.assert_not_called()
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertEqual(
+            item.blk.fontformat.text_effects,
+            replacement.text_effects,
+        )
 
     def test_page_change_commits_pending_effect_before_owner_merge(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))

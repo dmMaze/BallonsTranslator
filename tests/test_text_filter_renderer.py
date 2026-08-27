@@ -161,7 +161,7 @@ class TextFilterRendererTest(unittest.TestCase):
         self.assertEqual(to_array.call_count, 1)
         self.assertEqual(to_pixmap.call_count, 1)
 
-    def test_replace_image_then_custom_filter_then_eraser(self):
+    def test_image_then_custom_filter_then_eraser(self):
         effect = FilterEffect('custom:image-filter')
         order = []
 
@@ -189,7 +189,7 @@ class TextFilterRendererTest(unittest.TestCase):
             )
             item = self._item(TextEffectStack(effects=(
                 effect,
-                ImageEffect(asset, mode='replace'),
+                ImageEffect(asset, mode='foreground'),
             )), text='')
             item.blk.text_alpha_mask = TextAlphaMask(strokes=(
                 AlphaBrushStroke('erase', 1000, ((160, 90),)),
@@ -211,10 +211,6 @@ class TextFilterRendererTest(unittest.TestCase):
                 return_value=registry,
             ), patch.object(
                 renderer,
-                '_capture_effect_source',
-                wraps=renderer._capture_effect_source,
-            ) as capture, patch.object(
-                renderer,
                 '_apply_text_alpha_mask',
                 side_effect=apply_mask,
             ):
@@ -227,7 +223,6 @@ class TextFilterRendererTest(unittest.TestCase):
                 )
 
             self.assertEqual(order, ['filter', 'eraser'])
-            self.assertEqual(capture.call_count, 0)
             self.assertEqual(np.count_nonzero(rendered[:, :, 3]), 0)
             scene.removeItem(item)
 

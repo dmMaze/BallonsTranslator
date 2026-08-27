@@ -78,7 +78,7 @@ class ImageEffectRendererTest(unittest.TestCase):
         Image.fromarray(rgba, 'RGBA').save(path)
         return project.import_raster_asset(path)
 
-    def test_image_composition_modes_use_source_over_destination_over_and_source(self):
+    def test_image_placements_use_source_over_and_destination_over(self):
         item = self._item(TextEffectStack())
         renderer = item.effect_renderer
         rect = renderer.logical_unpadded_rect()
@@ -88,7 +88,7 @@ class ImageEffectRendererTest(unittest.TestCase):
         asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
 
         results = {}
-        for mode in ('foreground', 'background', 'replace'):
+        for mode in ('foreground', 'background'):
             target = QPixmap(width, height)
             target.fill(QColor(230, 20, 30, 255))
             painter = QPainter(target)
@@ -112,12 +112,8 @@ class ImageEffectRendererTest(unittest.TestCase):
             results['background'][height // 2, width // 2],
             (230, 20, 30, 255),
         )
-        np.testing.assert_array_equal(
-            results['replace'][height // 2, width // 2],
-            (20, 60, 230, 255),
-        )
 
-    def test_last_valid_replace_eliminates_the_discarded_prefix(self):
+    def test_all_image_prefix_nodes_remain_in_application_order(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -127,16 +123,16 @@ class ImageEffectRendererTest(unittest.TestCase):
                 'first.png',
                 np.full((2, 2, 4), (20, 60, 230, 255), np.uint8),
             )
-            replacement = self._asset(
+            second = self._asset(
                 project,
                 directory,
-                'replacement.png',
+                'second.png',
                 np.full((2, 2, 4), (30, 220, 60, 255), np.uint8),
             )
             # Raw order is topmost-first; application order is reversed.
             stack = TextEffectStack(effects=(
                 FilterEffect('builtin:noise'),
-                ImageEffect(replacement, mode='replace'),
+                ImageEffect(second, mode='foreground'),
                 FilterEffect('builtin:noise'),
                 ImageEffect(first, mode='foreground'),
                 StrokeEffect(),
@@ -146,28 +142,29 @@ class ImageEffectRendererTest(unittest.TestCase):
 
             nodes = item.effect_renderer._ordered_surface_nodes()
 
-            self.assertEqual(tuple(index for index, _effect in nodes), (1, 0))
-            self.assertIsInstance(nodes[0][1], ImageEffect)
-            self.assertEqual(nodes[0][1].mode, 'replace')
-            self.assertIsInstance(nodes[1][1], FilterEffect)
+            self.assertEqual(
+                tuple(index for index, _effect in nodes),
+                (4, 3, 2, 1, 0),
+            )
             scene.removeItem(item)
 
-    def test_replace_skips_canonical_and_discarded_generated_rasterization(self):
+    def test_image_keeps_canonical_and_generated_rasterization(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
             asset = self._asset(
                 project,
                 directory,
-                'replace.png',
+                'foreground.png',
                 np.full((2, 2, 4), (20, 60, 230, 255), np.uint8),
             )
             item = self._item(TextEffectStack(effects=(
-                ImageEffect(asset, mode='replace'),
+                ImageEffect(asset, mode='foreground'),
                 StrokeEffect(width=0.4),
             )))
             scene = self._attach(item, project)
             renderer = item.effect_renderer
+            renderer.release_caches()
 
             with patch.object(
                 renderer,
@@ -179,30 +176,30 @@ class ImageEffectRendererTest(unittest.TestCase):
                 )
 
             self.assertFalse(rendered.isNull())
-            self.assertEqual(capture.call_count, 0)
+            self.assertGreater(capture.call_count, 0)
             scene.removeItem(item)
 
-    def test_replace_trimmed_prefix_cache_tracks_only_retained_layers(self):
+    def test_image_prefix_cache_tracks_nodes_before_bottom_filter(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
             asset = self._asset(
                 project,
                 directory,
-                'replace.png',
+                'foreground.png',
                 np.full((2, 2, 4), (20, 60, 230, 255), np.uint8),
             )
             top_filter = FilterEffect('builtin:noise')
             retained_stroke = StrokeEffect(width=0.2)
-            replace_image = ImageEffect(asset, mode='replace')
-            discarded_filter = FilterEffect('builtin:noise')
-            discarded_stroke = StrokeEffect(width=0.4)
+            image = ImageEffect(asset, mode='foreground')
+            lower_filter = FilterEffect('builtin:noise')
+            lower_stroke = StrokeEffect(width=0.4)
             stack = TextEffectStack(effects=(
                 top_filter,
                 retained_stroke,
-                replace_image,
-                discarded_filter,
-                discarded_stroke,
+                image,
+                lower_filter,
+                lower_stroke,
             ))
             item = self._item(stack)
             scene = self._attach(item, project)
@@ -219,10 +216,10 @@ class ImageEffectRendererTest(unittest.TestCase):
                 stack,
                 effects=(
                     top_filter,
-                    replace(retained_stroke, width=0.3),
-                    replace_image,
-                    discarded_filter,
-                    discarded_stroke,
+                    retained_stroke,
+                    image,
+                    lower_filter,
+                    replace(lower_stroke, width=0.6),
                 ),
             ))
             self.assertNotEqual(prefix_key(), initial)
@@ -231,30 +228,30 @@ class ImageEffectRendererTest(unittest.TestCase):
                 stack,
                 effects=(
                     top_filter,
-                    retained_stroke,
-                    replace_image,
-                    discarded_filter,
-                    replace(discarded_stroke, width=0.6),
+                    replace(retained_stroke, width=0.3),
+                    image,
+                    lower_filter,
+                    lower_stroke,
                 ),
             ))
             self.assertEqual(prefix_key(), initial)
             scene.removeItem(item)
 
-    def test_strict_replace_ignores_missing_prefix_and_resolves_once(self):
+    def test_strict_image_resolves_missing_prefix(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
-            replacement = self._asset(
+            foreground = self._asset(
                 project,
                 directory,
-                'replacement.png',
+                'foreground.png',
                 np.full((2, 2, 4), (30, 220, 60, 255), np.uint8),
             )
             missing = RasterAssetRef(
                 'assets/' + 'f' * 64 + '.png', 'missing.png'
             )
             item = self._item(TextEffectStack(effects=(
-                ImageEffect(replacement, mode='replace'),
+                ImageEffect(foreground, mode='foreground'),
                 ImageEffect(missing, mode='foreground'),
             )))
             scene = self._attach(item, project)
@@ -266,18 +263,18 @@ class ImageEffectRendererTest(unittest.TestCase):
                     '_project_raster',
                     wraps=renderer._project_raster,
                 ) as project_raster:
-                    rendered = renderer._render_effect_surface(
-                        renderer.boundingRect(), 1.0
-                    )
+                    with self.assertRaises(EffectRasterAllocationError):
+                        renderer._render_effect_surface(
+                            renderer.boundingRect(), 1.0
+                        )
             finally:
                 renderer.set_export_effect_render(False)
 
-            self.assertFalse(rendered.isNull())
             self.assertEqual(project_raster.call_count, 1)
-            self.assertEqual(project_raster.call_args.args[0], replacement)
+            self.assertEqual(project_raster.call_args.args[0], missing)
             scene.removeItem(item)
 
-    def test_strict_canvas_export_ignores_filter_discarded_by_replace(self):
+    def test_strict_canvas_export_keeps_filter_before_image(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -285,12 +282,12 @@ class ImageEffectRendererTest(unittest.TestCase):
             asset = self._asset(
                 project,
                 directory,
-                'replace.png',
+                'foreground.png',
                 np.full((2, 2, 4), (20, 60, 230, 255), np.uint8),
             )
             item = self._item(TextEffectStack(effects=(
-                ImageEffect(asset, mode='replace'),
-                FilterEffect('removed:filter'),
+                ImageEffect(asset, mode='foreground'),
+                FilterEffect('builtin:noise'),
             )), text='')
             canvas = Canvas()
             canvas.imgtrans_proj = project
@@ -305,39 +302,36 @@ class ImageEffectRendererTest(unittest.TestCase):
                 canvas.deleteLater()
                 self.app.processEvents()
 
-    def test_replace_discards_generated_padding_after_project_attachment(self):
+    def test_image_preserves_generated_padding_after_project_attachment(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
             asset = self._asset(
                 project,
                 directory,
-                'replace.png',
+                'foreground.png',
                 np.full((2, 2, 4), (20, 60, 230, 255), np.uint8),
             )
             item = self._item(TextEffectStack(effects=(
-                ImageEffect(asset, mode='replace'),
+                ImageEffect(asset, mode='foreground'),
                 GlowEffect(size=2.0, spread=1.0),
                 StrokeEffect(width=3.0),
             )))
             plain = self._item(TextEffectStack())
             scene = self._attach(item, project)
 
-            self.assertEqual(item.padding(), 0.0)
-            self.assertEqual(item.boundingRect(), plain.boundingRect())
-            self.assertEqual(
-                item.shape().boundingRect(), plain.shape().boundingRect()
+            self.assertGreater(item.padding(), 0.0)
+            self.assertGreater(
+                item.boundingRect().width(), plain.boundingRect().width()
             )
-            self.assertEqual(
-                item.effect_renderer._effect_flags(), (False, True)
-            )
-            self.assertEqual(
+            self.assertTrue(item.effect_renderer._effect_flags()[0])
+            self.assertGreater(
                 item.effect_renderer._effect_tile_overlap(),
                 EFFECT_RASTER_GUARD,
             )
             scene.removeItem(item)
 
-    def test_distorted_retained_glow_uses_discarded_canonical_stroke_bounds(self):
+    def test_distorted_glow_uses_canonical_stroke_bounds(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -351,7 +345,7 @@ class ImageEffectRendererTest(unittest.TestCase):
             def make_item(width: float):
                 item = self._item(TextEffectStack(effects=(
                     GlowEffect(size=0.25, spread=0.1),
-                    ImageEffect(asset, mode='replace'),
+                    ImageEffect(asset, mode='foreground'),
                     StrokeEffect(width=width, position='outside'),
                 )))
                 item.set_text_transform(TextTransformStack(
@@ -562,7 +556,7 @@ class ImageEffectRendererTest(unittest.TestCase):
                 canvas.deleteLater()
                 self.app.processEvents()
 
-    def test_settled_replace_paint_resolves_project_raster_once(self):
+    def test_settled_image_paint_resolves_project_raster_once(self):
         with tempfile.TemporaryDirectory() as directory:
             project = ProjImgTrans()
             project.directory = directory
@@ -672,7 +666,7 @@ class ImageEffectRendererTest(unittest.TestCase):
             renderer = item.effect_renderer
             renderer.set_faster_preview(True)
             preview = TextEffectStack(effects=(
-                ImageEffect(asset, mode='foreground'),
+                ImageEffect(asset, mode='background'),
             ))
 
             with patch.object(

@@ -167,8 +167,8 @@ warns and falls back to Normal for an invalid mode without dropping the effect;
 live values remain strict.
 
 Texture cards use optional immutable project-relative `RasterAssetRef` values.
-Adding Texture creates a neutral Empty paint without opening a file dialog;
-choosing a valid image later activates it.
+Adding Texture creates a neutral Empty paint with a blank embedded-picker field
+without opening a file dialog; choosing a valid image later activates it.
 The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`
 remains text-effect-specific. `ProjImgTrans` owns one-snapshot validated import
 into the project `assets/` directory, path-safe resolution, digest verification,
@@ -189,12 +189,11 @@ opaque sources or one maximum transparent source.
 
 Image reuses that same asset decoder and existing completed surface. It is a
 repeatable project-only `ImageEffect` in the ordinary movable stack. Adding a
-card creates a neutral Empty layer without opening a file dialog and defaults
-to Replace. Replace discards the accumulated prefix at its ordered position,
-Foreground source-over composites above it, and Background destination-over
-places the image behind it so existing text remains visible. Later cards and
-Filters process the composed result. Generated effects still use canonical
-glyph sources. Scaling uses premultiplied-alpha,
+card creates a neutral layer with a blank embedded-picker field without opening
+a file dialog and defaults to In Front. In Front source-over composites above accumulated output, while
+Behind destination-over places the image behind it so existing text remains
+visible. Later cards and Filters process the composed result. Generated effects
+still use canonical glyph sources. Scaling uses premultiplied-alpha,
 global-coordinate bilinear sampling over only the logical intersection, keeping
 transparent edges and full/tiled output stable without a padded image copy. The
 fixed downstream order is Text Eraser alpha, Overall Opacity, global
@@ -203,9 +202,6 @@ feedback. During native horizontal or vertical text editing the layer is
 suppressed so the editable source, selection, caret, and IME stay coherent; it
 returns exactly after editing ends and remains active for strict export.
 Editing visibility participates in completed-surface and nonlinear cache keys.
-A valid Replace also trims discarded generated layers and Filters before
-padding, bounds, halo, resolution, and rendering decisions; only a retained
-exterior Shadow/Glow may keep its canonical Stroke-silhouette dependency.
 
 Texture and Image are project-only in v1. Itemless/global formatting
 cannot select them, and application-global presets/config strip both project
@@ -299,6 +295,12 @@ scrolls. Mark newly inserted cards visible before measuring them, then use the
 shared scroll-content height synchronizer so a constrained viewport neither
 flattens cards nor enlarges the main window. Leave horizontal sizing to the
 resizable scroll area so cards follow the viewport when a splitter moves.
+
+Formatting ownership includes ordinary child controls and the parent chain of
+their top-level Qt popups, such as nested `QMenu` and combo-box dropdowns.
+Transient canvas-selection signals while those widgets are active must retain
+the current text item and its card-local drafts; an actual target change still
+settles pending edits and projects the new item's persisted state.
 
 ## Change workflow
 

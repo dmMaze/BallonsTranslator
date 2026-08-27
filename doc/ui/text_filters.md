@@ -29,9 +29,8 @@ Image, Stroke, Shadow, Glow, and Filter cards share one top-to-bottom
 application order in the panel. A Filter transforms the structural
 Gradient/Texture foreground group plus every movable layer accumulated
 above its card; cards below it run
-afterward. Image Foreground and Background therefore become Filter input only
-when they precede that Filter. Image Replace clears its accumulated prefix at
-its own position, while Filters after it process the replacement normally.
+afterward. Image In Front and Behind therefore become Filter input only when
+they precede that Filter.
 The persisted tuple remains topmost-first for compatibility, so the renderer
 traverses that tuple in reverse. Consecutive Filters execute panel top-to-bottom
 in one chain. Text Eraser, Overall
@@ -57,10 +56,8 @@ actions remain usable.
 
 An enabled missing retained Filter is bypassed interactively with one warning.
 Strict export fails instead of silently producing output without the requested
-effect; a disabled missing Filter is neutral. A Filter in the dead prefix below
-a later valid Image Replace is neither resolved nor executed, so it cannot warn,
-grow bounds, or fail strict export. Restoring a compatible file and restarting
-makes a preserved retained card active again.
+effect; a disabled missing Filter is neutral. Restoring a compatible file and
+restarting makes a preserved retained card active again.
 
 Removing a parameter without changing the schema is backward compatible:
 unknown scalar keys remain in passive saved data but are omitted from runtime
@@ -173,17 +170,16 @@ the affected filter interactively and fails strict export.
 
 ## Rendering and caches
 
-The renderer first trims the dead prefix before the last valid Image Replace,
-then caches the structural base plus retained nodes below the first retained
-Filter in a two-entry `pre_filter_cache` in each existing committed, 0.5x
-preview, and export namespace. Its key includes that exact retained boundary,
-node order, and canonical Stroke dependencies of cached exterior layers while
-excluding Filter parameters. A filter-only preview reuses that prefix and
-canonical/positioned-Stroke caches. The renderer alternates only the necessary
-contiguous Image/generated painter batches and Filter chains; consecutive
-Filters cross to straight RGBA once, while an Image or generated batch
-separating two Filter groups necessarily creates two bridges. There are no
-per-filter prefix caches, workers, GPU paths, or second vector/text
+The renderer caches the structural base plus active nodes below the first
+active Filter in a two-entry `pre_filter_cache` in each existing committed,
+0.5x preview, and export namespace. Its key includes that exact active
+boundary, node order, and canonical Stroke dependencies of cached exterior
+layers while excluding Filter parameters. A filter-only preview reuses that
+prefix and canonical/positioned-Stroke caches. The renderer alternates only
+the necessary contiguous Image/generated painter batches and Filter chains;
+consecutive Filters cross to straight RGBA once, while an Image or generated
+batch separating two Filter groups necessarily creates two bridges. There are
+no per-filter prefix caches, workers, GPU paths, or second vector/text
 rasterization.
 
 Tiled rendering adds the sum of retained Filter halos to the existing effect

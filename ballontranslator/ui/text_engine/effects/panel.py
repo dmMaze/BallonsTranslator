@@ -1,10 +1,12 @@
 """Expandable controls for item-wide text effects."""
 
+from dataclasses import replace
 from typing import Dict, Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from qtpy.QtCore import (
     QCoreApplication,
     QEvent,
+    QPoint,
     QRectF,
     QSignalBlocker,
     QTimer,
@@ -17,8 +19,10 @@ from qtpy.QtGui import (
     QActionGroup,
     QColor,
     QIcon,
+    QMouseEvent,
     QPaintEvent,
     QPainter,
+    QResizeEvent,
 )
 from qtpy.QtWidgets import (
     QAbstractSpinBox,
@@ -30,8 +34,11 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
@@ -39,6 +46,8 @@ from qtpy.QtWidgets import (
 )
 
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.llm_profiles import profile_by_id
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
@@ -49,6 +58,7 @@ from ballontranslator.utils.text_effects import (
     LinearGradientPaint,
     HollowEffect,
     ImageEffect,
+    ImageGenerationRecipe,
     SHADOW_BLUR_LIMIT,
     SHADOW_OFFSET_LIMIT,
     SHADOW_SPREAD_LIMIT,
@@ -67,6 +77,14 @@ from ... import shared_widget as SW
 from ...custom_widget.combobox import BottomBorderComboBox
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
+from ...llm_modality import LLM_MODALITY_IMAGE_COLOR
+from ...module_tool_button import (
+    _add_bottom_menu_action,
+    _add_bottom_menu_section,
+    _add_bottom_submenu,
+    _bottom_submenu,
+    _simplify_llm_model_name,
+)
 from ..transforms.controls import CommittedTransformControl, TransformDragLabel
 from .paint import paint_effect_paint_preview
 from .filters import (
@@ -426,13 +444,6 @@ def _blend_control(
     accessible_name: str,
 ) -> Tuple[QWidget, BlendModeSelector]:
     """Build the shared blend-mode row."""
-    label = QLabel(
-        QCoreApplication.translate('TextEffectPanel', 'Blend'), parent
-    )
-    label.setObjectName('TextEffectParamLabel')
-    label.setAlignment(
-        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-    )
     selector = BlendModeSelector(accessible_name, parent)
     tooltip = QCoreApplication.translate(
         'TextEffectPanel',
@@ -441,13 +452,29 @@ def _blend_control(
     )
     selector.setToolTip(tooltip)
     selector.setAccessibleDescription(tooltip)
+    return _labeled_effect_editor(
+        parent,
+        QCoreApplication.translate('TextEffectPanel', 'Blend'),
+        selector,
+    ), selector
+
+
+def _labeled_effect_editor(
+    parent: QWidget, label_text: str, editor: QWidget
+) -> QWidget:
+    """Build the shared compact label/editor row used by effect cards."""
+    label = QLabel(label_text, parent)
+    label.setObjectName('TextEffectParamLabel')
+    label.setAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+    )
     widget = QWidget(parent)
     layout = QHBoxLayout(widget)
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(4)
     layout.addWidget(label)
-    layout.addWidget(selector, 1)
-    return widget, selector
+    layout.addWidget(editor, 1)
+    return widget
 
 
 def _set_blend_values(
@@ -1852,23 +1879,10 @@ class TextFillEffectCard(_EffectCard):
 
         self._paint_seed: Optional[EffectPaint] = None
         self.gradient_editor: Optional[InlineLinearGradientEditor] = None
-        self.texture_button: Optional[QToolButton] = None
+        self.texture_field: Optional[RasterAssetField] = None
+        self.texture_button: Optional[QPushButton] = None
         self.texture_mapping_selector: Optional[BottomBorderComboBox] = None
         self.texture_scale_control: Optional[EffectNumericControl] = None
-
-        def labeled_editor(label_text: str, editor: QWidget) -> QWidget:
-            label = QLabel(label_text, self)
-            label.setObjectName('TextEffectParamLabel')
-            label.setAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-            )
-            widget = QWidget(self)
-            row = QHBoxLayout(widget)
-            row.setContentsMargins(0, 0, 0, 0)
-            row.setSpacing(4)
-            row.addWidget(label)
-            row.addWidget(editor, 1)
-            return widget
 
         texture_image_widget = None
         mapping_widget = None
@@ -1889,19 +1903,14 @@ class TextFillEffectCard(_EffectCard):
                 self.color_dialog_active_changed.emit
             )
         else:
-            self.texture_button = QToolButton(self)
-            self.texture_button.setObjectName('TextEffectPaintButton')
-            self.texture_button.setText(self.tr('Choose Image…'))
-            self.texture_button.setToolButtonStyle(
-                Qt.ToolButtonStyle.ToolButtonTextOnly
+            self.texture_field = RasterAssetField(self)
+            self.texture_button = self.texture_field.select_button
+            self.texture_button.setAccessibleName(
+                self.tr('Choose Texture Image')
             )
-            self.texture_button.setSizePolicy(
-                QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-            )
-            self.texture_button.setFixedHeight(24)
-            self.texture_button.clicked.connect(self._on_texture_clicked)
-            texture_image_widget = labeled_editor(
-                self.tr('Image'), self.texture_button
+            self.texture_field.activated.connect(self._on_texture_clicked)
+            texture_image_widget = _labeled_effect_editor(
+                self, self.tr('Image'), self.texture_field
             )
 
             self.texture_mapping_selector = BottomBorderComboBox(
@@ -1923,8 +1932,8 @@ class TextFillEffectCard(_EffectCard):
             self.texture_mapping_selector.currentIndexChanged.connect(
                 self._on_texture_mapping_changed
             )
-            mapping_widget = labeled_editor(
-                self.tr('Mapping'), self.texture_mapping_selector
+            mapping_widget = _labeled_effect_editor(
+                self, self.tr('Mapping'), self.texture_mapping_selector
             )
             self.texture_scale_control = EffectNumericControl(
                 self.tr('Scale'), 'texture_scale', 100.0, 0.1, 4.0,
@@ -2023,6 +2032,7 @@ class TextFillEffectCard(_EffectCard):
                 self._paint_seed, editable=not mixed_paint
             )
         else:
+            assert self.texture_field is not None
             assert self.texture_button is not None
             assert self.texture_mapping_selector is not None
             assert self.texture_scale_control is not None
@@ -2041,35 +2051,31 @@ class TextFillEffectCard(_EffectCard):
                 else None
             )
             if not has_common_asset:
-                self.texture_button.setText(self.tr('Mixed'))
-                self.texture_button.setToolTip(
-                    self.tr('Choose one image for the selected text items')
+                display_name = self.tr('Mixed')
+                hint = self.tr(
+                    'Choose one image for the selected text items'
                 )
-                self.texture_button.setAccessibleName(
-                    self.tr('Mixed Texture Images')
-                )
+                accessible_name = self.tr('Mixed Texture Images')
             elif common_asset is None:
-                self.texture_button.setText(self.tr('Empty'))
-                self.texture_button.setToolTip(
-                    self.tr('Choose an image for this Texture')
-                )
-                self.texture_button.setAccessibleName(
-                    self.tr('Empty Texture Image')
-                )
+                display_name = ''
+                hint = self.tr('Choose an image for this Texture')
+                accessible_name = self.tr('No Texture Image Selected')
             else:
                 name = (
                     common_asset.display_name
                     or common_asset.path.rsplit('/', 1)[-1]
                 )
-                self.texture_button.setText(
+                display_name = (
                     self.tr('Missing: {name}').format(name=name)
                     if texture_available is False else name
                 )
-                self.texture_button.setToolTip(
-                    name + '\n' + common_asset.path
-                )
-                self.texture_button.setAccessibleName(name)
-            self.texture_button.setEnabled(True)
+                hint = name + '\n' + common_asset.path
+                accessible_name = display_name
+            self.texture_field.setText(display_name)
+            self.texture_field.setCursorPosition(0)
+            self.texture_field.setToolTip(hint)
+            self.texture_field.setAccessibleName(accessible_name)
+            self.texture_button.setToolTip(hint)
             mappings = [paint.mapping for paint in textures]
             common_mapping = (
                 mappings[0]
@@ -2461,6 +2467,280 @@ class FilterEffectCard(_EffectCard):
             self.move_requested.emit(self.index, direction)
 
 
+class RasterAssetField(QLineEdit):
+    """Read-only raster name with a Glossary-style embedded picker.
+
+    >>> RasterAssetField.__name__
+    'RasterAssetField'
+    """
+
+    activated = Signal()
+
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        button_size: int = 20,
+    ) -> None:
+        super().__init__(parent)
+        self._button_size = int(button_size)
+        self.setObjectName('TextEffectRasterAssetField')
+        self.setReadOnly(True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        self.setFixedHeight(24)
+        self.select_button = QPushButton(self)
+        self.select_button.setObjectName('TextEffectRasterFileButton')
+        self.select_button.setFixedSize(
+            self._button_size, self._button_size
+        )
+        self.select_button.setIcon(QIcon(themed_icon_path('files.svg')))
+        self.select_button.setIconSize(QSize(16, 16))
+        self.select_button.clicked.connect(self.activated.emit)
+        self.setTextMargins(4, 0, self._button_size + 2, 0)
+        self._position_select_button()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.activated.emit()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._position_select_button()
+
+    def _position_select_button(self) -> None:
+        self.select_button.move(
+            self.width() - self._button_size,
+            max(0, (self.height() - self.select_button.height()) // 2),
+        )
+
+
+class ImageGenerationModelSelector(QToolButton):
+    """Card-local image-capable LLM profile/model menu."""
+
+    selection_changed = Signal(str, str)
+    popup_active_changed = Signal(bool)
+    ARROW_SIZE = 12
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.profile_id = ''
+        self.model = ''
+        self.backend = 'llm'
+        self.setObjectName('TextEffectGenerationModelSelector')
+        self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+        )
+        self.setFixedHeight(24)
+        self.menu = QMenu(self)
+        self.menu.setObjectName('TextEffectAddMenu')
+        self.menu.aboutToShow.connect(self._on_menu_about_to_show)
+        self.clicked.connect(self._exec_menu)
+
+    @staticmethod
+    def _image_profiles() -> tuple:
+        return tuple(
+            profile
+            for profile in pcfg.module.llm_profiles
+            if profile.support_image
+        )
+
+    @classmethod
+    def _default_selection(cls) -> Tuple[str, str]:
+        profiles = cls._image_profiles()
+        selected = profile_by_id(profiles, pcfg.module.inpaint_llm_id)
+        profile = selected if selected is not None else (
+            profiles[0] if profiles else None
+        )
+        if profile is None:
+            return '', ''
+        options = [
+            str(option).strip()
+            for option in profile.image_model_options
+            if str(option).strip()
+        ]
+        model = str(profile.image_model or '').strip()
+        if not model:
+            model = options[0] if options else ''
+        return profile.id, model
+
+    def set_recipe(self, recipe: ImageGenerationRecipe) -> None:
+        self.backend = recipe.backend
+        self.profile_id = recipe.profile_id
+        self.model = recipe.model
+        if (
+            self.backend == 'llm'
+            and not self.profile_id
+            and not self.model
+        ):
+            self.profile_id, self.model = self._default_selection()
+        self._sync_text()
+
+    def has_available_selection(self) -> bool:
+        if self.backend != 'llm' or not self.model.strip():
+            return False
+        profile = profile_by_id(pcfg.module.llm_profiles, self.profile_id)
+        return bool(profile is not None and profile.support_image)
+
+    def _sync_text(self) -> None:
+        profile = profile_by_id(pcfg.module.llm_profiles, self.profile_id)
+        if self.backend != 'llm':
+            text = self.tr('Unavailable: {backend}').format(
+                backend=self.backend
+            )
+        elif profile is None and self.profile_id:
+            text = self.tr('Missing: {profile}').format(
+                profile=self.profile_id
+            )
+        elif self.model:
+            text = _simplify_llm_model_name(self.model)
+        elif profile is not None:
+            text = profile.name or profile.id
+        else:
+            text = self.tr('No Models')
+        self.setText(text)
+        self.setToolTip(text)
+
+    def _on_menu_about_to_show(self) -> None:
+        self.popup_active_changed.emit(True)
+        self._rebuild_menu()
+
+    def _exec_menu(self) -> None:
+        self.setDown(True)
+        try:
+            self.menu.exec_(
+                self.mapToGlobal(QPoint(0, self.height()))
+            )
+        finally:
+            # exec_ returns only after Qt has completed the popup close path.
+            self.setDown(False)
+            self.popup_active_changed.emit(False)
+
+    def _rebuild_menu(self) -> None:
+        self.menu.clear()
+        _add_bottom_menu_section(
+            self.menu, self.tr('LLM'), color=LLM_MODALITY_IMAGE_COLOR
+        )
+        profiles = self._image_profiles()
+        if not profiles:
+            action = QAction(self.tr('No image profiles'), self.menu)
+            action.setEnabled(False)
+            self.menu.addAction(action)
+            return
+        for profile in profiles:
+            profile_menu = _bottom_submenu(
+                profile.name or profile.id, self.menu
+            )
+            _add_bottom_submenu(
+                self.menu,
+                profile_menu,
+                profile.name or profile.id,
+                self.backend == 'llm' and self.profile_id == profile.id,
+            )
+            _add_bottom_menu_section(
+                profile_menu,
+                self.tr('Image Model'),
+                color=LLM_MODALITY_IMAGE_COLOR,
+            )
+            options = [
+                str(option).strip()
+                for option in profile.image_model_options
+                if str(option).strip()
+            ]
+            configured = str(profile.image_model or '').strip()
+            if configured and configured not in options:
+                options.insert(0, configured)
+            for model in options:
+                _add_bottom_menu_action(
+                    profile_menu,
+                    model,
+                    self.backend == 'llm'
+                    and self.profile_id == profile.id
+                    and self.model == model,
+                    (profile.id, model),
+                    self._select_action,
+                )
+            if not options:
+                action = QAction(self.tr('No image models'), profile_menu)
+                action.setEnabled(False)
+                profile_menu.addAction(action)
+
+    def _select_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if not isinstance(action, QAction):
+            return
+        profile_id, model = action.data()
+        self.backend = 'llm'
+        self.profile_id = str(profile_id)
+        self.model = str(model)
+        self._sync_text()
+        self.selection_changed.emit(self.profile_id, self.model)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        pixmap = render_svg_pixmap(
+            themed_icon_path('chevron-down.svg'),
+            self.ARROW_SIZE,
+            self.ARROW_SIZE,
+            self.devicePixelRatioF(),
+        )
+        x = self.width() - self.ARROW_SIZE - 4
+        y = (self.height() - self.ARROW_SIZE) // 2
+        painter.drawPixmap(x, y, pixmap)
+        painter.end()
+
+
+class ImageGenerationPromptEditor(QPlainTextEdit):
+    """Compact wrapping prompt editor with bounded natural height."""
+
+    natural_height_changed = Signal()
+
+    MIN_HEIGHT = 42
+    MAX_HEIGHT = 88
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setObjectName('TextEffectGenerationPromptEditor')
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.setMinimumHeight(self.MIN_HEIGHT)
+        self.document().documentLayout().documentSizeChanged.connect(
+            self._adjust_to_document
+        )
+        self._adjust_to_document()
+
+    def showEvent(self, event: QEvent) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(0, self._adjust_to_document)
+
+    def _adjust_to_document(self, *_size: object) -> None:
+        layout = self.document().documentLayout()
+        block = self.document().begin()
+        content_height = 0.0
+        while block.isValid() and content_height < self.MAX_HEIGHT:
+            content_height += layout.blockBoundingRect(block).height()
+            block = block.next()
+        height = max(
+            self.MIN_HEIGHT,
+            min(
+                self.MAX_HEIGHT,
+                round(content_height + self.frameWidth() * 2 + 6),
+            ),
+        )
+        if (
+            self.minimumHeight() != height
+            or self.maximumHeight() != height
+        ):
+            self.setFixedHeight(height)
+            self.natural_height_changed.emit()
+
+
 class ImageEffectCard(_EffectCard):
     """Edit one project-owned Image effect at its stack index.
 
@@ -2470,12 +2750,21 @@ class ImageEffectCard(_EffectCard):
 
     value_commit_requested = Signal(int, str, object)
     image_requested = Signal(int)
+    generate_requested = Signal(int, object)
+    stop_requested = Signal()
     remove_requested = Signal(int)
     move_requested = Signal(int, int)
+    natural_height_changed = Signal()
 
     def __init__(self, index: int, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.index = int(index)
+        self._generation_draft = ImageGenerationRecipe()
+        self._generation_draft_dirty = False
+        self._generation_eligible = False
+        self._generation_eligibility_hint = ''
+        self._generation_state = 'idle'
+        self._generation_panel_busy = False
         self.setObjectName('TextEffectParameterPanel')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(
@@ -2535,44 +2824,49 @@ class ImageEffectCard(_EffectCard):
         header.addWidget(actions)
         header.addWidget(self.visibility_button)
 
-        image_label = QLabel(self.tr('Image'), self)
-        image_label.setObjectName('TextEffectParamLabel')
-        self.image_button = QToolButton(self)
-        self.image_button.setObjectName('TextEffectPaintButton')
-        self.image_button.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
+        self.image_field = RasterAssetField(self)
+        self.image_button = self.image_field.select_button
+        self.image_button.setToolTip(self._choose_hint)
+        self.image_button.setAccessibleName(self.tr('Choose Image'))
+        self.image_field.activated.connect(self._on_image_requested)
+        image_widget = _labeled_effect_editor(
+            self, self.tr('Image'), self.image_field
         )
-        self.image_button.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        self.image_button.setFixedHeight(24)
-        self.image_button.clicked.connect(self._on_image_requested)
-        image_widget = QWidget(self)
-        image_row = QHBoxLayout(image_widget)
-        image_row.setContentsMargins(0, 0, 0, 0)
-        image_row.setSpacing(4)
-        image_row.addWidget(image_label)
-        image_row.addWidget(self.image_button, 1)
 
-        mode_label = QLabel(self.tr('Mode'), self)
-        mode_label.setObjectName('TextEffectParamLabel')
         self.mode_selector = BottomBorderComboBox(
             self, text_alignment=Qt.AlignmentFlag.AlignCenter
         )
         self.mode_selector.setObjectName('TextEffectParamEditor')
-        self.mode_selector.setAccessibleName(self.tr('Image Mode'))
-        self.mode_selector.addItem(self.tr('Replace'), 'replace')
-        self.mode_selector.addItem(self.tr('Foreground'), 'foreground')
-        self.mode_selector.addItem(self.tr('Background'), 'background')
+        self.mode_selector.setAccessibleName(self.tr('Image Placement'))
+        for label, mode, hint in (
+            (
+                self.tr('In Front'),
+                'foreground',
+                self.tr(
+                    'Draws the Image over everything rendered before it.'
+                ),
+            ),
+            (
+                self.tr('Behind'),
+                'background',
+                self.tr(
+                    'Draws the Image behind everything rendered before it.'
+                ),
+            ),
+        ):
+            self.mode_selector.addItem(label, mode)
+            self.mode_selector.setItemData(
+                self.mode_selector.count() - 1,
+                hint,
+                Qt.ItemDataRole.ToolTipRole,
+            )
         self.mode_selector.currentIndexChanged.connect(
             self._on_mode_changed
         )
-        mode_widget = QWidget(self)
-        mode_row = QHBoxLayout(mode_widget)
-        mode_row.setContentsMargins(0, 0, 0, 0)
-        mode_row.setSpacing(4)
-        mode_row.addWidget(mode_label)
-        mode_row.addWidget(self.mode_selector, 1)
+        self._sync_placement_hint(self.mode_selector.currentIndex())
+        mode_widget = _labeled_effect_editor(
+            self, self.tr('Placement'), self.mode_selector
+        )
 
         controls = QGridLayout()
         controls.setContentsMargins(0, 0, 0, 0)
@@ -2583,11 +2877,89 @@ class ImageEffectCard(_EffectCard):
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
 
+        generate_label = QLabel(self.tr('Generate'), self)
+        generate_label.setObjectName('TextEffectGenerateSectionTitle')
+
+        self.model_selector = ImageGenerationModelSelector(self)
+        self.model_selector.setAccessibleName(
+            self.tr('Image Generation Model')
+        )
+        self.model_selector.selection_changed.connect(
+            self._on_model_changed
+        )
+        model_widget = _labeled_effect_editor(
+            self, self.tr('Model'), self.model_selector
+        )
+
+        self.context_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
+        self.context_selector.setObjectName('TextEffectParamEditor')
+        self.context_selector.setAccessibleName(
+            self.tr('Image Generation Context')
+        )
+        self.context_selector.addItem(self.tr('Source'), 'source')
+        self.context_selector.addItem(self.tr('Inpainted'), 'inpainted')
+        self.context_selector.addItem(self.tr('Lettered'), 'lettered')
+        self.context_selector.addItem(self.tr('None'), 'none')
+        self.context_selector.currentIndexChanged.connect(
+            self._on_context_changed
+        )
+        context_widget = _labeled_effect_editor(
+            self, self.tr('Context'), self.context_selector
+        )
+
+        self.prompt_editor = ImageGenerationPromptEditor(self)
+        self.prompt_editor.setPlaceholderText(
+            self.tr('Describe the image to generate or edit')
+        )
+        self.prompt_editor.setAccessibleName(
+            self.tr('Image Generation Prompt')
+        )
+        self.prompt_editor.textChanged.connect(self._on_prompt_changed)
+        self.prompt_editor.natural_height_changed.connect(
+            self._on_prompt_height_changed
+        )
+        prompt_label = QLabel(self.tr('Prompt'), self)
+        prompt_label.setObjectName('TextEffectParamLabel')
+        prompt_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        prompt_layout = QVBoxLayout()
+        prompt_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_layout.setSpacing(4)
+        prompt_layout.addWidget(prompt_label)
+        prompt_layout.addWidget(self.prompt_editor)
+
+        self.generate_button = QToolButton(self)
+        self.generate_button.setObjectName('TextEffectGenerateButton')
+        self.generate_button.setProperty('running', False)
+        self.generate_button.setText(self.tr('Generate'))
+        self.generate_button.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self.generate_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.generate_button.setFixedHeight(26)
+        self.generate_button.clicked.connect(self._on_generate_clicked)
+
+        generation_actions = QHBoxLayout()
+        generation_actions.setContentsMargins(0, 0, 0, 0)
+        generation_actions.setSpacing(8)
+        generation_actions.addWidget(context_widget, 1)
+        generation_actions.addWidget(self.generate_button, 1)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
+        layout.addWidget(generate_label)
+        layout.addWidget(model_widget)
+        layout.addLayout(prompt_layout)
+        layout.addLayout(generation_actions)
+        self._sync_generation_controls()
 
     def _action_button(
         self, icon_name: str, tooltip: str, direction: int
@@ -2609,8 +2981,20 @@ class ImageEffectCard(_EffectCard):
     def iter_controls(self) -> tuple:
         return ()
 
+    def _on_prompt_height_changed(self) -> None:
+        layout = self.layout()
+        if layout is not None:
+            layout.invalidate()
+        self.updateGeometry()
+        self.natural_height_changed.emit()
+
     def set_values(
-        self, effects: Sequence[ImageEffect], available: Optional[bool]
+        self,
+        effects: Sequence[ImageEffect],
+        available: Optional[bool],
+        *,
+        generation_eligible: bool = False,
+        generation_eligibility_hint: str = '',
     ) -> None:
         enabled_values = [effect.enabled for effect in effects]
         enabled = (
@@ -2630,17 +3014,13 @@ class ImageEffectCard(_EffectCard):
             asset != assets[0] for asset in assets[1:]
         )
         if assets_mixed:
-            self.image_button.setText(self.tr('Mixed'))
-            self.image_button.setToolTip(
-                self._choose_mixed_hint + '\n' + self._editing_hint
-            )
-            self.image_button.setAccessibleName(self.tr('Mixed Images'))
+            display_name = self.tr('Mixed')
+            hint = self._choose_mixed_hint + '\n' + self._editing_hint
+            accessible_name = self.tr('Mixed Images')
         elif common_asset is None:
-            self.image_button.setText(self.tr('Empty'))
-            self.image_button.setToolTip(
-                self._choose_hint + '\n' + self._editing_hint
-            )
-            self.image_button.setAccessibleName(self.tr('Empty Image'))
+            display_name = ''
+            hint = self._choose_hint + '\n' + self._editing_hint
+            accessible_name = self.tr('No Image Selected')
         else:
             name = (
                 common_asset.display_name
@@ -2650,11 +3030,15 @@ class ImageEffectCard(_EffectCard):
                 name if available is not False
                 else self.tr('Missing: {name}').format(name=name)
             )
-            self.image_button.setText(display_name)
-            self.image_button.setToolTip(
+            hint = (
                 name + '\n' + common_asset.path + '\n' + self._editing_hint
             )
-            self.image_button.setAccessibleName(display_name)
+            accessible_name = display_name
+        self.image_field.setText(display_name)
+        self.image_field.setCursorPosition(0)
+        self.image_field.setToolTip(hint)
+        self.image_field.setAccessibleName(accessible_name)
+        self.image_button.setToolTip(hint)
         modes = [effect.mode for effect in effects]
         common_mode = (
             modes[0]
@@ -2667,11 +3051,164 @@ class ImageEffectCard(_EffectCard):
                 if common_mode is None
                 else self.mode_selector.findData(common_mode)
             )
+        self._sync_placement_hint(self.mode_selector.currentIndex())
+        self._generation_eligible = bool(generation_eligible)
+        self._generation_eligibility_hint = generation_eligibility_hint
+        if (
+            len(effects) == 1
+            and self._generation_draft_dirty
+            and effects[0].generation == self._generation_draft
+        ):
+            # A successful generation committed this exact draft. Future
+            # history changes should once again project the persisted recipe.
+            self._generation_draft_dirty = False
+        if len(effects) == 1 and not self._generation_draft_dirty:
+            recipe = effects[0].generation
+            self.model_selector.set_recipe(recipe)
+            self._generation_draft = replace(
+                recipe,
+                backend=self.model_selector.backend,
+                profile_id=self.model_selector.profile_id,
+                model=self.model_selector.model,
+            )
+            with QSignalBlocker(self.context_selector):
+                self.context_selector.setCurrentIndex(
+                    self.context_selector.findData(recipe.context)
+                )
+            if self.prompt_editor.toPlainText() != recipe.prompt:
+                with QSignalBlocker(self.prompt_editor):
+                    self.prompt_editor.setPlainText(recipe.prompt)
+        self._sync_generation_controls()
+
+    def reset_generation_draft(self) -> None:
+        """Project the next selected item's persisted recipe."""
+        self._generation_draft_dirty = False
+
+    def set_generation_state(
+        self, state: str, *, panel_busy: bool = False
+    ) -> None:
+        if state not in {'idle', 'running', 'stopping'}:
+            raise ValueError('unsupported Image generation state')
+        self._generation_state = state
+        self._generation_panel_busy = bool(panel_busy)
+        self._sync_generation_controls()
+
+    def _sync_generation_controls(self) -> None:
+        active = self._generation_state != 'idle'
+        ready = (
+            self._generation_eligible
+            and self.model_selector.has_available_selection()
+            and not self._generation_panel_busy
+        )
+        for control in (
+            self.model_selector,
+            self.context_selector,
+            self.prompt_editor,
+        ):
+            control.setEnabled(
+                self._generation_eligible
+                and not active
+                and not self._generation_panel_busy
+            )
+        self.generate_button.setText(
+            self.tr('Stop') if active else self.tr('Generate')
+        )
+        running_changed = (
+            bool(self.generate_button.property('running')) != active
+        )
+        if running_changed:
+            self.generate_button.setProperty('running', active)
+        self.generate_button.setEnabled(
+            (active and self._generation_state == 'running')
+            or (not active and ready)
+        )
+        if not self._generation_eligible:
+            hint = self._generation_eligibility_hint or self.tr(
+                'Select exactly one text item to generate an Image.'
+            )
+        elif not self.model_selector.has_available_selection():
+            hint = self.tr('Select an available image generation model.')
+        elif self._generation_panel_busy:
+            hint = self.tr(
+                'Another Image generation request is in progress.'
+            )
+        elif self._generation_state == 'stopping':
+            hint = self.tr(
+                'Waiting for the current image request to stop.'
+            )
+        elif active:
+            hint = self.tr('Stop image generation')
+        else:
+            hint = self.tr('Generate an image for this effect')
+        self.generate_button.setToolTip(hint)
+        self.generate_button.setAccessibleName(
+            self.tr('Stop Image Generation')
+            if active
+            else self.tr('Generate Image')
+        )
+        if running_changed:
+            # Dynamic property styling changes only from a normal signal slot.
+            self.generate_button.style().unpolish(self.generate_button)
+            self.generate_button.style().polish(self.generate_button)
+            self.generate_button.update()
+
+    def _on_model_changed(self, profile_id: str, model: str) -> None:
+        self._generation_draft = replace(
+            self._generation_draft,
+            backend='llm',
+            profile_id=profile_id,
+            model=model,
+        )
+        self._generation_draft_dirty = True
+        self._sync_generation_controls()
+
+    def _on_context_changed(self, index: int) -> None:
+        context = self.context_selector.itemData(index)
+        if context not in {'source', 'inpainted', 'lettered', 'none'}:
+            return
+        self._generation_draft = replace(
+            self._generation_draft, context=context
+        )
+        self._generation_draft_dirty = True
+
+    def _on_prompt_changed(self) -> None:
+        self._generation_draft = replace(
+            self._generation_draft,
+            prompt=self.prompt_editor.toPlainText(),
+        )
+        self._generation_draft_dirty = True
+
+    def _on_generate_clicked(self) -> None:
+        if self._generation_state != 'idle':
+            self.stop_requested.emit()
+            return
+        if not self._generation_eligible:
+            return
+        recipe = replace(
+            self._generation_draft,
+            backend=self.model_selector.backend,
+            profile_id=self.model_selector.profile_id,
+            model=self.model_selector.model,
+            context=str(self.context_selector.currentData()),
+            prompt=self.prompt_editor.toPlainText(),
+        )
+        self._generation_draft = recipe
+        self._generation_draft_dirty = True
+        self.generate_requested.emit(self.index, recipe)
 
     def _on_mode_changed(self, index: int) -> None:
+        self._sync_placement_hint(index)
         mode = self.mode_selector.itemData(index)
-        if mode in {'replace', 'foreground', 'background'}:
+        if mode in {'foreground', 'background'}:
             self.value_commit_requested.emit(self.index, 'mode', mode)
+
+    def _sync_placement_hint(self, index: int) -> None:
+        hint = self.mode_selector.itemData(
+            index, Qt.ItemDataRole.ToolTipRole
+        )
+        text = hint if isinstance(hint, str) else ''
+        self.mode_selector.setToolTip(text)
+        self.mode_selector.setAccessibleDescription(text)
 
     def _on_enabled_clicked(self, enabled: bool) -> None:
         self.value_commit_requested.emit(
@@ -2896,6 +3433,8 @@ class TextEffectPanel(PanelArea):
     mask_remove_requested = Signal()
     texture_file_requested = Signal(int, str)
     image_file_requested = Signal(int, str)
+    image_generation_requested = Signal(int, object)
+    image_generation_stop_requested = Signal()
 
     MAX_CONTENT_HEIGHT = 480
 
@@ -3087,6 +3626,8 @@ class TextEffectPanel(PanelArea):
         self.image_cards = []
         self.filter_cards = []
         self._effect_types = None
+        self._image_generation_index = -1
+        self._image_generation_state = 'idle'
         self.alpha_mask_card = None
         self._block_items = ()
         self._alpha_mask_session = None
@@ -3098,6 +3639,7 @@ class TextEffectPanel(PanelArea):
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(top_row)
         layout.addWidget(self.mixed_label)
         layout.addLayout(self.base_card_layout)
@@ -3260,6 +3802,18 @@ class TextEffectPanel(PanelArea):
             elif effect_type == 'image':
                 card = ImageEffectCard(index, self.scrollContent)
                 card.image_requested.connect(self._choose_image_file)
+                card.model_selector.popup_active_changed.connect(
+                    self.color_dialog_active_changed.emit
+                )
+                card.natural_height_changed.connect(
+                    self._on_image_card_natural_height_changed
+                )
+                card.generate_requested.connect(
+                    self.image_generation_requested.emit
+                )
+                card.stop_requested.connect(
+                    self.image_generation_stop_requested.emit
+                )
                 self.image_cards.append(card)
             elif effect_type == 'filter':
                 filter_effect = (
@@ -3432,7 +3986,12 @@ class TextEffectPanel(PanelArea):
                     card.set_values(
                         values,
                         available=self._image_available(values),
+                        generation_eligible=len(self._block_items) == 1,
+                        generation_eligibility_hint=self.tr(
+                            'Select exactly one text item to generate an Image.'
+                        ),
                     )
+                    self._apply_image_generation_state(card)
                 elif isinstance(card, FilterEffectCard):
                     card.set_values(values)
                 else:
@@ -3490,6 +4049,13 @@ class TextEffectPanel(PanelArea):
         self.refresh_alpha_mask_state()
 
     def set_effect_items(self, items: Sequence["TextBlkItem"]) -> None:
+        targets_changed = len(items) != len(self._block_items) or any(
+            current is not replacement
+            for current, replacement in zip(self._block_items, items)
+        )
+        if targets_changed:
+            for card in self.image_cards:
+                card.reset_generation_draft()
         self._block_items = tuple(items)
         faster_preview = self.faster_preview_toggle.isChecked()
         for item in self._block_items:
@@ -3498,6 +4064,72 @@ class TextEffectPanel(PanelArea):
             [item.blk.fontformat.text_effects for item in items]
         )
         self.refresh_alpha_mask_state()
+
+    def set_image_generation_state(self, index: int, state: str) -> None:
+        self._image_generation_index = int(index) if state != 'idle' else -1
+        self._image_generation_state = state
+        for card in self.image_cards:
+            self._apply_image_generation_state(card)
+
+    def detach_image_generation_card(self) -> None:
+        """Keep the panel busy after the request's stack target changed."""
+        if self._image_generation_state == 'idle':
+            return
+        self._image_generation_index = -1
+        self._image_generation_state = 'stopping'
+        for card in self.image_cards:
+            self._apply_image_generation_state(card)
+
+    def _apply_image_generation_state(self, card: ImageEffectCard) -> None:
+        busy = self._image_generation_state != 'idle'
+        owns_request = busy and card.index == self._image_generation_index
+        card.set_generation_state(
+            self._image_generation_state if owns_request else 'idle',
+            panel_busy=busy and not owns_request,
+        )
+
+    def show_image_generation_error(
+        self, index: int, error: Exception
+    ) -> None:
+        if not any(card.index == index for card in self.image_cards):
+            return
+        from ballontranslator.modules.exceptions import (
+            LLMApiKeyRequiredError,
+            LLMBaseURLRequiredError,
+            LLMModelRequiredError,
+        )
+        from ballontranslator.utils import shared
+        from ballontranslator.utils.message import create_error_dialog
+
+        if isinstance(error, LLMApiKeyRequiredError):
+            shared.show_llm_key_dialog_in_mainthread(
+                error.profile_id, error.profile_name
+            )
+        elif isinstance(error, LLMModelRequiredError):
+            shared.show_llm_model_dialog_in_mainthread(
+                error.profile_id, error.profile_name, error.target
+            )
+        elif isinstance(error, LLMBaseURLRequiredError):
+            shared.show_llm_base_url_dialog_in_mainthread(
+                error.profile_id, error.profile_name, error.target
+            )
+        else:
+            create_error_dialog(
+                error,
+                self.tr('Image Generation Failed.'),
+                'ImageGenerationFailed',
+            )
+
+    def show_image_generation_context_error(
+        self, index: int, message: str
+    ) -> None:
+        if not any(card.index == index for card in self.image_cards):
+            return
+        QMessageBox.warning(
+            self.window(),
+            self.tr('Unable to Generate Image'),
+            message,
+        )
 
     def project_assets_changed(self) -> None:
         """Refresh imported rasters without changing immutable model values."""
@@ -3602,6 +4234,10 @@ class TextEffectPanel(PanelArea):
         if not hasattr(self, 'content_layout'):
             return
         self._sync_scroll_content_height(self.content_layout)
+
+    def _on_image_card_natural_height_changed(self) -> None:
+        self.cards_layout.invalidate()
+        QTimer.singleShot(0, self._sync_content_height)
 
     def sizeHint(self) -> QSize:
         hint = super().sizeHint()

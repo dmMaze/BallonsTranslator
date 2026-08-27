@@ -1168,12 +1168,20 @@ class SceneTextManager(QObject):
         )
         self.canvas.push_text_command(command=None, update_pushed_step=True)
 
-    def apply_fontformat(self, fontformat: FontFormat):
+    def apply_fontformat(self, fontformat: FontFormat) -> None:
+        """Apply one whole format after settling transient edit owners.
+
+        >>> callable(SceneTextManager.apply_fontformat)
+        True
+        """
         selected_blks = self.canvas.selected_text_items()
         trans_widget_list = []
         for blk in selected_blks:
             trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
         if len(selected_blks) > 0:
+            # Whole-format replacement can reindex or remove Image effects;
+            # settle the same transient owners used by undo/redo first.
+            self.formatpanel.resolve_text_transform_edits_for_history_change()
             self.canvas.push_undo_command(
                 ApplyFontformatCommand(
                     selected_blks,

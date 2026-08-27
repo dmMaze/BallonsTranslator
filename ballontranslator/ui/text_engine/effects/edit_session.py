@@ -3,6 +3,8 @@
 from dataclasses import replace
 from typing import Optional, Sequence, Tuple, TYPE_CHECKING
 
+from qtpy.QtCore import QCoreApplication
+
 from ballontranslator.utils import config as C
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_effects import (
@@ -13,6 +15,7 @@ from ballontranslator.utils.text_effects import (
     GradientStop,
     HollowEffect,
     ImageEffect,
+    ImageGenerationRecipe,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
@@ -26,6 +29,12 @@ from ballontranslator.utils.text_effects import (
     without_project_raster_effects,
 )
 from .filters import FilterUnavailableError, get_filter_registry
+from .image_generation import (
+    ImageGenerationController,
+    ImageGenerationRequest,
+    create_image_generation_backend,
+    prepare_image_generation_context,
+)
 
 from ... import shared_widget as SW
 from ..editing.commands import SetTextEffectStackCommand
@@ -58,6 +67,8 @@ class TextEffectEditSession:
         self.items = []
         self.preview_before = None
         self.preview_key = None
+        self._pending_image_generation = None
+        self._image_generation_controller = None
         if controls is not None:
             controls.value_commit_requested.connect(self.commit_value)
             controls.value_preview_requested.connect(self.preview_value)
@@ -77,6 +88,22 @@ class TextEffectEditSession:
             controls.move_effect_requested.connect(self.move_effect)
             controls.texture_file_requested.connect(self.import_texture)
             controls.image_file_requested.connect(self.import_image)
+            controls.image_generation_requested.connect(
+                self.generate_image
+            )
+            controls.image_generation_stop_requested.connect(
+                self.stop_image_generation
+            )
+            controller = ImageGenerationController(controls)
+            controller.generated.connect(self._finish_image_generation)
+            controller.failed.connect(self._fail_image_generation)
+            controller.state_changed.connect(
+                controls.set_image_generation_state
+            )
+            controller.state_changed.connect(
+                self._on_image_generation_state_changed
+            )
+            self._image_generation_controller = controller
 
     @staticmethod
     def _state_for_item(item: "TextBlkItem") -> TextEffectStack:
@@ -373,6 +400,7 @@ class TextEffectEditSession:
             for current, replacement in zip(self.items, replacements)
         )
         if changed:
+            self.stop_image_generation(detach_card=True)
             self.cancel_preview()
         self.items = replacements
 
@@ -550,6 +578,7 @@ class TextEffectEditSession:
         return self._commit_complete_states(before, after)
 
     def _prepare_structure_change(self) -> None:
+        self.stop_image_generation(detach_card=True)
         if self.controls is not None:
             self.controls.finish_pending_effect_edits()
             self.controls.cancel_effect_previews()
@@ -629,6 +658,164 @@ class TextEffectEditSession:
     def import_image(self, index: int, source_path: str) -> bool:
         """Import one managed asset across matching selected Image cards."""
         return self._import_project_raster(index, source_path, 'image')
+
+    def generate_image(
+        self, index: int, recipe: ImageGenerationRecipe
+    ) -> bool:
+        """Start one single-item Image generation without mutating state."""
+        from ..item import TextBlkItem
+
+        controller = self._image_generation_controller
+        if (
+            controller is None
+            or controller.active
+            or not isinstance(recipe, ImageGenerationRecipe)
+            or len(self.items) != 1
+            or not isinstance(self.items[0], TextBlkItem)
+        ):
+            return False
+        self.finish_pending_edits()
+        self.cancel_preview()
+        item = self.items[0]
+        state = self._state_for_item(item)
+        if index < 0 or index >= len(state.effects):
+            return False
+        effect = state.effects[index]
+        if not isinstance(effect, ImageEffect):
+            return False
+        scene = item.scene()
+        project = (
+            None if scene is None else getattr(scene, 'imgtrans_proj', None)
+        )
+        try:
+            if project is None:
+                raise ValueError(
+                    QCoreApplication.translate(
+                        'TextEffectEditSession',
+                        'Open a project before generating an Image.',
+                    )
+                )
+            context_image = prepare_image_generation_context(
+                item, project, recipe.context
+            )
+            backend = create_image_generation_backend(recipe)
+        except (MemoryError, RuntimeError, TypeError, ValueError) as error:
+            if self.controls is not None:
+                self.controls.show_image_generation_context_error(
+                    index, str(error)
+                )
+            return False
+        request = ImageGenerationRequest(recipe, context_image)
+        self._pending_image_generation = (
+            item,
+            int(index),
+            effect,
+            project,
+            project.load_identity,
+            project.current_img,
+            recipe,
+        )
+        if not controller.start(index, backend, request):
+            self._pending_image_generation = None
+            backend.close()
+            return False
+        return True
+
+    def stop_image_generation(self, *, detach_card: bool = False) -> bool:
+        controller = self._image_generation_controller
+        stopped = bool(controller is not None and controller.stop())
+        if detach_card and stopped and self.controls is not None:
+            self.controls.detach_image_generation_card()
+        return stopped
+
+    def _generation_target_is_current(self) -> bool:
+        pending = self._pending_image_generation
+        if pending is None:
+            return False
+        (
+            item,
+            index,
+            original_effect,
+            project,
+            load_identity,
+            current_img,
+            _recipe,
+        ) = pending
+        try:
+            scene = item.scene()
+            if (
+                len(self.items) != 1
+                or self.items[0] is not item
+                or project.load_identity is not load_identity
+                or project.current_img != current_img
+                or scene is None
+                or getattr(scene, 'imgtrans_proj', None) is not project
+            ):
+                return False
+            state = self._state_for_item(item)
+        except RuntimeError:
+            # An asynchronous result may arrive after Qt deleted its target.
+            return False
+        if not (0 <= index < len(state.effects)):
+            return False
+        current = state.effects[index]
+        return bool(
+            isinstance(current, ImageEffect)
+            and current.asset == original_effect.asset
+            and current.generation == original_effect.generation
+        )
+
+    def _finish_image_generation(self, index: int, payload: bytes) -> None:
+        pending = self._pending_image_generation
+        if pending is None or index != pending[1]:
+            return
+        if not self._generation_target_is_current():
+            self._pending_image_generation = None
+            return
+        item, index, _effect, project, *_rest, recipe = pending
+        before = (self._state_for_item(item),)
+        try:
+            asset = project.import_raster_asset_bytes(
+                payload, 'generated.png'
+            )
+            current = before[0].effects[index]
+            if not isinstance(current, ImageEffect):
+                raise TypeError('selected effect is no longer Image')
+            effects = list(before[0].effects)
+            effects[index] = replace(
+                current, asset=asset, generation=recipe
+            )
+            after = (replace(before[0], effects=tuple(effects)),)
+        except (IndexError, OSError, TypeError, ValueError) as error:
+            self._pending_image_generation = None
+            if self.controls is not None:
+                self.controls.show_image_generation_error(index, error)
+            return
+        self._pending_image_generation = None
+        changed = self._commit_complete_states(before, after)
+        if not changed and self.controls is not None:
+            # Content-addressed import may have restored a missing file even
+            # when the immutable asset and recipe are already identical.
+            self.controls.project_assets_changed()
+
+    def _fail_image_generation(
+        self, index: int, error: Exception
+    ) -> None:
+        pending = self._pending_image_generation
+        self._pending_image_generation = None
+        if (
+            pending is not None
+            and index == pending[1]
+            and self.controls is not None
+        ):
+            self.controls.show_image_generation_error(index, error)
+
+    def _on_image_generation_state_changed(
+        self, index: int, state: str
+    ) -> None:
+        del index
+        if state == 'idle':
+            self._pending_image_generation = None
 
     def _import_project_raster(
         self, index: int, source_path: str, kind: str
@@ -820,16 +1007,19 @@ class TextEffectEditSession:
         self.cancel_preview()
 
     def resolve_for_history_change(self) -> None:
+        self.stop_image_generation(detach_card=True)
         if self.controls is not None:
             self.controls.cancel_pending_effect_edits()
             self.controls.cancel_effect_previews()
         self.cancel_preview()
 
     def resolve_for_page_change(self) -> None:
+        self.stop_image_generation(detach_card=True)
         self.resolve_for_save()
         self.items = []
 
     def cancel_for_scene_change(self) -> None:
+        self.stop_image_generation(detach_card=True)
         if self.controls is not None:
             self.controls.cancel_pending_effect_edits()
             self.controls.cancel_effect_previews()

@@ -10,6 +10,7 @@ from ballontranslator.utils.text_effects import (
     GradientStop,
     HollowEffect,
     ImageEffect,
+    ImageGenerationRecipe,
     LinearGradientPaint,
     SHADOW_BLUR_LIMIT,
     SHADOW_OFFSET_LIMIT,
@@ -41,13 +42,66 @@ class TextEffectDomainTest(unittest.TestCase):
             {'effect_type': 'image', 'mode': 'invalid'},
         )})
 
-        self.assertEqual(stack.effects, (effect, ImageEffect()))
+        self.assertEqual(
+            stack.effects, (effect, ImageEffect(), ImageEffect())
+        )
         self.assertEqual(effect_phase(effect), 'image')
         self.assertEqual(hash(effect), hash(ImageEffect(asset, mode='background')))
         self.assertTrue(ImageEffect().is_neutral())
-        self.assertEqual(ImageEffect().mode, 'replace')
+        self.assertEqual(ImageEffect().mode, 'foreground')
+        with self.assertRaises(ValueError):
+            ImageEffect(asset, mode='replace')
         with self.assertRaises(ValueError):
             ImageEffect(asset, mode='overlay')
+
+    def test_image_generation_recipe_round_trip_and_passive_recovery(self):
+        asset = RasterAssetRef(
+            'assets/' + '9' * 64 + '.png', 'generated.png'
+        )
+        recipe = ImageGenerationRecipe(
+            backend='future-local',
+            profile_id='artist',
+            model='diffusion-v2',
+            context='lettered',
+            prompt='Paint lettering texture',
+        )
+        effect = ImageEffect(asset, mode='foreground', generation=recipe)
+
+        self.assertEqual(
+            coerce_text_effect_stack({
+                'effects': [effect.to_serializable_dict()]
+            }).effects,
+            (effect,),
+        )
+
+        malformed = effect.to_serializable_dict()
+        malformed.update({
+            'asset': {'path': '../outside.png'},
+            'enabled': 'yes',
+            'mode': 'future-mode',
+            'future': 'ignored',
+            'generation': {
+                'backend': 'removed-backend',
+                'profile_id': 5,
+                'model': 'kept-model',
+                'context': 'future-context',
+                'prompt': ['bad'],
+                'future': True,
+            },
+        })
+        with patch(
+            'ballontranslator.utils.text_effects.LOGGER.warning'
+        ) as warning:
+            loaded = coerce_text_effect_stack({'effects': [malformed]})[0]
+
+        self.assertEqual(loaded.asset, None)
+        self.assertTrue(loaded.enabled)
+        self.assertEqual(loaded.mode, 'foreground')
+        self.assertEqual(loaded.generation, ImageGenerationRecipe(
+            backend='removed-backend',
+            model='kept-model',
+        ))
+        self.assertGreaterEqual(warning.call_count, 6)
 
     def test_filter_effect_is_repeatable_hashable_and_structurally_typed(self):
         noise = FilterEffect(

@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QToolButton,
     QToolTip,
     QVBoxLayout,
+    QWidget,
 )
 from qtpy.QtCore import QSignalBlocker, Signal, Qt
 from qtpy.QtGui import (
@@ -1099,6 +1100,10 @@ class FontFormatPanel(Widget):
         self.text_transform_session.resolve_for_save()
         self.text_effect_session.resolve_for_save()
 
+    def stop_text_effect_generation_for_shutdown(self) -> None:
+        """Discard an asynchronous Image result before the final save."""
+        self.text_effect_session.stop_image_generation(detach_card=True)
+
     def resolve_text_transform_edits_for_history_change(self) -> None:
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_history_change()
@@ -1305,9 +1310,10 @@ class FontFormatPanel(Widget):
         preserve_local_owner = False
         if textblk_item is None:
             focus_w = self.app.focusWidget()
-            focus_on_fmtoptions = self.focusOnColorDialog or (
-                focus_w is not None
-                and (focus_w is self or self.isAncestorOf(focus_w))
+            focus_on_fmtoptions = (
+                self.focusOnColorDialog
+                or self._owns_widget(focus_w)
+                or self._owns_widget(QApplication.activePopupWidget())
             )
             preserve_local_owner = (
                 not transform_items
@@ -1373,3 +1379,11 @@ class FontFormatPanel(Widget):
                 )
                 self.texteffect_panel.set_effect_items([textblk_item])
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')
+
+    def _owns_widget(self, widget: Optional[QWidget]) -> bool:
+        """Return whether a child or top-level popup belongs to this panel."""
+        while widget is not None:
+            if widget is self:
+                return True
+            widget = widget.parentWidget()
+        return False

@@ -487,22 +487,9 @@ class TextEffectRenderer:
                 if hollow and effect_phase(effect) == 'interior':
                     continue
                 nodes.append((index, effect))
-        last_replace = None
-        for position in range(len(nodes) - 1, -1, -1):
-            effect = nodes[position][1]
-            if (
-                isinstance(effect, ImageEffect)
-                and effect.mode == 'replace'
-                and self._image_raster(
-                    effect, image_rasters, strict_export=strict_assets
-                ) is not None
-            ):
-                last_replace = position
-                break
-        retained = nodes if last_replace is None else nodes[last_replace:]
         return tuple(
             node
-            for node in retained
+            for node in nodes
             if not isinstance(node[1], ImageEffect)
             or self._image_raster(
                 node[1], image_rasters, strict_export=strict_assets
@@ -2300,11 +2287,7 @@ class TextEffectRenderer:
         exterior = False
         for index, effect in retained:
             if isinstance(effect, ImageEffect):
-                effect_bounds = (
-                    QRectF(logical_rect)
-                    if effect.mode == 'replace'
-                    else effect_bounds.united(logical_rect)
-                )
+                effect_bounds = effect_bounds.united(logical_rect)
             elif isinstance(effect, StrokeEffect):
                 if not ink_bounds.isEmpty():
                     effect_bounds = effect_bounds.united(
@@ -2924,16 +2907,7 @@ class TextEffectRenderer:
             ),
             len(nodes),
         )
-        starts_with_replace = bool(
-            nodes
-            and isinstance(nodes[0][1], ImageEffect)
-            and nodes[0][1].mode == 'replace'
-        )
-        target = self._render_effect_base(
-            surface_rect,
-            render_scale,
-            include_canonical=not starts_with_replace,
-        )
+        target = self._render_effect_base(surface_rect, render_scale)
         return self._composite_generated_layer_batch(
             target,
             nodes[:first_filter],
@@ -2947,8 +2921,6 @@ class TextEffectRenderer:
         self,
         surface_rect: QRectF,
         render_scale: float,
-        *,
-        include_canonical: bool = True,
     ) -> QPixmap:
         """Render the structural canonical Text Fill base.
 
@@ -2958,7 +2930,7 @@ class TextEffectRenderer:
         target = self._new_effect_pixmap(render_scale, surface_rect)
         hollow = self._hollow_enabled()
         canonical = None
-        if include_canonical and not hollow:
+        if not hollow:
             canonical, _canonical_alpha = self._cached_effect_source(
                 surface_rect, render_scale, needs_alpha=False
             )
@@ -3549,6 +3521,69 @@ class TextEffectRenderer:
                 ) from end_error
         return source
 
+    def capture_plain_logical_rgba(
+        self,
+        width: int,
+        height: int,
+        offset_x: float,
+        offset_y: float,
+    ) -> np.ndarray:
+        """Render the untransformed document foreground without effects.
+
+        ``offset`` places the logical rectangle inside an integer page crop.
+        The active Glyph Slant delegate and transient effect foreground state
+        are restored even when Qt painting fails.
+
+        >>> callable(TextEffectRenderer.capture_plain_logical_rgba)
+        True
+        """
+        if width <= 0 or height <= 0:
+            raise ValueError('plain text capture requires a positive size')
+        image = QImage(
+            width, height, QImage.Format.Format_ARGB32_Premultiplied
+        )
+        if image.isNull():
+            raise EffectRasterAllocationError(
+                'unable to allocate plain text capture'
+            )
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        if not painter.isActive():
+            raise EffectRasterAllocationError(
+                'unable to begin plain text capture'
+            )
+        logical = self.logical_unpadded_rect()
+        layout = self.item.layout
+        previous_delegate = layout.render_delegate
+        previous_stroke = self._render_stroke
+        previous_outline = self._outline_only_stroke
+        previous_alignment = self._native_stroke_alignment
+        previous_deferred_cursor = layout.deferred_cursor_position
+        try:
+            layout.render_delegate = None
+            self._render_stroke = None
+            self._outline_only_stroke = False
+            self._native_stroke_alignment = False
+            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            painter.translate(
+                float(offset_x) - logical.x(),
+                float(offset_y) - logical.y(),
+            )
+            self._paint_live_layout(painter, self._effect_paint_context())
+        finally:
+            layout.render_delegate = previous_delegate
+            self._render_stroke = previous_stroke
+            self._outline_only_stroke = previous_outline
+            self._native_stroke_alignment = previous_alignment
+            layout.deferred_cursor_position = previous_deferred_cursor
+            painter.end()
+        rgba = pixmap2ndarray(image, keep_alpha=True)
+        if rgba is None:
+            raise EffectRasterAllocationError(
+                'unable to read plain text capture'
+            )
+        return rgba
+
     def _cached_effect_source(
         self,
         surface_rect: QRectF,
@@ -3722,7 +3757,6 @@ class TextEffectRenderer:
         try:
             painter.setCompositionMode(
                 {
-                    'replace': QPainter.CompositionMode.CompositionMode_Source,
                     'foreground': (
                         QPainter.CompositionMode.CompositionMode_SourceOver
                     ),

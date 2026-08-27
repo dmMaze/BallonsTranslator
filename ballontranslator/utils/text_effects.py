@@ -556,6 +556,43 @@ class TextFillEffect:
 
 
 @dataclass(frozen=True)
+class ImageGenerationRecipe:
+    """Saved editor inputs for regenerating one Image effect asset.
+
+    The backend identity is intentionally opaque so projects keep the recipe
+    when an optional backend is removed. Rendering never depends on this value.
+
+    >>> ImageGenerationRecipe(context='none').backend
+    'llm'
+    """
+
+    backend: str = 'llm'
+    profile_id: str = ''
+    model: str = ''
+    context: str = 'source'
+    prompt: str = ''
+
+    def __post_init__(self) -> None:
+        for name in ('backend', 'profile_id', 'model', 'prompt'):
+            value = getattr(self, name)
+            if not isinstance(value, str):
+                raise TypeError(f'image generation {name} must be a string')
+        if not self.backend.strip():
+            raise ValueError('image generation backend must not be empty')
+        if self.context not in {'source', 'inpainted', 'lettered', 'none'}:
+            raise ValueError('unsupported image generation context')
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'backend': self.backend,
+            'profile_id': self.profile_id,
+            'model': self.model,
+            'context': self.context,
+            'prompt': self.prompt,
+        }
+
+
+@dataclass(frozen=True)
 class ImageEffect:
     """One project-owned raster layer in the ordered effect stack.
 
@@ -567,7 +604,10 @@ class ImageEffect:
 
     asset: Optional[RasterAssetRef] = None
     enabled: bool = True
-    mode: str = 'replace'
+    mode: str = 'foreground'
+    generation: ImageGenerationRecipe = field(
+        default_factory=ImageGenerationRecipe
+    )
     effect_type: str = field(init=False, default='image')
 
     def __post_init__(self) -> None:
@@ -577,8 +617,12 @@ class ImageEffect:
             raise TypeError('image effect asset must be RasterAssetRef or None')
         if not isinstance(self.enabled, bool):
             raise TypeError('image effect enabled must be a bool')
-        if self.mode not in {'replace', 'foreground', 'background'}:
+        if self.mode not in {'foreground', 'background'}:
             raise ValueError('unsupported image effect mode')
+        if not isinstance(self.generation, ImageGenerationRecipe):
+            raise TypeError(
+                'image effect generation must be ImageGenerationRecipe'
+            )
 
     def to_serializable_dict(self) -> dict:
         return {
@@ -590,6 +634,7 @@ class ImageEffect:
             ),
             'enabled': self.enabled,
             'mode': self.mode,
+            'generation': self.generation.to_serializable_dict(),
         }
 
     def is_neutral(self) -> bool:
@@ -881,6 +926,22 @@ def _coerce_effect_paint(value: object) -> EffectPaint:
     raise ValueError('unsupported or missing effect paint type')
 
 
+def _coerce_image_generation_recipe(
+    value: object,
+) -> ImageGenerationRecipe:
+    if isinstance(value, ImageGenerationRecipe):
+        return value
+    if not isinstance(value, Mapping):
+        raise ValueError('image generation recipe must be a typed payload')
+    payload = dict(value)
+    _unexpected_fields(
+        payload,
+        ('backend', 'profile_id', 'model', 'context', 'prompt'),
+        'Image generation recipe',
+    )
+    return ImageGenerationRecipe(**payload)
+
+
 def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
     """Return a live effect or construct one strict typed payload.
 
@@ -988,7 +1049,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
     if effect_type == 'image':
         _unexpected_fields(
             payload,
-            ('effect_type', 'asset', 'enabled', 'mode'),
+            ('effect_type', 'asset', 'enabled', 'mode', 'generation'),
             'Image effect',
         )
         payload.pop('effect_type')
@@ -996,6 +1057,10 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         payload['asset'] = (
             None if asset is None else coerce_raster_asset_ref(asset)
         )
+        if 'generation' in payload:
+            payload['generation'] = _coerce_image_generation_recipe(
+                payload['generation']
+            )
         return ImageEffect(**payload)
     if effect_type == 'filter':
         _unexpected_fields(
@@ -1051,6 +1116,81 @@ def _coerce_filter_effect_passive(payload: Mapping[str, object]) -> FilterEffect
         except (TypeError, ValueError) as error:
             LOGGER.warning('Ignoring invalid Filter parameter (%s).', error)
     return FilterEffect(filter_id, schema_version, enabled, params)
+
+
+def _coerce_image_effect_passive(
+    payload: Mapping[str, object],
+) -> ImageEffect:
+    """Recover Image fields independently at the passive project boundary."""
+    raw = dict(payload)
+    unknown = set(raw) - {
+        'effect_type', 'asset', 'enabled', 'mode', 'generation'
+    }
+    if unknown:
+        LOGGER.warning(
+            'Ignoring unsupported Image effect fields: %s.', sorted(unknown)
+        )
+    asset_value = raw.get('asset')
+    try:
+        asset = (
+            None
+            if asset_value is None
+            else coerce_raster_asset_ref(asset_value)
+        )
+    except (TypeError, ValueError) as error:
+        LOGGER.warning(
+            'Ignoring invalid Image asset reference (%s).', error
+        )
+        asset = None
+    enabled = raw.get('enabled', True)
+    if not isinstance(enabled, bool):
+        LOGGER.warning('Ignoring invalid Image enabled value; using true.')
+        enabled = True
+    mode = raw.get('mode', 'foreground')
+    if mode not in {'foreground', 'background'}:
+        LOGGER.warning('Ignoring invalid Image mode; using foreground.')
+        mode = 'foreground'
+
+    defaults = ImageGenerationRecipe()
+    recipe_value = raw.get('generation')
+    if recipe_value is None:
+        recipe = defaults
+    elif not isinstance(recipe_value, Mapping):
+        LOGGER.warning(
+            'Ignoring invalid Image generation recipe; using defaults.'
+        )
+        recipe = defaults
+    else:
+        recipe_raw = dict(recipe_value)
+        recipe_unknown = set(recipe_raw) - {
+            'backend', 'profile_id', 'model', 'context', 'prompt'
+        }
+        if recipe_unknown:
+            LOGGER.warning(
+                'Ignoring unsupported Image generation recipe fields: %s.',
+                sorted(recipe_unknown),
+            )
+        recovered = {}
+        for name in ('backend', 'profile_id', 'model', 'prompt'):
+            value = recipe_raw.get(name, getattr(defaults, name))
+            if not isinstance(value, str) or (
+                name == 'backend' and not value.strip()
+            ):
+                LOGGER.warning(
+                    'Ignoring invalid Image generation %s; using default.',
+                    name,
+                )
+                value = getattr(defaults, name)
+            recovered[name] = value
+        context = recipe_raw.get('context', defaults.context)
+        if context not in {'source', 'inpainted', 'lettered', 'none'}:
+            LOGGER.warning(
+                'Ignoring invalid Image generation context; using source.'
+            )
+            context = defaults.context
+        recovered['context'] = context
+        recipe = ImageGenerationRecipe(**recovered)
+    return ImageEffect(asset, enabled, mode, recipe)
 
 
 def _coerce_text_effect_passive(value: object) -> TextEffect:
@@ -1134,6 +1274,9 @@ def coerce_text_effect_stack(
                 _coerce_filter_effect_passive(raw_effect)
                 if isinstance(raw_effect, Mapping)
                 and raw_effect.get('effect_type') == 'filter'
+                else _coerce_image_effect_passive(raw_effect)
+                if isinstance(raw_effect, Mapping)
+                and raw_effect.get('effect_type') == 'image'
                 else _coerce_text_effect_passive(raw_effect)
             )
             if isinstance(effect, HollowEffect):
