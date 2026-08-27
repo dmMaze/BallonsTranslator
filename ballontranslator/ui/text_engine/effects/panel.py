@@ -2902,6 +2902,9 @@ class TextEffectPanel(PanelArea):
             self.scrollContent,
             decimals=1,
         )
+        self.overall_opacity_control.setSizePolicy(
+            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred
+        )
         overall_opacity_hint = self.tr(
             'Overall opacity of the text and all effects'
         )
@@ -2964,7 +2967,7 @@ class TextEffectPanel(PanelArea):
         self.add_effect_button.setText(self.tr('Add'))
         self.add_effect_button.setToolTip(self.tr('Add Effect'))
         self.add_effect_button.setAccessibleName(self.tr('Add Effect'))
-        self.add_effect_button.setFixedSize(52, 26)
+        self.add_effect_button.setFixedSize(72, 26)
         self.add_effect_button.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonTextOnly
         )
