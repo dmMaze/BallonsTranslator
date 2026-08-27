@@ -1767,7 +1767,7 @@ class GlowEffectCard(_EffectCard):
 
 
 class TextFillEffectCard(_EffectCard):
-    """Edit one foreground Fill effect.
+    """Edit one fixed Gradient or Texture foreground layer.
 
     >>> TextFillEffectCard.__name__
     'TextFillEffectCard'
@@ -1783,26 +1783,38 @@ class TextFillEffectCard(_EffectCard):
     color_dialog_active_changed = Signal(bool)
     texture_file_requested = Signal(int, str)
 
-    def __init__(self, index: int, parent=None) -> None:
+    def __init__(
+        self,
+        index: int,
+        paint_type: str,
+        parent: Optional[QWidget] = None,
+    ) -> None:
         super().__init__(parent)
         self.index = int(index)
+        if paint_type not in {'linear_gradient', 'texture'}:
+            raise ValueError('unsupported foreground paint card type')
+        self.paint_type = paint_type
         self.setObjectName('TextEffectParameterPanel')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.title_icon_label = _effect_icon_label(
-            'text-effect-gradient.svg', self
-        )
-        self.title_label = QLabel(self.tr('Fill'), self)
+        if paint_type == 'linear_gradient':
+            title = self.tr('Gradient')
+            icon_name = 'text-effect-gradient.svg'
+        else:
+            title = self.tr('Texture')
+            icon_name = 'text-effect-texture.svg'
+        self.title_icon_label = _effect_icon_label(icon_name, self)
+        self.title_label = QLabel(title, self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
         self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Fill'),
-            self.tr('Hide Fill'),
+            self.tr('Show {effect}').format(effect=title),
+            self.tr('Hide {effect}').format(effect=title),
             self,
         )
         self.visibility_button.visibility_requested.connect(
@@ -1815,7 +1827,9 @@ class TextFillEffectCard(_EffectCard):
             'chevron-down.svg', self.tr('Move Down'), 1
         )
         self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Fill'), 0
+            'titlebar_close.svg',
+            self.tr('Delete {effect}').format(effect=title),
+            0,
         )
         self.delete_button.setObjectName('TextEffectCloseButton')
 
@@ -1836,100 +1850,87 @@ class TextFillEffectCard(_EffectCard):
         header.addWidget(action_widget)
         header.addWidget(self.visibility_button)
 
-        fill_label = QLabel(self.tr('Fill'), self)
-        fill_label.setObjectName('TextEffectParamLabel')
-        self.fill_type_selector = BottomBorderComboBox(
-            self, text_alignment=Qt.AlignmentFlag.AlignCenter
-        )
-        self.fill_type_selector.setObjectName('TextEffectParamEditor')
-        self.fill_type_selector.setAccessibleName(self.tr('Fill Type'))
-        for label, value in (
-            (self.tr('Solid'), 'solid'),
-            (self.tr('Gradient'), 'linear_gradient'),
-            (self.tr('Texture'), 'texture'),
-        ):
-            self.fill_type_selector.addItem(label, value)
-        self._texture_choice_label = self.tr('Texture')
-        self.fill_type_selector.currentIndexChanged.connect(
-            self._on_fill_type_changed
-        )
-        fill_widget = QWidget(self)
-        fill_row = QHBoxLayout(fill_widget)
-        fill_row.setContentsMargins(0, 0, 0, 0)
-        fill_row.setSpacing(4)
-        fill_row.addWidget(fill_label)
-        fill_row.addWidget(self.fill_type_selector, 1)
-
-        self.paint_button = EffectPaintButton(self)
-        self.paint_button.clicked.connect(self._on_paint_clicked)
         self._paint_seed: Optional[EffectPaint] = None
+        self.gradient_editor: Optional[InlineLinearGradientEditor] = None
+        self.texture_button: Optional[QToolButton] = None
+        self.texture_mapping_selector: Optional[BottomBorderComboBox] = None
+        self.texture_scale_control: Optional[EffectNumericControl] = None
 
-        self.gradient_editor = InlineLinearGradientEditor(
-            LinearGradientPaint(), self
-        )
-        self.gradient_editor.paint_previewed.connect(
-            self._on_gradient_preview
-        )
-        self.gradient_editor.paint_commit_requested.connect(
-            self._on_gradient_commit
-        )
-        self.gradient_editor.paint_preview_canceled.connect(
-            self._on_gradient_cancel
-        )
-        self.gradient_editor.color_dialog_active_changed.connect(
-            self.color_dialog_active_changed.emit
-        )
+        def labeled_editor(label_text: str, editor: QWidget) -> QWidget:
+            label = QLabel(label_text, self)
+            label.setObjectName('TextEffectParamLabel')
+            label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            widget = QWidget(self)
+            row = QHBoxLayout(widget)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(4)
+            row.addWidget(label)
+            row.addWidget(editor, 1)
+            return widget
 
-        image_label = QLabel(self.tr('Image'), self)
-        image_label.setObjectName('TextEffectParamLabel')
-        self.texture_button = QToolButton(self)
-        self.texture_button.setObjectName('TextEffectPaintButton')
-        self.texture_button.setText(self.tr('Choose Image…'))
-        self.texture_button.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
-        self.texture_button.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
-        )
-        self.texture_button.setFixedHeight(24)
-        self.texture_button.clicked.connect(self._on_texture_clicked)
-        texture_image_widget = QWidget(self)
-        texture_image_row = QHBoxLayout(texture_image_widget)
-        texture_image_row.setContentsMargins(0, 0, 0, 0)
-        texture_image_row.setSpacing(4)
-        texture_image_row.addWidget(image_label)
-        texture_image_row.addWidget(self.texture_button, 1)
+        texture_image_widget = None
+        mapping_widget = None
+        if paint_type == 'linear_gradient':
+            self.gradient_editor = InlineLinearGradientEditor(
+                LinearGradientPaint(), self
+            )
+            self.gradient_editor.paint_previewed.connect(
+                self._on_gradient_preview
+            )
+            self.gradient_editor.paint_commit_requested.connect(
+                self._on_gradient_commit
+            )
+            self.gradient_editor.paint_preview_canceled.connect(
+                self._on_gradient_cancel
+            )
+            self.gradient_editor.color_dialog_active_changed.connect(
+                self.color_dialog_active_changed.emit
+            )
+        else:
+            self.texture_button = QToolButton(self)
+            self.texture_button.setObjectName('TextEffectPaintButton')
+            self.texture_button.setText(self.tr('Choose Image…'))
+            self.texture_button.setToolButtonStyle(
+                Qt.ToolButtonStyle.ToolButtonTextOnly
+            )
+            self.texture_button.setSizePolicy(
+                QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed
+            )
+            self.texture_button.setFixedHeight(24)
+            self.texture_button.clicked.connect(self._on_texture_clicked)
+            texture_image_widget = labeled_editor(
+                self.tr('Image'), self.texture_button
+            )
 
-        mapping_label = QLabel(self.tr('Mapping'), self)
-        mapping_label.setObjectName('TextEffectParamLabel')
-        self.texture_mapping_selector = BottomBorderComboBox(
-            self, text_alignment=Qt.AlignmentFlag.AlignCenter
-        )
-        self.texture_mapping_selector.setObjectName('TextEffectParamEditor')
-        self.texture_mapping_selector.setAccessibleName(
-            self.tr('Texture Mapping')
-        )
-        for label, value in (
-            (self.tr('Fill'), 'fill'),
-            (self.tr('Fit'), 'fit'),
-            (self.tr('Crop'), 'crop'),
-            (self.tr('Tile'), 'tile'),
-        ):
-            self.texture_mapping_selector.addItem(label, value)
-        self.texture_mapping_selector.currentIndexChanged.connect(
-            self._on_texture_mapping_changed
-        )
-        mapping_widget = QWidget(self)
-        mapping_row = QHBoxLayout(mapping_widget)
-        mapping_row.setContentsMargins(0, 0, 0, 0)
-        mapping_row.setSpacing(4)
-        mapping_row.addWidget(mapping_label)
-        mapping_row.addWidget(self.texture_mapping_selector, 1)
+            self.texture_mapping_selector = BottomBorderComboBox(
+                self, text_alignment=Qt.AlignmentFlag.AlignCenter
+            )
+            self.texture_mapping_selector.setObjectName(
+                'TextEffectParamEditor'
+            )
+            self.texture_mapping_selector.setAccessibleName(
+                self.tr('Texture Mapping')
+            )
+            for label, value in (
+                (self.tr('Fill'), 'fill'),
+                (self.tr('Fit'), 'fit'),
+                (self.tr('Crop'), 'crop'),
+                (self.tr('Tile'), 'tile'),
+            ):
+                self.texture_mapping_selector.addItem(label, value)
+            self.texture_mapping_selector.currentIndexChanged.connect(
+                self._on_texture_mapping_changed
+            )
+            mapping_widget = labeled_editor(
+                self.tr('Mapping'), self.texture_mapping_selector
+            )
+            self.texture_scale_control = EffectNumericControl(
+                self.tr('Scale'), 'texture_scale', 100.0, 0.1, 4.0,
+                '%', 1.0, self, decimals=1,
+            )
 
-        self.texture_scale_control = EffectNumericControl(
-            self.tr('Scale'), 'texture_scale', 100.0, 0.1, 4.0, '%', 1.0,
-            self, decimals=1,
-        )
         self.opacity_control = EffectNumericControl(
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
             self, decimals=1,
@@ -1946,67 +1947,50 @@ class TextFillEffectCard(_EffectCard):
                 self._on_preview_canceled
             )
         blend_widget, self.blend_selector = _blend_control(
-            self, self.tr('Fill Blend')
+            self, self.tr('{effect} Blend').format(effect=title)
         )
         self.blend_selector.mode_changed.connect(
             self._on_blend_changed
         )
 
-        paint_row = QGridLayout()
-        paint_row.setContentsMargins(0, 0, 0, 0)
-        paint_row.setHorizontalSpacing(8)
-        paint_row.addWidget(fill_widget, 0, 0)
-        paint_row.addWidget(self.paint_button, 0, 1)
-        paint_row.setColumnStretch(0, 1)
-        paint_row.setColumnStretch(1, 1)
-
-        blend_row = QGridLayout()
-        blend_row.setContentsMargins(0, 0, 0, 0)
-        blend_row.setHorizontalSpacing(8)
-        blend_row.addWidget(self.opacity_control, 0, 0)
-        blend_row.addWidget(blend_widget, 0, 1)
-        blend_row.setColumnStretch(0, 1)
-        blend_row.setColumnStretch(1, 1)
-
-        texture_controls = QGridLayout()
-        texture_controls.setContentsMargins(0, 0, 0, 0)
-        texture_controls.setHorizontalSpacing(8)
-        texture_controls.setVerticalSpacing(8)
-        texture_controls.addWidget(texture_image_widget, 0, 0, 1, 2)
-        texture_controls.addWidget(mapping_widget, 1, 0)
-        texture_controls.addWidget(self.texture_scale_control, 1, 1)
-        texture_controls.setColumnStretch(0, 1)
-        texture_controls.setColumnStretch(1, 1)
-        self.texture_controls_widget = QWidget(self)
-        self.texture_controls_widget.setLayout(texture_controls)
+        controls = QGridLayout()
+        controls.setContentsMargins(0, 0, 0, 0)
+        controls.setHorizontalSpacing(8)
+        controls.setVerticalSpacing(8)
+        controls.setColumnStretch(0, 1)
+        controls.setColumnStretch(1, 1)
+        if paint_type == 'linear_gradient':
+            controls.addWidget(self.opacity_control, 0, 0)
+            controls.addWidget(blend_widget, 0, 1)
+        else:
+            assert texture_image_widget is not None
+            assert mapping_widget is not None
+            assert self.texture_scale_control is not None
+            controls.addWidget(texture_image_widget, 0, 0)
+            controls.addWidget(self.opacity_control, 0, 1)
+            controls.addWidget(mapping_widget, 1, 0)
+            controls.addWidget(blend_widget, 1, 1)
+            # Scale remains available only for Tile mapping.
+            controls.addWidget(self.texture_scale_control, 2, 0)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 8)
         layout.setSpacing(8)
         layout.addLayout(header)
-        layout.addLayout(paint_row)
-        layout.addLayout(blend_row)
-        layout.addWidget(self.gradient_editor)
-        layout.addWidget(self.texture_controls_widget)
-        self.gradient_editor.hide()
-        self.texture_controls_widget.hide()
-
-    def set_project_texture_enabled(self, enabled: bool) -> None:
-        """Expose Texture only while concrete project items own the edit."""
-        texture_index = self.fill_type_selector.findData('texture')
-        with QSignalBlocker(self.fill_type_selector):
-            if enabled and texture_index < 0:
-                self.fill_type_selector.addItem(
-                    self._texture_choice_label, 'texture'
-                )
-            elif not enabled and texture_index >= 0:
-                self.fill_type_selector.removeItem(texture_index)
+        if self.gradient_editor is not None:
+            layout.addWidget(self.gradient_editor)
+        layout.addLayout(controls)
 
     def set_values(
         self,
         fills: Sequence[TextFillEffect],
         texture_available: Optional[bool] = None,
     ) -> None:
+        """Project matching foreground-layer values into this fixed card."""
+        if not fills or any(
+            fill.paint.paint_type != self.paint_type for fill in fills
+        ):
+            raise ValueError('foreground card values must match its paint type')
         enabled_values = [fill.enabled for fill in fills]
         enabled = (
             enabled_values[0]
@@ -2025,51 +2009,26 @@ class TextFillEffectCard(_EffectCard):
         )
         self.opacity_control.set_model_value(common_opacity, opacity_values)
         paints = [fill.paint for fill in fills]
-        paint_types = [paint.paint_type for paint in paints]
-        common_paint_type = (
-            paint_types[0]
-            if paint_types
-            and all(value == paint_types[0] for value in paint_types)
-            else None
-        )
-        with QSignalBlocker(self.fill_type_selector):
-            self.fill_type_selector.setCurrentIndex(
-                -1
-                if common_paint_type is None
-                else self.fill_type_selector.findData(common_paint_type)
-            )
         common_paint = (
             paints[0]
             if paints and all(paint == paints[0] for paint in paints)
             else None
         )
-        self._paint_seed = common_paint or (
-            paints[0] if paints and common_paint_type is not None else None
-        )
+        self._paint_seed = common_paint or paints[0]
         mixed_paint = common_paint is None
-        show_solid = common_paint_type == 'solid'
-        show_gradient = common_paint_type == 'linear_gradient'
-        show_texture = common_paint_type == 'texture'
-        self.paint_button.setVisible(show_solid or common_paint_type is None)
-        self.gradient_editor.setVisible(show_gradient)
-        self.texture_controls_widget.setVisible(show_texture)
-        if show_solid or common_paint_type is None:
-            self.paint_button.set_paint(
-                self._paint_seed,
-                mixed=mixed_paint,
-                editable=show_solid,
-                description=self.tr('Choose Fill Color'),
-            )
-        if show_gradient and isinstance(
-            self._paint_seed, LinearGradientPaint
-        ):
+        if self.paint_type == 'linear_gradient':
+            assert self.gradient_editor is not None
+            assert isinstance(self._paint_seed, LinearGradientPaint)
             self.gradient_editor.set_paint(
                 self._paint_seed, editable=not mixed_paint
             )
-        if show_texture:
-            textures = [
-                paint for paint in paints if isinstance(paint, TexturePaint)
-            ]
+        else:
+            assert self.texture_button is not None
+            assert self.texture_mapping_selector is not None
+            assert self.texture_scale_control is not None
+            textures = [paint for paint in paints if isinstance(
+                paint, TexturePaint
+            )]
             has_common_asset = bool(
                 textures
                 and all(
@@ -2087,15 +2046,15 @@ class TextFillEffectCard(_EffectCard):
                     self.tr('Choose one image for the selected text items')
                 )
                 self.texture_button.setAccessibleName(
-                    self.tr('Mixed Fill Images')
+                    self.tr('Mixed Texture Images')
                 )
             elif common_asset is None:
                 self.texture_button.setText(self.tr('Empty'))
                 self.texture_button.setToolTip(
-                    self.tr('Choose an image for this Fill')
+                    self.tr('Choose an image for this Texture')
                 )
                 self.texture_button.setAccessibleName(
-                    self.tr('Empty Fill Image')
+                    self.tr('Empty Texture Image')
                 )
             else:
                 name = (
@@ -2137,7 +2096,11 @@ class TextFillEffectCard(_EffectCard):
         self.updateGeometry()
 
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
-        return (self.opacity_control, self.texture_scale_control)
+        return (
+            (self.opacity_control,)
+            if self.texture_scale_control is None
+            else (self.opacity_control, self.texture_scale_control)
+        )
 
     def _action_button(
         self, icon_name: str, tooltip: str, direction: int
@@ -2169,38 +2132,11 @@ class TextFillEffectCard(_EffectCard):
         else:
             self.move_requested.emit(self.index, direction)
 
-    def _on_fill_type_changed(self, combo_index: int) -> None:
-        if combo_index < 0:
-            return
-        paint_type = self.fill_type_selector.itemData(combo_index)
-        self.value_commit_requested.emit(
-            self.index, 'paint_type', paint_type
-        )
-
-    def _on_paint_clicked(self) -> None:
-        if not isinstance(self._paint_seed, SolidPaint):
-            return
-        self.color_dialog_active_changed.emit(True)
-        try:
-            color = QColorDialog.getColor(
-                QColor(*self._paint_seed.color),
-                self.window(),
-                self.tr('Fill Color'),
-            )
-            if color.isValid():
-                self.value_commit_requested.emit(
-                    self.index,
-                    'paint',
-                    SolidPaint((color.red(), color.green(), color.blue())),
-                )
-        finally:
-            self.color_dialog_active_changed.emit(False)
-
     def _choose_texture_file(self) -> bool:
         self.color_dialog_active_changed.emit(True)
         try:
             path = _choose_project_raster(
-                self, self.tr('Choose Fill Image')
+                self, self.tr('Choose Texture Image')
             )
             if path:
                 # The synchronous import/error chain stays pinned too.
@@ -2214,7 +2150,7 @@ class TextFillEffectCard(_EffectCard):
         self._choose_texture_file()
 
     def _on_texture_mapping_changed(self, combo_index: int) -> None:
-        if combo_index >= 0:
+        if combo_index >= 0 and self.texture_mapping_selector is not None:
             self.value_commit_requested.emit(
                 self.index,
                 'texture_mapping',
@@ -3069,9 +3005,14 @@ class TextEffectPanel(PanelArea):
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
             (self.tr('Glow'), 'glow', 'text-effect-glow.svg'),
             (
-                self.tr('Fill'),
-                'text_fill',
+                self.tr('Gradient'),
+                'gradient',
                 'text-effect-gradient.svg',
+            ),
+            (
+                self.tr('Texture'),
+                'texture',
+                'text-effect-texture.svg',
             ),
             (
                 self.tr('Image'),
@@ -3097,6 +3038,7 @@ class TextEffectPanel(PanelArea):
             action.setData(spec.filter_id)
             action.triggered.connect(self._on_add_filter_triggered)
         self.add_effect_button.setMenu(add_menu)
+        self.add_effect_actions['texture'].setEnabled(False)
         self.add_effect_actions['image'].setEnabled(False)
 
         self.faster_preview_toggle = QCheckBox(
@@ -3303,7 +3245,14 @@ class TextEffectPanel(PanelArea):
             elif effect_type == 'hollow':
                 continue
             elif effect_type == 'text_fill':
-                card = TextFillEffectCard(index, self.scrollContent)
+                fill_effect = (
+                    None if seed is None else seed.effects[index]
+                )
+                if not isinstance(fill_effect, TextFillEffect):
+                    continue
+                card = TextFillEffectCard(
+                    index, fill_effect.paint.paint_type, self.scrollContent
+                )
                 card.texture_file_requested.connect(
                     self.texture_file_requested.emit
                 )
@@ -3475,7 +3424,6 @@ class TextEffectPanel(PanelArea):
                     else None
                 )
                 if isinstance(card, TextFillEffectCard):
-                    card.set_project_texture_enabled(bool(self._block_items))
                     card.set_values(
                         values,
                         texture_available=self._texture_available(values),
@@ -3515,8 +3463,14 @@ class TextEffectPanel(PanelArea):
             if gradient_visibility_changed:
                 self.cards_layout.invalidate()
                 self.content_layout.invalidate()
-        self.add_effect_actions['text_fill'].setEnabled(
+        self.add_effect_actions['gradient'].setEnabled(
             not mixed and common_sequence is not None
+        )
+        self.add_effect_actions['texture'].setEnabled(
+            bool(self._block_items)
+            and getattr(SW.canvas, 'imgtrans_proj', None) is not None
+            and not mixed
+            and common_sequence is not None
         )
         self.add_effect_actions['image'].setEnabled(
             bool(self._block_items)
@@ -3677,7 +3631,8 @@ class TextEffectPanel(PanelArea):
     def _on_add_effect_triggered(self, _checked: bool = False) -> None:
         action = self.sender()
         if action is not None and action.data() in {
-            'stroke', 'shadow', 'glow', 'text_fill', 'image'
+            'stroke', 'shadow', 'glow', 'gradient',
+            'texture', 'image',
         }:
             self.add_effect_requested.emit(action.data())
 

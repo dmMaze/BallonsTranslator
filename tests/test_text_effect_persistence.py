@@ -491,7 +491,10 @@ class TextEffectPersistenceTest(unittest.TestCase):
             TextFillEffect(
                 opacity=0.4 if index == 0 else 1.0,
                 blend_mode=blend_mode,
-                paint=SolidPaint((10 + index, 20, 30)),
+                paint=LinearGradientPaint(stops=(
+                    GradientStop(0.0, (10 + index, 20, 30), 1.0),
+                    GradientStop(1.0, (30, 20, 10 + index), 1.0),
+                )),
             )
             for index, blend_mode in enumerate(TEXT_EFFECT_BLEND_MODES)
         )

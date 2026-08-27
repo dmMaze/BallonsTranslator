@@ -10,7 +10,8 @@ tests are authoritative for individual controls and raster algorithms.
 ```text
 QTextDocument + settled SceneTextLayout
   -> canonical glyph source, including Glyph Slant when active
-  -> canonical rich foreground or repeatable Fill base group, unless Hollow
+  -> canonical rich foreground or repeatable Gradient/Texture group,
+     unless Hollow
   -> ordered Image / Stroke / Shadow / Glow / Filter cards, panel top-to-bottom
   -> TextBlock-owned alpha mask
   -> Overall Opacity
@@ -24,13 +25,14 @@ projects movable cards in application order, so the first visible card runs
 first. A Filter transforms the base and generated layers accumulated by cards
 above it, while cards below it run afterward. Generated effects still derive
 high-quality geometry from canonical glyph/Stroke alpha; order does not turn a
-later Stroke into a raster outline of filtered pixels. The UI names each
-`TextFillEffect` card **Fill**; Solid, Gradient, and Texture are its paint-type
-choices. Fill and Hollow remain structural base state, independent of their
-serialized position. Fills can be reordered only with other Fills; Hollow is
-not reordered.
+later Stroke into a raster outline of filtered pixels. The UI exposes fixed
+**Gradient** and **Texture** cards; both reuse the internal `TextFillEffect`
+value and renderer. Inline font color remains the sole solid foreground source.
+Foreground paints and Hollow remain structural base state, independent of their
+serialized position. Foreground paints can be reordered only with each other;
+Hollow is not reordered.
 
-New movable effects and Text Fills are appended to their visible panel areas
+New movable effects and foreground paints are appended to their visible panel areas
 and therefore execute last within their respective stacks. This is stored at
 tuple index zero; existing persisted tuples are neither rewritten nor migrated
 for the presentation remapping.
@@ -70,12 +72,12 @@ Color Dodge, Linear Dodge (Add), and Lighter Color. Mixed selections show
 Mixed with no checked leaf; a common value checks its leaf inside the relevant
 submenu. These modes add no mode-specific parameter row; each effect's existing
 Opacity remains independent. Stroke Position and Shadow/Glow Type follow the
-card title. Fill stays in the left control column; Solid shows its swatch
-opposite, Gradient expands the shared stop editor below it, and Fill
-additionally offers Texture with an Empty state, an explicit image chooser,
-and Fill/Fit/Crop/Tile mapping. Selecting Texture does not open the chooser.
-Fill puts Opacity and Blend in the compact row below its paint row. The Texture
-choice exists only for concrete project-item selections;
+card title. Gradient expands the shared stop editor and puts Opacity and Blend
+in a compact two-column row below it. Texture has Image and Opacity on row one,
+Mapping and Blend on row two, and exposes Scale on a third row only for Tile
+mapping. An Empty Texture has an explicit image chooser and Fill/Fit/Crop/Tile
+mapping; adding Texture does not open the chooser. Texture exists only for
+concrete project-item selections;
 global and itemless formatting never offers it. For a mixed Texture selection,
 asset, mapping, and scale compare independently. The chooser remains enabled
 when assets differ and selecting a file changes only the asset, retaining each
@@ -95,7 +97,7 @@ column width. Editor and current-selector values are centered. Two-column rows
 use equal columns and an 8 px inter-column gap. There is no redundant Flip
 action.
 
-The panel projects Fill structural cards first, followed by the complete
+The panel projects Gradient/Texture structural cards first, followed by the complete
 movable Image/Stroke/Shadow/Glow/Filter execution order and finally Eraser.
 Image is project-only, repeatable, reorderable, and available for matching
 single- or multi-item project selections; global formatting and presets strip
@@ -109,7 +111,7 @@ text editing.
 
 `FontFormat.text_effects` contains one immutable `TextEffectStack`. Its
 `overall_opacity` applies to the completed item, while `effects` preserves the
-semantic order of typed immutable values. Stroke, Shadow, Glow, Text Fill,
+semantic order of typed immutable values. Stroke, Shadow, Glow, Gradient/Texture,
 Image, and Filter are repeatable. Hollow is unique.
 
 | Effect | Phase and source | Important semantics |
@@ -117,8 +119,8 @@ Image, and Filter are repeatable. Hollow is unique.
 | Stroke | Ordered generated layer | Width is relative to font size. Center splits the full band across the glyph edge; Outside and Inside clip a full-width outline to the corresponding side. A completed surface caches raw outline coverage for every position, then clips Center paint outside canonical face alpha unless Hollow needs the full band. This matches the direct path's later foreground repaint without putting Hollow in the geometry-cache key. New and migrated legacy strokes default to Outside. |
 | Shadow | Ordered generated layer; exterior source for Drop/Long, interior source for Inner | Exterior Shadow uses the canonical Stroke-inclusive silhouette but clips output only outside the canonical face. It therefore cannot tint foreground, while global order still decides whether a higher Shadow covers a lower Stroke. Inner Shadow uses canonical glyph alpha and is suppressed by Hollow. |
 | Glow | Ordered generated layer; exterior source for Outer, interior source for Inner | Outer Glow uses the canonical Stroke-inclusive silhouette. Inner Glow uses canonical glyph alpha and is suppressed by Hollow. |
-| Text Fill | Structural base-fill sub-stack, repeatable | Enabled renderable fills compose in visible order on one transparent face group. Solid or Gradient paints the logical rectangle; Texture maps one managed raster over it. The completed group is clipped once by canonical glyph coverage and replaces the rich foreground as a group. Paint alpha and effect Opacity each multiply alpha once. Stroke and generated effects continue using their earlier canonical/source alpha. |
-| Hollow | Foreground modifier, unique | Removes the canonical face, Text Fill, and interior phase while retaining Stroke and exterior output. It is a toggle, not an independent painted layer. |
+| Gradient/Texture | Structural foreground sub-stack, repeatable | Enabled renderable paints compose in visible order on one transparent face group. Gradient paints the logical rectangle; Texture maps one managed raster over it. The completed group is clipped once by canonical glyph coverage and replaces the rich foreground as a group. Paint alpha and effect Opacity each multiply alpha once. Stroke and generated effects continue using their earlier canonical/source alpha. Both cards persist through the internal `TextFillEffect` type. |
+| Hollow | Foreground modifier, unique | Removes the canonical face, Gradient/Texture group, and interior phase while retaining Stroke and exterior output. It is a toggle, not an independent painted layer. |
 | Image | Ordered project-raster layer, repeatable | Empty or disabled is neutral. Replace source-copies at its ordered position, Foreground source-over composites above accumulated pixels, and Background destination-over composites behind them so existing text remains visible. It does not change generated layers' canonical glyph sources. |
 | Filter | Ordered pixel transform, repeatable | Transforms the base and generated layers accumulated above its visible card. Consecutive Filters execute panel top-to-bottom through one RGBA bridge. Alpha is non-expanding by default; an explicitly declared expander is halo-bounded and adds matching effect padding. |
 
@@ -133,18 +135,19 @@ not resolve or rasterize a prefix discarded by the last valid Replace; later
 cards, including Filters, still process its result.
 
 Stroke, Shadow, and Glow use either `SolidPaint` or `LinearGradientPaint`.
-Text Fill uses `SolidPaint`, `LinearGradientPaint`, or `TexturePaint`. A
+`TextFillEffect` accepts only `LinearGradientPaint` or `TexturePaint`. A
 gradient contains two to 32
 ordered stops; RGB and stop opacity interpolate independently. Its angle and
 scale are defined against the complete unpadded logical text rectangle, not
 each glyph, effect layer, or tile, so writing modes and render paths agree.
-If no enabled Text Fill can render, the canonical rich foreground remains. If
-at least one can render, the transparent fill group replaces that foreground.
-An enabled transparent or zero-Opacity Text Fill is renderable and therefore
+If no enabled foreground paint can render, the canonical rich foreground
+remains. If at least one can render, the transparent foreground group replaces
+that foreground.
+An enabled transparent or zero-Opacity Gradient is renderable and therefore
 can intentionally erase the face. A Texture with no selected asset is neutral.
 A missing or invalid Texture is bypassed
 interactively; it does not cause replacement by itself, but valid sibling
-fills still do. Strict export reports the missing asset instead.
+paints still do. Strict export reports the missing asset instead.
 
 `TexturePaint` stores an optional generic immutable `RasterAssetRef` from
 `utils/raster_assets.py`. Project import snapshots the selected source once in
@@ -157,7 +160,8 @@ repeats at the selected scale from the unpadded logical top-left. Full surfaces,
 visible tiles, both writing modes, and downstream text transforms therefore
 sample the same logical point from the same texture point.
 
-Stroke, Shadow, Glow, and Text Fill persist one flat leaf from the UI families:
+Stroke, Shadow, Glow, Gradient, and Texture persist one flat leaf from the UI
+families:
 `normal`; `darken`, `multiply`, `color_burn`, `linear_burn`, `darker_color`;
 or `lighten`, `screen`, `color_dodge`, `linear_dodge`, `lighter_color`. Family
 names and submenus are presentation only. Normal, Darken, Multiply, Color Burn,
@@ -168,11 +172,11 @@ bounds working memory and preserves full/tiled rounding, but the pixmap readback
 and replacement make these modes more expensive than native leaves. They do not
 rerasterize glyphs or add work to native layers.
 
-The first renderable Text Fill is source identity over its transparent group,
-so it is source-copied without entering native or custom blend dispatch. A
-single Fill therefore incurs no custom bridge regardless of its saved leaf; a
-custom second Fill incurs exactly one. The completed Fill group is still
-clipped once by canonical glyph coverage. Generated layers and later Fills
+The first renderable foreground paint is source identity over its transparent
+group, so it is source-copied without entering native or custom blend dispatch.
+A single foreground paint therefore incurs no custom bridge regardless of its
+saved leaf; a custom second paint incurs exactly one. The completed group is
+still clipped once by canonical glyph coverage. Generated layers and later paints
 blend with earlier output in their isolated local stack, never the page
 backdrop. The same destination, order, and arithmetic apply to full, tiled,
 preview, and export rendering.
@@ -189,10 +193,10 @@ layout-owned placement and any Glyph Slant renderer. It then compiles the
 effective stack as follows:
 
 1. Unless Hollow is active, paint the canonical rich foreground when no
-   enabled Text Fill can render. Otherwise compose enabled renderable Text
-   Fills in visible order on a transparent surface, apply their paint/effect
-   alpha, clip the group once with cached canonical glyph coverage, and use the
-   group in place of canonical foreground.
+   enabled foreground paint can render. Otherwise compose enabled renderable
+   Gradient/Texture paints in visible order on a transparent surface, apply
+   their paint/effect alpha, clip the group once with cached canonical glyph
+   coverage, and use the group in place of canonical foreground.
 2. Walk movable cards top-to-bottom as displayed by the panel (the reverse of
    their compatibility-preserved tuple order). Batch adjacent Stroke/Shadow/Glow
    or Image cards in one painter segment and adjacent Filters in one
@@ -209,8 +213,8 @@ effective stack as follows:
    transform path described in [Composable text transforms](text_transforms.md).
 
 On coverage-producing layers, effect opacity and gradient-stop opacity each
-multiply coverage exactly once. Text Fill paint alpha and effect Opacity are
-composed before the shared canonical mask, so transparent fill output does not
+multiply coverage exactly once. Foreground paint alpha and effect Opacity are
+composed before the shared canonical mask, so transparent output does not
 reveal the original rich foreground. Preserve straight-RGBA rounding at the
 paint boundary; changing the order can square coverage or make clipped
 Inside/Outside pixels visible.
@@ -219,7 +223,7 @@ Inside/Outside pixels visible.
 | --- | --- |
 | No active pixel effects and no active mask | Native Qt foreground and group opacity; no effect raster state |
 | Solid Center Stroke without a completed-surface consumer | Native/direct Stroke and foreground fast path |
-| Positioned or gradient Stroke, Shadow/Glow, Text Fill, Hollow, Image, Filter, or active mask | One bounded completed effect surface, full or tiled |
+| Positioned or gradient Stroke, Shadow/Glow, Gradient/Texture, Hollow, Image, Filter, or active mask | One bounded completed effect surface, full or tiled |
 | Effects or mask plus an active nonlinear transform | Their completed source surface is warped once by the geometry owner |
 | Strict export | Independent exact-quality namespace; incomplete output is reported rather than silently omitted |
 
@@ -326,8 +330,10 @@ Compatibility rules are intentional:
   `TextFillEffect` with `LinearGradientPaint`; their removed effect-level
   `opacity` is deliberately ignored. Older `text_fill` payloads default their
   newly supported effect Opacity to `1.0`. New serialization writes repeatable
-  `text_fill` entries with Opacity and Blend.
-- Malformed Raster asset data discards only the optional Text Fill or Image
+  `text_fill` entries with Opacity and Blend. A solid `text_fill` is no longer a
+  live value; passive loading warns and discards only that entry without
+  migrating it, because inline font color owns solid foreground.
+- Malformed Raster asset data discards only the optional Texture or Image
   entry that owns it on passive load. Valid-but-missing files remain
   referenced so the project can recover when its `assets/` contents are
   restored.
@@ -335,7 +341,7 @@ Compatibility rules are intentional:
   registry in v1. They strip `TextFillEffect(TexturePaint)` and `ImageEffect`
   on passive load, edit, update, and save boundaries while preserving every
   portable effect.
-  Project TextBlocks retain valid Texture refs, and the absence of Text Fill
+  Project TextBlocks retain valid Texture refs, and the absence of Gradient/Texture
   keeps the original rich foreground.
 - The removed singleton `TextBlock.rendered_image` payload is ignored on
   passive load. It is not migrated or exposed through a compatibility model;
@@ -375,10 +381,10 @@ it never mutates committed `FontFormat`, project JSON, `QTextDocument` history,
 or the paired editor. A parameter switch first cancels an incompatible active
 preview. Structural add, remove, move, or Hollow changes settle pending inputs
 and cancel transient previews before changing indices. Reordering swaps
-adjacent movable Stroke/Shadow/Glow/Image/Filter cards while skipping
-structural Text Fill and Hollow values. A Text Fill reorder separately swaps adjacent fills,
-even when generated entries occupy raw tuple positions between them; it never
-changes generated-layer order.
+adjacent movable Stroke/Shadow/Glow/Image/Filter cards while skipping structural
+`TextFillEffect` and Hollow values. A foreground-paint reorder separately swaps
+adjacent Gradient/Texture values, even when generated entries occupy raw tuple
+positions between them; it never changes generated-layer order.
 
 Multiple selected items may edit matching indices only when their effect-type
 sequences agree. Values at those indices may still be mixed. One committed

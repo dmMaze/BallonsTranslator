@@ -718,7 +718,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         return pixmap
 
     def test_repeatable_text_fill_order_blend_and_opacity(self):
-        bottom = TextFillEffect(paint=SolidPaint((100, 150, 200)))
+        bottom = TextFillEffect(
+            paint=self._constant_gradient((100, 150, 200))
+        )
         top_colors = {
             'normal': (200, 50, 100),
             'darken': (100, 50, 100),
@@ -734,7 +736,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         }
         self.assertEqual(tuple(top_colors), TEXT_EFFECT_BLEND_MODES)
         item = self._item(TextEffectStack(effects=(
-            TextFillEffect(paint=SolidPaint((200, 50, 100))),
+            TextFillEffect(
+                paint=self._constant_gradient((200, 50, 100))
+            ),
             StrokeEffect(enabled=False),
             bottom,
         )))
@@ -749,7 +753,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             with self.subTest(blend_mode=blend_mode):
                 top = TextFillEffect(
                     blend_mode=blend_mode,
-                    paint=SolidPaint((200, 50, 100)),
+                    paint=self._constant_gradient((200, 50, 100)),
                 )
                 group = renderer._text_fill_group_pixmap(
                     canonical, rect, 1.0, (bottom, top)
@@ -760,7 +764,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         custom_fill = TextFillEffect(
             blend_mode='linear_dodge',
-            paint=SolidPaint((200, 50, 100)),
+            paint=self._constant_gradient((200, 50, 100)),
         )
         with patch.object(
             renderer,
@@ -788,7 +792,10 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             canonical,
             rect,
             1.0,
-            (TextFillEffect(opacity=0.5, paint=SolidPaint((1, 2, 3))),),
+            (TextFillEffect(
+                opacity=0.5,
+                paint=self._constant_gradient((1, 2, 3)),
+            ),),
         )
         quarter = renderer._text_fill_group_pixmap(
             canonical,
@@ -821,7 +828,9 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         missing = TextFillEffect(paint=TexturePaint(RasterAssetRef(
             'assets/' + 'a' * 64 + '.png', 'missing.png'
         )))
-        valid = TextFillEffect(paint=SolidPaint((20, 60, 220)))
+        valid = TextFillEffect(
+            paint=self._constant_gradient((20, 60, 220))
+        )
 
         with patch.object(renderer, '_project_raster', return_value=None):
             self.assertIsNone(renderer._text_fill_group_pixmap(

@@ -43,6 +43,7 @@ from ballontranslator.utils.text_alpha_mask import (
 from ballontranslator.utils.text_effects import (
     GlowEffect,
     HollowEffect,
+    LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
@@ -414,19 +415,29 @@ class TextEffectPreviewTest(unittest.TestCase):
             owner.text_effects.effects[3].blend_mode, 'linear_dodge'
         )
 
-    def test_add_text_fill_is_repeatable_and_applied_last(self):
-        old_fill = TextFillEffect(paint=SolidPaint((10, 20, 30)))
+    def test_add_foreground_paints_are_repeatable_and_applied_last(self):
+        old_fill = TextFillEffect(
+            paint=LinearGradientPaint(angle=15.0)
+        )
         stroke = StrokeEffect()
         owner = SimpleNamespace(text_effects=TextEffectStack(
             effects=(stroke, old_fill)
         ))
         session = TextEffectEditSession(SimpleNamespace(global_format=owner))
 
-        self.assertTrue(session.add_effect('text_fill'))
+        self.assertTrue(session.add_effect('gradient'))
 
         self.assertIsInstance(owner.text_effects.effects[0], TextFillEffect)
+        self.assertIsInstance(
+            owner.text_effects.effects[0].paint, LinearGradientPaint
+        )
         self.assertEqual(owner.text_effects.effects[1:], (stroke, old_fill))
-        self.assertTrue(session.add_effect('text_fill'))
+        self.assertTrue(session.add_effect('gradient'))
+        self.assertEqual(sum(
+            isinstance(effect, TextFillEffect)
+            for effect in owner.text_effects.effects
+        ), 3)
+        self.assertFalse(session.add_effect('color'))
         self.assertEqual(sum(
             isinstance(effect, TextFillEffect)
             for effect in owner.text_effects.effects

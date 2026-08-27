@@ -16,7 +16,7 @@ Project JSON
                + TextBlock.text_alpha_mask
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
-  -> TextEffectRenderer                     generated/filter stack + Fill sub-stack
+  -> TextEffectRenderer                     generated/filter stack + foreground paints
   -> TextItemGeometryController             bounds and visual mapping
   -> QGraphicsScene                         interaction, view, export
 ```
@@ -28,7 +28,7 @@ Project JSON
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Shaping and placement | `SceneTextLayout` and its writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
-| Fill, effects, raster bounds | `TextEffectRenderer` and effect helpers | [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
+| Foreground paint, effects, raster bounds | `TextEffectRenderer` and effect helpers | [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
 | Reusable content-addressed raster assets | `ProjImgTrans` | [`utils/proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
 | Bounds, transforms, and input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py), [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
 | Alpha-mask brush input, preview, and undo | Canvas-owned `TextAlphaMaskEditSession` | [`ui/text_engine/effects/alpha_mask_edit_session.py`](../../ballontranslator/ui/text_engine/effects/alpha_mask_edit_session.py), [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
@@ -138,33 +138,37 @@ hit testing; adapting only one consumer creates visible drift or broken editing.
 `FontFormat.text_effects` owns the canonical immutable stack, including
 repeatable project-only Image nodes; `TextBlock.text_alpha_mask` separately
 owns item-specific structural alpha. `TextEffectRenderer` composes the
-repeatable Text Fill base group, then walks Image, generated layers, and lazy
-Filters bottom-to-top around one canonical
-glyph source before the block mask, and hands that padded source to the
-geometry owner. The panel shows Fill structural cards, the movable
-Image/generated/Filter execution sequence, then Eraser. Text Fills apply in their
-visible order and may move only among themselves; a new Fill is visible and
-applied last even though the compatibility tuple stores it at index zero. If
-any enabled Fill can render, its transparent group replaces canonical rich
-foreground and is clipped once with shared canonical glyph coverage. Otherwise
-canonical rich foreground remains; missing interactive Textures are bypassed,
-while strict export fails. See
+repeatable Gradient and Texture foreground group, then walks Image, generated
+layers, and lazy Filters bottom-to-top around one canonical glyph source before
+the block mask, and hands that padded source to the geometry owner. The panel
+shows those two fixed structural card types, the movable
+Image/generated/Filter execution sequence, then Eraser. Foreground paints apply
+in their visible order and may move only among themselves; a newly added paint
+is visible and applied last even though the tuple stores it at index zero. If
+any enabled foreground paint can render, its transparent group replaces the
+canonical rich foreground and is clipped once with shared canonical glyph
+coverage. Otherwise canonical rich foreground remains; missing interactive
+Textures are bypassed, while strict export fails. Both cards continue to
+share the internal `TextFillEffect` value and renderer, so this UI split does
+not add a second model or require project migration. See
 [Text effects](text_effects.md)
 for stack order, migration, preview/undo, mask editing, cache boundaries, and
 extension rules. See [Text filters](text_filters.md) for plug-in metadata,
 trusted-code runtime, and deterministic tile contracts.
 
-Stroke, Shadow, Glow, and Text Fill support Normal plus the Darken and Lighten
+Stroke, Shadow, Glow, Gradient, and Texture support Normal plus the Darken and
+Lighten
 families detailed in [Text effects](text_effects.md). Family submenus are UI
 only; persistence stores one flat leaf. Every leaf composes with earlier output
-inside the isolated generated stack or transparent Fill group, never the page
-backdrop. Paint alpha and effect Opacity multiply coverage once. Passive loading
+inside the isolated generated stack or transparent foreground group, never the page
+backdrop. Inline font color remains the sole solid foreground source. Paint alpha
+and effect Opacity multiply coverage once. Passive loading
 warns and falls back to Normal for an invalid mode without dropping the effect;
 live values remain strict.
 
-Text Fill textures use optional immutable project-relative `RasterAssetRef`
-values. Selecting Texture creates a neutral Empty paint without opening a file
-dialog; choosing a valid image later activates it.
+Texture cards use optional immutable project-relative `RasterAssetRef` values.
+Adding Texture creates a neutral Empty paint without opening a file dialog;
+choosing a valid image later activates it.
 The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`
 remains text-effect-specific. `ProjImgTrans` owns one-snapshot validated import
 into the project `assets/` directory, path-safe resolution, digest verification,
@@ -203,7 +207,7 @@ A valid Replace also trims discarded generated layers and Filters before
 padding, bounds, halo, resolution, and rendering decisions; only a retained
 exterior Shadow/Glow may keep its canonical Stroke-silhouette dependency.
 
-Texture Text Fill and Image are project-only in v1. Itemless/global formatting
+Texture and Image are project-only in v1. Itemless/global formatting
 cannot select them, and application-global presets/config strip both project
 raster forms at their load/edit/save boundaries because there is no global
 asset registry. Concrete project TextBlocks keep empty, valid, and
@@ -229,7 +233,7 @@ selects the existing bounded, non-promotable 0.5x scratch surface; commit and
 strict export still render at the requested quality. Reshape omits effects
 during pointer motion and rebuilds once geometry settles. All derived pixmaps,
 alpha planes, padding, and cache keys remain runtime-only and item-owned.
-Repeated Fill paint, Opacity, and Blend changes reuse the cached canonical
+Repeated foreground paint, Opacity, and Blend changes reuse the cached canonical
 source/mask rather than rasterizing glyphs again.
 
 The Canvas-owned mask session freezes source mapping for each brush stroke,

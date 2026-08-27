@@ -355,6 +355,16 @@ class TextEffectDomainTest(unittest.TestCase):
             TextFillEffect(paint=transparent).is_neutral()
         )
         self.assertEqual(effect_phase(TextFillEffect()), 'foreground')
+        self.assertEqual(
+            effect_structure_key(TextFillEffect()),
+            ('text_fill', 'linear_gradient'),
+        )
+        self.assertEqual(
+            effect_structure_key(TextFillEffect(
+                paint=TexturePaint()
+            )),
+            ('text_fill', 'texture'),
+        )
         fills = (TextFillEffect(), TextFillEffect(opacity=0.5))
         self.assertEqual(TextEffectStack(effects=fills).effects, fills)
         for constructor in (
@@ -362,6 +372,7 @@ class TextEffectDomainTest(unittest.TestCase):
             lambda: TextFillEffect(blend_mode='overlay'),
             lambda: TextFillEffect(opacity=-0.01),
             lambda: TextFillEffect(opacity=1.01),
+            lambda: TextFillEffect(paint=SolidPaint()),
             lambda: TextFillEffect(paint=object()),
         ):
             with self.subTest(constructor=constructor):
@@ -418,6 +429,7 @@ class TextEffectDomainTest(unittest.TestCase):
         malformed = {'effects': [
             payload['effects'][1],
             {'effect_type': 'text_fill', 'opacity': -0.1},
+            {'effect_type': 'text_fill'},
             {'effect_type': 'stroke', 'width': 0.3},
             {
                 'effect_type': 'text_fill',
@@ -431,9 +443,8 @@ class TextEffectDomainTest(unittest.TestCase):
         self.assertEqual(loaded.effects, (
             text_fill,
             StrokeEffect(width=0.3, position='center'),
-            TextFillEffect(paint=SolidPaint((1, 2, 3))),
         ))
-        warning.assert_called_once()
+        self.assertEqual(warning.call_count, 3)
 
     def test_blend_modes_are_strict_live_and_recover_on_passive_load(self):
         self.assertEqual(TEXT_EFFECT_BLEND_MODES, (

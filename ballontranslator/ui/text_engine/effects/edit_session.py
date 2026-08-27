@@ -229,32 +229,16 @@ class TextEffectEditSession:
             parameters['enabled'] = value
         elif isinstance(effect, TextFillEffect):
             if param_name not in {
-                'enabled', 'paint', 'paint_type', 'texture_mapping',
+                'enabled', 'paint', 'texture_mapping',
                 'texture_scale', 'opacity', 'blend_mode',
             }:
                 raise ValueError('unknown Text Fill field')
             if param_name == 'paint':
-                if not isinstance(
-                    value, (SolidPaint, LinearGradientPaint, TexturePaint)
-                ):
-                    raise TypeError('Text Fill paint must be EffectPaint')
-                parameters['paint'] = value
-            elif param_name == 'paint_type':
-                paint_type, mixed_values = value
-                if paint_type == 'texture':
-                    if (
-                        mixed_values
-                        or not isinstance(effect.paint, TexturePaint)
-                    ):
-                        parameters['paint'] = TexturePaint()
-                    else:
-                        parameters['paint'] = effect.paint
-                else:
-                    parameters['paint'] = (
-                        TextEffectEditSession._convert_effect_paint(
-                            effect.paint, paint_type, mixed_values
-                        )
+                if not isinstance(value, (LinearGradientPaint, TexturePaint)):
+                    raise TypeError(
+                        'Text Fill paint must be Gradient or Texture paint'
                     )
+                parameters['paint'] = value
             elif param_name in {'texture_mapping', 'texture_scale'}:
                 if not isinstance(effect.paint, TexturePaint):
                     raise TypeError('texture controls require Texture paint')
@@ -591,12 +575,15 @@ class TextEffectEditSession:
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
             'glow': GlowEffect,
-            'text_fill': TextFillEffect,
+            'gradient': lambda: TextFillEffect(
+                paint=LinearGradientPaint()
+            ),
+            'texture': lambda: TextFillEffect(paint=TexturePaint()),
             'image': ImageEffect,
         }
         constructor = constructors.get(effect_type)
         if constructor is None or (
-            constructor is ImageEffect
+            effect_type in {'texture', 'image'}
             and (
                 not self.items
                 or getattr(SW.canvas, 'imgtrans_proj', None) is None

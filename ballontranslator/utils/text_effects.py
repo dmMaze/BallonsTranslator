@@ -504,16 +504,18 @@ class HollowEffect:
 
 @dataclass(frozen=True)
 class TextFillEffect:
-    """One layer in the structural canonical-face Fill sub-stack.
+    """One Gradient or Texture layer over the canonical text foreground.
 
-    >>> TextFillEffect().effect_type
-    'text_fill'
+    >>> TextFillEffect().paint.paint_type
+    'linear_gradient'
     """
 
     enabled: bool = True
     opacity: float = 1.0
     blend_mode: str = 'normal'
-    paint: EffectPaint = field(default_factory=SolidPaint)
+    paint: Union[LinearGradientPaint, TexturePaint] = field(
+        default_factory=LinearGradientPaint
+    )
     effect_type: str = field(init=False, default='text_fill')
 
     def __post_init__(self) -> None:
@@ -529,10 +531,10 @@ class TextFillEffect:
             'blend_mode',
             _validated_blend_mode('text fill', self.blend_mode),
         )
-        if not isinstance(
-            self.paint, (SolidPaint, LinearGradientPaint, TexturePaint)
-        ):
-            raise TypeError('text fill paint must be EffectPaint')
+        if not isinstance(self.paint, (LinearGradientPaint, TexturePaint)):
+            raise TypeError(
+                'text fill paint must be LinearGradientPaint or TexturePaint'
+            )
 
     def to_serializable_dict(self) -> dict:
         return {
@@ -713,9 +715,13 @@ def effect_structure_key(effect: TextEffect) -> object:
 
     >>> effect_structure_key(FilterEffect('builtin:noise', 2))
     ('filter', 'builtin:noise', 2)
+    >>> effect_structure_key(TextFillEffect(paint=LinearGradientPaint()))
+    ('text_fill', 'linear_gradient')
     """
     if isinstance(effect, FilterEffect):
         return effect.effect_type, effect.filter_id, effect.schema_version
+    if isinstance(effect, TextFillEffect):
+        return effect.effect_type, effect.paint.paint_type
     return effect.effect_type
 
 
@@ -975,8 +981,9 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             'Text Fill effect',
         )
         payload.pop('effect_type')
-        if 'paint' in payload:
-            payload['paint'] = _coerce_effect_paint(payload['paint'])
+        if 'paint' not in payload:
+            raise ValueError('text fill effect requires paint')
+        payload['paint'] = _coerce_effect_paint(payload['paint'])
         return TextFillEffect(**payload)
     if effect_type == 'image':
         _unexpected_fields(

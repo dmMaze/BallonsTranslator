@@ -26,8 +26,9 @@ declared params are passed to the plug-in; a missing or invalid known value
 uses its validated metadata default while the persisted value stays unchanged.
 
 Image, Stroke, Shadow, Glow, and Filter cards share one top-to-bottom
-application order in the panel. A Filter transforms the structural Text Fill
-base plus every movable layer accumulated above its card; cards below it run
+application order in the panel. A Filter transforms the structural
+Gradient/Texture foreground group plus every movable layer accumulated
+above its card; cards below it run
 afterward. Image Foreground and Background therefore become Filter input only
 when they precede that Filter. Image Replace clears its accumulated prefix at
 its own position, while Filters after it process the replacement normally.

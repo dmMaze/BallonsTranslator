@@ -30,8 +30,10 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    GradientStop,
     GlowEffect,
     ImageEffect,
+    LinearGradientPaint,
     SolidPaint,
     StrokeEffect,
     TextFillEffect,
@@ -479,7 +481,14 @@ class ImageEffectRendererTest(unittest.TestCase):
                         vertical=vertical,
                         stack=TextEffectStack(effects=(
                             TextFillEffect(
-                                paint=SolidPaint((20, 220, 60))
+                                paint=LinearGradientPaint(stops=(
+                                    GradientStop(
+                                        0.0, (20, 220, 60), 1.0
+                                    ),
+                                    GradientStop(
+                                        1.0, (20, 220, 60), 1.0
+                                    ),
+                                ))
                             ),
                         )),
                     )

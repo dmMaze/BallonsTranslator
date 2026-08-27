@@ -48,6 +48,7 @@ from ballontranslator.ui.text_engine.effects.panel import (
     FilterEffectCard,
     ShadowEffectCard,
     StrokeEffectCard,
+    TextFillEffectCard,
     TextEffectPanel,
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
@@ -302,7 +303,7 @@ class TextEffectPanelTest(unittest.TestCase):
 
         preset.reset_mock()
         self.assertTrue(
-            self.panel.text_effect_session.add_effect('text_fill')
+            self.panel.text_effect_session.add_effect('gradient')
         )
         self.assertTrue(any(
             isinstance(effect, TextFillEffect)
@@ -405,12 +406,17 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
             effect_panel.text_fill_cards[0].visibility_button.toolTip(),
-            'Hide Fill',
+            'Hide Gradient',
         )
         self.assertEqual(
-            effect_panel.add_effect_actions['text_fill'].text(),
-            'Fill',
+            [
+                effect_panel.add_effect_actions[key].text()
+                for key in ('gradient', 'texture')
+            ],
+            ['Gradient', 'Texture'],
         )
+        self.assertNotIn('color', effect_panel.add_effect_actions)
+        self.assertNotIn('text_fill', effect_panel.add_effect_actions)
         self.assertTrue(all(
             not action.icon().isNull()
             for action in effect_panel.add_effect_actions.values()
@@ -1528,26 +1534,33 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(mixed_card.gradient_editor.isHidden())
         self.assertFalse(mixed_card.gradient_editor.angle_editor.isEnabled())
 
-    def test_text_fill_add_repeat_edit_and_mixed_values(self):
-        original = TextFillEffect(paint=SolidPaint((12, 34, 56)))
+    def test_foreground_paint_top_level_add_repeat_edit_and_mixed_values(self):
+        original = self._constant_text_fill(angle=15.0)
+        self.canvas.imgtrans_proj = Mock()
         item = self._item(self._stack(original))
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
-        effect_panel.add_effect_actions['text_fill'].trigger()
+        effect_panel.add_effect_actions['gradient'].trigger()
         text_fill = item.blk.fontformat.text_effects[0]
         self.assertIsInstance(text_fill, TextFillEffect)
+        self.assertIsInstance(text_fill.paint, LinearGradientPaint)
         self.assertEqual(item.blk.fontformat.text_effects[1], original)
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertTrue(
-            effect_panel.add_effect_actions['text_fill'].isEnabled()
-        )
+        self.assertTrue(all(
+            effect_panel.add_effect_actions[key].isEnabled()
+            for key in ('gradient', 'texture')
+        ))
         self.assertEqual(len(effect_panel.text_fill_cards), 2)
         self.assertEqual(
             [card.index for card in effect_panel.text_fill_cards], [1, 0]
         )
+        self.assertEqual(
+            [card.title_label.text() for card in effect_panel.text_fill_cards],
+            ['Gradient', 'Gradient'],
+        )
 
         card = effect_panel.text_fill_cards[-1]
-        self.assertEqual(card.title_label.text(), 'Fill')
+        self.assertEqual(card.title_label.text(), 'Gradient')
 
         card.visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
@@ -1558,9 +1571,17 @@ class TextEffectPanelTest(unittest.TestCase):
             for effect in item.blk.fontformat.text_effects
         ), 1)
         self.assertEqual(self.canvas.stack.count(), 3)
-        self.assertTrue(
-            effect_panel.add_effect_actions['text_fill'].isEnabled()
+        self.assertTrue(effect_panel.add_effect_actions['gradient'].isEnabled())
+
+        with patch.object(QFileDialog, 'getOpenFileName') as chooser:
+            effect_panel.add_effect_actions['texture'].trigger()
+        chooser.assert_not_called()
+        added_texture = item.blk.fontformat.text_effects[0]
+        self.assertEqual(added_texture.paint, TexturePaint())
+        self.assertEqual(
+            effect_panel.text_fill_cards[-1].title_label.text(), 'Texture'
         )
+        self.assertEqual(self.canvas.stack.count(), 4)
 
         common = self._constant_text_fill(angle=0.0)
         different = self._constant_text_fill(angle=90.0)
@@ -1661,7 +1682,7 @@ class TextEffectPanelTest(unittest.TestCase):
             'Stroke Blend: Normal',
             'Shadow Blend: Multiply',
             'Glow Blend: Linear Dodge (Add)',
-            'Fill Blend: Darker Color',
+            'Gradient Blend: Darker Color',
         )):
             selector = card.blend_selector
             root_actions = selector.menu().actions()
@@ -1777,10 +1798,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_text_fill_moves_only_with_fills_as_one_multi_item_command(self):
-        red = TextFillEffect(paint=SolidPaint((255, 0, 0)))
-        blue = TextFillEffect(paint=SolidPaint((0, 0, 255)))
-        green = TextFillEffect(paint=SolidPaint((0, 255, 0)))
-        yellow = TextFillEffect(paint=SolidPaint((255, 255, 0)))
+        red = self._constant_text_fill(angle=0.0)
+        blue = self._constant_text_fill(angle=30.0)
+        green = self._constant_text_fill(angle=60.0)
+        yellow = self._constant_text_fill(angle=90.0)
         first_before = self._stack(
             red, StrokeEffect(width=0.2), blue, GlowEffect(size=0.4)
         )
@@ -2476,21 +2497,18 @@ class TextEffectPanelTest(unittest.TestCase):
         project = Mock()
         project.import_raster_asset.return_value = asset
         self.canvas.imgtrans_proj = project
-        item = self._item(self._stack(TextFillEffect()))
+        item = self._item(self._stack(TextFillEffect(
+            paint=TexturePaint()
+        )))
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.text_fill_cards[0]
 
-        with patch.object(card, '_choose_texture_file') as chooser:
-            card.fill_type_selector.setCurrentIndex(
-                card.fill_type_selector.findData('texture')
-            )
-        chooser.assert_not_called()
-        self.assertEqual(card.fill_type_selector.currentData(), 'texture')
+        self.assertEqual(card.title_label.text(), 'Texture')
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint, TexturePaint()
         )
         self.assertEqual(card.texture_button.text(), 'Empty')
-        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertEqual(self.canvas.stack.count(), 0)
 
         project.import_raster_asset.side_effect = ValueError('not an image')
         with patch(
@@ -2503,7 +2521,7 @@ class TextEffectPanelTest(unittest.TestCase):
             item.blk.fontformat.text_effects[0].paint, TexturePaint()
         )
         self.assertEqual(card.texture_button.text(), 'Empty')
-        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertEqual(self.canvas.stack.count(), 0)
 
         project.import_raster_asset.side_effect = None
         project.import_raster_asset.reset_mock()
@@ -2512,14 +2530,14 @@ class TextEffectPanelTest(unittest.TestCase):
         paint = item.blk.fontformat.text_effects[0].paint
         self.assertEqual(paint, TexturePaint(asset))
         project.import_raster_asset.assert_called_once_with('/tmp/paper.png')
-        self.assertEqual(self.canvas.stack.count(), 2)
+        self.assertEqual(self.canvas.stack.count(), 1)
         card.texture_mapping_selector.setCurrentIndex(
             card.texture_mapping_selector.findData('tile')
         )
         self.assertEqual(
             item.blk.fontformat.text_effects[0].paint.mapping, 'tile'
         )
-        self.assertEqual(self.canvas.stack.count(), 3)
+        self.assertEqual(self.canvas.stack.count(), 2)
 
         editor = card.texture_scale_control.editor
         editor.setText('150.0%')
@@ -2539,7 +2557,7 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.textEdited.emit('150.0%')
         editor.returnPressed.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint.scale, 1.5)
-        self.assertEqual(self.canvas.stack.count(), 4)
+        self.assertEqual(self.canvas.stack.count(), 3)
 
         project.import_raster_asset.side_effect = ValueError('not an image')
         with patch(
@@ -2548,14 +2566,16 @@ class TextEffectPanelTest(unittest.TestCase):
         ) as warning:
             card.texture_file_requested.emit(card.index, '/tmp/broken.png')
         warning.assert_called_once()
-        self.assertEqual(self.canvas.stack.count(), 4)
+        self.assertEqual(self.canvas.stack.count(), 3)
 
     def test_text_fill_texture_errors_route_by_current_card_index(self):
         project = Mock()
         project.import_raster_asset.side_effect = ValueError('bad image')
         self.canvas.imgtrans_proj = project
         item = self._item(self._stack(
-            TextFillEffect(), StrokeEffect(), TextFillEffect()
+            TextFillEffect(paint=TexturePaint()),
+            StrokeEffect(),
+            TextFillEffect(paint=TexturePaint()),
         ))
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
@@ -2578,7 +2598,15 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.global_format.text_effects = global_stack
         self.panel.set_active_format(self.panel.global_format)
         card = self.panel.texteffect_panel.text_fill_cards[0]
-        self.assertEqual(card.fill_type_selector.findData('texture'), -1)
+        self.assertEqual(card.title_label.text(), 'Gradient')
+        self.assertTrue(
+            self.panel.texteffect_panel.add_effect_actions['gradient']
+            .isEnabled()
+        )
+        self.assertFalse(
+            self.panel.texteffect_panel.add_effect_actions['texture']
+            .isEnabled()
+        )
 
         project = Mock()
         self.canvas.imgtrans_proj = project
@@ -2696,7 +2724,9 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_text_fill_file_dialog_pins_panel_through_cancel_and_error(self):
-        item = self._item(self._stack(TextFillEffect()))
+        item = self._item(self._stack(TextFillEffect(
+            paint=TexturePaint()
+        )))
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.text_fill_cards[0]
         transitions = []
@@ -2728,31 +2758,33 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(self.panel.focusOnColorDialog)
         self.assertEqual(self.canvas.stack.count(), 0)
 
-    def test_text_fill_card_visibility_and_content_height_follow_type(self):
+    def test_foreground_paint_cards_are_fixed_and_texture_scale_is_conditional(self):
         asset = RasterAssetRef(
             'assets/' + 'a' * 64 + '.png', 'paper.png'
         )
-        item = self._item(self._stack(TextFillEffect()))
+        self.canvas.imgtrans_proj = Mock()
+        item = self._item(self._stack(
+            TextFillEffect(paint=LinearGradientPaint()),
+            TextFillEffect(paint=TexturePaint(asset, mapping='fit')),
+        ))
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
-        card.layout().activate()
-        solid_height = card.sizeHint().height()
-        self.assertTrue(card.gradient_editor.isHidden())
-        self.assertTrue(card.texture_controls_widget.isHidden())
+        cards = {
+            card.title_label.text(): card
+            for card in self.panel.texteffect_panel.text_fill_cards
+        }
+        self.assertEqual(set(cards), {'Gradient', 'Texture'})
+        self.assertIsNotNone(cards['Gradient'].gradient_editor)
+        self.assertIsNone(cards['Gradient'].texture_button)
+        self.assertIsNotNone(cards['Texture'].texture_button)
+        self.assertTrue(cards['Texture'].texture_scale_control.isHidden())
 
-        card.set_values([TextFillEffect(
-            paint=TexturePaint(asset, mapping='fit')
-        )])
-        card.layout().activate()
-        texture_height = card.sizeHint().height()
-        self.assertFalse(card.texture_controls_widget.isHidden())
-        self.assertTrue(card.texture_scale_control.isHidden())
-        self.assertGreater(texture_height, solid_height)
+        with self.assertRaises(ValueError):
+            TextFillEffectCard(3, 'solid')
 
-        card.set_values([TextFillEffect(
+        cards['Texture'].set_values([TextFillEffect(
             paint=TexturePaint(asset, mapping='tile')
         )])
-        self.assertFalse(card.texture_scale_control.isHidden())
+        self.assertFalse(cards['Texture'].texture_scale_control.isHidden())
 
     def test_gradient_angle_dial_previews_then_commits_once(self):
         before = self._stack(self._constant_text_fill())
