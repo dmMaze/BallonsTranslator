@@ -12,7 +12,7 @@ QTextDocument + settled SceneTextLayout
   -> canonical glyph source, including Glyph Slant when active
   -> canonical rich foreground or Text Fill base, unless Hollow
   -> TextBlock-owned Rendered Image base (Replace or Overlay)
-  -> ordered Stroke / Shadow / Glow / Filter cards, bottom-to-top
+  -> ordered Stroke / Shadow / Glow / Filter cards, panel top-to-bottom
   -> TextBlock-owned alpha mask
   -> Overall Opacity
   -> ordered global Text Transform
@@ -20,13 +20,18 @@ QTextDocument + settled SceneTextLayout
 ```
 
 `TextEffectStack` is an ordered value, but it is not an arbitrary layer graph.
-The first movable card is visually topmost. Stroke, Shadow, Glow, and Filter
-cards may move globally: a Filter transforms the base and generated layers
-below it, while generated layers above it are composited afterward. Generated
-effects still derive high-quality geometry from canonical glyph/Stroke alpha;
-order does not turn a later Stroke into a raster outline of filtered pixels.
-Text Fill and Hollow remain structural base state, independent of their legacy
-serialized position, and cannot be reordered.
+For persistence compatibility its tuple remains topmost-first; the panel
+projects movable cards in application order, so the first visible card runs
+first. A Filter transforms the base and generated layers accumulated by cards
+above it, while cards below it run afterward. Generated effects still derive
+high-quality geometry from canonical glyph/Stroke alpha; order does not turn a
+later Stroke into a raster outline of filtered pixels. Text Fill and Hollow
+remain structural base state, independent of their legacy serialized position,
+and cannot be reordered.
+
+New movable effects are appended to the visible panel and therefore execute
+last. This is stored at tuple index zero; existing persisted tuples are neither
+rewritten nor migrated for the presentation remapping.
 
 ## Owners
 
@@ -96,7 +101,7 @@ entries are allowed. Hollow and Text Fill are unique.
 | Glow | Ordered generated layer; exterior source for Outer, interior source for Inner | Outer Glow uses the canonical Stroke-inclusive silhouette. Inner Glow uses canonical glyph alpha and is suppressed by Hollow. |
 | Text Fill | Foreground, unique | Solid or Gradient overwrites canonical foreground RGB; Texture maps one managed raster over the unpadded logical rectangle. Paint alpha multiplies foreground alpha. Stroke and generated effects continue using their earlier canonical/source alpha. There is no separate effect opacity. |
 | Hollow | Foreground modifier, unique | Removes the canonical face, Text Fill, and interior phase while retaining Stroke and exterior output. It is a toggle, not an independent painted layer. |
-| Filter | Ordered pixel transform, repeatable | Transforms the base and generated layers accumulated below its card. Consecutive Filters execute bottom-to-top through one RGBA bridge. Alpha is non-expanding by default; an explicitly declared expander is halo-bounded and adds matching effect padding. |
+| Filter | Ordered pixel transform, repeatable | Transforms the base and generated layers accumulated above its visible card. Consecutive Filters execute panel top-to-bottom through one RGBA bridge. Alpha is non-expanding by default; an explicitly declared expander is halo-bounded and adds matching effect padding. |
 
 `RenderedImageLayer` is not a `TextEffectStack` node or paint. It is one
 immutable versioned `TextBlock` value containing `enabled`, a generic
@@ -145,8 +150,10 @@ effective stack as follows:
 1. Paint canonical rich foreground or its Text Fill unless Hollow is active.
 2. Apply the optional block-owned Rendered Image base. Overlay sits above Text
    Fill; valid Replace skips canonical and generated-layer raster work.
-3. Walk movable cards bottom-to-top. Batch adjacent Stroke/Shadow/Glow cards in
-   one painter segment and adjacent Filters in one straight-RGBA8 bridge.
+3. Walk movable cards top-to-bottom as displayed by the panel (the reverse of
+   their compatibility-preserved tuple order). Batch adjacent Stroke/Shadow/Glow
+   cards in one painter segment and adjacent Filters in one straight-RGBA8
+   bridge.
 4. Generate every typed layer from its canonical source: exterior Shadow/Glow
    use the complete canonical Stroke-inclusive silhouette, while interior
    effects use canonical glyph alpha. Drop/Long Shadow clip outside the

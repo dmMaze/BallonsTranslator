@@ -25,15 +25,44 @@ preset round trips without importing plug-in code. At active resolution only
 declared params are passed to the plug-in; a missing or invalid known value
 uses its validated metadata default while the persisted value stays unchanged.
 
-Stroke, Shadow, Glow, and Filter cards share one topmost-first movable order.
-A Filter transforms the fixed Text Fill/Rendered Image base plus generated
-layers accumulated below its card; layers above it are composited afterward.
-Consecutive Filters execute bottom-to-top in one chain. Text Eraser, Overall
+Stroke, Shadow, Glow, and Filter cards share one top-to-bottom application
+order in the panel. A Filter transforms the fixed Text Fill/Rendered Image base
+plus generated layers accumulated above its card; cards below it run afterward.
+The persisted tuple remains topmost-first for compatibility, so the renderer
+traverses that tuple in reverse. Consecutive Filters execute panel top-to-bottom
+in one chain. Text Eraser, Overall
 Opacity, the global transform, and selection/caret/IME remain downstream and
 structurally fixed. Returned alpha may only stay equal or shrink unless static
 metadata declares `expands_alpha: True`. A declared
 expander may grow alpha only inside its validated tile halo; that cumulative
 reach also expands the item's effect padding so output is not clipped.
+
+A newly added movable card appears at the bottom of the panel and executes
+last. Existing project and configuration tuples retain their exact stored and
+rendered order; only their panel projection is reversed.
+
+## Removal and parameter evolution
+
+Filters have no central registration or direct imports. Removing a
+`filter_*.py` file and restarting removes it from discovery; an implementation
+already imported by the current process remains alive until restart. Project,
+configuration, and preset loading never resolves filter code, so the saved ID,
+schema, enabled state, and scalar params survive unchanged. The panel presents
+an unavailable value as a **Missing Filter** card whose eye, reorder, and delete
+actions remain usable.
+
+An enabled missing filter is bypassed interactively with one warning. Strict
+export fails instead of silently producing output without the requested effect;
+a disabled missing filter is neutral. Restoring a compatible file and
+restarting makes the preserved card active again.
+
+Removing a parameter without changing the schema is backward compatible:
+unknown scalar keys remain in passive saved data but are omitted from runtime
+params. Invalid values for still-declared keys use metadata defaults and warn
+once. An explicit parameter edit writes the current declared parameter set, so
+obsolete keys naturally disappear. Rename or reinterpret a parameter only with
+a schema-version increment and `migrate_params`; absent or failed migration
+bypasses interactively and fails strict export without corrupting saved data.
 
 Rendered Image is suppressed during native editing, but ordinary Filters stay
 active in both writing modes. Qt feedback is painted afterward and is never

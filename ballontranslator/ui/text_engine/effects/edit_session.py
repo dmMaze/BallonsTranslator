@@ -22,7 +22,6 @@ from ballontranslator.utils.text_effects import (
     TexturePaint,
     effect_structure_key,
     effect_paint_fallback_color,
-    generated_effect_insertion_index,
     without_project_texture_paints,
 )
 from .filters import FilterUnavailableError, get_filter_registry
@@ -561,14 +560,10 @@ class TextEffectEditSession:
     def _insertion_index(
         state: TextEffectStack, effect: TextEffect
     ) -> int:
-        if isinstance(effect, FilterEffect):
-            # A new Filter keeps the established "filter everything" result.
-            return 0
         if isinstance(effect, (HollowEffect, TextFillEffect)):
             return len(state.effects)
-        # Raw legacy structural positions do not participate in the movable
-        # order projected by the panel and renderer.
-        return generated_effect_insertion_index(state.effects)
+        # Index zero renders last and is projected as the final panel card.
+        return 0
 
     def add_effect(self, effect_type: str) -> bool:
         self._prepare_structure_change()

@@ -631,8 +631,9 @@ def effect_structure_key(effect: TextEffect) -> object:
 class TextEffectStack:
     """Complete immutable style-owned text-effect value.
 
-    ``effects`` preserves semantic/visual order. Overall opacity applies to
-    the completed item rather than an individual effect.
+    ``effects`` preserves the renderer's topmost-first layer order; the panel
+    projects it in bottom-to-top application order. Overall opacity applies
+    to the completed item rather than an individual effect.
 
     >>> stack = with_primary_stroke(TextEffectStack(), width=0.25)
     >>> (len(stack), stack[0].width)
@@ -1058,14 +1059,13 @@ def generated_effect_insertion_index(
 
 
 def ensure_primary_stroke(stack: TextEffectStack) -> TextEffectStack:
-    """Return ``stack`` with a default primary Stroke when one is absent."""
+    """Return ``stack`` with an applied-last primary Stroke when absent."""
     if not isinstance(stack, TextEffectStack):
         raise TypeError('ensure_primary_stroke requires TextEffectStack')
     if primary_stroke(stack) is not None:
         return stack
-    insertion = generated_effect_insertion_index(stack.effects)
     effects = list(stack.effects)
-    effects.insert(insertion, StrokeEffect())
+    effects.insert(0, StrokeEffect())
     return replace(stack, effects=tuple(effects))
 
 

@@ -754,6 +754,32 @@ class TextEffectPersistenceTest(unittest.TestCase):
 
         self.assertEqual(restored.fontformat.text_effects, stack)
 
+    def test_project_round_trip_preserves_removed_filter_settings(self):
+        stack = TextEffectStack(effects=(
+            StrokeEffect(width=0.2),
+            FilterEffect(
+                'builtin:removed',
+                schema_version=3,
+                params={
+                    'deprecated_amount': 0.4,
+                    'opaque_future': 'preserved',
+                },
+            ),
+            GlowEffect(size=0.1),
+        ))
+        block = TextBlock()
+        block.fontformat.text_effects = stack
+
+        payload = json.loads(json.dumps(block, cls=TextBlkEncoder))
+        normalized, _ = normalize_textblock_effect_payload(payload)
+        restored = TextBlock(**normalized)
+
+        self.assertEqual(restored.fontformat.text_effects, stack)
+        self.assertEqual(
+            restored.fontformat.to_serializable_dict()['text_effects'],
+            stack.to_serializable_dict(),
+        )
+
     def test_typed_shadow_and_hollow_round_trip_in_preset_and_global_config(self):
         old_styles = list(text_styles)
         old_style_path = pcfg.text_styles_path
@@ -785,6 +811,18 @@ class TextEffectPersistenceTest(unittest.TestCase):
                 config = ProgramConfig.load(config_path)
                 self.assertEqual(text_styles[0].text_effects, stack)
                 self.assertEqual(config.global_fontformat.text_effects, stack)
+                self.assertEqual(
+                    json.loads(json_dump_nested_obj(text_styles))[0][
+                        'text_effects'
+                    ],
+                    stack.to_serializable_dict(),
+                )
+                self.assertEqual(
+                    json.loads(json_dump_program_config(config))[
+                        'global_fontformat'
+                    ]['text_effects'],
+                    stack.to_serializable_dict(),
+                )
             finally:
                 text_styles[:] = old_styles
                 pcfg.text_styles_path = old_style_path

@@ -2924,7 +2924,9 @@ class TextEffectPanel(PanelArea):
             return
         self._clear_effect_cards()
         self._effect_types = effect_keys
-        for index, effect_key in enumerate(effect_keys):
+        # The model stays topmost-first, while the panel shows the renderer's
+        # bottom-to-top application order.
+        for index, effect_key in reversed(tuple(enumerate(effect_keys))):
             effect_type = (
                 effect_key[0]
                 if isinstance(effect_key, tuple)
@@ -3008,7 +3010,7 @@ class TextEffectPanel(PanelArea):
                     FilterEffectCard,
                 ),
             ):
-                card.move_requested.connect(self.move_effect_requested.emit)
+                card.move_requested.connect(self._move_visual_effect)
             card.remove_requested.connect(self.remove_effect_requested.emit)
             (
                 self.base_card_layout
@@ -3017,6 +3019,9 @@ class TextEffectPanel(PanelArea):
             ).addWidget(card)
             card.show()
             self.effect_cards.append(card)
+
+    def _move_visual_effect(self, index: int, direction: int) -> None:
+        self.move_effect_requested.emit(index, -direction)
 
     @staticmethod
     def _effect_sequence(stack: TextEffectStack) -> Tuple[object, ...]:
@@ -3121,8 +3126,8 @@ class TextEffectPanel(PanelArea):
                 )):
                     position = movable_indices.index(card.index)
                     card.set_move_enabled(
-                        position > 0,
                         position + 1 < len(movable_indices),
+                        position > 0,
                     )
             if gradient_visibility_changed:
                 self.cards_layout.invalidate()

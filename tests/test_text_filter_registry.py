@@ -264,6 +264,35 @@ class TextFilterRegistryTest(unittest.TestCase):
             with self.assertRaisesRegex(FilterUnavailableError, 'source path'):
                 registry.resolve(FilterEffect('custom:demo'))
 
+    def test_removed_filter_is_unavailable_without_mutating_saved_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            builtin = root / 'builtin'
+            custom = root / 'custom'
+            builtin.mkdir()
+            custom.mkdir()
+            path = builtin / 'filter_demo.py'
+            path.write_text(
+                _plugin_source('builtin:demo'), encoding='utf-8'
+            )
+            effect = FilterEffect(
+                'builtin:demo', params={'deprecated_amount': 0.7}
+            )
+            registry = self._registry(builtin, custom)
+            self.assertIsNotNone(registry.get_spec(effect.filter_id))
+
+            path.unlink()
+            with self.assertRaisesRegex(FilterUnavailableError, 'source path'):
+                registry.resolve(effect)
+
+            restarted = self._registry(builtin, custom)
+            self.assertIsNone(restarted.get_spec(effect.filter_id))
+            with self.assertRaisesRegex(FilterUnavailableError, 'missing'):
+                restarted.resolve(effect)
+            self.assertEqual(
+                effect.params_dict(), {'deprecated_amount': 0.7}
+            )
+
     def test_active_params_drop_unknowns_and_isolate_invalid_known_values(self):
         registry = FilterRegistry(custom_dir=Path('/path/that/does/not/exist'))
         spec = registry.get_spec('builtin:noise')

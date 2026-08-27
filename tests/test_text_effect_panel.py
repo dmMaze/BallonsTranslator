@@ -333,7 +333,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 2)
 
         effect_panel.stroke_cards[0].visibility_button.click()
-        self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
+        self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
         self.assertEqual(self.canvas.stack.count(), 3)
 
         effect_panel.stroke_cards[1].move_up_button.click()
@@ -343,7 +343,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.canvas.stack.count(), 4)
         self.assertEqual(
             [card.index for card in self.panel.texteffect_panel.stroke_cards],
-            [0, 1],
+            [1, 0],
         )
 
     def test_effect_icons_expose_card_visibility_and_hollow_toggle(self):
@@ -1181,11 +1181,11 @@ class TextEffectPanelTest(unittest.TestCase):
             second.type_selector.findData('inner')
         )
         self.assertEqual(
-            item.blk.fontformat.text_effects[1].glow_type, 'inner'
+            item.blk.fontformat.text_effects[0].glow_type, 'inner'
         )
         self.assertEqual(second.spread_control.label.text(), 'Choke')
         second.visibility_button.click()
-        self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
+        self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
         second.delete_button.click()
         self.assertEqual(len(item.blk.fontformat.text_effects), 1)
         self.assertEqual(self.canvas.stack.count(), 5)
@@ -1198,10 +1198,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(interleaved)
         self.panel.texteffect_panel.glow_cards[0].move_up_button.click()
         self.assertIsInstance(
-            interleaved.blk.fontformat.text_effects[0], GlowEffect
+            interleaved.blk.fontformat.text_effects[1], StrokeEffect
         )
         self.assertIsInstance(
-            interleaved.blk.fontformat.text_effects[1], ShadowEffect
+            interleaved.blk.fontformat.text_effects[2], GlowEffect
         )
         self.assertEqual(self.canvas.stack.count(), 6)
 
@@ -1572,8 +1572,12 @@ class TextEffectPanelTest(unittest.TestCase):
             [effect.filter_id for effect in item.blk.fontformat.text_effects],
             ['builtin:grain', 'builtin:noise'],
         )
+        self.assertEqual(
+            [card.filter_id for card in controls.filter_cards],
+            ['builtin:noise', 'builtin:grain'],
+        )
 
-        noise_card = controls.filter_cards[1]
+        noise_card = controls.filter_cards[0]
         amount = noise_card.numeric_controls['amount']
         amount.editor.setText('55.0')
         amount.editor.textEdited.emit('55.0')
@@ -1585,7 +1589,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         amount.editor.returnPressed.emit()
         self.assertEqual(self.canvas.stack.count(), 3)
-        self.assertIs(controls.filter_cards[1], noise_card)
+        self.assertIs(controls.filter_cards[0], noise_card)
 
         mode = noise_card.choice_selectors['mode']
         mode.setCurrentIndex(mode.findData('color'))
@@ -1594,15 +1598,15 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         self.assertEqual(self.canvas.stack.count(), 4)
 
-        controls.filter_cards[1].move_up_button.click()
+        controls.filter_cards[0].move_down_button.click()
         self.assertEqual(
             [effect.filter_id for effect in item.blk.fontformat.text_effects],
             ['builtin:noise', 'builtin:grain'],
         )
         self.assertEqual(self.canvas.stack.count(), 5)
-        controls.filter_cards[0].visibility_button.click()
+        controls.filter_cards[1].visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
-        controls.filter_cards[0].delete_button.click()
+        controls.filter_cards[1].delete_button.click()
         self.assertEqual(len(item.blk.fontformat.text_effects), 1)
         self.assertEqual(self.canvas.stack.count(), 7)
         self.canvas.stack.undo()
@@ -1616,11 +1620,12 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        bloom, glitch, gaussian = self.panel.texteffect_panel.filter_cards
+        cards = self.panel.texteffect_panel.filter_cards
         self.assertEqual(
-            [card.title_label.text() for card in (bloom, glitch, gaussian)],
-            ['Bloom', 'Glitch', 'Gaussian Blur'],
+            [card.title_label.text() for card in cards],
+            ['Gaussian Blur', 'Glitch', 'Bloom'],
         )
+        gaussian, glitch, bloom = cards
         self.assertEqual(
             set(bloom.numeric_controls),
             {'threshold', 'radius', 'intensity'},
@@ -1656,7 +1661,7 @@ class TextEffectPanelTest(unittest.TestCase):
             item.blk.fontformat.text_effects[2].params_dict()['radius'], 8.5
         )
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.filter_cards[2], gaussian)
+        self.assertIs(self.panel.texteffect_panel.filter_cards[0], gaussian)
         self.canvas.stack.undo()
         self.assertEqual(item.blk.fontformat.text_effects, before)
 
@@ -1679,6 +1684,13 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertTrue(card.delete_button.isEnabled())
         card.visibility_button.click()
         self.assertFalse(missing.blk.fontformat.text_effects[0].enabled)
+        card.delete_button.click()
+        self.assertEqual(missing.blk.fontformat.text_effects.effects, ())
+        self.canvas.stack.undo()
+        self.assertEqual(
+            missing.blk.fontformat.text_effects.effects,
+            (FilterEffect('missing:local', enabled=False),),
+        )
 
         newer = self._item(self._stack(FilterEffect(
             'builtin:noise', schema_version=9, enabled=False,
@@ -1897,7 +1909,7 @@ class TextEffectPanelTest(unittest.TestCase):
 
         self.assertEqual(
             tuple(type(effect) for effect in item.blk.fontformat.text_effects),
-            (FilterEffect, StrokeEffect, GlowEffect),
+            (StrokeEffect, GlowEffect, FilterEffect),
         )
         self.assertEqual(self.canvas.stack.count(), 1)
 
@@ -1926,7 +1938,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(results[0], results[1])
         self.assertEqual(
             results[0],
-            (FilterEffect, ShadowEffect, GlowEffect),
+            (GlowEffect, FilterEffect, ShadowEffect),
         )
 
     def test_visual_order_projects_movable_stack_then_fixed_base_and_eraser(self):
@@ -1953,8 +1965,8 @@ class TextEffectPanelTest(unittest.TestCase):
         controls.content_layout.activate()
         self.app.processEvents()
         cards = (
-            controls.stroke_cards[0],
             controls.filter_cards[0],
+            controls.stroke_cards[0],
             controls.rendered_image_card,
             controls.text_fill_card,
             controls.alpha_mask_card,
@@ -2495,8 +2507,8 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(first)
         cards = self.panel.texteffect_panel.shadow_cards
 
-        self.assertTrue(cards[1].move_up_button.isEnabled())
-        cards[1].move_up_button.click()
+        self.assertTrue(cards[1].move_down_button.isEnabled())
+        cards[1].move_down_button.click()
         effects = first.blk.fontformat.text_effects.effects
         self.assertEqual(effects[0].paint, SolidPaint((255, 0, 0)))
         self.assertEqual(effects[1].shadow_type, 'inner')
@@ -2512,10 +2524,10 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.shadow_cards[0]
+        mixed_card = self.panel.texteffect_panel.shadow_cards[2]
         self.assertEqual(mixed_card.type_selector.currentIndex(), -1)
-        self.assertFalse(mixed_card.move_up_button.isEnabled())
-        self.assertTrue(mixed_card.move_down_button.isEnabled())
+        self.assertTrue(mixed_card.move_up_button.isEnabled())
+        self.assertFalse(mixed_card.move_down_button.isEnabled())
 
     def test_page_change_commits_pending_effect_before_owner_merge(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))

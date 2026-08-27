@@ -223,7 +223,7 @@ class TextEffectDomainTest(unittest.TestCase):
             paint=SolidPaint((90, 80, 70)),
         ),))
 
-    def test_run_inserted_stroke_stays_below_top_filter_and_above_base(self):
+    def test_run_inserted_stroke_is_applied_last(self):
         filter_effect = FilterEffect('builtin:noise')
         text_fill = TextFillEffect()
 
@@ -231,8 +231,8 @@ class TextEffectDomainTest(unittest.TestCase):
             filter_effect, text_fill
         )))
 
-        self.assertIs(result.effects[0], filter_effect)
-        self.assertIsInstance(result.effects[1], StrokeEffect)
+        self.assertIsInstance(result.effects[0], StrokeEffect)
+        self.assertIs(result.effects[1], filter_effect)
         self.assertIs(result.effects[2], text_fill)
 
     def test_run_stroke_ignores_legacy_mid_structural_position(self):
@@ -264,7 +264,7 @@ class TextEffectDomainTest(unittest.TestCase):
                 type(effect) for effect in legacy.effects
                 if isinstance(effect, movable_types)
             ),
-            (FilterEffect, ShadowEffect, StrokeEffect),
+            (StrokeEffect, FilterEffect, ShadowEffect),
         )
 
     def test_non_stroke_override_preserves_all_stroke_cards(self):
