@@ -241,7 +241,7 @@ class CommittedTransformControl(QWidget):
             else _TransformValueEdit(self)
         )
         self.editor.setObjectName('TextTransformParamEditor')
-        self.editor.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.editor.setFixedSize(80 if self.decimals == 0 else 56, 22)
         self.editor.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
@@ -505,7 +505,9 @@ class CommittedTransformChoiceControl(QWidget):
         self.label = QLabel(title, self)
         self.label.setObjectName('TextTransformParamLabel')
         self.label.setWordWrap(True)
-        self.combobox = BottomBorderComboBox(self)
+        self.combobox = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.combobox.setObjectName('TextTransformParamEditor')
         for value, label in self.choices:
             self.combobox.addItem(label(), value)

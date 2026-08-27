@@ -2435,7 +2435,7 @@ QFrame#TextAlphaMaskCard QLabel#TextEffectParameterTitle {
 QToolButton#TextEffectPaintButton {
     min-width: 0px;
     font-size: 12px;
-    text-align: left;
+    text-align: center;
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 0px;
@@ -2458,7 +2458,7 @@ QToolButton#TextEffectBlendSelector {
     padding-left: 4px;
     padding-right: 20px;
     font-size: 12px;
-    text-align: left;
+    text-align: center;
 }
 
 QToolButton#TextEffectBlendSelector:hover,

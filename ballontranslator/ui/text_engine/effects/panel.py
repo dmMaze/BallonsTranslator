@@ -661,7 +661,9 @@ class StrokeEffectCard(_EffectCard):
             ),
         )
 
-        self.position_selector = BottomBorderComboBox(self)
+        self.position_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.position_selector.setObjectName('TextEffectParamEditor')
         self.position_selector.setPlaceholderText(self.tr('Mixed'))
         self.position_selector.setAccessibleName(self.tr('Stroke Position'))
@@ -705,7 +707,9 @@ class StrokeEffectCard(_EffectCard):
         fill_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.fill_type_selector = BottomBorderComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
         self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
         self.fill_type_selector.setAccessibleName(self.tr('Stroke Fill'))
@@ -1022,7 +1026,9 @@ class ShadowEffectCard(_EffectCard):
             ),
         )
 
-        self.type_selector = BottomBorderComboBox(self)
+        self.type_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.type_selector.setObjectName('TextEffectParamEditor')
         self.type_selector.setPlaceholderText(self.tr('Mixed'))
         self.type_selector.setAccessibleName(self.tr('Shadow Type'))
@@ -1091,7 +1097,9 @@ class ShadowEffectCard(_EffectCard):
         fill_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.fill_type_selector = BottomBorderComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
         self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
         self.fill_type_selector.setAccessibleName(self.tr('Shadow Fill'))
@@ -1429,7 +1437,9 @@ class GlowEffectCard(_EffectCard):
                 self.delete_button,
             ),
         )
-        self.type_selector = BottomBorderComboBox(self)
+        self.type_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.type_selector.setObjectName('TextEffectParamEditor')
         self.type_selector.setPlaceholderText(self.tr('Mixed'))
         self.type_selector.setAccessibleName(self.tr('Glow Type'))
@@ -1483,7 +1493,9 @@ class GlowEffectCard(_EffectCard):
         fill_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.fill_type_selector = BottomBorderComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
         self.fill_type_selector.setPlaceholderText(self.tr('Mixed'))
         self.fill_type_selector.setAccessibleName(self.tr('Glow Fill'))
@@ -1752,7 +1764,7 @@ class GlowEffectCard(_EffectCard):
 
 
 class TextFillEffectCard(_EffectCard):
-    """Edit one foreground Text Fill effect.
+    """Edit one foreground Fill effect.
 
     >>> TextFillEffectCard.__name__
     'TextFillEffectCard'
@@ -1780,14 +1792,14 @@ class TextFillEffectCard(_EffectCard):
         self.title_icon_label = _effect_icon_label(
             'text-effect-gradient.svg', self
         )
-        self.title_label = QLabel(self.tr('Text Fill'), self)
+        self.title_label = QLabel(self.tr('Fill'), self)
         self.title_label.setObjectName('TextEffectParameterTitle')
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
         self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Text Fill'),
-            self.tr('Hide Text Fill'),
+            self.tr('Show Fill'),
+            self.tr('Hide Fill'),
             self,
         )
         self.visibility_button.visibility_requested.connect(
@@ -1800,7 +1812,7 @@ class TextFillEffectCard(_EffectCard):
             'chevron-down.svg', self.tr('Move Down'), 1
         )
         self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Text Fill'), 0
+            'titlebar_close.svg', self.tr('Delete Fill'), 0
         )
         self.delete_button.setObjectName('TextEffectCloseButton')
 
@@ -1823,9 +1835,11 @@ class TextFillEffectCard(_EffectCard):
 
         fill_label = QLabel(self.tr('Fill'), self)
         fill_label.setObjectName('TextEffectParamLabel')
-        self.fill_type_selector = BottomBorderComboBox(self)
+        self.fill_type_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.fill_type_selector.setObjectName('TextEffectParamEditor')
-        self.fill_type_selector.setAccessibleName(self.tr('Text Fill Type'))
+        self.fill_type_selector.setAccessibleName(self.tr('Fill Type'))
         for label, value in (
             (self.tr('Solid'), 'solid'),
             (self.tr('Gradient'), 'linear_gradient'),
@@ -1885,7 +1899,9 @@ class TextFillEffectCard(_EffectCard):
 
         mapping_label = QLabel(self.tr('Mapping'), self)
         mapping_label.setObjectName('TextEffectParamLabel')
-        self.texture_mapping_selector = BottomBorderComboBox(self)
+        self.texture_mapping_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.texture_mapping_selector.setObjectName('TextEffectParamEditor')
         self.texture_mapping_selector.setAccessibleName(
             self.tr('Texture Mapping')
@@ -1927,7 +1943,7 @@ class TextFillEffectCard(_EffectCard):
                 self._on_preview_canceled
             )
         blend_widget, self.blend_selector = _blend_control(
-            self, self.tr('Text Fill Blend')
+            self, self.tr('Fill Blend')
         )
         self.blend_selector.mode_changed.connect(
             self._on_blend_changed
@@ -2039,7 +2055,7 @@ class TextFillEffectCard(_EffectCard):
                 self._paint_seed,
                 mixed=mixed_paint,
                 editable=show_solid,
-                description=self.tr('Choose Text Fill Color'),
+                description=self.tr('Choose Fill Color'),
             )
         if show_gradient and isinstance(
             self._paint_seed, LinearGradientPaint
@@ -2063,7 +2079,7 @@ class TextFillEffectCard(_EffectCard):
                     self.tr('Choose one image for the selected text items')
                 )
                 self.texture_button.setAccessibleName(
-                    self.tr('Mixed Text Fill Images')
+                    self.tr('Mixed Fill Images')
                 )
             else:
                 name = (
@@ -2164,7 +2180,7 @@ class TextFillEffectCard(_EffectCard):
             color = QColorDialog.getColor(
                 QColor(*self._paint_seed.color),
                 self.window(),
-                self.tr('Text Fill Color'),
+                self.tr('Fill Color'),
             )
             if color.isValid():
                 self.value_commit_requested.emit(
@@ -2179,7 +2195,7 @@ class TextFillEffectCard(_EffectCard):
         self.color_dialog_active_changed.emit(True)
         try:
             path = _choose_project_raster(
-                self, self.tr('Choose Text Fill Image')
+                self, self.tr('Choose Fill Image')
             )
             if path:
                 # The synchronous import/error chain stays pinned too.
@@ -2358,7 +2374,9 @@ class FilterEffectCard(_EffectCard):
         label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        selector = BottomBorderComboBox(self)
+        selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         selector.setObjectName('TextEffectParamEditor')
         selector.setProperty('filter-param', parameter.key)
         selector.setPlaceholderText(self.tr('Mixed'))
@@ -2585,7 +2603,9 @@ class RenderedImageCard(_EffectCard):
 
         mode_label = QLabel(self.tr('Mode'), self)
         mode_label.setObjectName('TextEffectParamLabel')
-        self.mode_selector = BottomBorderComboBox(self)
+        self.mode_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.mode_selector.setObjectName('TextEffectParamEditor')
         self.mode_selector.setAccessibleName(self.tr('Rendered Image Mode'))
         self.mode_selector.addItem(self.tr('Replace'), 'replace')
@@ -2704,7 +2724,9 @@ class AlphaMaskCard(_EffectCard):
         mode_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        self.mode_selector = BottomBorderComboBox(self)
+        self.mode_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.mode_selector.setObjectName('TextEffectParamEditor')
         self.mode_selector.addItem(self.tr('Erase'), 'erase')
         self.mode_selector.addItem(self.tr('Restore'), 'restore')
@@ -2730,6 +2752,7 @@ class AlphaMaskCard(_EffectCard):
         self.size_label.setObjectName('TextEffectParamLabel')
         self.diameter_editor = QDoubleSpinBox(self)
         self.diameter_editor.setObjectName('TextEffectParamEditor')
+        self.diameter_editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.diameter_editor.setRange(1.0, 500.0)
         self.diameter_editor.setDecimals(1)
         self.diameter_editor.setSingleStep(1.0)
@@ -2955,7 +2978,7 @@ class TextEffectPanel(PanelArea):
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
             (self.tr('Glow'), 'glow', 'text-effect-glow.svg'),
             (
-                self.tr('Text Fill'),
+                self.tr('Fill'),
                 'text_fill',
                 'text-effect-gradient.svg',
             ),

@@ -340,6 +340,7 @@ class GradientValueEditor(QDoubleSpinBox):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_pending = False
         self._text_edit_pending = False
         self.lineEdit().textEdited.connect(self._on_text_edited)

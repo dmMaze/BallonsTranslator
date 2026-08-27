@@ -1,8 +1,14 @@
-from typing import List, Callable
+from typing import Callable, List, Optional
 
-from qtpy.QtWidgets import QComboBox, QWidget
+from qtpy.QtWidgets import (
+    QComboBox,
+    QStyle,
+    QStyleOptionComboBox,
+    QStylePainter,
+    QWidget,
+)
 from qtpy.QtCore import Signal, Qt
-from qtpy.QtGui import QDoubleValidator, QPaintEvent, QPainter
+from qtpy.QtGui import QDoubleValidator, QPaintEvent, QPainter, QPalette
 
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from .push_button import NoBorderPushBtn
@@ -42,13 +48,58 @@ class BottomBorderComboBox(QComboBox):
 
     ARROW_SIZE = 12
 
-    def __init__(self, parent: QWidget = None):
+    def __init__(
+        self,
+        parent: QWidget = None,
+        *,
+        text_alignment: Optional[Qt.AlignmentFlag] = None,
+    ) -> None:
         super().__init__(parent)
+        self._text_alignment = text_alignment
         self.setProperty('bottomBorderSelector', True)
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        super().paintEvent(event)
-        painter = QPainter(self)
+        if self._text_alignment is None:
+            super().paintEvent(event)
+            painter = QPainter(self)
+        else:
+            option = QStyleOptionComboBox()
+            self.initStyleOption(option)
+            current_text = option.currentText
+            option.currentText = ''
+            painter = QStylePainter(self)
+            painter.drawComplexControl(
+                QStyle.ComplexControl.CC_ComboBox, option
+            )
+            painter.drawControl(
+                QStyle.ControlElement.CE_ComboBoxLabel, option
+            )
+            text_rect = self.style().subControlRect(
+                QStyle.ComplexControl.CC_ComboBox,
+                option,
+                QStyle.SubControl.SC_ComboBoxEditField,
+                self,
+            ).adjusted(2, 0, -2, 0)
+            color_group = (
+                QPalette.ColorGroup.Active
+                if self.isEnabled()
+                else QPalette.ColorGroup.Disabled
+            )
+            color_role = (
+                QPalette.ColorRole.PlaceholderText
+                if self.currentIndex() < 0
+                else QPalette.ColorRole.Text
+            )
+            painter.setPen(option.palette.color(color_group, color_role))
+            painter.drawText(
+                text_rect,
+                self._text_alignment | Qt.AlignmentFlag.AlignVCenter,
+                option.fontMetrics.elidedText(
+                    current_text,
+                    Qt.TextElideMode.ElideRight,
+                    max(0, text_rect.width()),
+                ),
+            )
         pixmap = render_svg_pixmap(
             themed_icon_path('chevron-down.svg'),
             self.ARROW_SIZE,

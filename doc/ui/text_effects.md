@@ -10,7 +10,7 @@ tests are authoritative for individual controls and raster algorithms.
 ```text
 QTextDocument + settled SceneTextLayout
   -> canonical glyph source, including Glyph Slant when active
-  -> canonical rich foreground or repeatable Text Fill base group, unless Hollow
+  -> canonical rich foreground or repeatable Fill base group, unless Hollow
   -> TextBlock-owned Rendered Image base (Replace or Overlay)
   -> ordered Stroke / Shadow / Glow / Filter cards, panel top-to-bottom
   -> TextBlock-owned alpha mask
@@ -25,9 +25,11 @@ projects movable cards in application order, so the first visible card runs
 first. A Filter transforms the base and generated layers accumulated by cards
 above it, while cards below it run afterward. Generated effects still derive
 high-quality geometry from canonical glyph/Stroke alpha; order does not turn a
-later Stroke into a raster outline of filtered pixels. Text Fill and Hollow
-remain structural base state, independent of their serialized position. Text
-Fills can be reordered only with other Text Fills; Hollow is not reordered.
+later Stroke into a raster outline of filtered pixels. The UI names each
+`TextFillEffect` card **Fill**; Solid, Gradient, and Texture are its paint-type
+choices. Fill and Hollow remain structural base state, independent of their
+serialized position. Fills can be reordered only with other Fills; Hollow is
+not reordered.
 
 New movable effects and Text Fills are appended to their visible panel areas
 and therefore execute last within their respective stacks. This is stored at
@@ -67,9 +69,9 @@ Mixed with no checked leaf; a common value checks its leaf inside the relevant
 submenu. These modes add no mode-specific parameter row; each effect's existing
 Opacity remains independent. Stroke Position and Shadow/Glow Type follow the
 card title. Fill stays in the left control column; Solid shows its swatch
-opposite, Gradient expands the shared stop editor below it, and Text Fill
+opposite, Gradient expands the shared stop editor below it, and Fill
 additionally offers Texture with an image chooser plus Fill/Fit/Crop/Tile
-mapping. Text Fill puts Opacity and Blend in the compact row below its paint
+mapping. Fill puts Opacity and Blend in the compact row below its paint
 row. The Texture choice exists only for concrete project-item selections;
 global and itemless formatting never offers it. For a mixed Texture selection,
 asset, mapping, and scale compare independently. The chooser remains enabled
@@ -86,12 +88,13 @@ Effect control rows use a consistent 8 px vertical gap. Angle directly controls
 direction; its dial is 36 px, and
 two-column parameter labels align to the left edge of their column. Labels keep
 their natural width and a fixed local gap, while editors/selectors absorb spare
-column width. Two-column rows use equal columns and an 8 px inter-column gap.
-There is no redundant Flip action.
+column width. Editor and current-selector values are centered. Two-column rows
+use equal columns and an 8 px inter-column gap. There is no redundant Flip
+action.
 
-The panel projects the complete visible execution order as Text Fill, Rendered
+The panel projects the complete visible execution order as Fill, Rendered
 Image, movable Stroke/Shadow/Glow/Filter cards, then Eraser. Rendered Image is
-a fixed item-specific base card after Text Fill and before the movable stack.
+a fixed item-specific base card after Fill and before the movable stack.
 It exists only for one concrete project TextBlock and therefore never appears
 in global formatting, presets, or multi-selection. Its Image and
 Replace/Overlay controls use the same two equal-column, natural-label-spacing

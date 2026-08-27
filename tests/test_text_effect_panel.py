@@ -385,11 +385,11 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
             effect_panel.text_fill_cards[0].visibility_button.toolTip(),
-            'Hide Text Fill',
+            'Hide Fill',
         )
         self.assertEqual(
             effect_panel.add_effect_actions['text_fill'].text(),
-            'Text Fill',
+            'Fill',
         )
         self.assertTrue(all(
             not action.icon().isNull()
@@ -1527,7 +1527,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
 
         card = effect_panel.text_fill_cards[-1]
-        self.assertEqual(card.title_label.text(), 'Text Fill')
+        self.assertEqual(card.title_label.text(), 'Fill')
 
         card.visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
@@ -1641,7 +1641,7 @@ class TextEffectPanelTest(unittest.TestCase):
             'Stroke Blend: Normal',
             'Shadow Blend: Multiply',
             'Glow Blend: Linear Dodge (Add)',
-            'Text Fill Blend: Darker Color',
+            'Fill Blend: Darker Color',
         )):
             selector = card.blend_selector
             root_actions = selector.menu().actions()
