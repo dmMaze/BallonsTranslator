@@ -909,9 +909,9 @@ class TextEffectRenderer:
         stroke = self._current_stroke()
         if stroke is None:
             return 0.0
-        # Inside/Outside are clipped from a full-width native outline. Center
-        # keeps the established pen width and allocation-free paint path.
-        return stroke.width * (2.0 if stroke.position != 'center' else 1.0)
+        # Position clips the same historical native outline; it does not
+        # redefine the saved width as an outside-only radius.
+        return stroke.width
 
     def _all_strokes_vector_compatible(
         self,
@@ -1827,7 +1827,7 @@ class TextEffectRenderer:
             * (
                 0.0
                 if stroke.position == 'inside'
-                else (1.0 if stroke.position == 'outside' else 0.5)
+                else 0.5
             )
             for stroke in strokes
         )
@@ -1844,7 +1844,7 @@ class TextEffectRenderer:
         return max(
             font_size
             * stroke.width
-            * (0.5 if stroke.position == 'center' else 1.0)
+            * 0.5
             for stroke in strokes
         )
 
@@ -2205,11 +2205,13 @@ class TextEffectRenderer:
         self, shadow: ShadowEffect
     ) -> Tuple[float, float, float, float]:
         font_size = self.layout.max_font_size(to_px=True)
+        distance = shadow.distance * font_size
+        radians = math.radians(shadow.angle)
         return (
             shadow.blur * font_size,
             shadow.spread * font_size,
-            shadow.offset[0] * font_size,
-            shadow.offset[1] * font_size,
+            math.cos(radians) * distance,
+            math.sin(radians) * distance,
         )
 
     def _shadowed_bounds(
@@ -2349,7 +2351,7 @@ class TextEffectRenderer:
                 * (
                     0.0
                     if stroke.position == 'inside'
-                    else (1.0 if stroke.position == 'outside' else 0.5)
+                    else 0.5
                 )
                 for stroke in active_strokes
             )

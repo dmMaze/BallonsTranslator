@@ -9,7 +9,7 @@ from .logger import logger as LOGGER
 from .raster_assets import RasterAssetRef, coerce_raster_asset_ref
 
 
-SHADOW_OFFSET_LIMIT = 10.0
+SHADOW_DISTANCE_LIMIT = 10.0
 SHADOW_BLUR_LIMIT = 10.0
 SHADOW_SPREAD_LIMIT = 10.0
 TEXT_EFFECT_BLEND_MODES = (
@@ -53,21 +53,6 @@ def _color_tuple(value: Sequence[int]) -> Tuple[int, int, int]:
             'paint color channels must be integers from 0 to 255'
         )
     return tuple(int(channel) for channel in value)
-
-
-def _offset_tuple(value: Sequence[Real]) -> Tuple[float, float]:
-    if not isinstance(value, (list, tuple)) or len(value) != 2:
-        raise TypeError('shadow offset must contain two numeric values')
-    return (
-        _float_in_range(
-            'shadow X offset', value[0],
-            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT,
-        ),
-        _float_in_range(
-            'shadow Y offset', value[1],
-            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT,
-        ),
-    )
 
 
 def _validated_blend_mode(name: str, value: str) -> str:
@@ -337,8 +322,8 @@ class ShadowEffect:
     Geometry values are relative to the text's maximum font size. Paint uses
     the same block-local Solid or Linear Gradient contract as Stroke and Glow.
 
-    >>> ShadowEffect(shadow_type='long', offset=(0.4, -0.2)).offset
-    (0.4, -0.2)
+    >>> ShadowEffect(shadow_type='long', angle=450).angle
+    90.0
     """
 
     enabled: bool = True
@@ -346,7 +331,8 @@ class ShadowEffect:
     blend_mode: str = 'normal'
     shadow_type: str = 'drop'
     paint: GeneratedEffectPaint = field(default_factory=SolidPaint)
-    offset: Tuple[float, float] = (0.1, 0.1)
+    angle: float = 45.0
+    distance: float = 0.1
     blur: float = 0.0
     spread: float = 0.0
     effect_type: str = field(init=False, default='shadow')
@@ -368,7 +354,20 @@ class ShadowEffect:
             raise ValueError('unsupported shadow type')
         if not isinstance(self.paint, (SolidPaint, LinearGradientPaint)):
             raise TypeError('shadow paint must be Solid or LinearGradient')
-        object.__setattr__(self, 'offset', _offset_tuple(self.offset))
+        angle = _float_in_range(
+            'shadow angle', self.angle, -math.inf, math.inf
+        )
+        object.__setattr__(self, 'angle', angle % 360.0)
+        object.__setattr__(
+            self,
+            'distance',
+            _float_in_range(
+                'shadow distance',
+                self.distance,
+                0.0,
+                SHADOW_DISTANCE_LIMIT,
+            ),
+        )
         object.__setattr__(
             self,
             'blur',
@@ -392,7 +391,8 @@ class ShadowEffect:
             'blend_mode': self.blend_mode,
             'shadow_type': self.shadow_type,
             'paint': self.paint.to_serializable_dict(),
-            'offset': list(self.offset),
+            'angle': self.angle,
+            'distance': self.distance,
             'blur': self.blur,
             'spread': self.spread,
         }
@@ -985,7 +985,8 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             payload,
             (
                 'effect_type', 'enabled', 'opacity', 'blend_mode',
-                'shadow_type', 'paint', 'color', 'offset', 'blur', 'spread',
+                'shadow_type', 'paint', 'color', 'angle', 'distance',
+                'blur', 'spread',
             ),
             'Shadow effect',
         )

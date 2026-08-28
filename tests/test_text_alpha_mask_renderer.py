@@ -203,7 +203,8 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             TextEffectStack(effects=(
                 ShadowEffect(
                     paint=SolidPaint((0, 255, 0)),
-                    offset=(-0.35, 0),
+                    angle=180.0,
+                    distance=0.35,
                     blur=0.04,
                 ),
                 GlowEffect(
@@ -229,7 +230,8 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                 ShadowEffect(
                     shadow_type='long',
                     paint=SolidPaint((0, 255, 0)),
-                    offset=(-0.5, 0.2),
+                    angle=158.2,
+                    distance=0.539,
                 ),
                 GlowEffect(size=0.08, spread=0.03),
                 StrokeEffect(
@@ -258,7 +260,9 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
     def test_full_and_forced_tiles_match_at_multiple_scales(self):
         stacks = (
             TextEffectStack(effects=(
-                ShadowEffect(offset=(0.18, 0.12), blur=0.08, spread=0.04),
+                ShadowEffect(
+                    angle=34.0, distance=0.216, blur=0.08, spread=0.04
+                ),
                 StrokeEffect(
                     width=0.12,
                     position='outside',
@@ -272,11 +276,16 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
                     ),
                 ),
                 ShadowEffect(
-                    shadow_type='inner', offset=(0.08, 0.04), blur=0.06
+                    shadow_type='inner',
+                    angle=26.565,
+                    distance=0.089,
+                    blur=0.06,
                 ),
             )),
             TextEffectStack(effects=(
-                ShadowEffect(shadow_type='long', offset=(0.30, 0.22)),
+                ShadowEffect(
+                    shadow_type='long', angle=36.0, distance=0.372
+                ),
                 StrokeEffect(width=0.12, position='inside'),
                 HollowEffect(),
             )),
@@ -479,7 +488,9 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
 
     def test_mask_preview_reuses_expensive_stroke_shadow_composite(self):
         stack = TextEffectStack(effects=(
-            ShadowEffect(offset=(0.18, 0.12), blur=0.08, spread=0.04),
+            ShadowEffect(
+                angle=34.0, distance=0.216, blur=0.08, spread=0.04
+            ),
             StrokeEffect(width=0.12, paint=LinearGradientPaint(stops=(
                 GradientStop(0.0, (255, 0, 0), 0.4),
                 GradientStop(1.0, (0, 0, 255), 1.0),
@@ -533,7 +544,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
 
     def test_mask_preview_reuses_pre_mask_tile_for_same_visible_region(self):
         stack = TextEffectStack(effects=(
-            ShadowEffect(offset=(0.18, 0.12), blur=0.08),
+            ShadowEffect(angle=34.0, distance=0.216, blur=0.08),
             StrokeEffect(width=0.12, paint=LinearGradientPaint(angle=45.0)),
         ))
         item = self._item(stack, self._partial_mask())
@@ -608,7 +619,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
     def test_effect_mask_preview_overlap_commit_orders_stay_isolated(self):
         canonical = TextEffectStack(effects=(StrokeEffect(width=0.10),))
         effect_preview = TextEffectStack(effects=(
-            ShadowEffect(blur=0.06, offset=(0.12, 0.08)),
+            ShadowEffect(blur=0.06, angle=34.0, distance=0.144),
             StrokeEffect(width=0.22),
         ))
         mask_preview = self._erase_all()

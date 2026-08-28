@@ -13,7 +13,7 @@ from ballontranslator.utils.text_effects import (
     ImageGenerationRecipe,
     LinearGradientPaint,
     SHADOW_BLUR_LIMIT,
-    SHADOW_OFFSET_LIMIT,
+    SHADOW_DISTANCE_LIMIT,
     SHADOW_SPREAD_LIMIT,
     ShadowEffect,
     SolidPaint,
@@ -216,10 +216,11 @@ class TextEffectDomainTest(unittest.TestCase):
             stack.effects = ()
 
         shadow = ShadowEffect(
-            paint=SolidPaint([4, 5, 6]), offset=[0.2, -0.3]
+            paint=SolidPaint([4, 5, 6]), angle=315.0, distance=0.3
         )
         self.assertEqual(shadow.paint, SolidPaint((4, 5, 6)))
-        self.assertEqual(shadow.offset, (0.2, -0.3))
+        self.assertEqual(shadow.angle, 315.0)
+        self.assertEqual(shadow.distance, 0.3)
         with self.assertRaises(FrozenInstanceError):
             shadow.blur = 0.2
 
@@ -357,7 +358,9 @@ class TextEffectDomainTest(unittest.TestCase):
     def test_non_stroke_override_ignores_mid_structural_position(self):
         first = StrokeEffect(width=0.2)
         second = StrokeEffect(width=0.7)
-        drop = ShadowEffect(shadow_type='drop', offset=(0.2, 0.3))
+        drop = ShadowEffect(
+            shadow_type='drop', angle=45.0, distance=0.3
+        )
         glow = GlowEffect(size=0.2)
         hollow = HollowEffect()
         inner = ShadowEffect(shadow_type='inner', blur=0.2)
@@ -700,7 +703,8 @@ class TextEffectDomainTest(unittest.TestCase):
             lambda: ShadowEffect(blend_mode='overlay'),
             lambda: ShadowEffect(shadow_type='outer'),
             lambda: ShadowEffect(paint={'paint_type': 'solid'}),
-            lambda: ShadowEffect(offset=(0, float('inf'))),
+            lambda: ShadowEffect(angle=float('inf')),
+            lambda: ShadowEffect(distance=-0.1),
             lambda: ShadowEffect(blur=-0.1),
             lambda: ShadowEffect(spread=-0.1),
             lambda: HollowEffect(enabled=1),
@@ -848,7 +852,8 @@ class TextEffectDomainTest(unittest.TestCase):
             {
                 'effect_type': 'shadow',
                 'shadow_type': 'drop',
-                'offset': [0.2, -0.1],
+                'angle': 330.0,
+                'distance': 0.2,
                 'blur': 0.3,
             },
             {'effect_type': 'stroke', 'width': 0.2},
@@ -887,13 +892,15 @@ class TextEffectDomainTest(unittest.TestCase):
 
     def test_shadow_geometry_limits_match_live_and_passive_boundaries(self):
         boundary = ShadowEffect(
-            offset=(-SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT),
+            angle=-90.0,
+            distance=SHADOW_DISTANCE_LIMIT,
             blur=SHADOW_BLUR_LIMIT,
             spread=SHADOW_SPREAD_LIMIT,
         )
-        self.assertEqual(boundary.offset, (-10.0, 10.0))
+        self.assertEqual(boundary.angle, 270.0)
+        self.assertEqual(boundary.distance, 10.0)
         with self.assertRaises(ValueError):
-            ShadowEffect(offset=(SHADOW_OFFSET_LIMIT + 0.01, 0.0))
+            ShadowEffect(distance=SHADOW_DISTANCE_LIMIT + 0.01)
         with self.assertRaises(ValueError):
             ShadowEffect(blur=SHADOW_BLUR_LIMIT + 0.01)
         with self.assertRaises(ValueError):
@@ -905,7 +912,11 @@ class TextEffectDomainTest(unittest.TestCase):
             stack = coerce_text_effect_stack({'effects': [
                 {
                     'effect_type': 'shadow',
-                    'offset': [SHADOW_OFFSET_LIMIT + 0.01, 0],
+                    'offset': [0.2, 0.1],
+                },
+                {
+                    'effect_type': 'shadow',
+                    'distance': SHADOW_DISTANCE_LIMIT + 0.01,
                 },
                 {'effect_type': 'stroke', 'width': 0.2},
             ]})
@@ -913,7 +924,7 @@ class TextEffectDomainTest(unittest.TestCase):
             stack.effects,
             (StrokeEffect(width=0.2, position='center'),),
         )
-        warning.assert_called_once()
+        self.assertEqual(warning.call_count, 2)
 
     def test_invalid_stack_fields_fall_back_independently(self):
         with patch(
@@ -972,7 +983,8 @@ class TextEffectDomainTest(unittest.TestCase):
                 opacity=0.4,
                 shadow_type='long',
                 paint=paint,
-                offset=(-0.2, 0.4),
+                angle=120.0,
+                distance=0.4,
                 blur=0.3,
                 spread=0.1,
             ),
@@ -988,7 +1000,8 @@ class TextEffectDomainTest(unittest.TestCase):
             'blend_mode': 'normal',
             'shadow_type': 'long',
             'paint': paint.to_serializable_dict(),
-            'offset': [-0.2, 0.4],
+            'angle': 120.0,
+            'distance': 0.4,
             'blur': 0.3,
             'spread': 0.1,
         })

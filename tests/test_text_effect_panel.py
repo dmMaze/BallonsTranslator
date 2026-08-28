@@ -1415,21 +1415,24 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
 
     def test_shadow_numeric_preview_commit_escape_keeps_card(self):
-        before = self._stack(ShadowEffect(offset=(0.1, 0.2), blur=0.05))
+        before = self._stack(
+            ShadowEffect(angle=30.0, distance=0.2, blur=0.05)
+        )
         item = self._item(before)
         self.panel.set_textblk_item(item)
         card = self.panel.texteffect_panel.shadow_cards[0]
-        editor = card.offset_x_control.editor
+        editor = card.angle_control.editor
 
-        editor.setText('0.45')
-        editor.textEdited.emit('0.45')
+        editor.setText('45.0°')
+        editor.textEdited.emit('45.0°')
         self.assertEqual(item.blk.fontformat.text_effects, before)
-        self.assertEqual(item.effective_text_effects()[0].offset[0], 0.45)
+        self.assertEqual(item.effective_text_effects()[0].angle, 45.0)
         self.assertEqual(self.canvas.stack.count(), 0)
 
         editor.returnPressed.emit()
         committed = item.blk.fontformat.text_effects
-        self.assertEqual(committed[0].offset, (0.45, 0.2))
+        self.assertEqual(committed[0].angle, 45.0)
+        self.assertEqual(committed[0].distance, 0.2)
         self.assertEqual(self.canvas.stack.count(), 1)
         self.assertIs(self.panel.texteffect_panel.shadow_cards[0], card)
 
@@ -1446,6 +1449,22 @@ class TextEffectPanelTest(unittest.TestCase):
             ),
         )
         self.assertEqual(item.effective_text_effects(), committed)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_shadow_angle_dial_previews_then_commits_once(self):
+        before = self._stack(ShadowEffect(angle=30.0, distance=0.2))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        card = self.panel.texteffect_panel.shadow_cards[0]
+
+        card.angle_dial.set_angle(90.0)
+        card.angle_dial.angle_previewed.emit(90.0)
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertEqual(item.effective_text_effects()[0].angle, 90.0)
+        self.assertEqual(card.angle_control.editor.text(), '90.0°')
+
+        card.angle_dial.angle_commit_requested.emit()
+        self.assertEqual(item.blk.fontformat.text_effects[0].angle, 90.0)
         self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_glow_numeric_preview_commit_escape_keeps_card(self):
@@ -3627,6 +3646,30 @@ class TextEffectPanelTest(unittest.TestCase):
             Qt.KeyboardModifier.NoModifier,
         ))
         self.assertEqual(item.effective_text_effects()[0].paint.angle, 90.0)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        QApplication.sendEvent(dial, QMouseEvent(
+            QEvent.Type.MouseButtonPress,
+            left,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        QApplication.sendEvent(dial, QMouseEvent(
+            QEvent.Type.MouseMove,
+            down,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        QApplication.sendEvent(dial, QMouseEvent(
+            QEvent.Type.MouseButtonRelease,
+            down,
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        ))
+        self.assertFalse(item.effect_renderer.has_preview())
         self.assertEqual(self.canvas.stack.count(), 1)
 
     def test_effect_reorder_is_global_and_mixed_shadow_type_stays_editable(self):

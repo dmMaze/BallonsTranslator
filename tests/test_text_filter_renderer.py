@@ -455,7 +455,8 @@ class TextFilterRendererTest(unittest.TestCase):
             )
         })
         zero = ShadowEffect(
-            offset=(0.0, 0.0),
+            angle=0.0,
+            distance=0.0,
             blur=0.0,
             spread=0.0,
             paint=SolidPaint((0, 0, 0)),
@@ -486,7 +487,9 @@ class TextFilterRendererTest(unittest.TestCase):
                             plain[..., :3][opaque_face],
                         )
 
-                        shifted = replace(shadow, offset=(0.20, 0.12))
+                        shifted = replace(
+                            shadow, angle=30.964, distance=0.233
+                        )
                         shifted_stack = replace(
                             stack,
                             effects=tuple(

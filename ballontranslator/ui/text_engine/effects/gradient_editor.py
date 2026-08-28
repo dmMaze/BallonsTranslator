@@ -431,6 +431,7 @@ class GradientAngleDial(QWidget):
         super().__init__(parent)
         self._angle = 0.0
         self._drag_start_angle: Optional[float] = None
+        self._drag_previewed = False
         self.setFixedSize(36, 36)
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -444,8 +445,13 @@ class GradientAngleDial(QWidget):
         self._angle = angle
         self.update()
 
+    @property
+    def angle(self) -> float:
+        return self._angle
+
     def end_interaction(self) -> None:
         self._drag_start_angle = None
+        self._drag_previewed = False
 
     def _set_angle_from_point(self, point: QPointF) -> None:
         center = QRectF(self.rect()).center()
@@ -460,6 +466,7 @@ class GradientAngleDial(QWidget):
             return
         self._angle = angle
         self.update()
+        self._drag_previewed = True
         self.angle_previewed.emit(angle)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -468,6 +475,7 @@ class GradientAngleDial(QWidget):
             return
         self.setFocus(Qt.FocusReason.MouseFocusReason)
         self._drag_start_angle = self._angle
+        self._drag_previewed = False
         self._set_angle_from_point(_mouse_position(event))
         event.accept()
 
@@ -490,6 +498,9 @@ class GradientAngleDial(QWidget):
         self._drag_start_angle = None
         if self._angle != before:
             self.angle_commit_requested.emit()
+        elif self._drag_previewed:
+            self.angle_preview_canceled.emit()
+        self._drag_previewed = False
         event.accept()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
@@ -498,11 +509,12 @@ class GradientAngleDial(QWidget):
             and self._drag_start_angle is not None
         ):
             before = self._drag_start_angle
-            changed = self._angle != before
+            previewed = self._drag_previewed
             self._angle = before
             self._drag_start_angle = None
+            self._drag_previewed = False
             self.update()
-            if changed:
+            if previewed:
                 self.angle_preview_canceled.emit()
             event.accept()
             return

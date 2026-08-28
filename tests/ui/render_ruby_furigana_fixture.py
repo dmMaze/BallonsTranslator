@@ -57,7 +57,8 @@ def _item(
             effects=(
                 ShadowEffect(
                     opacity=0.8,
-                    offset=(0.08, 0.08),
+                    angle=45.0,
+                    distance=0.113,
                     blur=0.1,
                 ),
                 StrokeEffect(width=stroke_width),

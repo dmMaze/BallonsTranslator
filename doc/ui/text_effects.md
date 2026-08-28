@@ -133,8 +133,8 @@ Image, and Filter are repeatable. Hollow is unique.
 
 | Effect | Phase and source | Important semantics |
 | --- | --- | --- |
-| Stroke | Ordered generated layer | Width is relative to font size. Center splits the full band across the glyph edge; Outside and Inside clip a full-width outline to the corresponding side. A completed surface caches raw outline coverage for every position, then clips Center paint outside canonical face alpha unless Hollow needs the full band. This matches the direct path's later foreground repaint without putting Hollow in the geometry-cache key. New and migrated legacy strokes default to Outside. |
-| Shadow | Ordered generated layer; exterior source for Drop/Long, interior source for Inner | Exterior Shadow uses the canonical Stroke-inclusive silhouette but clips output only outside the canonical face. It therefore cannot tint foreground, while global order still decides whether a higher Shadow covers a lower Stroke. Inner Shadow uses canonical glyph alpha and is suppressed by Hollow. |
+| Stroke | Ordered generated layer | Width is relative to font size and retains the historical native-outline meaning for every position. Center splits that outline across the glyph edge; Outside and Inside clip the same outline to the corresponding side without doubling it. A completed surface caches raw outline coverage for every position, then clips Center paint outside canonical face alpha unless Hollow needs the full band. This matches the direct path's later foreground repaint without putting Hollow in the geometry-cache key. New and migrated legacy strokes default to Outside. |
+| Shadow | Ordered generated layer; exterior source for Drop/Long, interior source for Inner | Angle uses the same screen-space convention as Gradient and Distance is relative to maximum font size. Exterior Shadow uses the canonical Stroke-inclusive silhouette but clips output only outside the canonical face. It therefore cannot tint foreground, while global order still decides whether a higher Shadow covers a lower Stroke. Inner Shadow uses canonical glyph alpha and is suppressed by Hollow. |
 | Glow | Ordered generated layer; exterior source for Outer, interior source for Inner | Outer Glow uses the canonical Stroke-inclusive silhouette. Inner Glow uses canonical glyph alpha and is suppressed by Hollow. |
 | Gradient/Texture | Structural foreground sub-stack, repeatable | Enabled renderable paints compose in visible order on one transparent face group. Gradient paints the logical rectangle; Texture maps one managed raster over it. The completed group is clipped once by canonical glyph coverage and replaces the rich foreground as a group. Paint alpha and effect Opacity each multiply alpha once. Stroke and generated effects continue using their earlier canonical/source alpha. Both cards persist through the internal `TextFillEffect` type. |
 | Hollow | Foreground modifier, unique | Removes the canonical face, Gradient/Texture group, and interior phase while retaining Stroke and exterior output. It is a toggle, not an independent painted layer. |
@@ -291,8 +291,8 @@ defined in [Text engine](text_engine.md). The persistent text rectangle never
 includes effect padding or transformed overflow.
 
 - Stroke, Shadow, and Glow geometry is relative to the maximum font size.
-- Inside Stroke and interior effects do not expand source bounds. Center Stroke
-  contributes its outside half; Outside Stroke contributes its full reach.
+- Inside Stroke and interior effects do not expand source bounds. Center and
+  Outside Stroke contribute half of the same native outline width.
 - Exterior effects expand source padding from the visible source silhouette.
   Glyph-distorting paths use layout-owned ink bounds; ordinary paths use the
   conservative symmetric padding calculation.

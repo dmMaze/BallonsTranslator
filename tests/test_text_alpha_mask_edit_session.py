@@ -173,7 +173,7 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
 
     def test_pointer_samples_reuse_stroke_shadow_pre_mask_composite(self):
         self.item.set_text_effects(TextEffectStack(effects=(
-            ShadowEffect(blur=0.08, offset=(0.16, 0.10)),
+            ShadowEffect(blur=0.08, angle=32.0, distance=0.19),
             StrokeEffect(width=0.14),
         )))
         self._activate()

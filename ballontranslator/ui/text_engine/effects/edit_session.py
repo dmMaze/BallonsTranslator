@@ -281,13 +281,9 @@ class TextEffectEditSession:
             else:
                 parameters[param_name] = value
         elif isinstance(effect, ShadowEffect):
-            if param_name in {'offset_x', 'offset_y'}:
-                offset = list(effect.offset)
-                offset[0 if param_name == 'offset_x' else 1] = value
-                parameters['offset'] = tuple(offset)
-            elif param_name not in {
+            if param_name not in {
                 'enabled', 'opacity', 'shadow_type', 'paint', 'paint_type',
-                'blur', 'spread', 'blend_mode',
+                'angle', 'distance', 'blur', 'spread', 'blend_mode',
             }:
                 raise ValueError('unknown Shadow field')
             elif param_name == 'paint':
@@ -385,10 +381,6 @@ class TextEffectEditSession:
         if index < 0 or index >= len(state.effects):
             raise IndexError('text effect index is no longer current')
         effect = state.effects[index]
-        if isinstance(effect, ShadowEffect) and param_name in {
-            'offset_x', 'offset_y'
-        }:
-            return effect.offset[0 if param_name == 'offset_x' else 1]
         if isinstance(effect, TextFillEffect) and param_name in {
             'texture_mapping', 'texture_scale'
         }:

@@ -767,7 +767,8 @@ class TextEffectPersistenceTest(unittest.TestCase):
                         GradientStop(0.0, (10, 20, 30), 0.4),
                         GradientStop(1.0, (60, 50, 40), 1.0),
                     ), angle=25.0),
-                    offset=(0.3, -0.2),
+                    angle=325.0,
+                    distance=0.36,
                     blur=0.1,
                     spread=0.05,
                 ),
@@ -847,7 +848,8 @@ class TextEffectPersistenceTest(unittest.TestCase):
         stack = TextEffectStack(0.7, (
             ShadowEffect(
                 shadow_type='long',
-                offset=(0.4, 0.2),
+                angle=26.565,
+                distance=0.447,
                 paint=LinearGradientPaint(angle=55.0),
             ),
             GlowEffect(size=0.3, spread=0.1),

@@ -60,7 +60,7 @@ from ballontranslator.utils.text_effects import (
     ImageEffect,
     ImageGenerationRecipe,
     SHADOW_BLUR_LIMIT,
-    SHADOW_OFFSET_LIMIT,
+    SHADOW_DISTANCE_LIMIT,
     SHADOW_SPREAD_LIMIT,
     ShadowEffect,
     SolidPaint,
@@ -86,6 +86,7 @@ from ...module_tool_button import (
     _simplify_llm_model_name,
 )
 from ..transforms.controls import CommittedTransformControl, TransformDragLabel
+from .gradient_editor import GradientAngleDial, InlineLinearGradientEditor
 from .paint import paint_effect_paint_preview
 from .filters import (
     FilterParamSpec,
@@ -93,7 +94,6 @@ from .filters import (
     FilterUnavailableError,
     get_filter_registry,
 )
-from .gradient_editor import InlineLinearGradientEditor
 from .edit_session import (
     effect_reorder_is_aligned,
     matched_effect_occurrences,
@@ -557,6 +557,16 @@ class EffectNumericControl(CommittedTransformControl):
         except (TypeError, ValueError):
             return
         self.value_preview_requested.emit(self.param_name, value)
+
+    @property
+    def model_value(self) -> Optional[float]:
+        return self._model_value
+
+    def show_preview_value(self, value: float) -> None:
+        self.editor.setText(self._format(value))
+
+    def restore_model_display(self) -> None:
+        self._restore_display()
 
     def commit_pending(self) -> bool:
         was_pending = self.state == self.PENDING_TEXT
@@ -1102,14 +1112,31 @@ class ShadowEffectCard(_EffectCard):
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,
             self, decimals=1,
         )
-        self.offset_x_control = EffectNumericControl(
-            self.tr('X Offset'), 'offset_x', 1.0,
-            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT, '', 0.01,
-            self, decimals=2,
+        self.angle_control = EffectNumericControl(
+            self.tr('Angle'), 'angle', 1.0, 0.0, 359.9, '°', 1.0,
+            self, decimals=1,
         )
-        self.offset_y_control = EffectNumericControl(
-            self.tr('Y Offset'), 'offset_y', 1.0,
-            -SHADOW_OFFSET_LIMIT, SHADOW_OFFSET_LIMIT, '', 0.01,
+        self.angle_dial = GradientAngleDial(self.angle_control)
+        self.angle_dial.setToolTip(self.tr('Drag to set shadow angle'))
+        self.angle_dial.setAccessibleName(self.tr('Shadow Angle'))
+        self.angle_control.label.hide()
+        angle_layout = self.angle_control.layout()
+        angle_layout.insertWidget(0, self.angle_dial)
+        angle_layout.setStretch(0, 0)
+        angle_layout.setStretch(1, 0)
+        angle_layout.setStretch(2, 1)
+        self.angle_dial.angle_previewed.connect(
+            self._on_angle_dial_preview
+        )
+        self.angle_dial.angle_commit_requested.connect(
+            self._on_angle_dial_commit
+        )
+        self.angle_dial.angle_preview_canceled.connect(
+            self._on_angle_dial_cancel
+        )
+        self.distance_control = EffectNumericControl(
+            self.tr('Distance'), 'distance', 1.0,
+            0.0, SHADOW_DISTANCE_LIMIT, '', 0.01,
             self, decimals=2,
         )
         self.blur_control = EffectNumericControl(
@@ -1197,8 +1224,8 @@ class ShadowEffectCard(_EffectCard):
         controls.setVerticalSpacing(8)
         controls.addWidget(self.opacity_control, 0, 0)
         controls.addWidget(self.blur_control, 0, 1)
-        controls.addWidget(self.offset_x_control, 1, 0)
-        controls.addWidget(self.offset_y_control, 1, 1)
+        controls.addWidget(self.angle_control, 1, 0)
+        controls.addWidget(self.distance_control, 1, 1)
         controls.addWidget(self.spread_control, 2, 0)
         controls.addWidget(blend_widget, 2, 1)
         controls.addLayout(paint_row, 3, 0, 1, 2)
@@ -1264,25 +1291,21 @@ class ShadowEffectCard(_EffectCard):
 
         for name, control in (
             ('opacity', self.opacity_control),
-            ('offset_x', self.offset_x_control),
-            ('offset_y', self.offset_y_control),
+            ('angle', self.angle_control),
+            ('distance', self.distance_control),
             ('blur', self.blur_control),
             ('spread', self.spread_control),
         ):
-            values = [
-                shadow.offset[0]
-                if name == 'offset_x'
-                else shadow.offset[1]
-                if name == 'offset_y'
-                else getattr(shadow, name)
-                for shadow in shadows
-            ]
+            values = [getattr(shadow, name) for shadow in shadows]
             common = (
                 values[0]
                 if values and all(value == values[0] for value in values)
                 else None
             )
             control.set_model_value(common, values)
+        self.angle_dial.end_interaction()
+        if shadows:
+            self.angle_dial.set_angle(shadows[0].angle)
 
         paints = [shadow.paint for shadow in shadows]
         common_paint_type = (
@@ -1342,8 +1365,8 @@ class ShadowEffectCard(_EffectCard):
     def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
         return (
             self.opacity_control,
-            self.offset_x_control,
-            self.offset_y_control,
+            self.angle_control,
+            self.distance_control,
             self.blur_control,
             self.spread_control,
         )
@@ -1375,19 +1398,46 @@ class ShadowEffectCard(_EffectCard):
         )
 
     def _on_control_commit(self, name: str, value) -> None:
+        if name == 'angle':
+            self.angle_dial.set_angle(value)
         self.value_commit_requested.emit(self.index, name, value)
 
     def _on_value_preview(self, name: str, value) -> None:
+        if name == 'angle':
+            self.angle_dial.set_angle(value)
         self.value_preview_requested.emit(self.index, name, value)
 
     def _on_parameter_preview(self, name: str, delta) -> None:
+        if name == 'angle' and self.angle_control.model_value is not None:
+            self.angle_dial.set_angle(
+                self.angle_control.model_value + delta
+            )
         self.parameter_preview_requested.emit(self.index, name, delta)
 
     def _on_parameter_commit(self, name: str, delta) -> None:
+        if name == 'angle' and self.angle_control.model_value is not None:
+            self.angle_dial.set_angle(
+                self.angle_control.model_value + delta
+            )
         self.parameter_commit_requested.emit(self.index, name, delta)
 
     def _on_preview_canceled(self, name: str) -> None:
+        if name == 'angle' and self.angle_control.model_value is not None:
+            self.angle_dial.set_angle(self.angle_control.model_value)
         self.preview_canceled.emit(self.index, name)
+
+    def _on_angle_dial_preview(self, angle: float) -> None:
+        self.angle_control.show_preview_value(angle)
+        self.value_preview_requested.emit(self.index, 'angle', angle)
+
+    def _on_angle_dial_commit(self) -> None:
+        angle = self.angle_dial.angle
+        self.angle_control.set_model_value(angle, (angle,))
+        self.value_commit_requested.emit(self.index, 'angle', angle)
+
+    def _on_angle_dial_cancel(self) -> None:
+        self.angle_control.restore_model_display()
+        self.preview_canceled.emit(self.index, 'angle')
 
     def _on_action_clicked(self) -> None:
         button = self.sender()

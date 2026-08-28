@@ -64,7 +64,8 @@ def _item(
         effects=(
             ShadowEffect(
                 opacity=0.75,
-                offset=(0.07, 0.07),
+                angle=45.0,
+                distance=0.099,
                 blur=0.08,
             ),
             StrokeEffect(

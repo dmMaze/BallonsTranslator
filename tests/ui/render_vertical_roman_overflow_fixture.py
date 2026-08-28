@@ -48,7 +48,8 @@ def _item(origin: tuple[int, int], *, standard: bool) -> TextBlkItem:
         effects=(
             ShadowEffect(
                 opacity=0.65,
-                offset=(0.035, 0.035),
+                angle=45.0,
+                distance=0.0495,
                 blur=0.035,
             ),
             StrokeEffect(width=0.04),

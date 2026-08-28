@@ -1395,7 +1395,8 @@ class RunPipelineDialogTests(unittest.TestCase):
                 (
                     ShadowEffect(
                         shadow_type='drop',
-                        offset=(0.2, 0.1),
+                        angle=26.565,
+                        distance=0.224,
                     ),
                     GlowEffect(size=0.2, spread=0.05),
                     StrokeEffect(
@@ -1490,18 +1491,18 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(block.font_family, 'Render Font')
             self.assertEqual(block.fontformat.opacity, 0.75)
             effects = block.fontformat.text_effects.effects
-            self.assertIs(effects[3], extra)
-            self.assertEqual(effects[2].paint, SolidPaint((4, 5, 6)))
+            self.assertIs(effects[-1], extra)
+            self.assertEqual(effects[-2].paint, SolidPaint((4, 5, 6)))
             self.assertEqual(
                 effects,
                 (
                     global_format.text_effects.effects[0],
                     global_format.text_effects.effects[1],
-                    effects[2],
-                    extra,
                     global_format.text_effects.effects[4],
                     global_format.text_effects.effects[5],
                     global_format.text_effects.effects[6],
+                    effects[-2],
+                    extra,
                 ),
             )
             self.assertEqual(block.fontformat.shadow_radius, 0.0)

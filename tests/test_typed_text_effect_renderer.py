@@ -295,7 +295,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         plain = self._item(TextEffectStack())
         inner_stack = TextEffectStack(effects=(ShadowEffect(
             shadow_type='inner',
-            offset=(0.2, 0.0),
+            angle=0.0,
+            distance=0.2,
             blur=0.12,
             spread=0.03,
         ),))
@@ -320,7 +321,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     zero_item = self._item(TextEffectStack(effects=(
                         ShadowEffect(
                             shadow_type=shadow_type,
-                            offset=(0.0, 0.0),
+                            angle=0.0,
+                            distance=0.0,
                             blur=0.0,
                             spread=0.0,
                             paint=black,
@@ -350,7 +352,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                     shifted_item = self._item(TextEffectStack(effects=(
                         ShadowEffect(
                             shadow_type=shadow_type,
-                            offset=(0.24, 0.16),
+                            angle=33.69,
+                            distance=0.288,
                             blur=0.0,
                             spread=0.0,
                             paint=black,
@@ -1018,7 +1021,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         )
         shadow = ShadowEffect(
             paint=SolidPaint((0, 255, 0)),
-            offset=(0.2, 0.1),
+            angle=26.565,
+            distance=0.224,
             blur=0.05,
         )
         without_fill_item = self._item(TextEffectStack(effects=(shadow,)))
@@ -1070,7 +1074,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             ),
             ShadowEffect(
                 shadow_type='inner',
-                offset=(0.12, 0.0),
+                angle=0.0,
+                distance=0.12,
             ),
         ))))
         visible_inside = inside[..., 3] > 160
@@ -1253,7 +1258,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                         GradientStop(1.0, (0, 0, 255), stop_opacity),
                     )),
                 ),
-                ShadowEffect(offset=(0.2, 0.1)),
+                ShadowEffect(angle=26.565, distance=0.224),
             )))
             item.setPlainText('\N{FULL BLOCK}' * 3)
             item.layout.reLayoutEverything()
@@ -1297,14 +1302,16 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         np.testing.assert_array_equal(default_pixels, outside_pixels)
         self.assertEqual(default.fontformat.text_effects[0].position, 'outside')
         self.assertEqual(inside.padding(), 0.0)
+        for item in (center, inside, outside):
+            self.assertEqual(item.effect_renderer._stroke_width(), 0.24)
         self.assertAlmostEqual(
             outside.effect_renderer._conservative_effect_padding(),
-            center.effect_renderer._conservative_effect_padding() * 2.0,
+            center.effect_renderer._conservative_effect_padding(),
         )
         # Committed padding is rounded outward to 1/64 layout units.
         self.assertAlmostEqual(
             outside.padding(),
-            center.padding() * 2.0,
+            center.padding(),
             delta=1.0 / 32.0,
         )
 
@@ -1327,10 +1334,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertEqual(np.count_nonzero(inside_blue & ~glyph), 0)
         self.assertGreater(np.count_nonzero(outside_blue & ~glyph), 0)
         self.assertEqual(np.count_nonzero(outside_blue & deep_glyph), 0)
-        self.assertGreater(
-            np.count_nonzero(outside_blue & ~glyph),
-            np.count_nonzero(center_blue & ~glyph),
-        )
+        np.testing.assert_array_equal(outside_blue, center_blue)
 
     def test_hollow_and_shadow_silhouette_use_positioned_stroke_band(self):
         plain = self._item(TextEffectStack())
@@ -1409,10 +1413,14 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     def test_first_shadow_card_paints_on_top_in_shared_exterior_pixels(self):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(
-                paint=SolidPaint((255, 0, 0)), offset=(0.18, 0.12)
+                paint=SolidPaint((255, 0, 0)),
+                angle=34.0,
+                distance=0.216,
             ),
             ShadowEffect(
-                paint=SolidPaint((0, 0, 255)), offset=(0.18, 0.12)
+                paint=SolidPaint((0, 0, 255)),
+                angle=34.0,
+                distance=0.216,
             ),
         )))
         renderer = item.effect_renderer
@@ -1437,7 +1445,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
 
         pixmap = item.effect_renderer._shadow_pixmap(
             source_alpha,
-            ShadowEffect(offset=(0.01, 0.0)),
+            ShadowEffect(angle=0.0, distance=0.01),
             item.effect_renderer.boundingRect(),
             1.0,
         )
@@ -1457,7 +1465,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         rect = QRectF(0, 0, 6, 1)
         shadow = ShadowEffect(
             opacity=0.5,
-            offset=(0.0, 0.0),
+            angle=0.0,
+            distance=0.0,
             paint=LinearGradientPaint(stops=(
                 GradientStop(0.0, (255, 0, 0), 0.5),
                 GradientStop(1.0, (0, 0, 255), 0.5),
@@ -1491,7 +1500,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                         ShadowEffect(
                             shadow_type=shadow_type,
                             paint=SolidPaint((0, 0, 255)),
-                            offset=(direction * 0.01, 0.0),
+                            angle=0.0 if direction > 0 else 180.0,
+                            distance=0.01,
                         ),
                     )))
                     item.setPlainText('\N{FULL BLOCK}')
@@ -1614,7 +1624,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(
                 shadow_type='drop',
-                offset=(0.45, 0.0),
+                angle=0.0,
+                distance=0.45,
             ),
             HollowEffect(),
         )))
@@ -1731,7 +1742,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(
                 shadow_type='drop',
-                offset=(0.5, 0.3),
+                angle=31.0,
+                distance=0.583,
                 blur=0.2,
             ),
             HollowEffect(),
@@ -2014,7 +2026,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         item = self._item(TextEffectStack(effects=(
             ShadowEffect(
                 shadow_type='drop',
-                offset=(0.5, 0.3),
+                angle=31.0,
+                distance=0.583,
                 blur=0.2,
             ),
             HollowEffect(),
@@ -2113,7 +2126,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             (
                 TextEffectStack(effects=(ShadowEffect(blur=0.08),)),
                 TextEffectStack(effects=(ShadowEffect(
-                    offset=(0.3, -0.1), blur=0.12
+                    angle=341.565, distance=0.316, blur=0.12
                 ),)),
             ),
             (
@@ -2813,7 +2826,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ),
                 ShadowEffect(
                     blend_mode='darker_color',
-                    offset=(0.18, 0.12),
+                    angle=34.0,
+                    distance=0.216,
                     blur=0.08,
                     spread=0.04,
                     paint=LinearGradientPaint(angle=41.0),
@@ -2841,7 +2855,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 ShadowEffect(
                     blend_mode='multiply',
                     shadow_type='inner',
-                    offset=(0.08, 0.04),
+                    angle=26.565,
+                    distance=0.089,
                     blur=0.06,
                     spread=0.02,
                     paint=LinearGradientPaint(angle=203.0),
@@ -2868,7 +2883,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             TextEffectStack(effects=(
                 ShadowEffect(
                     shadow_type='long',
-                    offset=(0.30, 0.22),
+                    angle=36.0,
+                    distance=0.372,
                     paint=LinearGradientPaint(angle=127.0),
                 ),
                 GlowEffect(size=0.08, spread=0.03),

@@ -2587,7 +2587,8 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     ShadowEffect(
                         opacity=0.7,
                         blur=0.08,
-                        offset=(0.08, 0.06),
+                        angle=36.87,
+                        distance=0.1,
                     ),
                     GlowEffect(size=0.06, spread=0.02),
                     TextFillEffect(paint=LinearGradientPaint(stops=(
@@ -2768,7 +2769,8 @@ class TextTransformRenderingTest(TextTransformTestBase):
                             effects=(ShadowEffect(
                                 opacity=0.8,
                                 blur=0.12,
-                                offset=(0.1, 0.1),
+                                angle=45.0,
+                                distance=0.141,
                             ),)
                         )
 
@@ -3396,7 +3398,8 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     ShadowEffect(
                         opacity=0.7,
                         blur=0.08,
-                        offset=(0.08, 0.06),
+                        angle=36.87,
+                        distance=0.1,
                     ),
                     TextFillEffect(paint=LinearGradientPaint(stops=(
                         GradientStop(0.0, (20, 40, 160)),
@@ -3560,7 +3563,8 @@ class TextTransformRenderingTest(TextTransformTestBase):
                     ShadowEffect(
                         opacity=0.8,
                         blur=0.2,
-                        offset=(0.8, -0.4),
+                        angle=333.435,
+                        distance=0.894,
                     ),
                 )))
                 self.assertGreater(item.padding(), centered_shadow_padding)

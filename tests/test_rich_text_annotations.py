@@ -1952,7 +1952,8 @@ class RichTextAnnotationTest(unittest.TestCase):
             ShadowEffect(
                 opacity=0.7,
                 blur=0.06,
-                offset=(0.05, 0.04),
+                angle=38.66,
+                distance=0.064,
             ),
         ))
         item = TextBlkItem(block, 0)
@@ -2024,7 +2025,8 @@ class RichTextAnnotationTest(unittest.TestCase):
                         ShadowEffect(
                             opacity=0.8,
                             blur=0.04,
-                            offset=(0.04, 0.04),
+                            angle=45.0,
+                            distance=0.057,
                         ),
                     ))
                 item = TextBlkItem(block, 0)
