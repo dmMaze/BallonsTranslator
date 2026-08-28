@@ -945,6 +945,11 @@ function runBallonTranslatorBridge() {
                     var psText = transText.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
                     tItem.contents = psText;
 
+                    // Enable auto hyphenation for long words inside paragraph box
+                    try {
+                        tItem.hyphenation = true;
+                    } catch (hyphErr) {}
+
                     // Calculate Font Size in raw image pixels
                     var fmt = blk.fontformat || {};
                     var fontSize = fmt.font_size || blk.font_size;
