@@ -213,6 +213,11 @@ var BT_I18N = {
             en: "Successfully saved {count} text blocks back to page '{page}' in project JSON!",
             ru: "\u0423\u0441\u043f\u0435\u0448\u043d\u043e \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e {count} \u0431\u043b\u043e\u043a\u043e\u0432 \u0434\u043b\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b '{page}' \u0432 JSON!",
             zh: "\u6210\u529f\u4fdd\u5b58 {count} \u4e2a\u6587\u672c\u5757\u5230 '{page}' \u9875\u7684\u9879\u76eeJSON\uff01"
+        },
+        fontWarning: {
+            en: "Note: The following font(s) were not found in Photoshop and used default fallback:\n{fonts}",
+            ru: "\u0412\u043d\u0438\u043c\u0430\u043d\u0438\u0435: \u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0448\u0440\u0438\u0444\u0442\u044b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0432 Photoshop (\u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d \u0441\u0442\u0430\u043d\u0434\u0430\u0440\u0442\u043d\u044b\u0439):\n{fonts}",
+            zh: "\u6ce8\u610f\uff1a\u4ee5\u4e0b\u5b57\u4f53\u5728 Photoshop \u4e2d\u672a\u627e\u5230\uff0c\u5df2\u4f7f\u7528\u9ed8\u8ba4\u5b57\u4f53\u66ff\u4ee3\uff1a\n{fonts}"
         }
     },
 
@@ -282,61 +287,139 @@ var BT_PS = (function () {
     function initFontCache() {
         if (fontCache !== null) return fontCache;
         fontCache = {
-            byPostScript: {},
-            byFamily: {},
-            all: []
+            entries: [],
+            byCleanPS: {},
+            byCleanName: {},
+            byCleanFamily: {}
         };
         try {
             var total = app.fonts.length;
             for (var i = 0; i < total; i++) {
                 var f = app.fonts[i];
-                var psName = f.postScriptName;
-                var family = f.family.toLowerCase();
-                fontCache.byPostScript[psName.toLowerCase()] = psName;
-                if (!fontCache.byFamily[family]) {
-                    fontCache.byFamily[family] = [];
+                var psName = f.postScriptName || "";
+                var family = f.family || "";
+                var name = f.name || "";
+                var style = f.style || "";
+
+                var cleanPS = cleanFontString(psName);
+                var cleanFam = cleanFontString(family);
+                var cleanName = cleanFontString(name);
+
+                var entry = {
+                    postScriptName: psName,
+                    family: family,
+                    name: name,
+                    style: style,
+                    cleanPS: cleanPS,
+                    cleanFam: cleanFam,
+                    cleanName: cleanName
+                };
+
+                fontCache.entries.push(entry);
+
+                if (cleanPS && !fontCache.byCleanPS[cleanPS]) {
+                    fontCache.byCleanPS[cleanPS] = entry;
                 }
-                fontCache.byFamily[family].push(psName);
-                fontCache.all.push(psName);
+                if (cleanName && !fontCache.byCleanName[cleanName]) {
+                    fontCache.byCleanName[cleanName] = entry;
+                }
+                if (cleanFam) {
+                    if (!fontCache.byCleanFamily[cleanFam]) {
+                        fontCache.byCleanFamily[cleanFam] = [];
+                    }
+                    fontCache.byCleanFamily[cleanFam].push(entry);
+                }
             }
         } catch (e) {}
         return fontCache;
     }
 
+    function cleanFontString(str) {
+        if (!str) return "";
+        // Strip common vertical/vendor prefixes (v_, @, DF_, HG_) and non-alphanumerics
+        return String(str).toLowerCase()
+            .replace(/^[@vV][_\s\-]/, "")
+            .replace(/[\s\-_]+/g, "");
+    }
+
     function resolveFontPostScript(requestedName, isBold, isItalic) {
         if (!requestedName) return null;
         var cache = initFontCache();
-        var req = requestedName.toLowerCase().replace(/[\s\-_]+/g, "");
+        var reqClean = cleanFontString(requestedName);
+        var reqRaw = requestedName.toLowerCase().replace(/[\s\-_]+/g, "");
 
-        for (var ps in cache.byPostScript) {
-            var cleanPS = ps.replace(/[\s\-_]+/g, "");
-            if (cleanPS === req) return cache.byPostScript[ps];
-        }
+        // Level 1: Exact Match by PostScriptName or Full Display Name
+        if (cache.byCleanPS[reqRaw]) return cache.byCleanPS[reqRaw].postScriptName;
+        if (cache.byCleanPS[reqClean]) return cache.byCleanPS[reqClean].postScriptName;
+        if (cache.byCleanName[reqRaw]) return cache.byCleanName[reqRaw].postScriptName;
+        if (cache.byCleanName[reqClean]) return cache.byCleanName[reqClean].postScriptName;
 
-        for (var fam in cache.byFamily) {
-            var cleanFam = fam.replace(/[\s\-_]+/g, "");
-            if (cleanFam === req || cleanFam.indexOf(req) !== -1 || req.indexOf(cleanFam) !== -1) {
-                var variants = cache.byFamily[fam];
-                if (isBold && isItalic) {
-                    for (var b = 0; b < variants.length; b++) {
-                        var v = variants[b].toLowerCase();
-                        if (v.indexOf("bold") !== -1 && (v.indexOf("italic") !== -1 || v.indexOf("oblique") !== -1)) return variants[b];
-                    }
+        // Level 2: Family Match with Style Weight Selection
+        var candidates = null;
+        if (cache.byCleanFamily[reqClean]) {
+            candidates = cache.byCleanFamily[reqClean];
+        } else if (cache.byCleanFamily[reqRaw]) {
+            candidates = cache.byCleanFamily[reqRaw];
+        } else {
+            // Partial family name matching (e.g. "CCRumble" vs "v_CCRumble" or "Anime Ace BB" vs "Anime Ace")
+            for (var famKey in cache.byCleanFamily) {
+                if (famKey === reqClean || famKey === reqRaw ||
+                    famKey.indexOf(reqClean) !== -1 || reqClean.indexOf(famKey) !== -1 ||
+                    famKey.indexOf(reqRaw) !== -1 || reqRaw.indexOf(famKey) !== -1) {
+                    candidates = cache.byCleanFamily[famKey];
+                    break;
                 }
-                if (isBold) {
-                    for (var b2 = 0; b2 < variants.length; b2++) {
-                        if (variants[b2].toLowerCase().indexOf("bold") !== -1) return variants[b2];
-                    }
-                }
-                if (isItalic) {
-                    for (var it = 0; it < variants.length; it++) {
-                        var vit = variants[it].toLowerCase();
-                        if (vit.indexOf("italic") !== -1 || vit.indexOf("oblique") !== -1) return variants[it];
-                    }
-                }
-                return variants[0];
             }
         }
+
+        if (candidates && candidates.length > 0) {
+            // 2a: Bold + Italic
+            if (isBold && isItalic) {
+                for (var bi = 0; bi < candidates.length; bi++) {
+                    var sBI = (candidates[bi].style + " " + candidates[bi].postScriptName).toLowerCase();
+                    if ((sBI.indexOf("bold") !== -1 || sBI.indexOf("black") !== -1) &&
+                        (sBI.indexOf("italic") !== -1 || sBI.indexOf("oblique") !== -1)) {
+                        return candidates[bi].postScriptName;
+                    }
+                }
+            }
+            // 2b: Bold
+            if (isBold) {
+                for (var b = 0; b < candidates.length; b++) {
+                    var sB = (candidates[b].style + " " + candidates[b].postScriptName).toLowerCase();
+                    if (sB.indexOf("bold") !== -1 || sB.indexOf("black") !== -1 || sB.indexOf("heavy") !== -1) {
+                        return candidates[b].postScriptName;
+                    }
+                }
+            }
+            // 2c: Italic
+            if (isItalic) {
+                for (var it = 0; it < candidates.length; it++) {
+                    var sI = (candidates[it].style + " " + candidates[it].postScriptName).toLowerCase();
+                    if (sI.indexOf("italic") !== -1 || sI.indexOf("oblique") !== -1) {
+                        return candidates[it].postScriptName;
+                    }
+                }
+            }
+            // 2d: Regular / Roman / Book priority
+            for (var r = 0; r < candidates.length; r++) {
+                var sR = (candidates[r].style + " " + candidates[r].postScriptName).toLowerCase();
+                if (sR.indexOf("regular") !== -1 || sR.indexOf("roman") !== -1 || sR.indexOf("medium") !== -1 || sR.indexOf("normal") !== -1) {
+                    return candidates[r].postScriptName;
+                }
+            }
+            return candidates[0].postScriptName;
+        }
+
+        // Level 3: Fuzzy Substring Matching across all available font names
+        for (var e = 0; e < cache.entries.length; e++) {
+            var ent = cache.entries[e];
+            if (ent.cleanName.indexOf(reqClean) !== -1 || reqClean.indexOf(ent.cleanName) !== -1 ||
+                ent.cleanPS.indexOf(reqClean) !== -1 || reqClean.indexOf(ent.cleanPS) !== -1) {
+                return ent.postScriptName;
+            }
+        }
+
         return null;
     }
 
@@ -731,6 +814,7 @@ function runBallonTranslatorBridge() {
     app.displayDialogs = DialogModes.NO;
 
     var processedCount = 0;
+    var missingFonts = {};
 
     try {
         for (var idx = 0; idx < selectedPages.length; idx++) {
@@ -906,7 +990,13 @@ function runBallonTranslatorBridge() {
                     if (reqFont) {
                         var psFont = BT_PS.resolveFontPostScript(reqFont, isBold, isItalic);
                         if (psFont) {
-                            try { tItem.font = psFont; } catch (fErr) {}
+                            try {
+                                tItem.font = psFont;
+                            } catch (fErr) {
+                                missingFonts[reqFont] = true;
+                            }
+                        } else {
+                            missingFonts[reqFont] = true;
                         }
                     }
 
@@ -956,7 +1046,17 @@ function runBallonTranslatorBridge() {
         }
 
         if (processedCount > 0) {
-            alert(BT_I18N.t("importSuccess", { count: processedCount }), "Completed");
+            var msg = BT_I18N.t("importSuccess", { count: processedCount });
+            var missingList = [];
+            for (var mf in missingFonts) {
+                if (missingFonts.hasOwnProperty(mf)) {
+                    missingList.push("  - " + mf);
+                }
+            }
+            if (missingList.length > 0) {
+                msg += "\n\n" + BT_I18N.t("fontWarning", { fonts: missingList.join("\n") });
+            }
+            alert(msg, "Completed");
         }
     } finally {
         app.preferences.rulerUnits = origRuler;

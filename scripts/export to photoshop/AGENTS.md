@@ -127,7 +127,24 @@ ExtendScript on Windows evaluates `.jsx` source files in the local ANSI codepage
 
 ---
 
-## 5. Geometry, Centering & Bounding Boxes
+## 5. Robust 4-Property Font Matching Engine
+
+Photoshop `app.fonts` objects expose 4 properties:
+- `font.family`: Font family name (e.g. `CC Rumble`, `v_CCRumble`, `Arial`)
+- `font.name`: Full display name (e.g. `CC Rumble Regular`, `Arial Bold`)
+- `font.style`: Subfamily style (e.g. `Regular`, `Bold`, `Italic`, `Bold Italic`)
+- `font.postScriptName`: System internal PostScript identifier (e.g. `CCRumble-Regular`, `Arial-BoldMT`)
+
+**Resolution Pipeline (`BT_PS.resolveFontPostScript`):**
+1. **Normalization:** Strips spaces, hyphens, underscores, and common vertical/vendor prefixes (`v_`, `@`).
+2. **Level 1 (Exact Match):** Direct lookup by sanitized `postScriptName` or `name`.
+3. **Level 2 (Family & Weight Match):** Matches `family`, then selects weight candidate matching requested `isBold` / `isItalic` flags, with fallback to `Regular`.
+4. **Level 3 (Fuzzy Substring):** Substring search across all installed font names.
+5. **Safe Fallback:** If absent, text layout coordinates and sizes are 100% preserved with default font fallback, and missing fonts are summarized upon completion.
+
+---
+
+## 6. Geometry, Centering & Bounding Boxes
 
 - BallonsTranslator stores block geometries in `_bounding_rect = [x, y, width, height]` and `xyxy = [x1, y1, x2, y2]`.
 - **DPI / Resolution Scaling (`scaleFactor`):**
