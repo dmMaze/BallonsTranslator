@@ -318,7 +318,13 @@ class TextEffectPanelTest(unittest.TestCase):
         preset.update_style.assert_called_once_with(self.panel.global_format)
 
         preset.reset_mock()
-        self.assertTrue(self.panel.text_effect_session.add_effect('shadow'))
+        with patch.object(
+            self.panel.texteffect_panel, 'reveal_effect_card'
+        ) as reveal_card:
+            self.assertTrue(
+                self.panel.text_effect_session.add_effect('shadow')
+            )
+        reveal_card.assert_called_once_with(0)
         self.assertIsInstance(
             self.panel.global_format.text_effects.effects[-1], ShadowEffect
         )
@@ -421,15 +427,15 @@ class TextEffectPanelTest(unittest.TestCase):
             self.assertFalse(card.visibility_button.icon().isNull())
         self.assertEqual(
             effect_panel.stroke_cards[0].visibility_button.toolTip(),
-            'Hide Stroke',
+            'Hide',
         )
         self.assertEqual(
             effect_panel.shadow_cards[0].visibility_button.toolTip(),
-            'Show Shadow',
+            'Show',
         )
         self.assertEqual(
             effect_panel.glow_cards[0].visibility_button.toolTip(),
-            'Hide Glow',
+            'Hide',
         )
         self.assertEqual(
             effect_panel.hollow_toggle_button.accessibleName(),
@@ -439,8 +445,11 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
             effect_panel.text_fill_cards[0].visibility_button.toolTip(),
-            'Hide Gradient',
+            'Hide',
         )
+        self.assertEqual(cards[0].delete_button.toolTip(), 'Delete')
+        self.assertEqual(cards[0].move_up_button.toolTip(), 'Move Up')
+        self.assertEqual(cards[0].move_down_button.toolTip(), 'Move Down')
         self.assertEqual(
             [
                 effect_panel.add_effect_actions[key].text()
@@ -534,6 +543,29 @@ class TextEffectPanelTest(unittest.TestCase):
             self.app.processEvents()
             self.assertEqual(host.height(), constrained_height)
             self.assertGreater(card.width(), narrow_card_width)
+
+            effect_panel.verticalScrollBar().setValue(0)
+            effect_panel._set_effect_states([
+                self._stack(
+                    GlowEffect(),
+                    StrokeEffect(paint=LinearGradientPaint()),
+                )
+            ])
+            effect_panel.reveal_effect_card(0)
+            self.app.processEvents()
+
+            added_card = next(
+                card for card in effect_panel.effect_cards
+                if card.index == 0
+            )
+            card_top = added_card.mapTo(
+                effect_panel.viewport(), QPoint(0, 0)
+            ).y()
+            self.assertGreater(
+                effect_panel.verticalScrollBar().value(), 0
+            )
+            self.assertLess(card_top, effect_panel.viewport().height())
+            self.assertGreater(card_top + added_card.height(), 0)
         finally:
             host.deleteLater()
             self.app.processEvents()
@@ -551,9 +583,9 @@ class TextEffectPanelTest(unittest.TestCase):
             mixed_icon_key, card.visibility_button.icon().cacheKey()
         )
         card.visibility_button.set_visibility(None)
-        self.assertEqual(card.visibility_button.toolTip(), 'Show Stroke')
+        self.assertEqual(card.visibility_button.toolTip(), 'Show')
         self.assertEqual(
-            card.visibility_button.accessibleName(), 'Show Stroke'
+            card.visibility_button.accessibleName(), 'Show'
         )
         card.visibility_button.click()
 
@@ -1301,6 +1333,9 @@ class TextEffectPanelTest(unittest.TestCase):
         ]
         self.canvas.selected = items
         self.panel.set_textblk_item(None, multi_select=True)
+        original_counts = [
+            len(item.blk.fontformat.text_effects) for item in items
+        ]
 
         self.panel.texteffect_panel.add_effect_actions['stroke'].trigger()
         self.panel.texteffect_panel.add_effect_actions['shadow'].trigger()
@@ -1308,7 +1343,7 @@ class TextEffectPanelTest(unittest.TestCase):
 
         self.assertEqual(
             [len(item.blk.fontformat.text_effects) for item in items],
-            [3, 4],
+            [count + 3 for count in original_counts],
         )
         self.assertEqual(self.canvas.stack.count(), 3)
 
@@ -2159,7 +2194,6 @@ class TextEffectPanelTest(unittest.TestCase):
             [
                 'builtin:noise',
                 'builtin:grain',
-                'builtin:rough_edge',
                 'builtin:gaussian_blur',
                 'builtin:bloom',
                 'builtin:glitch',

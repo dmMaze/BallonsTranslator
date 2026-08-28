@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from qtpy.QtCore import QRectF
-from qtpy.QtGui import QColor, QImage, QPainter, QTextCursor
+from qtpy.QtGui import QColor, QImage, QPainter, QPixmap, QTextCursor
 from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
 
 from ballontranslator.ui.canvas import Canvas
@@ -569,7 +569,72 @@ class TextFilterRendererTest(unittest.TestCase):
         self.assertEqual(calls, ['custom:bottom', 'custom:top'])
         self.assertEqual(bridge.call_count, 2)
 
-    def test_reorder_toggle_and_exterior_stroke_dependency_miss_prefix_cache(self):
+    def test_exterior_source_keeps_preceding_direct_stroke_across_filter(self):
+        effect = FilterEffect('custom:identity')
+        registry = _RuntimeRegistry({
+            effect.filter_id: _runtime(
+                effect, lambda rgba, _params, _context: rgba
+            )
+        })
+        glow = GlowEffect(size=0.10, spread=0.03)
+        stroke = StrokeEffect(width=0.20, position='center')
+        item = self._item(TextEffectStack(effects=(
+            glow, effect, stroke
+        )))
+        renderer = item.effect_renderer
+        bounds = renderer.boundingRect()
+        nodes = renderer._ordered_surface_nodes(target_stroke=False)
+        self.assertFalse(any(
+            isinstance(node, StrokeEffect) for _index, node in nodes
+        ))
+        canonical = renderer._capture_effect_source(bounds, 1.0)
+        canonical_alpha = renderer._pixmap_alpha(canonical)
+        silhouette = QPixmap(canonical)
+        renderer._paint_stroke_silhouette(
+            silhouette,
+            canonical_alpha,
+            (stroke,),
+            bounds,
+            1.0,
+            {},
+        )
+        expected = renderer._pixmap_alpha(silhouette)
+
+        with patch(
+            'ballontranslator.ui.text_engine.effects.renderer.'
+            'get_filter_registry',
+            return_value=registry,
+        ), patch.object(
+            renderer, '_glow_pixmap', wraps=renderer._glow_pixmap
+        ) as glow_pixmap:
+            renderer._render_pre_mask_effect_surface(
+                bounds, 1.0, target_stroke=False, nodes=nodes
+            )
+
+        np.testing.assert_array_equal(
+            glow_pixmap.call_args.args[0], expected
+        )
+
+        cache_item = self._item(TextEffectStack(effects=(
+            effect, glow, stroke
+        )))
+        cache_renderer = cache_item.effect_renderer
+        cache_nodes = cache_renderer._ordered_surface_nodes(
+            target_stroke=False
+        )
+        changed_stack = TextEffectStack(effects=(
+            effect, glow, replace(stroke, opacity=0.5)
+        ))
+        prefix_key = cache_renderer._effect_cache_key_before_bottom_filter
+        self.assertNotEqual(
+            prefix_key(cache_renderer._effect_cache_input_key(), cache_nodes),
+            prefix_key(
+                cache_renderer._effect_cache_input_key(changed_stack),
+                cache_nodes,
+            ),
+        )
+
+    def test_reorder_toggle_and_ordered_stroke_dependency_prefix_cache(self):
         effect = FilterEffect('custom:identity')
         runtime = _runtime(effect, lambda rgba, _params, _context: rgba)
         registry = _RuntimeRegistry({effect.filter_id: runtime})
@@ -599,13 +664,13 @@ class TextFilterRendererTest(unittest.TestCase):
             item.set_text_effects(baseline, preview=True)
             renderer.repaint_background()
 
-            # The lower exterior prefix depends on every canonical Stroke,
-            # including this one above the Filter.
+            # A Stroke applied after the lower exterior prefix cannot change
+            # that prefix's source alpha.
             changed_stroke = replace(stroke, opacity=1.0)
             changed_stack = TextEffectStack(effects=(
                 changed_stroke, preview_filter, shadow
             ))
-            self.assertNotEqual(
+            self.assertEqual(
                 prefix_key(input_key(baseline)),
                 prefix_key(input_key(changed_stack)),
             )
@@ -616,7 +681,7 @@ class TextFilterRendererTest(unittest.TestCase):
             ) as prefix:
                 item.set_text_effects(changed_stack, preview=True)
                 renderer.repaint_background()
-            self.assertGreater(prefix.call_count, 0)
+            self.assertEqual(prefix.call_count, 0)
             item.set_text_effects(baseline, preview=True)
             renderer.repaint_background()
 
@@ -947,29 +1012,6 @@ class TextFilterRendererTest(unittest.TestCase):
             pixmap2ndarray(bypassed, keep_alpha=True), source_pixels
         )
 
-    def test_rough_edge_adds_padding_and_opaque_jagged_growth(self):
-        effect = FilterEffect('builtin:rough_edge', params={
-            'amount': 1.0, 'size': 2.7,
-            'hardness': 0.8, 'seed': 17,
-        })
-        item = self._item(TextEffectStack(effects=(effect,)))
-        renderer = item.effect_renderer
-        renderer._update_effect_padding()
-        # The 0.5x preview rounds 2.7 logical pixels to a two-pixel halo.
-        self.assertGreaterEqual(item.padding(), 4.0)
-        bounds = renderer.boundingRect()
-        upstream = pixmap2ndarray(
-            renderer._render_pre_filter_effect_surface(bounds, 1.0),
-            keep_alpha=True,
-        )
-        result = pixmap2ndarray(
-            renderer._render_pre_mask_effect_surface(bounds, 1.0),
-            keep_alpha=True,
-        )
-        expanded = (upstream[:, :, 3] == 0) & (result[:, :, 3] > 0)
-        self.assertGreater(np.count_nonzero(expanded), 0)
-        self.assertGreater(int(result[:, :, 3][expanded].max()), 200)
-
     def test_invalid_halos_bypass_interactively_and_fail_strict(self):
         effect = FilterEffect('custom:bad_halo')
         for halo in (None, -1, float('nan'), 513):
@@ -1106,9 +1148,7 @@ class TextFilterRendererTest(unittest.TestCase):
 
     def test_filter_output_survives_nonlinear_transform(self):
         item = self._item(TextEffectStack(effects=(FilterEffect(
-            'builtin:rough_edge', params={
-                'amount': 0.8, 'size': 3.0, 'hardness': 0.5, 'seed': 11,
-            }
+            'builtin:gaussian_blur', params={'radius': 3.0}
         ),)))
         item.set_text_transform(TextTransformStack((SineTextTransform(),)))
         scene = QGraphicsScene()

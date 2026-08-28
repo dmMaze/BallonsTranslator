@@ -23,9 +23,10 @@ QTextDocument + settled SceneTextLayout
 For persistence compatibility its tuple remains topmost-first; the panel
 projects movable cards in application order, so the first visible card runs
 first. A Filter transforms the base and generated layers accumulated by cards
-above it, while cards below it run afterward. Generated effects still derive
-high-quality geometry from canonical glyph/Stroke alpha; order does not turn a
-later Stroke into a raster outline of filtered pixels. The UI exposes fixed
+above it, while cards below it run afterward. Exterior generated effects derive
+high-quality geometry from canonical glyph alpha plus preceding Stroke cards;
+order does not turn filtered pixels or a later Stroke into a new raster outline
+source. The UI exposes fixed
 **Gradient** and **Texture** cards; both reuse the internal `TextFillEffect`
 value and renderer. Inline font color remains the sole solid foreground source.
 Foreground paints and Hollow remain structural base state, independent of their
@@ -134,8 +135,8 @@ Image, and Filter are repeatable. Hollow is unique.
 | Effect | Phase and source | Important semantics |
 | --- | --- | --- |
 | Stroke | Ordered generated layer | Width is relative to font size and retains the historical native-outline meaning for every position. Center splits that outline across the glyph edge; Outside and Inside clip the same outline to the corresponding side without doubling it. A completed surface caches raw outline coverage for every position, then clips Center paint outside canonical face alpha unless Hollow needs the full band. This matches the direct path's later foreground repaint without putting Hollow in the geometry-cache key. New and migrated legacy strokes default to Outside. |
-| Shadow | Ordered generated layer; exterior source for Drop/Long, interior source for Inner | Angle uses the same screen-space convention as Gradient and Distance is relative to maximum font size. Exterior Shadow uses the canonical Stroke-inclusive silhouette but clips output only outside the canonical face. It therefore cannot tint foreground, while global order still decides whether a higher Shadow covers a lower Stroke. Inner Shadow uses canonical glyph alpha and is suppressed by Hollow. |
-| Glow | Ordered generated layer; exterior source for Outer, interior source for Inner | Outer Glow uses the canonical Stroke-inclusive silhouette. Inner Glow uses canonical glyph alpha and is suppressed by Hollow. |
+| Shadow | Ordered generated layer; exterior source for Drop/Long, interior source for Inner | Angle uses the same screen-space convention as Gradient and Distance is relative to maximum font size. Exterior Shadow uses canonical glyph alpha plus active Stroke cards preceding it, then clips output only outside the canonical face. It therefore cannot tint foreground, while global order still decides whether a higher Shadow covers a lower Stroke. Inner Shadow uses canonical glyph alpha and is suppressed by Hollow. |
+| Glow | Ordered generated layer; exterior source for Outer, interior source for Inner | Outer Glow uses canonical glyph alpha plus active Stroke cards preceding it. Inner Glow uses canonical glyph alpha and is suppressed by Hollow. |
 | Gradient/Texture | Structural foreground sub-stack, repeatable | Enabled renderable paints compose in visible order on one transparent face group. Gradient paints the logical rectangle; Texture maps one managed raster over it. The completed group is clipped once by canonical glyph coverage and replaces the rich foreground as a group. Paint alpha and effect Opacity each multiply alpha once. Stroke and generated effects continue using their earlier canonical/source alpha. Both cards persist through the internal `TextFillEffect` type. |
 | Hollow | Foreground modifier, unique | Removes the canonical face, Gradient/Texture group, and interior phase while retaining Stroke and exterior output. It is a toggle, not an independent painted layer. |
 | Image | Ordered project-raster layer, repeatable | Empty or disabled is neutral. In Front source-over composites above accumulated pixels, while Behind destination-over composites behind them so existing text remains visible. It does not change generated layers' canonical glyph sources. |
@@ -218,11 +219,12 @@ effective stack as follows:
    or Image cards in one painter segment and adjacent Filters in one
    straight-RGBA8 bridge. In Front and Behind compose at their exact positions.
 3. Generate every typed layer from its canonical source: exterior Shadow/Glow
-   use the complete canonical Stroke-inclusive silhouette, while interior
-   effects use canonical glyph alpha. Drop/Long Shadow clip outside the
-   canonical face, while Outer Glow clips outside its full source silhouette,
-   at generation time. Hollow therefore only suppresses the base and interior
-   layers; it needs no extra clipping pass.
+   use canonical glyph alpha plus active Stroke cards encountered earlier in
+   visible application order, while interior effects use canonical glyph
+   alpha. Filters and later Strokes never become source pixels. Drop/Long
+   Shadow clip outside the canonical face, while Outer Glow clips outside its
+   full source silhouette, at generation time. Hollow therefore only
+   suppresses the base and interior layers; it needs no extra clipping pass.
 4. Multiply the completed composite by the block-owned alpha mask.
 5. Apply group Overall Opacity and hand the completed source to the global
    transform path described in [Composable text transforms](text_transforms.md).
@@ -294,8 +296,9 @@ includes effect padding or transformed overflow.
 - Inside Stroke and interior effects do not expand source bounds. Center and
   Outside Stroke contribute half of the same native outline width.
 - Exterior effects expand source padding from the visible source silhouette.
-  Glyph-distorting paths use layout-owned ink bounds; ordinary paths use the
-  conservative symmetric padding calculation.
+  Glyph-distorting paths use layout-owned ink bounds; ordinary paths retain a
+  conservative all-Stroke symmetric bound even though each effect consumes
+  only preceding Strokes.
 - Image contributes the unpadded logical rectangle to accumulated distorted
   bounds. A later alpha-expanding Filter grows that rectangle even for empty
   horizontal or vertical text; generated Shadow/Glow sources remain glyph-
@@ -515,16 +518,17 @@ is instead shared at the project asset boundary:
 | --- | --- |
 | Final full surface or visible tiles | Separate committed, preview, and export namespaces; key by effective effects, mask generation, document/layout/render state, transform, writing mode, bounds, and quality tier |
 | Complete pre-mask surface | At most two entries per namespace; reuse across mask-only previews while upstream effects and geometry match |
-| Complete below-filter prefix | At most two entries per namespace; filter-only previews reuse the fixed base and retained nodes below the first effective Filter. The key follows exact node order and canonical Stroke dependencies of cached exterior layers. Upper generated layers are cheaply recomposited from retained canonical/coverage caches. |
+| Complete below-filter prefix | At most two entries per namespace; filter-only previews reuse the fixed base and retained nodes below the first effective Filter. The key follows exact node order and only the preceding Stroke dependencies of cached exterior layers. Upper generated layers are cheaply recomposited from retained canonical/coverage caches. |
 | Canonical glyph pixmap and lazy alpha | At most two entries; reuse across paint-only, Fill Opacity, and Blend previews while document, layout, source geometry, transform state, and render scale match. Repeated fills share this source and its mask rather than rerasterizing glyphs. |
 | Positioned Stroke coverage | At most two read-only alpha planes; key by canonical-source inputs plus Stroke width and position, excluding paint and opacity |
 | Gradient compiled kernel | Runtime acceleration only; the byte-identical NumPy path remains the pre-warm, unavailable, and quality-oracle fallback |
 | Decoded project raster | At most two positive entries per project, shared by Texture and Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached. One top-level paint shares one asset-keyed Image lookup map through its gates and full/visible-tile composite. |
 
-Within one composite, reuse the same colored positioned Stroke band for its
-visible pass and exterior silhouette. Paint-only edits must not rerasterize the
-native glyph outline. Shadow and Glow alpha are intentionally generated on
-demand; their measured cost does not justify another invalidation surface.
+Within one generated batch, grow one exterior source silhouette as Stroke cards
+are encountered and reuse the same colored positioned Stroke band for its
+visible pass. Paint-only edits must not rerasterize the native glyph outline.
+Shadow and Glow alpha are intentionally generated on demand; their measured
+cost does not justify another invalidation surface.
 Keep antialiasing enabled. Faster Preview's 0.5x tier provides the optional
 speed/quality tradeoff; disabling painter antialiasing did not materially
 reduce native outline cost. Large surfaces use the shared bounded full/tile

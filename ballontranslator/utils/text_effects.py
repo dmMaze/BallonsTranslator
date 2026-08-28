@@ -331,9 +331,9 @@ class ShadowEffect:
     blend_mode: str = 'normal'
     shadow_type: str = 'drop'
     paint: GeneratedEffectPaint = field(default_factory=SolidPaint)
-    angle: float = 45.0
+    angle: float = 0.0
     distance: float = 0.1
-    blur: float = 0.0
+    blur: float = 0.15
     spread: float = 0.0
     effect_type: str = field(init=False, default='shadow')
 

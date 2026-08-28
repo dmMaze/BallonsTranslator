@@ -7,7 +7,7 @@ from qtpy.QtWidgets import (
     QStylePainter,
     QWidget,
 )
-from qtpy.QtCore import Signal, Qt
+from qtpy.QtCore import QSize, Signal, Qt
 from qtpy.QtGui import QDoubleValidator, QPaintEvent, QPainter, QPalette
 
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_LONG, CONFIG_COMBOBOX_MIDEAN, CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
@@ -56,7 +56,32 @@ class BottomBorderComboBox(QComboBox):
     ) -> None:
         super().__init__(parent)
         self._text_alignment = text_alignment
+        self._width_sample_text: Optional[str] = None
         self.setProperty('bottomBorderSelector', True)
+
+    def setWidthSampleText(self, text: str) -> None:
+        """Prefer room for ``text`` while retaining normal shrink behavior."""
+        self._width_sample_text = text
+        self.updateGeometry()
+
+    def sizeHint(self) -> QSize:
+        size = super().sizeHint()
+        if not self._width_sample_text:
+            return size
+        option = QStyleOptionComboBox()
+        self.initStyleOption(option)
+        contents = QSize(
+            option.fontMetrics.horizontalAdvance(self._width_sample_text),
+            option.fontMetrics.height(),
+        )
+        reference = self.style().sizeFromContents(
+            QStyle.ContentsType.CT_ComboBox,
+            option,
+            contents,
+            self,
+        )
+        size.setWidth(max(size.width(), reference.width()))
+        return size
 
     def paintEvent(self, event: QPaintEvent) -> None:
         if self._text_alignment is None:

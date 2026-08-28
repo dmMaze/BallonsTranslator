@@ -676,28 +676,33 @@ class TextEffectRenderer:
                 for _index, effect in prefix
                 if isinstance(effect, (StrokeEffect, ShadowEffect, GlowEffect))
             )
-        exterior_stroke_source = (
-            tuple(
-                effect
-                for effect in effects
-                if isinstance(effect, StrokeEffect)
-                and not effect.is_neutral()
-            )
-            if any(
-                isinstance(effect, (ShadowEffect, GlowEffect))
-                and not effect.is_neutral()
-                and effect_phase(effect) == 'exterior'
-                for effect in generated_below
-            )
-            else ()
+        cache_filter_indices = tuple(
+            index
+            for index, effect in enumerate(effects)
+            if isinstance(effect, FilterEffect) and effect.enabled
         )
-        canonical_stroke_alignment = bool(exterior_stroke_source) or any(
+        cache_boundary = (
+            max(cache_filter_indices) if cache_filter_indices else -1
+        )
+        exterior_indices = tuple(
+            index
+            for index, effect in enumerate(effects)
+            if index > cache_boundary
+            and isinstance(effect, (ShadowEffect, GlowEffect))
+            and not effect.is_neutral()
+            and effect_phase(effect) == 'exterior'
+        )
+        exterior_stroke_source = tuple(
+            effect
+            for index, effect in enumerate(effects)
+            if exterior_indices
+            and index > min(exterior_indices)
+            and isinstance(effect, StrokeEffect)
+            and not effect.is_neutral()
+        )
+        canonical_stroke_alignment = any(
             isinstance(effect, StrokeEffect) and not effect.is_neutral()
-            for effect in (
-                effects
-                if ordered_nodes is None
-                else tuple(effect for _index, effect in ordered_nodes)
-            )
+            for effect in effects
         )
         return (
             (
@@ -3095,21 +3100,25 @@ class TextEffectRenderer:
             canonical = None
             canonical_alpha = None
         positioned_stroke_bands: Dict[StrokeEffect, QPixmap] = {}
-        exterior_alpha = canonical_alpha
-        if canonical is not None and any(
-            isinstance(effect, (ShadowEffect, GlowEffect))
-            and effect_phase(effect) == 'exterior'
-            for _index, effect in nodes
-        ) and self._active_strokes():
-            assert canonical_alpha is not None
-            silhouette = self._stroke_silhouette(
-                canonical,
-                canonical_alpha,
-                surface_rect,
-                render_scale,
-                positioned_stroke_bands,
+        try:
+            exterior_alphas = (
+                self._ordered_exterior_source_alphas(
+                    canonical,
+                    canonical_alpha,
+                    nodes,
+                    surface_rect,
+                    render_scale,
+                    positioned_stroke_bands,
+                )
+                if canonical is not None and canonical_alpha is not None
+                else {}
             )
-            exterior_alpha = self._pixmap_alpha(silhouette)
+        except RASTER_BOUNDARY_FAILURES as error:
+            if isinstance(error, EffectRasterAllocationError):
+                raise
+            raise EffectRasterAllocationError(
+                'unable to render ordered Stroke source silhouette'
+            ) from error
 
         # The prefix owner just allocated this base and no cache observes it
         # yet. Upper batches may receive cached/filter output and must detach.
@@ -3123,7 +3132,7 @@ class TextEffectRenderer:
             painter = self._begin_effect_layer_painter(
                 target, surface_rect, render_scale
             )
-            for _index, effect in nodes:
+            for index, effect in nodes:
                 if isinstance(effect, ImageEffect):
                     rgba = self._image_raster(effect, image_rasters)
                     if rgba is not None:
@@ -3147,7 +3156,7 @@ class TextEffectRenderer:
                 else:
                     assert canonical is not None
                     source_alpha = (
-                        exterior_alpha
+                        exterior_alphas[index]
                         if effect_phase(effect) == 'exterior'
                         else canonical_alpha
                     )
@@ -3443,6 +3452,7 @@ class TextEffectRenderer:
         positioned_stroke_bands: Optional[
             Dict[StrokeEffect, QPixmap]
         ] = None,
+        strokes: Optional[Tuple[StrokeEffect, ...]] = None,
     ) -> None:
         """Paint selected Stroke positions back-to-front.
 
@@ -3451,7 +3461,12 @@ class TextEffectRenderer:
         """
         previous = self._render_stroke
         try:
-            for stroke in reversed(self._active_strokes()):
+            paint_order = (
+                tuple(reversed(self._active_strokes()))
+                if strokes is None
+                else strokes
+            )
+            for stroke in paint_order:
                 if stroke.position not in positions:
                     continue
                 self._render_stroke = stroke
@@ -3477,6 +3492,39 @@ class TextEffectRenderer:
                 )
         finally:
             self._render_stroke = previous
+
+    def _paint_stroke_silhouette(
+        self,
+        silhouette: QPixmap,
+        canonical_alpha: np.ndarray,
+        strokes: Tuple[StrokeEffect, ...],
+        surface_rect: QRectF,
+        render_scale: float,
+        positioned_stroke_bands: Dict[StrokeEffect, QPixmap],
+    ) -> None:
+        """Extend a canonical silhouette with Strokes in application order."""
+        if not strokes:
+            return
+        painter = QPainter(silhouette)
+        if not painter.isActive():
+            raise EffectRasterAllocationError(
+                'unable to begin Stroke silhouette painter'
+            )
+        try:
+            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
+            self._prepare_effect_surface_painter(painter, render_scale)
+            painter.translate(-surface_rect.topLeft())
+            self._paint_positioned_strokes(
+                painter,
+                surface_rect,
+                render_scale,
+                canonical_alpha,
+                ('center', 'inside', 'outside'),
+                positioned_stroke_bands,
+                strokes,
+            )
+        finally:
+            painter.end()
 
     def _capture_effect_source(
         self,
@@ -3908,51 +3956,62 @@ class TextEffectRenderer:
             if painter is not None and painter.isActive():
                 painter.end()
 
-    def _stroke_silhouette(
+    def _ordered_exterior_source_alphas(
         self,
         canonical: QPixmap,
         canonical_alpha: np.ndarray,
+        nodes: Tuple[Tuple[int, TextEffect], ...],
         surface_rect: QRectF,
         render_scale: float,
-        positioned_stroke_bands: Optional[
-            Dict[StrokeEffect, QPixmap]
-        ] = None,
-    ) -> QPixmap:
-        """Add visible positioned Stroke coverage to canonical shadow alpha.
+        positioned_stroke_bands: Dict[StrokeEffect, QPixmap],
+    ) -> Dict[int, np.ndarray]:
+        """Map exterior nodes to canonical plus preceding Stroke alpha.
 
-        >>> hasattr(TextEffectRenderer, '_stroke_silhouette')
+        The working silhouette grows monotonically through the card order, so
+        each Stroke band is composited at most once per generated-layer batch.
+
+        >>> hasattr(TextEffectRenderer, '_ordered_exterior_source_alphas')
         True
         """
-        try:
-            silhouette = QPixmap(canonical)
-            painter = QPainter(silhouette)
-            if not painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin Stroke silhouette painter'
-                )
-            try:
-                painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
-                self._prepare_effect_surface_painter(
-                    painter, render_scale
-                )
-                painter.translate(-surface_rect.topLeft())
-                self._paint_positioned_strokes(
-                    painter,
+        active_effects = self.effective_text_effects().effects
+        ordered_strokes = tuple(
+            (index, effect)
+            for index, effect in reversed(tuple(enumerate(active_effects)))
+            if isinstance(effect, StrokeEffect) and not effect.is_neutral()
+        )
+        sources: Dict[int, np.ndarray] = {}
+        silhouette: Optional[QPixmap] = None
+        painted_count = 0
+        source_alpha = canonical_alpha
+        for index, effect in nodes:
+            if not isinstance(effect, (ShadowEffect, GlowEffect)) or (
+                effect_phase(effect) != 'exterior'
+            ):
+                continue
+            previous_count = painted_count
+            while (
+                painted_count < len(ordered_strokes)
+                and ordered_strokes[painted_count][0] > index
+            ):
+                painted_count += 1
+            stroke_slice = ordered_strokes[previous_count:painted_count]
+            new_strokes = tuple(
+                stroke for _stroke_index, stroke in stroke_slice
+            )
+            if new_strokes:
+                if silhouette is None:
+                    silhouette = QPixmap(canonical)
+                self._paint_stroke_silhouette(
+                    silhouette,
+                    canonical_alpha,
+                    new_strokes,
                     surface_rect,
                     render_scale,
-                    canonical_alpha,
-                    ('center', 'inside', 'outside'),
                     positioned_stroke_bands,
                 )
-            finally:
-                painter.end()
-            return silhouette
-        except RASTER_BOUNDARY_FAILURES as error:
-            if isinstance(error, EffectRasterAllocationError):
-                raise
-            raise EffectRasterAllocationError(
-                'unable to render Stroke shadow silhouette'
-            ) from error
+                source_alpha = self._pixmap_alpha(silhouette)
+            sources[index] = source_alpha
+        return sources
 
     @staticmethod
     def _pixmap_alpha(pixmap: QPixmap) -> np.ndarray:

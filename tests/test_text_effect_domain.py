@@ -224,6 +224,12 @@ class TextEffectDomainTest(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             shadow.blur = 0.2
 
+    def test_shadow_defaults_match_new_card_values(self):
+        shadow = ShadowEffect()
+
+        self.assertEqual(shadow.angle, 0.0)
+        self.assertEqual(shadow.blur, 0.15)
+
     def test_ensure_inserts_default_primary_stroke(self):
         original = TextEffectStack(overall_opacity=0.4)
 

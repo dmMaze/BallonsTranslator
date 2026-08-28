@@ -115,9 +115,6 @@ def _filter_ui_text(spec: FilterSpec, text: str) -> str:
         'Grain': lambda: QCoreApplication.translate(
             'TextEffectPanel', 'Grain'
         ),
-        'Rough Edge': lambda: QCoreApplication.translate(
-            'TextEffectPanel', 'Rough Edge'
-        ),
         'Gaussian Blur': lambda: QCoreApplication.translate(
             'TextEffectPanel', 'Gaussian Blur'
         ),
@@ -171,6 +168,69 @@ def _filter_ui_text(spec: FilterSpec, text: str) -> str:
     return text if translator is None else translator()
 
 
+class _EffectActionButton(QToolButton):
+    """Shared construction for compact effect-card actions."""
+
+    def __init__(
+        self,
+        icon_name: str,
+        hint: str,
+        object_name: str,
+        direction: int,
+        parent: Optional[QWidget] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName(object_name)
+        self.setIcon(QIcon(themed_icon_path(icon_name)))
+        icon_extent = 12 if direction == 0 else 16
+        self.setIconSize(QSize(icon_extent, icon_extent))
+        self.setToolTip(hint)
+        self.setAccessibleName(hint)
+        self.setProperty('move-direction', direction)
+        self.setFixedSize(18, 18)
+
+
+class EffectDeleteButton(_EffectActionButton):
+    """Delete an effect card."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(
+            'titlebar_close.svg',
+            QCoreApplication.translate('EffectDeleteButton', 'Delete'),
+            'TextEffectCloseButton',
+            0,
+            parent,
+        )
+
+
+class EffectMoveUpButton(_EffectActionButton):
+    """Move an effect toward the start of its stack."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(
+            'chevron-up.svg',
+            QCoreApplication.translate('EffectMoveUpButton', 'Move Up'),
+            'TextEffectMoveButton',
+            -1,
+            parent,
+        )
+
+
+class EffectMoveDownButton(_EffectActionButton):
+    """Move an effect toward the end of its stack."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(
+            'chevron-down.svg',
+            QCoreApplication.translate(
+                'EffectMoveDownButton', 'Move Down'
+            ),
+            'TextEffectMoveButton',
+            1,
+            parent,
+        )
+
+
 class EffectVisibilityButton(QToolButton):
     """Compact enabled, disabled, or mixed visibility control.
 
@@ -180,15 +240,8 @@ class EffectVisibilityButton(QToolButton):
 
     visibility_requested = Signal(bool)
 
-    def __init__(
-        self,
-        show_tooltip: str,
-        hide_tooltip: str,
-        parent: Optional[QWidget] = None,
-    ) -> None:
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self._show_tooltip = show_tooltip
-        self._hide_tooltip = hide_tooltip
         self._visibility: Optional[bool] = None
         self.setObjectName('TextEffectVisibilityButton')
         self.setFixedSize(18, 18)
@@ -200,16 +253,16 @@ class EffectVisibilityButton(QToolButton):
         self._visibility = visible
         if visible is True:
             icon_name = 'text-effect-visibility-open.svg'
-            description = self._hide_tooltip
+            hint = self.tr('Hide')
         elif visible is False:
             icon_name = 'text-effect-visibility-closed.svg'
-            description = self._show_tooltip
+            hint = self.tr('Show')
         else:
             icon_name = 'text-effect-visibility-mixed.svg'
-            description = self._show_tooltip
+            hint = self.tr('Show')
         self.setIcon(QIcon(themed_icon_path(icon_name)))
-        self.setToolTip(description)
-        self.setAccessibleName(description)
+        self.setToolTip(hint)
+        self.setAccessibleName(hint)
 
     def _on_clicked(self) -> None:
         self.visibility_requested.emit(self._visibility is not True)
@@ -309,15 +362,19 @@ def _effect_action_widget(
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(4)
     for button in buttons:
-        button.setFixedSize(18, 18)
-        icon_size = (
-            12 if button.objectName() == 'TextEffectCloseButton' else 16
-        )
-        button.setIconSize(QSize(icon_size, icon_size))
         layout.addWidget(button)
     widget.setFixedWidth(18 * len(buttons) + 4 * max(0, len(buttons) - 1))
     parent.set_hover_actions(buttons)
     return widget
+
+
+def _set_effect_header_selector_width(
+    selector: BottomBorderComboBox,
+) -> None:
+    """Give every effect header selector Shadow's natural content width."""
+    selector.setWidthSampleText(QCoreApplication.translate(
+        'TextEffectPanel', 'Long / Extrude'
+    ))
 
 
 class BlendModeSelector(QToolButton):
@@ -690,20 +747,17 @@ class StrokeEffectCard(_EffectCard):
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
 
-        self.move_up_button = self._action_button(
-            'chevron-up.svg', self.tr('Move Up'), -1
-        )
-        self.move_down_button = self._action_button(
-            'chevron-down.svg', self.tr('Move Down'), 1
-        )
-        self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Stroke'), 0
-        )
-        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.move_up_button = EffectMoveUpButton(self)
+        self.move_down_button = EffectMoveDownButton(self)
+        self.delete_button = EffectDeleteButton(self)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.delete_button,
+        ):
+            button.clicked.connect(self._on_action_clicked)
 
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Stroke'), self.tr('Hide Stroke'), self
-        )
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
@@ -729,6 +783,7 @@ class StrokeEffectCard(_EffectCard):
             (self.tr('Outside'), 'outside'),
         ):
             self.position_selector.addItem(label, value)
+        _set_effect_header_selector_width(self.position_selector)
         self.position_selector.currentIndexChanged.connect(
             self._on_position_changed
         )
@@ -841,19 +896,6 @@ class StrokeEffectCard(_EffectCard):
         layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
-
-    def _action_button(
-        self, icon_name: str, tooltip: str, direction: int
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName('TextEffectMoveButton')
-        button.setIcon(QIcon(themed_icon_path(icon_name)))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setProperty('move-direction', direction)
-        button.setFixedSize(18, 18)
-        button.clicked.connect(self._on_action_clicked)
-        return button
 
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
@@ -1055,20 +1097,17 @@ class ShadowEffectCard(_EffectCard):
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-        self.move_up_button = self._action_button(
-            'chevron-up.svg', self.tr('Move Up'), -1
-        )
-        self.move_down_button = self._action_button(
-            'chevron-down.svg', self.tr('Move Down'), 1
-        )
-        self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Shadow'), 0
-        )
-        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.move_up_button = EffectMoveUpButton(self)
+        self.move_down_button = EffectMoveDownButton(self)
+        self.delete_button = EffectDeleteButton(self)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.delete_button,
+        ):
+            button.clicked.connect(self._on_action_clicked)
 
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Shadow'), self.tr('Hide Shadow'), self
-        )
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
@@ -1094,6 +1133,7 @@ class ShadowEffectCard(_EffectCard):
             (self.tr('Long / Extrude'), 'long'),
         ):
             self.type_selector.addItem(label, value)
+        _set_effect_header_selector_width(self.type_selector)
         self.type_selector.currentIndexChanged.connect(
             self._on_type_changed
         )
@@ -1239,19 +1279,6 @@ class ShadowEffectCard(_EffectCard):
         layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
-
-    def _action_button(
-        self, icon_name: str, tooltip: str, direction: int
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName('TextEffectMoveButton')
-        button.setIcon(QIcon(themed_icon_path(icon_name)))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setProperty('move-direction', direction)
-        button.setFixedSize(18, 18)
-        button.clicked.connect(self._on_action_clicked)
-        return button
 
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
@@ -1508,19 +1535,16 @@ class GlowEffectCard(_EffectCard):
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-        self.move_up_button = self._action_button(
-            'chevron-up.svg', self.tr('Move Up'), -1
-        )
-        self.move_down_button = self._action_button(
-            'chevron-down.svg', self.tr('Move Down'), 1
-        )
-        self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Glow'), 0
-        )
-        self.delete_button.setObjectName('TextEffectCloseButton')
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Glow'), self.tr('Hide Glow'), self
-        )
+        self.move_up_button = EffectMoveUpButton(self)
+        self.move_down_button = EffectMoveDownButton(self)
+        self.delete_button = EffectDeleteButton(self)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.delete_button,
+        ):
+            button.clicked.connect(self._on_action_clicked)
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
@@ -1541,6 +1565,7 @@ class GlowEffectCard(_EffectCard):
         self.type_selector.setAccessibleName(self.tr('Glow Type'))
         self.type_selector.addItem(self.tr('Outer'), 'outer')
         self.type_selector.addItem(self.tr('Inner'), 'inner')
+        _set_effect_header_selector_width(self.type_selector)
         self.type_selector.currentIndexChanged.connect(
             self._on_type_changed
         )
@@ -1656,19 +1681,6 @@ class GlowEffectCard(_EffectCard):
         layout.setSpacing(8)
         layout.addLayout(header)
         layout.addLayout(controls)
-
-    def _action_button(
-        self, icon_name: str, tooltip: str, direction: int
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName('TextEffectMoveButton')
-        button.setIcon(QIcon(themed_icon_path(icon_name)))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setProperty('move-direction', direction)
-        button.setFixedSize(18, 18)
-        button.clicked.connect(self._on_action_clicked)
-        return button
 
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
@@ -1905,26 +1917,19 @@ class TextFillEffectCard(_EffectCard):
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show {effect}').format(effect=title),
-            self.tr('Hide {effect}').format(effect=title),
-            self,
-        )
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
-        self.move_up_button = self._action_button(
-            'chevron-up.svg', self.tr('Move Up'), -1
-        )
-        self.move_down_button = self._action_button(
-            'chevron-down.svg', self.tr('Move Down'), 1
-        )
-        self.delete_button = self._action_button(
-            'titlebar_close.svg',
-            self.tr('Delete {effect}').format(effect=title),
-            0,
-        )
-        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.move_up_button = EffectMoveUpButton(self)
+        self.move_down_button = EffectMoveDownButton(self)
+        self.delete_button = EffectDeleteButton(self)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.delete_button,
+        ):
+            button.clicked.connect(self._on_action_clicked)
 
         action_widget = _effect_action_widget(
             self,
@@ -2174,19 +2179,6 @@ class TextFillEffectCard(_EffectCard):
             else (self.opacity_control, self.texture_scale_control)
         )
 
-    def _action_button(
-        self, icon_name: str, tooltip: str, direction: int
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName('TextEffectMoveButton')
-        button.setIcon(QIcon(themed_icon_path(icon_name)))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setProperty('move-direction', direction)
-        button.setFixedSize(18, 18)
-        button.clicked.connect(self._on_action_clicked)
-        return button
-
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
         self.move_down_button.setEnabled(down)
@@ -2302,19 +2294,16 @@ class FilterEffectCard(_EffectCard):
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-        self.move_up_button = self._action_button(
-            'chevron-up.svg', self.tr('Move Up'), -1
-        )
-        self.move_down_button = self._action_button(
-            'chevron-down.svg', self.tr('Move Down'), 1
-        )
-        self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Filter'), 0
-        )
-        self.delete_button.setObjectName('TextEffectCloseButton')
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Filter'), self.tr('Hide Filter'), self
-        )
+        self.move_up_button = EffectMoveUpButton(self)
+        self.move_down_button = EffectMoveDownButton(self)
+        self.delete_button = EffectDeleteButton(self)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.delete_button,
+        ):
+            button.clicked.connect(self._on_action_clicked)
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
@@ -2412,18 +2401,6 @@ class FilterEffectCard(_EffectCard):
         row.addWidget(selector, 1)
         self.choice_selectors[parameter.key] = selector
         return row_widget
-
-    def _action_button(
-        self, icon_name: str, tooltip: str, direction: int
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName('TextEffectMoveButton')
-        button.setIcon(QIcon(themed_icon_path(icon_name)))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setProperty('move-direction', direction)
-        button.clicked.connect(self._on_action_clicked)
-        return button
 
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
@@ -2854,24 +2831,19 @@ class ImageEffectCard(_EffectCard):
         )
         self.setToolTip(self._editing_hint)
         self.title_label.setToolTip(self._editing_hint)
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Image'),
-            self.tr('Hide Image'),
-            self,
-        )
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self._on_enabled_clicked
         )
-        self.move_up_button = self._action_button(
-            'chevron-up.svg', self.tr('Move Up'), -1
-        )
-        self.move_down_button = self._action_button(
-            'chevron-down.svg', self.tr('Move Down'), 1
-        )
-        self.delete_button = self._action_button(
-            'titlebar_close.svg', self.tr('Delete Image'), 0
-        )
-        self.delete_button.setObjectName('TextEffectCloseButton')
+        self.move_up_button = EffectMoveUpButton(self)
+        self.move_down_button = EffectMoveDownButton(self)
+        self.delete_button = EffectDeleteButton(self)
+        for button in (
+            self.move_up_button,
+            self.move_down_button,
+            self.delete_button,
+        ):
+            button.clicked.connect(self._on_action_clicked)
         actions = _effect_action_widget(
             self,
             (
@@ -3026,19 +2998,6 @@ class ImageEffectCard(_EffectCard):
         layout.addLayout(prompt_layout)
         layout.addLayout(generation_actions)
         self._sync_generation_controls()
-
-    def _action_button(
-        self, icon_name: str, tooltip: str, direction: int
-    ) -> QToolButton:
-        button = QToolButton(self)
-        button.setObjectName('TextEffectMoveButton')
-        button.setIcon(QIcon(themed_icon_path(icon_name)))
-        button.setToolTip(tooltip)
-        button.setAccessibleName(tooltip)
-        button.setProperty('move-direction', direction)
-        button.setFixedSize(18, 18)
-        button.clicked.connect(self._on_action_clicked)
-        return button
 
     def set_move_enabled(self, up: bool, down: bool) -> None:
         self.move_up_button.setEnabled(up)
@@ -3322,20 +3281,11 @@ class AlphaMaskCard(_EffectCard):
         self.title_label.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred
         )
-        self.visibility_button = EffectVisibilityButton(
-            self.tr('Show Eraser'), self.tr('Hide Eraser'), self
-        )
+        self.visibility_button = EffectVisibilityButton(self)
         self.visibility_button.visibility_requested.connect(
             self.enabled_requested.emit
         )
-        self.remove_button = QToolButton(self)
-        self.remove_button.setObjectName('TextEffectCloseButton')
-        self.remove_button.setIcon(
-            QIcon(themed_icon_path('titlebar_close.svg'))
-        )
-        self.remove_button.setToolTip(self.tr('Remove Eraser'))
-        self.remove_button.setAccessibleName(self.tr('Remove Eraser'))
-        self.remove_button.setFixedSize(18, 18)
+        self.remove_button = EffectDeleteButton(self)
         self.remove_button.clicked.connect(self.remove_requested.emit)
 
         action_widget = _effect_action_widget(self, (self.remove_button,))
@@ -3690,6 +3640,12 @@ class TextEffectPanel(PanelArea):
         self._effect_types = None
         self._image_generation_index = -1
         self._image_generation_state = 'idle'
+        self._pending_visible_effect_index: Optional[int] = None
+        self._reveal_effect_timer = QTimer(self)
+        self._reveal_effect_timer.setSingleShot(True)
+        self._reveal_effect_timer.timeout.connect(
+            self._reveal_pending_effect_card
+        )
         self.alpha_mask_card = None
         self._block_items = ()
         self._alpha_mask_session = None
@@ -4291,6 +4247,24 @@ class TextEffectPanel(PanelArea):
         if not hasattr(self, 'content_layout'):
             return
         self._sync_scroll_content_height(self.content_layout)
+
+    def reveal_effect_card(self, index: int) -> None:
+        """Scroll a newly inserted effect card into the viewport."""
+        self._pending_visible_effect_index = int(index)
+        self._reveal_effect_timer.start(0)
+
+    def _reveal_pending_effect_card(self) -> None:
+        index = self._pending_visible_effect_index
+        self._pending_visible_effect_index = None
+        if index is None:
+            return
+        self._sync_content_height()
+        card = next(
+            (card for card in self.effect_cards if card.index == index),
+            None,
+        )
+        if card is not None:
+            self.ensureWidgetVisible(card, 0, self.cards_layout.spacing())
 
     def _on_image_card_natural_height_changed(self) -> None:
         self.cards_layout.invalidate()

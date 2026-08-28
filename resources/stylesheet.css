@@ -2542,10 +2542,6 @@ QToolButton#TextEffectBlendSelector::menu-indicator {
     height: 0px;
 }
 
-QMenu#TextEffectBlendMenu::indicator:checked {
-    image: url(resources/icons/checkbox_checked.svg);
-}
-
 QWidget#InlineLinearGradientEditor {
     background-color: transparent;
 }

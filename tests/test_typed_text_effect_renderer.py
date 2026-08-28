@@ -291,6 +291,24 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             scene.removeItem(item)
         return pixmap2ndarray(image, keep_alpha=True)
 
+    @staticmethod
+    def _all_stroke_silhouette(
+        renderer,
+        canonical: QPixmap,
+        canonical_alpha: np.ndarray,
+        bounds: QRectF,
+    ) -> QPixmap:
+        silhouette = QPixmap(canonical)
+        renderer._paint_stroke_silhouette(
+            silhouette,
+            canonical_alpha,
+            tuple(reversed(renderer._active_strokes())),
+            bounds,
+            1.0,
+            {},
+        )
+        return silhouette
+
     def test_inner_survives_public_paint_and_vertical_path(self):
         plain = self._item(TextEffectStack())
         inner_stack = TextEffectStack(effects=(ShadowEffect(
@@ -429,8 +447,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         bounds = renderer.boundingRect()
         canonical = renderer._capture_effect_source(bounds, 1.0)
         canonical_alpha = renderer._pixmap_alpha(canonical)
-        silhouette = renderer._stroke_silhouette(
-            canonical, canonical_alpha, bounds, 1.0
+        silhouette = self._all_stroke_silhouette(
+            renderer, canonical, canonical_alpha, bounds
         )
         silhouette_alpha = renderer._pixmap_alpha(silhouette)
         self.assertGreater(
@@ -559,8 +577,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 canonical = renderer._capture_effect_source(bounds, 1.0)
                 canonical_alpha = renderer._pixmap_alpha(canonical)
                 expected = renderer._pixmap_alpha(
-                    renderer._stroke_silhouette(
-                        canonical, canonical_alpha, bounds, 1.0
+                    self._all_stroke_silhouette(
+                        renderer, canonical, canonical_alpha, bounds
                     )
                 )
                 with patch.object(
@@ -570,6 +588,80 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 np.testing.assert_array_equal(
                     glow_pixmap.call_args.args[0], expected
                 )
+
+    def test_exterior_effects_use_only_preceding_strokes(self):
+        stroke = StrokeEffect(
+            width=0.16,
+            position='outside',
+            paint=SolidPaint((20, 60, 220)),
+        )
+        for generated in (ShadowEffect(), GlowEffect(size=0.08)):
+            for vertical in (False, True):
+                for effects, includes_stroke in (
+                    ((generated, stroke), True),
+                    ((stroke, generated), False),
+                ):
+                    with self.subTest(
+                        effect=generated.effect_type,
+                        includes_stroke=includes_stroke,
+                        vertical=vertical,
+                    ):
+                        item = self._item(
+                            TextEffectStack(effects=effects),
+                            vertical=vertical,
+                        )
+                        renderer = item.effect_renderer
+                        bounds = renderer.boundingRect()
+                        canonical = renderer._capture_effect_source(
+                            bounds, 1.0
+                        )
+                        canonical_alpha = renderer._pixmap_alpha(canonical)
+                        expected = canonical_alpha
+                        if includes_stroke:
+                            expected = renderer._pixmap_alpha(
+                                self._all_stroke_silhouette(
+                                    renderer,
+                                    canonical,
+                                    canonical_alpha,
+                                    bounds,
+                                )
+                            )
+                        with patch.object(
+                            renderer,
+                            '_generated_effect_pixmap',
+                            wraps=renderer._generated_effect_pixmap,
+                        ) as render_generated:
+                            renderer._render_pre_mask_effect_surface(
+                                bounds, 1.0
+                            )
+                        np.testing.assert_array_equal(
+                            render_generated.call_args.args[0], expected
+                        )
+
+    def test_exterior_source_grows_silhouette_once_per_preceding_stroke(self):
+        first = StrokeEffect(width=0.12, position='outside')
+        second = StrokeEffect(width=0.20, position='center')
+        item = self._item(TextEffectStack(effects=(
+            ShadowEffect(),
+            second,
+            GlowEffect(size=0.08),
+            first,
+        )))
+        renderer = item.effect_renderer
+
+        with patch.object(
+            renderer,
+            '_paint_stroke_silhouette',
+            wraps=renderer._paint_stroke_silhouette,
+        ) as paint_silhouette:
+            renderer._render_pre_mask_effect_surface(
+                renderer.boundingRect(), 1.0
+            )
+
+        self.assertEqual(
+            [call.args[2] for call in paint_silhouette.call_args_list],
+            [(first,), (second,)],
+        )
 
     def test_gradient_preview_matches_renderer_straight_rgba(self):
         paint = LinearGradientPaint(
@@ -1266,8 +1358,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             bounds = renderer.boundingRect()
             canonical = renderer._capture_effect_source(bounds, 1.0)
             canonical_alpha = renderer._pixmap_alpha(canonical)
-            silhouette = renderer._stroke_silhouette(
-                canonical, canonical_alpha, bounds, 1.0
+            silhouette = self._all_stroke_silhouette(
+                renderer, canonical, canonical_alpha, bounds
             )
             return int(pixmap2ndarray(
                 silhouette, keep_alpha=True
@@ -1378,8 +1470,8 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 bounds = renderer.boundingRect()
                 canonical = renderer._capture_effect_source(bounds, 1.0)
                 canonical_alpha = renderer._pixmap_alpha(canonical)
-                silhouette = renderer._stroke_silhouette(
-                    canonical, canonical_alpha, bounds, 1.0
+                silhouette = self._all_stroke_silhouette(
+                    renderer, canonical, canonical_alpha, bounds
                 )
                 silhouette_alpha = pixmap2ndarray(
                     silhouette, keep_alpha=True
@@ -2931,10 +3023,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
                 'amount': 0.55, 'size': 3.4, 'seed': 17,
             }),
             GlowEffect(size=0.08, spread=0.03),
-            FilterEffect('builtin:rough_edge', params={
-                'amount': 0.7, 'size': 2.7,
-                'hardness': 0.35, 'seed': 29,
-            }),
+            FilterEffect('builtin:gaussian_blur', params={'radius': 2.7}),
         ))
         item = self._item(stack)
         renderer = item.effect_renderer

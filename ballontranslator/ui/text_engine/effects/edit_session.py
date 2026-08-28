@@ -692,6 +692,47 @@ class TextEffectEditSession:
             for state in states
         )
 
+    def _insert_effect(
+        self,
+        before: Sequence[TextEffectStack],
+        effect: TextEffect,
+    ) -> bool:
+        """Insert one effect across the active targets and reveal its card.
+
+        >>> session = object.__new__(TextEffectEditSession)
+        >>> session.controls = None
+        >>> session._commit_complete_states = lambda before, after: True
+        >>> session._insert_effect((TextEffectStack(),), StrokeEffect())
+        True
+        """
+        common_budget = (
+            self._common_occurrence_budget(before, effect)
+            if len(before) > 1 else None
+        )
+        after = []
+        primary_insert_index: Optional[int] = None
+        for state in before:
+            effects = list(state.effects)
+            insert_index = (
+                self._insertion_index(state, effect)
+                if common_budget is None
+                else self._matched_insertion_index(
+                    state, effect, common_budget
+                )
+            )
+            if primary_insert_index is None:
+                primary_insert_index = insert_index
+            effects.insert(insert_index, effect)
+            after.append(replace(state, effects=tuple(effects)))
+        changed = self._commit_complete_states(before, after)
+        if (
+            changed
+            and self.controls is not None
+            and primary_insert_index is not None
+        ):
+            self.controls.reveal_effect_card(primary_insert_index)
+        return changed
+
     def add_effect(self, effect_type: str) -> bool:
         self._prepare_structure_change()
         before = self._current_states()
@@ -718,23 +759,7 @@ class TextEffectEditSession:
             self._sync_effect_ui()
             return False
         effect = constructor()
-        common_budget = (
-            self._common_occurrence_budget(before, effect)
-            if len(before) > 1 else None
-        )
-        after = []
-        for state in before:
-            effects = list(state.effects)
-            effects.insert(
-                self._insertion_index(state, effect)
-                if common_budget is None
-                else self._matched_insertion_index(
-                    state, effect, common_budget
-                ),
-                effect,
-            )
-            after.append(replace(state, effects=tuple(effects)))
-        return self._commit_complete_states(before, after)
+        return self._insert_effect(before, effect)
 
     def add_filter(self, filter_id: str) -> bool:
         """Append one repeatable filter with its metadata defaults."""
@@ -749,23 +774,7 @@ class TextEffectEditSession:
             schema_version=spec.schema_version,
             params=spec.default_params(),
         )
-        common_budget = (
-            self._common_occurrence_budget(before, effect)
-            if len(before) > 1 else None
-        )
-        after = []
-        for state in before:
-            effects = list(state.effects)
-            effects.insert(
-                self._insertion_index(state, effect)
-                if common_budget is None
-                else self._matched_insertion_index(
-                    state, effect, common_budget
-                ),
-                effect,
-            )
-            after.append(replace(state, effects=tuple(effects)))
-        return self._commit_complete_states(before, after)
+        return self._insert_effect(before, effect)
 
     def import_texture(self, index: int, source_path: str) -> bool:
         """Import a managed texture and commit it as one complete-stack edit."""

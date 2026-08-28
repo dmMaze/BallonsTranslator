@@ -637,31 +637,5 @@ class TextFilterRegistryTest(unittest.TestCase):
         )
         self.assertFalse(np.any(split[:, :, :3][split[:, :, 3] == 0] != 0))
 
-    def test_rough_edge_grows_only_its_declared_halo(self):
-        registry = FilterRegistry(custom_dir=Path('/missing/custom/filters'))
-        image = np.zeros((30, 34, 4), dtype=np.uint8)
-        image[8:22, 10:24] = (40, 90, 170, 255)
-        runtime = registry.resolve(FilterEffect(
-            'builtin:rough_edge', params={
-                'amount': 1.0, 'size': 2.0,
-                'hardness': 0.8, 'seed': 17,
-            },
-        ))
-
-        result = runtime.apply(
-            image.copy(), runtime.params, FilterContext(1.0, -4, 9)
-        )
-
-        expanded = (image[:, :, 3] == 0) & (result[:, :, 3] > 0)
-        self.assertGreater(np.count_nonzero(expanded), 0)
-        self.assertGreater(int(result[:, :, 3][expanded].max()), 200)
-        halo = int(runtime.tile_halo(runtime.params, 1.0))
-        allowed = cv2.dilate(
-            (image[:, :, 3] > 0).astype(np.uint8),
-            np.ones((halo * 2 + 1, halo * 2 + 1), dtype=np.uint8),
-        )
-        self.assertFalse(np.any(expanded & (allowed == 0)))
-
-
 if __name__ == '__main__':
     unittest.main()

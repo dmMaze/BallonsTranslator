@@ -196,9 +196,6 @@ parameter edits retain its reusable pixels.
   pigment noise and preserves alpha. Halo is zero.
 - **Grain** — Amount, Size, and Seed. Applies coordinate-deterministic blurred
   pigment and inward-only alpha grain without per-surface normalization.
-- **Rough Edge** — Amount, Size, Hardness, and Seed. Reproduces the original
-  coarse-plus-fine noisy threshold, grows a jagged silhouette within its bounded
-  halo, and extends the nearest visible source color into newly covered pixels.
 - **Gaussian Blur** — Radius in logical pixels. Blurs premultiplied float32 RGBA
   through an exact finite kernel with transparent borders, so translucent edges
   do not acquire dark or colored fringes. Radius zero is byte-for-byte neutral.

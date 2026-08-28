@@ -192,8 +192,10 @@ repeatable project-only `ImageEffect` in the ordinary movable stack. Adding a
 card creates a neutral layer with a blank embedded-picker field without opening
 a file dialog and defaults to In Front. In Front source-over composites above accumulated output, while
 Behind destination-over places the image behind it so existing text remains
-visible. Later cards and Filters process the composed result. Generated effects
-still use canonical glyph sources. Scaling uses premultiplied-alpha,
+visible. Later cards and Filters process the composed result. Exterior
+Shadow/Glow use canonical glyph alpha plus preceding Stroke cards; interior
+effects remain canonical-only, and neither Image nor filtered pixels become a
+generated-effect source. Scaling uses premultiplied-alpha,
 global-coordinate bilinear sampling over only the logical intersection, keeping
 transparent edges and full/tiled output stable without a padded image copy. The
 fixed downstream order is Text Eraser alpha, Overall Opacity, global
