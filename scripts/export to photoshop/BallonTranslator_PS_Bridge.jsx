@@ -1,10 +1,10 @@
 // BallonTranslator_PS_Bridge.jsx
-// Version: 2.5.1
+// Version: 2.5.2
 // Multilingual Bidirectional Bridge between BallonsTranslator and Adobe Photoshop (CC 2019 - CC 2026+)
 
 #target photoshop
 
-var BT_BRIDGE_VERSION = "2.5.1";
+var BT_BRIDGE_VERSION = "2.5.2";
 
 
 
@@ -659,6 +659,8 @@ function runBallonTranslatorBridge() {
         var pageBlocks = projectData.pages[matchedPage] || [];
         var updatedCount = 0;
 
+        var activeDocRes = (activeDoc.resolution && activeDoc.resolution > 0) ? activeDoc.resolution : 72;
+
         for (var t = 0; t < textLayers.length; t++) {
             var tLayer = textLayers[t];
             var contents = tLayer.textItem.contents;
@@ -666,8 +668,13 @@ function runBallonTranslatorBridge() {
                 pageBlocks[t].translation = contents;
                 if (pageBlocks[t].fontformat) {
                     try {
-                        pageBlocks[t].fontformat.font_size = tLayer.textItem.size.as("px");
-                    } catch (e) {}
+                        var sizePt = tLayer.textItem.size.as("pt");
+                        pageBlocks[t].fontformat.font_size = Math.round(sizePt * (activeDocRes / 72.0));
+                    } catch (e) {
+                        try {
+                            pageBlocks[t].fontformat.font_size = Math.round(tLayer.textItem.size.as("px"));
+                        } catch (e2) {}
+                    }
                 }
                 updatedCount++;
             }
@@ -742,6 +749,11 @@ function runBallonTranslatorBridge() {
             var doc = BT_PS.openSilent(rawImgPath);
             doc.activeLayer.name = "[BT] Original Scan";
 
+            // Resolution DPI Scale Factor: Photoshop renders pt based on doc.resolution (72 DPI = 1pt:1px, 293 DPI = 1pt:4.07px)
+            // Scaling pt by (72 / doc.resolution) guarantees exact 1-to-1 pixel rendering on canvas for any DPI!
+            var docRes = (doc.resolution && doc.resolution > 0) ? doc.resolution : 72;
+            var scaleFactor = 72.0 / docRes;
+
             // Add Inpainted clean plate (placed above original scan)
             if (chkInpaint.value && inpaintImgPath && inpaintImgPath.exists) {
                 try {
@@ -791,6 +803,7 @@ function runBallonTranslatorBridge() {
                         }
                     }
                     oItem.position = [bRectO[0], bRectO[1] + 20];
+                    oItem.size = new UnitValue(16 * scaleFactor, "pt");
                     oLayer.name = "OCR #" + (o + 1);
                 }
             }
@@ -848,18 +861,19 @@ function runBallonTranslatorBridge() {
                     var psText = transText.replace(/\r\n/g, "\r").replace(/\n/g, "\r");
                     tItem.contents = psText;
 
-                    // Calculate Font Size
+                    // Calculate Font Size in raw image pixels
                     var fmt = blk.fontformat || {};
                     var fontSize = fmt.font_size || blk.font_size;
                     
-                    if (!fontSize || fontSize <= 0 || fontSize > 60) {
+                    if (!fontSize || fontSize <= 0) {
                         var charCount = transText.length;
-                        if (charCount <= 8) fontSize = 24;
-                        else if (charCount <= 25) fontSize = 19;
-                        else if (charCount <= 60) fontSize = 16;
-                        else fontSize = 14;
+                        if (charCount <= 8) fontSize = Math.max(24, Math.round(targetH * 0.35));
+                        else if (charCount <= 25) fontSize = Math.max(19, Math.round(targetH * 0.25));
+                        else if (charCount <= 60) fontSize = Math.max(16, Math.round(targetH * 0.18));
+                        else fontSize = Math.max(14, Math.round(targetH * 0.12));
                     }
-                    tItem.size = new UnitValue(fontSize, "px");
+                    // Scale font size by document DPI so it renders at exact image pixels
+                    tItem.size = new UnitValue(fontSize * scaleFactor, "pt");
 
                     // Alignment: default to CENTER for manga dialogs
                     var align = (fmt.alignment !== undefined) ? fmt.alignment : blk._alignment;
@@ -879,7 +893,7 @@ function runBallonTranslatorBridge() {
                     try {
                         if (fmt.line_spacing && fmt.line_spacing > 5) {
                             tItem.useAutoLeading = false;
-                            tItem.leading = new UnitValue(fmt.line_spacing, "px");
+                            tItem.leading = new UnitValue(fmt.line_spacing * scaleFactor, "pt");
                         } else {
                             tItem.useAutoLeading = true;
                         }

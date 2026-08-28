@@ -241,7 +241,7 @@ class PhotoshopBridgeDialog(QDialog):
             "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
         )
 
-        source_ver = extract_jsx_version(source_jsx) or "2.5.1"
+        source_ver = extract_jsx_version(source_jsx) or "2.5.2"
         source_hash = get_file_md5(source_jsx)
 
         installed_jsx = os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx") if scripts_dir else None

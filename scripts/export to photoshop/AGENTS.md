@@ -130,6 +130,19 @@ ExtendScript on Windows evaluates `.jsx` source files in the local ANSI codepage
 ## 5. Geometry, Centering & Bounding Boxes
 
 - BallonsTranslator stores block geometries in `_bounding_rect = [x, y, width, height]` and `xyxy = [x1, y1, x2, y2]`.
+- **DPI / Resolution Scaling (`scaleFactor`):**
+  Photoshop ExtendScript `TextItem.size` internally treats points based on `doc.resolution` ($\text{Rendered Pixels} = \text{Points} \times \frac{\text{doc.resolution}}{72}$).
+  On high-resolution prints (e.g. 293 DPI / 300 DPI / 600 DPI), setting unscaled pixels blows up font size by $\frac{\text{DPI}}{72}$.
+  **Rule:** Always scale font size and manual leading by `scaleFactor = 72.0 / doc.resolution`:
+  ```javascript
+  var docRes = (doc.resolution && doc.resolution > 0) ? doc.resolution : 72;
+  var scaleFactor = 72.0 / docRes;
+  tItem.size = new UnitValue(fontSize * scaleFactor, "pt");
+  ```
+  And when syncing back in `Save PSD to JSON`:
+  ```javascript
+  var sizeInPx = Math.round(tLayer.textItem.size.as("pt") * (activeDocRes / 72.0));
+  ```
 - **Vertical Centering Math:**
   When `chkVCenter` is enabled, the script calculates:
   $$\text{centerBoxY} = \text{posY} + \frac{\text{targetH}}{2}$$
