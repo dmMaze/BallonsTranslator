@@ -1688,7 +1688,11 @@ class TextBlkItem(QGraphicsTextItem):
             **after_kwargs,
         )
 
-    def _doc_set_font_family(self, value: str, cursor: QTextCursor):
+    def _doc_set_font_family(
+        self,
+        value: str,
+        cursor: QTextCursor,
+    ) -> None:
         doc = self.document()
         lastpos = doc.rootFrame().lastPosition()
         if cursor.selectionStart() == 0 and \
@@ -1697,6 +1701,7 @@ class TextBlkItem(QGraphicsTextItem):
 
         sel_start = cursor.selectionStart()
         sel_end = cursor.selectionEnd()
+        ranges: list[tuple[int, int, QTextCharFormat]] = []
         block = doc.firstBlock()
         while block.isValid():
             it = block.begin()
@@ -1712,11 +1717,15 @@ class TextBlkItem(QGraphicsTextItem):
                     under_line = cfmt.fontUnderline()
                     cfmt.setFont(qfont_with_family(cfmt.font(), value))
                     cfmt.setFontUnderline(under_line)
-                    cursor.setPosition(pos1)
-                    cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
-                    cursor.setCharFormat(cfmt)
+                    ranges.append((pos1, pos2, cfmt))
                 it += 1
             block = block.next()
+
+        # QTextCursor formatting can invalidate a live fragment iterator.
+        for pos1, pos2, cfmt in ranges:
+            cursor.setPosition(pos1)
+            cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
+            cursor.setCharFormat(cfmt)
 
         cfmt = cursor.charFormat()
         cfmt.setFont(qfont_with_family(cfmt.font(), value))
@@ -2049,11 +2058,20 @@ class TextBlkItem(QGraphicsTextItem):
             cursor, False, restore_cursor, **after_kwargs
         )
 
-    def setRelFontSize(self, value: float, repaint_background: bool = False, set_selected: bool = False, restore_cursor: bool = False, clip_size: bool = False, **kwargs):
+    def setRelFontSize(
+        self,
+        value: float,
+        repaint_background: bool = False,
+        set_selected: bool = False,
+        restore_cursor: bool = False,
+        clip_size: bool = False,
+        **kwargs,
+    ) -> None:
         self.layout.relayout_on_changed = False
         _, after_kwargs = self._before_set_ffmt(set_selected, restore_cursor)
         doc = self.document()
         cursor = QTextCursor(doc)
+        ranges: list[tuple[int, int, QTextCharFormat]] = []
         block = doc.firstBlock()
         while block.isValid():
             it = block.begin()
@@ -2065,11 +2083,14 @@ class TextBlkItem(QGraphicsTextItem):
                 cfmt.setFontPointSize(new_font_size)
                 pos1 = fragment.position()
                 pos2 = pos1 + fragment.length()
-                cursor.setPosition(pos1)
-                cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
-                cursor.mergeCharFormat(cfmt)
+                ranges.append((pos1, pos2, cfmt))
                 it += 1
             block = block.next()
+        # QTextCursor formatting can invalidate a live fragment iterator.
+        for pos1, pos2, cfmt in ranges:
+            cursor.setPosition(pos1)
+            cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
+            cursor.mergeCharFormat(cfmt)
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
         self._update_effect_padding()

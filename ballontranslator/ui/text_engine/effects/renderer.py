@@ -2037,7 +2037,20 @@ class TextEffectRenderer:
         doc.setUndoRedoEnabled(False)
         doc.setDocumentMargin(self.layout.effectPadding())
         cursor = QTextCursor(doc)
+        fragments: list[tuple[int, int, QTextCharFormat]] = []
         block = doc.firstBlock()
+        while block.isValid():
+            it = block.begin()
+            while not it.atEnd():
+                fragment = it.fragment()
+                fragments.append((
+                    fragment.position(),
+                    fragment.length(),
+                    fragment.charFormat(),
+                ))
+                it += 1
+            block = block.next()
+
         stroke_pen = QPen(
             self.stroke_qcolor,
             0,
@@ -2045,33 +2058,29 @@ class TextEffectRenderer:
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
         )
-        while block.isValid():
-            it = block.begin()
-            while not it.atEnd():
-                fragment = it.fragment()
-                char_format = fragment.charFormat()
-                stroke_pen.setWidthF(
-                    pt2px(char_format.fontPointSize())
-                    * self._stroke_width()
-                )
-                cursor.setPosition(fragment.position())
-                cursor.setPosition(
-                    fragment.position() + fragment.length(),
-                    QTextCursor.MoveMode.KeepAnchor,
-                )
-                char_format.setTextOutline(stroke_pen)
-                if self._outline_only_stroke:
-                    foreground = QColor(self.stroke_qcolor)
-                    foreground.setAlpha(1)
-                    char_format.setForeground(foreground)
-                # Path-painted glyph extensions consume this flag. Ruby and
-                # emphasis derive half-width native outlines in temporary docs.
-                char_format.setProperty(
-                    GLYPH_DILATED_STROKE_FORMAT_PROPERTY, True
-                )
-                cursor.mergeCharFormat(char_format)
-                it += 1
-            block = block.next()
+        # Applying a format invalidates QTextBlock iterators. Snapshot every
+        # fragment before editing so native Qt never advances a stale iterator.
+        for position, length, char_format in fragments:
+            stroke_pen.setWidthF(
+                pt2px(char_format.fontPointSize())
+                * self._stroke_width()
+            )
+            cursor.setPosition(position)
+            cursor.setPosition(
+                position + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            char_format.setTextOutline(stroke_pen)
+            if self._outline_only_stroke:
+                foreground = QColor(self.stroke_qcolor)
+                foreground.setAlpha(1)
+                char_format.setForeground(foreground)
+            # Path-painted glyph extensions consume this flag. Ruby and
+            # emphasis derive half-width native outlines in temporary docs.
+            char_format.setProperty(
+                GLYPH_DILATED_STROKE_FORMAT_PROPERTY, True
+            )
+            cursor.mergeCharFormat(char_format)
 
         layout = (
             VerticalTextDocumentLayout(doc, self.fontformat)

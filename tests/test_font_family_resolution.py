@@ -14,6 +14,7 @@ from ballontranslator.ui.text_engine.font_family import (
     font_family_for_project,
     font_family_for_qt,
     html_uses_project_font_family,
+    normalize_document_font_families,
     qfont_with_family,
     register_qt_font_family_aliases,
     restore_project_font_families_in_html,
@@ -124,6 +125,28 @@ class FontFamilyResolutionTests(unittest.TestCase):
         self.assertEqual(font.families(), ['DejaVu Sans'])
         self.assertEqual(font.pointSizeF(), 22)
         self.assertTrue(font.italic())
+
+    def test_alias_normalization_handles_multiple_rich_text_fragments(self):
+        family = '[test-normalize]Synthetic Font'
+        alias = register_qt_font_family_aliases(
+            [family], lambda _family: []
+        )[family]
+        document = QTextDocument()
+        document.setHtml(
+            f"<span style=\"font-family:'{family}'; color:#ff0000\">A</span>"
+            f"<span style=\"font-family:'{family}'; color:#00ff00\">B</span>"
+            f"<span style=\"font-family:'{family}'; color:#0000ff\">C</span>"
+        )
+
+        replacements = normalize_document_font_families(document)
+
+        families = []
+        iterator = document.firstBlock().begin()
+        while not iterator.atEnd():
+            families.append(iterator.fragment().charFormat().font().family())
+            iterator += 1
+        self.assertEqual(replacements, 3)
+        self.assertEqual(families, [alias, alias, alias])
 
     def test_registry_resolution_does_not_pin_weight_or_italic_face(self):
         database = QFontDatabase if QT6 else QFontDatabase()

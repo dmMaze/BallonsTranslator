@@ -78,6 +78,7 @@ from ballontranslator.utils.fontformat import (
     ProjectiveTextTransform,
     TextTransformStack,
 )
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
@@ -1283,6 +1284,50 @@ class TextEffectPanelTest(unittest.TestCase):
             (StrokeEffect, GlowEffect),
         )
         self.assertEqual(self.canvas.stack.count(), 1)
+
+    def test_multiselect_add_effects_handles_rich_text_fragments(self):
+        project = ProjImgTrans()
+        project.load_from_json(os.path.join(
+            os.path.dirname(__file__),
+            '..',
+            'data',
+            'testpacks',
+            'textransform',
+            'imgtrans_textransform.json',
+        ))
+        items = [
+            TextBlkItem(block, index + 1)
+            for index, block in enumerate(project.pages['test copy.png'])
+        ]
+        self.canvas.selected = items
+        self.panel.set_textblk_item(None, multi_select=True)
+
+        self.panel.texteffect_panel.add_effect_actions['stroke'].trigger()
+        self.panel.texteffect_panel.add_effect_actions['shadow'].trigger()
+        self.panel.texteffect_panel.add_effect_actions['glow'].trigger()
+
+        self.assertEqual(
+            [len(item.blk.fontformat.text_effects) for item in items],
+            [3, 4],
+        )
+        self.assertEqual(self.canvas.stack.count(), 3)
+
+        rich_item = items[0]
+        rich_item.setRelFontSize(1.1, repaint_background=False)
+        rich_item.setFontFamily('DejaVu Sans', repaint_background=False)
+        formats = []
+        iterator = rich_item.document().firstBlock().begin()
+        while not iterator.atEnd():
+            formats.append(iterator.fragment().charFormat())
+            iterator += 1
+        self.assertEqual(
+            [fmt.fontPointSize() for fmt in formats],
+            [42.9] * 3,
+        )
+        self.assertEqual(
+            [fmt.font().family() for fmt in formats],
+            ['DejaVu Sans'] * 3,
+        )
 
     def test_heterogeneous_adds_match_and_reorder_requires_aligned_sequences(self):
         first = self._item(self._stack(StrokeEffect(width=0.2)))
