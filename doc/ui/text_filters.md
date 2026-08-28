@@ -1,76 +1,55 @@
 # Text filters
 
 Read [Text engine](text_engine.md) and [Text effects](text_effects.md) first.
-Filters are a small lazy plug-in boundary inside the existing text-effect
-renderer, not application automation modules or a second pipeline.
+Filters are a lazy plug-in boundary inside the text-effect renderer, not
+application automation modules or a second rendering pipeline.
 
 ## Owners
 
 | Contract | Owner |
 | --- | --- |
-| persisted repeatable value and passive coercion | `utils/text_effects.py` |
-| AST discovery, parameter specs, and lazy runtime import | `effects/filters/registry.py` |
-| built-in and custom implementations | `effects/filters/filter_*.py`, `custom_modules/filter_*.py` |
-| stack order, tile halos, strict failure, and caches | `effects/renderer.py` |
-| cards, Add submenu, preview, and undo | `effects/panel.py`, `effects/edit_session.py` |
+| Persisted value and passive coercion | [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
+| AST discovery, metadata validation, and lazy import | [`effects/filters/registry.py`](../../ballontranslator/ui/text_engine/effects/filters/registry.py) |
+| Built-in and custom implementations | `effects/filters/filter_*.py`, `custom_modules/filter_*.py` |
+| Order, tile halos, strict failure, and caches | [`effects/renderer.py`](../../ballontranslator/ui/text_engine/effects/renderer.py) |
+| Cards, preview, and undo | [`effects/panel.py`](../../ballontranslator/ui/text_engine/effects/panel.py), [`effects/edit_session.py`](../../ballontranslator/ui/text_engine/effects/edit_session.py) |
 
-## Value and ordered-stack contract
+## Value and stack contract
 
-`FilterEffect` is a frozen, hashable, repeatable `TextEffectStack` value. It
-stores `enabled`, stable `filter_id`, positive `schema_version`, and flat JSON
-scalar params. Params serialize as an object and are sorted internally for
-stable cache keys. Mixed-selection identity includes ID and schema. Unknown
-IDs, newer schemas, and opaque params survive passive project, config, and
-preset round trips without importing plug-in code. At active resolution only
-declared params are passed to the plug-in; a missing or invalid known value
-uses its validated metadata default while the persisted value stays unchanged.
+`FilterEffect` is a frozen, hashable, repeatable stack value containing
+`enabled`, a stable `filter_id`, positive `schema_version`, and flat JSON-scalar
+params. Params are sorted internally for stable cache keys. Multi-selection
+identity includes ID and schema.
 
-Image, Stroke, Shadow, Glow, and Filter cards share one top-to-bottom
-application order in the panel. A Filter transforms the structural
-Gradient/Texture foreground group plus every movable layer accumulated
-above its card; cards below it run
-afterward. Image In Front and Behind therefore become Filter input only when
-they precede that Filter.
-The persisted tuple remains topmost-first for compatibility, so the renderer
-traverses that tuple in reverse. Consecutive Filters execute panel top-to-bottom
-in one chain. Text Eraser, Overall
-Opacity, the global transform, and selection/caret/IME remain downstream and
-structurally fixed. Returned alpha may only stay equal or shrink unless static
-metadata declares `expands_alpha: True`. A declared
-expander may grow alpha only inside its validated tile halo; that cumulative
-reach also expands the item's effect padding so output is not clipped.
+A Filter receives the structural foreground and all movable layers accumulated
+before its visible card. Cards below it run afterward. Consecutive Filters run
+in panel order through one straight-RGBA bridge. Eraser, overall Opacity, global
+transforms, and editing feedback remain downstream and are never plug-in input.
+Ordinary Filters stay active during native horizontal and vertical editing.
 
-A newly added movable card appears at the bottom of the panel and executes
-last. Existing project and configuration tuples retain their exact stored and
-rendered order; only their panel projection is reversed.
+Returned alpha may stay equal or shrink by default. A plug-in that declares
+`expands_alpha: True` may grow it only within its validated `tile_halo`; that
+reach also contributes to effect padding. Full and tiled rendering must be
+byte-identical for the same absolute coordinates.
 
-## Removal and parameter evolution
+## Passive loading, removal, and schema changes
 
-Filters have no central registration or direct imports. Removing a
-`filter_*.py` file and restarting removes it from discovery; an implementation
-already imported by the current process remains alive until restart. Project,
-configuration, and preset loading never resolves filter code, so the saved ID,
-schema, enabled state, and scalar params survive unchanged. The panel presents
-an unavailable value as a **Missing Filter** card whose eye, reorder, and delete
-actions remain usable.
+Project, config, and preset loading never imports filter code. Unknown IDs,
+newer schemas, and opaque scalar params survive round trips unchanged. Active
+resolution passes only declared params; a missing or invalid known value uses
+the validated metadata default without rewriting the preserved payload.
 
-An enabled missing retained Filter is bypassed interactively with one warning.
-Strict export fails instead of silently producing output without the requested
-effect; a disabled missing Filter is neutral. Restoring a compatible file and
-restarting makes a preserved retained card active again.
+Removing a `filter_*.py` file and restarting removes it from discovery. Its
+saved value remains a **Missing Filter** card that can still be disabled,
+reordered, or deleted. An enabled missing or incompatible Filter warns and is
+bypassed interactively; strict export fails instead. A disabled missing Filter
+is neutral. Restoring compatible code and restarting reactivates the saved card.
 
-Removing a parameter without changing the schema is backward compatible:
-unknown scalar keys remain in passive saved data but are omitted from runtime
-params. Invalid values for still-declared keys use metadata defaults and warn
-once. An explicit parameter edit writes the current declared parameter set, so
-obsolete keys naturally disappear. Rename or reinterpret a parameter only with
-a schema-version increment and `migrate_params`; absent or failed migration
-bypasses interactively and fails strict export without corrupting saved data.
-
-Image is suppressed during native editing, but ordinary Filters stay
-active in both writing modes. Qt feedback is painted afterward and is never
-visible to plug-ins. Enabled requested filters remain strict-export eligible
-even when the text is empty or the implementation cannot be resolved.
+Removing a parameter within the same schema is safe: its saved scalar remains
+opaque and is omitted at runtime, then disappears after an explicit edit writes
+the current declared set. Rename or reinterpret a parameter only by incrementing
+the schema and supplying `migrate_params`. Failed or absent migration preserves
+saved data, bypasses interactively, and fails strict export.
 
 ## Discovery and trust
 
@@ -79,35 +58,27 @@ One plug-in lives in one `filter_*.py` file:
 - built-ins: `ballontranslator/ui/text_engine/effects/filters/filter_*.py`
 - local custom filters: `custom_modules/filter_*.py`
 
-Each file defines one literal `FILTER_META` mapping. The filter-only registry
-reads that mapping with `ast.literal_eval`; discovery does not import or execute
-the file. Metadata is snapshotted in deterministic order for the process.
-Changes and additions require restart. Built-in metadata errors fail loudly;
-malformed custom files are warned and isolated. Built-ins win duplicate IDs.
-Custom symlinks, path/ID mismatches, and scan-to-import path replacement are
-rejected. An active import must expose matching runtime ID/schema plus callable
-`apply` and `tile_halo` functions. Optional `migrate_params(from_version,
-params)` runs only while resolving an active older value or explicit edit,
-never during passive loading.
+Each file exposes one literal `FILTER_META` mapping. Discovery reads it with
+`ast.literal_eval` without importing the module, snapshots deterministic results
+for the process, and requires restart for changes. Built-in metadata errors fail
+loudly; malformed custom files are warned and isolated. Built-ins win duplicate
+IDs. Symlinks, path/ID mismatches, and scan-to-import replacement are rejected.
 
-Built-in names, parameter labels, and choice labels use the extractable
-`TextEffectPanel` translation context. Trusted custom metadata is shown
-literally so local plug-ins do not impersonate application catalog entries.
+Runtime import requires matching ID/schema and callable `apply` and `tile_halo`.
+Optional `migrate_params(from_version, params)` runs only during active
+resolution or explicit editing, never passive load. Custom filters are trusted
+local Python, not sandboxed; they must avoid file/network IO, dependency or model
+lifecycle work, global RNG, and unbounded allocation.
 
-Custom plug-ins are trusted local Python, not sandboxed. Their runtime methods
-must do no file or network IO, model/dependency lifecycle work, or unbounded
-allocation/computation. Use only deterministic bounded array operations.
+Built-in names and parameter choices use the extractable `TextEffectPanel`
+translation context. Custom metadata is shown literally.
 
 ## Metadata and runtime API
 
-Metadata contains `filter_id`, display `name`, positive `schema_version`,
-deterministic `order`, ordered parameter mappings, and the optional boolean
-`expands_alpha` capability (false by default). Supported parameter kinds are
-`float`, `int`, `bool`, and `choice`. Numeric metadata supplies a default,
-minimum, maximum, display factor, step, decimals, and optional suffix; choice
-values are flat JSON scalars.
-
-The runtime API is:
+Metadata defines `filter_id`, display `name`, positive `schema_version`,
+deterministic `order`, ordered parameter specs, and optional `expands_alpha`.
+Supported parameter kinds are `float`, `int`, `bool`, and `choice`. Numeric
+specs include their default and range; choices contain flat JSON scalars.
 
 ```python
 from typing import Mapping
@@ -117,24 +88,19 @@ import numpy as np
 from ballontranslator.ui.text_engine.effects.filters.registry import FilterContext
 from ballontranslator.utils.text_effects import FilterScalar
 
-
 FILTER_META = {
-    'filter_id': 'custom:posterize',
-    'name': 'Posterize',
-    'schema_version': 1,
-    'order': 100,
-    'params': (
-        {
-            'key': 'levels', 'label': 'Levels', 'kind': 'int',
-            'default': 4, 'minimum': 2, 'maximum': 16, 'step': 1,
-        },
-    ),
+    "filter_id": "custom:posterize",
+    "name": "Posterize",
+    "schema_version": 1,
+    "order": 100,
+    "params": ({
+        "key": "levels", "label": "Levels", "kind": "int",
+        "default": 4, "minimum": 2, "maximum": 16, "step": 1,
+    },),
 }
 
 
-def tile_halo(
-    params: Mapping[str, FilterScalar], render_scale: float,
-) -> int:
+def tile_halo(params: Mapping[str, FilterScalar], render_scale: float) -> int:
     return 0
 
 
@@ -143,94 +109,62 @@ def apply(
     params: Mapping[str, FilterScalar],
     context: FilterContext,
 ) -> np.ndarray:
-    levels = int(params['levels'])
+    levels = int(params["levels"])
     step = 255.0 / (levels - 1)
     rgba[:, :, :3] = np.rint(rgba[:, :, :3] / step) * step
     return rgba
 ```
 
-Save that exact shape as `custom_modules/filter_posterize.py`; the filename
-suffix must match the final segment of `filter_id`. Keep `FILTER_META` entirely
-literal so discovery remains AST-only. The registry supplies normalized
-declared params, while the implementation owns bounded pixel work.
+Save this as `custom_modules/filter_posterize.py`; the filename suffix must
+match the final `filter_id` segment. Keep metadata entirely literal.
 
-`apply` receives an owned contiguous straight RGBA8 array plus declared,
-validated params. It returns the same shape and dtype; returning the same array
-is allowed. `context` provides render scale, integer absolute pixel origin
-relative to the unpadded logical origin, and strict-export state. Never derive
-randomness from tile/surface dimensions or global RNG. `tile_halo` returns the
-filter's nonnegative bounded physical-pixel sampling reach at the active scale.
+`apply` receives an owned contiguous straight RGBA8 array plus normalized
+declared params and returns the same shape and dtype. Reusing the input array is
+allowed. `FilterContext` supplies render scale, strict-export state, and the
+absolute integer pixel origin relative to the unpadded logical origin. Derive
+randomness only from seed and absolute coordinates. `tile_halo` returns the
+smallest bounded nonnegative physical-pixel sampling reach at the active scale.
 
-An exception, invalid output, undeclared alpha expansion, expansion beyond the
-declared filter's halo, missing implementation, schema incompatibility, or
-invalid/excessive halo bypasses only that filter interactively and warns once.
-Strict export fails through the existing effect raster error boundary. Disabled
-missing filters are neutral. A cumulative halo that leaves no tile core bypasses
-the affected filter interactively and fails strict export.
+An exception, invalid output, missing implementation, incompatible schema,
+invalid/excessive halo, or undeclared/out-of-halo alpha growth bypasses only that
+Filter interactively and warns once. Strict export fails through the existing
+effect error boundary.
 
 ## Rendering and caches
 
-The renderer caches the structural base plus active nodes below the first
-active Filter in a two-entry `pre_filter_cache` in each existing committed,
-0.5x preview, and export namespace. Its key includes that exact active
-boundary, node order, and canonical Stroke dependencies of cached exterior
-layers while excluding Filter parameters. A filter-only preview reuses that
-prefix and canonical/positioned-Stroke caches. The renderer alternates only
-the necessary contiguous Image/generated painter batches and Filter chains;
-consecutive Filters cross to straight RGBA once, while an Image or generated
-batch separating two Filter groups necessarily creates two bridges. There are
-no per-filter prefix caches, workers, GPU paths, or second vector/text
-rasterization.
+Each committed, preview, and export namespace keeps a bounded below-filter
+prefix. A Filter-only preview reuses that prefix plus canonical glyph and
+positioned-Stroke caches; it does not rerasterize text. Consecutive Filters cross
+to straight RGBA once. An intervening Image or generated painter batch creates a
+new bridge because the composition boundary is real, not duplicated work.
 
-Tiled rendering adds the sum of retained Filter halos to the existing effect
-overlap. Planning and every tile share one asset-keyed Image resolution map, so
-repeated Image modes and tile surfaces do not re-resolve the same managed file.
-Absolute origins and bounded source overlap make full and tiled output
-byte-identical across interleaved Image/generated/Filter segments. Reordering
-or toggling a retained Filter changes the below-filter prefix key; filter-only
-parameter edits retain its reusable pixels.
+Tiled rendering adds cumulative retained halos to tile overlap. Planning and all
+tiles share asset resolution, absolute origins, and the same filter order.
+Reordering or toggling a Filter changes the prefix identity; parameter-only
+edits retain reusable lower pixels. There are no per-Filter prefix caches,
+workers, GPU paths, or second vector/text rasterizer.
 
 ## Built-ins
 
-- **Noise** — Amount, Color/Monochrome, and Seed. Adds coordinate-deterministic
-  pigment noise and preserves alpha. Halo is zero.
-- **Grain** — Amount, Size, and Seed. Applies coordinate-deterministic blurred
-  pigment and inward-only alpha grain without per-surface normalization.
-- **Gaussian Blur** — Radius in logical pixels. Blurs premultiplied float32 RGBA
-  through an exact finite kernel with transparent borders, so translucent edges
-  do not acquire dark or colored fringes. Radius zero is byte-for-byte neutral.
-- **Bloom** — Threshold, Radius, and Intensity. Extracts visible highlights from
-  the maximum sRGB channel, blurs their premultiplied color and coverage through
-  the same finite kernel, then adds the result while keeping valid premultiplied
-  alpha. At a 100% threshold only exact 255-channel highlights contribute;
-  Intensity zero is byte-for-byte neutral, while Radius zero is a valid
-  face-only bloom.
-- **Glitch** — Shift, Block Size, Activity, RGB Split, and Seed. Applies a
-  deterministic static horizontal displacement per absolute physical row block,
-  then samples red and blue at opposing offsets from immutable straight RGBA8
-  input and reconstructs premultiplied-safe output. Negative origins use floor
-  division, so crops and bounded tiles match the full surface. It is a seeded
-  adaptation of the time-driven block shift and channel split in the MIT-licensed
-  [Godot glitch shader](https://godotshaders.com/shader/glitch-effect-shader/).
+| Filter | Contract |
+| --- | --- |
+| Noise | Seeded coordinate-deterministic color or monochrome pigment noise; preserves alpha. |
+| Grain | Seeded blurred pigment and inward-only alpha grain. |
+| Gaussian Blur | Finite premultiplied RGBA blur with transparent borders and no edge fringe. |
+| Bloom | Thresholded premultiplied highlight blur and additive bloom. |
+| Glitch | Seeded row-block displacement and RGB split derived from absolute coordinates, adapted from the MIT-licensed [Godot shader](https://godotshaders.com/shader/glitch-effect-shader/). |
 
-Deferred v1 scope includes screentone, a broader sharpen/blur gallery, further
-distortions, per-filter masks/blend modes, generic mix/opacity, plug-in icons,
-hot reload, sandboxing, workers, GPU paths, and external dependencies.
+## Adding or changing a filter
 
-## Extension and verification checklist
-
-- Keep metadata literal, IDs/path suffixes stable, params scalar, and runtime
-  imports free of IO, downloads, models, and global RNG.
-- Define the smallest nonnegative physical-pixel halo covering every sampled
-  neighbor; derive randomness only from seed and absolute pixel coordinates.
-- Verify the implementation returns contiguous straight RGBA8 of the same
-  shape. Leave `expands_alpha` absent unless growth is essential; declared
-  growth must fit entirely inside `tile_halo` at every render scale.
-- Test full versus tiled output byte-for-byte at nonzero and negative origins,
-  including cumulative halos when the new filter is chained.
-- Test interactive bypass and strict-export failure for missing code,
-  exceptions, invalid output, incompatible schema, and invalid halo.
-- Exercise card preview/cancel/one-undo, reorder/remove/eye, deferred deletion,
-  and Eraser-session deactivation under both PyQt5 and PyQt6 offscreen.
-- Run the focused renderer/UI suites, `py_compile`, relevant doctests, and
-  `git diff --check`; finish with a real themed-app visual pass when UI changes.
+1. Keep metadata literal, IDs/path suffixes stable, params scalar, and runtime
+   code deterministic and bounded.
+2. Declare the smallest halo covering every sampled neighbor; omit
+   `expands_alpha` unless growth is essential and fully halo-bounded.
+3. Verify contiguous straight RGBA8 output and full/tiled byte identity at
+   nonzero and negative origins, including cumulative halos.
+4. Test interactive bypass and strict-export failure for missing code,
+   exceptions, incompatible schema, invalid output, and invalid halo.
+5. Exercise card preview/cancel/one-undo, reorder/remove/eye, deferred deletion,
+   and Eraser deactivation under PyQt5 and PyQt6 when binding-sensitive.
+6. Run the focused domain, renderer, registry, and panel suites plus
+   `py_compile` and `git diff --check`; finish UI changes with a themed-app pass.

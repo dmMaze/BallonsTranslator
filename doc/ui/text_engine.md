@@ -135,110 +135,33 @@ Never write a source or visual bounding box back into the model. Layout-owned
 placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
-`FontFormat.text_effects` owns the canonical immutable stack, including
-repeatable project-only Image nodes; `TextBlock.text_alpha_mask` separately
-owns item-specific structural alpha. `TextEffectRenderer` composes the
-repeatable Gradient and Texture foreground group, then walks Image, generated
-layers, and lazy Filters bottom-to-top around one canonical glyph source before
-the block mask, and hands that padded source to the geometry owner. The panel
-shows those two fixed structural card types, the movable
-Image/generated/Filter execution sequence, then Eraser. Foreground paints apply
-in their visible order and may move only among themselves; a newly added paint
-is visible and applied last even though the tuple stores it at index zero. If
-any enabled foreground paint can render, its transparent group replaces the
-canonical rich foreground and is clipped once with shared canonical glyph
-coverage. Otherwise canonical rich foreground remains; missing interactive
-Textures are bypassed, while strict export fails. Both cards continue to
-share the internal `TextFillEffect` value and renderer, so this UI split does
-not add a second model or require project migration. See
-[Text effects](text_effects.md)
-for stack order, migration, preview/undo, mask editing, cache boundaries, and
-extension rules. See [Text filters](text_filters.md) for plug-in metadata,
-trusted-code runtime, and deterministic tile contracts.
+`FontFormat.text_effects` owns one immutable effect stack;
+`TextBlock.text_alpha_mask` separately owns the item-specific Eraser. The effect
+renderer builds the structural Gradient/Texture foreground, walks movable
+Image/generated/Filter cards in panel application order around one canonical
+glyph source, then applies Eraser and overall Opacity before handing one padded
+surface to the geometry owner. Effects compose inside the item surface, never
+against the page backdrop.
 
-Stroke, Shadow, Glow, Gradient, and Texture support Normal plus the Darken and
-Lighten
-families detailed in [Text effects](text_effects.md). Family submenus are UI
-only; persistence stores one flat leaf. Every leaf composes with earlier output
-inside the isolated generated stack or transparent foreground group, never the page
-backdrop. Inline font color remains the sole solid foreground source. Paint alpha
-and effect Opacity multiply coverage once. Passive loading
-warns and falls back to Normal for an invalid mode without dropping the effect;
-live values remain strict.
+Project-only Texture and Image values share immutable `RasterAssetRef` data and
+the `ProjImgTrans` import, validation, resolution, and bounded decode cache.
+Passive loading preserves valid-but-missing references; interactive rendering
+warns and bypasses them, while strict export fails rather than silently omitting
+output. Global formatting and reusable presets strip project-only raster values
+because they have no project asset registry.
 
-Texture cards use optional immutable project-relative `RasterAssetRef` values.
-Adding Texture creates a neutral Empty paint with a blank embedded-picker field
-without opening a file dialog; choosing a valid image later activates it.
-The generic ref contract lives in `utils/raster_assets.py`; `TexturePaint`
-remains text-effect-specific. `ProjImgTrans` owns one-snapshot validated import
-into the project `assets/` directory, path-safe resolution, digest verification,
-bounded RGBA8 decode, and the small positive decoded cache. The effect renderer
-maps those shared pixels inside its existing completed foreground pass. Missing
-assets never create a second renderer or mutate the project while loading.
-Interactive rendering visibly bypasses missing or invalid optional assets and
-can recover after restore/invalidation; strict export always rechecks the file
-digest even after an interactive cache hit. That hash and the matching cached
-reuse or decode stay inside one before/after file-signature bracket, so a
-mid-load replacement fails. Non-strict reuse resolves existence and containment;
-unchanged warm entries remain hash-free, while cold or stat-changed files are
-digest-verified once before decode so corrupt or replaced managed bytes visibly
-bypass. The same project cache lazily holds an immutable premultiplied companion
-for transparent sources, avoiding a full-source copy on every tile. It retains
-at most two entries and is also byte-bounded to 512 MiB, enough for two maximum
-opaque sources or one maximum transparent source.
+Effect padding expands source paint bounds only. Ordinary hit testing stays on
+the logical box plus layout-owned ink overhang. Qt remains authoritative for
+shaping and editing feedback; selection and the deferred caret paint after
+effects. Image is suppressed during native editing in both writing modes, while
+ordinary Filters remain active.
 
-Image reuses that same asset decoder and existing completed surface. It is a
-repeatable project-only `ImageEffect` in the ordinary movable stack. Adding a
-card creates a neutral layer with a blank embedded-picker field without opening
-a file dialog and defaults to In Front. In Front source-over composites above accumulated output, while
-Behind destination-over places the image behind it so existing text remains
-visible. Later cards and Filters process the composed result. Exterior
-Shadow/Glow use canonical glyph alpha plus preceding Stroke cards; interior
-effects remain canonical-only, and neither Image nor filtered pixels become a
-generated-effect source. Scaling uses premultiplied-alpha,
-global-coordinate bilinear sampling over only the logical intersection, keeping
-transparent edges and full/tiled output stable without a padded image copy. The
-fixed downstream order is Text Eraser alpha, Overall Opacity, global
-transform, then interaction
-feedback. During native horizontal or vertical text editing the layer is
-suppressed so the editable source, selection, caret, and IME stay coherent; it
-returns exactly after editing ends and remains active for strict export.
-Editing visibility participates in completed-surface and nonlinear cache keys.
-
-Texture and Image are project-only in v1. Itemless/global formatting
-cannot select them, and application-global presets/config strip both project
-raster forms at their load/edit/save boundaries because there is no global
-asset registry. Concrete project TextBlocks keep empty, valid, and
-valid-but-missing refs on passive load. Newly imported images are decoded while
-the chooser/import chain keeps the formatting panel pinned; an old uncached
-asset may incur one
-bounded synchronous first decode (32 MiB source, 64 Mpx, 256 MiB RGBA8).
-The removed singleton `TextBlock.rendered_image` value is ignored rather than
-migrated; no live compatibility owner, card, command, or renderer path remains.
-
-Effect padding expands source paint bounds only. Ordinary shape and hit testing
-remain on the logical box plus layout-owned ink overhang. Qt stays authoritative
-for shaping, cursor, selection, IME, and normal hit testing; selection and the
-deferred caret paint after the completed effect surface, so raster effects and
-Hollow cannot alter editing feedback.
-
-The renderer keeps committed, preview, and export raster namespaces separate.
-Pixel-changing previews use requested quality by default and may be promoted
-on commit. Requested-quality preview rasterization waits for the next scene
-paint so the actual device scale is rendered once; a valid higher-tier surface
-may promote without a 1x commit rebuild. The runtime-only Faster Preview toggle
-selects the existing bounded, non-promotable 0.5x scratch surface; commit and
-strict export still render at the requested quality. Reshape omits effects
-during pointer motion and rebuilds once geometry settles. All derived pixmaps,
-alpha planes, padding, and cache keys remain runtime-only and item-owned.
-Repeated foreground paint, Opacity, and Blend changes reuse the cached canonical
-source/mask rather than rasterizing glyphs again.
-
-The Canvas-owned mask session freezes source mapping for each brush stroke,
-publishes only a derived complete-mask preview, and commits one immutable mask
-replacement through canvas undo. Incomplete strokes are discarded on Escape or
-scene/selection/tool teardown; export always reads committed mask state and
-hides editing controls.
+Committed, preview, and export raster namespaces are separate, bounded derived
+state. Requested-quality previews may promote on commit; Faster Preview uses a
+non-promotable 0.5x scratch surface. Reshape omits effects during pointer motion
+and rebuilds once settled. See [Text effects](text_effects.md) for ordering,
+sources, persistence, preview/undo, mask editing, assets, caches, and extension
+rules; see [Text filters](text_filters.md) for plug-in and tile contracts.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render
@@ -271,23 +194,18 @@ Refresh from the first owner whose input changed:
 | --- | --- |
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
-| Typed effect stack/paint or Overall Opacity | Effect renderer |
-| Filter-only parameter preview | Effect renderer below-filter prefix plus canonical/Stroke-coverage caches; recompose only generated layers above it |
-| Image effect asset or mode | Effect renderer pre-mask surface; retain canonical source cache |
+| Typed effect stack, paint, Image, or Overall Opacity | Effect renderer |
+| Filter-only parameter preview | Effect renderer below-filter prefix and retained canonical/Stroke coverage |
 | TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |
 | Item/page lifetime | Every item-owned cache |
 
 Keep refreshers idempotent, rebuild derived layout state as one settled
-generation, and keep caches bounded and releasable. The neutral path should
-stay native and cheap; allocate specialized renderers only while their feature
-is active. Batch previews and transient formatting so they refresh once when
-settled. Linear-gradient rasterization keeps its byte-identical NumPy path as
-the working fallback and quality oracle. Only the background warmup loads and
-publishes its cached compiled kernel; pre-warm painting stays on NumPy without
-importing Numba on the Qt thread. Both paths use the same item-local coordinates
-and rounding.
+generation, and keep caches bounded and releasable. The neutral path stays
+native and cheap. Batch previews and transient formatting so they refresh once
+when settled. Optional acceleration must preserve the working fallback's
+coordinates, rounding, and output, and must not compile on the Qt thread.
 
 Dynamic Text Effect and Text Transform cards keep their natural height inside
 `PanelArea.scrollContent`. Their panels may advertise a capped, content-driven
@@ -304,16 +222,11 @@ Transient canvas-selection signals while those widgets are active must retain
 the current text item and its card-local drafts; an actual target change still
 settles pending edits and projects the new item's persisted state.
 
-For multi-item Text Effect projection, selection ownership also supplies one
-small explicit primary anchor: the most recent canvas click or paired-list
-anchor wins, with the final selected item as the stable marquee/programmatic
-fallback. This effects-only projection does not reorder Text Transform session
-or panel targets. The panel derives non-Image structural occurrence matches
-from the current committed stacks on every sync; the effect session retains
-that derived map only between target/structural/history sync boundaries and
-never stores a merged stack or Mixed card values. Preview and commit still
-replace complete per-item stacks through the existing effect session and one
-canvas undo command.
+Multi-item Text Effect projection uses one explicit primary selection anchor
+without reordering Transform targets. Matching is derived from committed stacks,
+never persisted as a merged stack or Mixed values; preview and commit still
+replace complete per-item stacks through one canvas undo command. See
+[Text effects](text_effects.md) for the occurrence-matching contract.
 
 ## Change workflow
 
