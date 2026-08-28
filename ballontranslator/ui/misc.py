@@ -57,8 +57,17 @@ def pixmap2ndarray(pixmap: Union[QPixmap, QImage], keep_alpha=True):
         return np.ascontiguousarray(img[:,:,:3])
 
 def ndarray2pixmap(img, return_qimg=False):
+    if img is None:
+        return QImage() if return_qimg else QPixmap()
     if len(img.shape) == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    elif len(img.shape) == 3 and img.shape[-1] == 2:
+        gray = img[..., 0]
+        alpha = img[..., 1]
+        img = np.dstack([gray, gray, gray, alpha])
+    elif len(img.shape) == 3 and img.shape[-1] == 1:
+        img = cv2.cvtColor(img[..., 0], cv2.COLOR_GRAY2RGB)
+        
     height, width, channel = img.shape
     bytesPerLine = channel * width
     if channel == 4:
