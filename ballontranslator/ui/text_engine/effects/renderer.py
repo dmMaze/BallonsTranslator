@@ -549,19 +549,6 @@ class TextEffectRenderer:
             if isinstance(effect, FilterEffect)
         )
 
-    def _compiled_phase_effects(
-        self, phase: str
-    ) -> Tuple[TextEffect, ...]:
-        """Compile active Shadow/Glow nodes in retained stack order.
-
-        Hollow suppresses the complete interior phase without changing the
-        persisted stack.
-
-        >>> hasattr(TextEffectRenderer, '_compiled_phase_effects')
-        True
-        """
-        return self._retained_phase_effects(phase)
-
     def _hollow_enabled(
         self, stack: Optional[TextEffectStack] = None
     ) -> bool:
@@ -744,7 +731,6 @@ class TextEffectRenderer:
             self._effect_cache_key_without_mask(
                 self._effect_cache_input_key()
             ),
-            self._active_text_alpha_mask() is not None,
             float(render_scale),
             round(surface_rect.left(), 6),
             round(surface_rect.top(), 6),
@@ -1162,6 +1148,7 @@ class TextEffectRenderer:
             self.repaint_background(
                 nodes=nodes,
                 image_rasters=image_rasters,
+                geometry_prepared=True,
             )
         self.item.update()
 
@@ -4161,6 +4148,7 @@ class TextEffectRenderer:
         image_rasters: Optional[
             Dict[RasterAssetRef, Optional[np.ndarray]]
         ] = None,
+        geometry_prepared: bool = False,
     ) -> None:
         if (
             self.repainting
@@ -4186,12 +4174,14 @@ class TextEffectRenderer:
             self.item.refresh_cache_policy(retained)
         empty = self.document().isEmpty()
 
-        self.repainting = True
-        try:
-            self._sync_native_stroke_alignment(retained)
-        finally:
-            self.repainting = False
-        self._update_effect_padding(retained)
+        # Immediate transitions already prepared this exact immutable plan.
+        if not geometry_prepared:
+            self.repainting = True
+            try:
+                self._sync_native_stroke_alignment(retained)
+            finally:
+                self.repainting = False
+            self._update_effect_padding(retained)
 
         paint_stroke, paint_non_stroke = self._effect_flags(retained)
         if (

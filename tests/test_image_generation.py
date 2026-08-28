@@ -22,6 +22,7 @@ from ballontranslator.ui.text_engine.effects.image_generation import (
     ImageGenerationController,
     ImageGenerationRequest,
     _LIVE_IMAGE_GENERATION_JOBS,
+    _encode_generated_png,
     _shutdown_live_image_generation_jobs,
     prepare_image_generation_context,
     validate_logical_crop,
@@ -319,6 +320,20 @@ class ImageGenerationTest(unittest.TestCase):
             ))
         warning.assert_called_once()
         controller.deleteLater()
+
+    def test_generated_image_size_is_rejected_before_png_allocation(self):
+        image = np.zeros((2, 2, 4), dtype=np.uint8)
+        with patch(
+            'ballontranslator.utils.raster_assets.'
+            'RASTER_ASSET_MAX_PIXELS',
+            3,
+        ), patch(
+            'ballontranslator.ui.text_engine.effects.image_generation.'
+            'Image.fromarray',
+        ) as from_array, self.assertRaisesRegex(ValueError, 'pixel limit'):
+            _encode_generated_png(image)
+
+        from_array.assert_not_called()
 
     def test_worker_delivery_is_queued_to_the_qt_thread(self):
         controller = ImageGenerationController()

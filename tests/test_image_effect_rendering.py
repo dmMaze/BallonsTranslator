@@ -220,7 +220,7 @@ class ImageEffectRendererTest(unittest.TestCase):
             )
             item = self._item(_image(asset), text='')
             item.blk.text_alpha_mask = TextAlphaMask(strokes=(
-                AlphaBrushStroke('erase', 1000, ((160, 90),)),
+                AlphaBrushStroke('erase', 500, ((160, 90),)),
             ))
             scene = self._attach(item, project)
             rendered = pixmap2ndarray(

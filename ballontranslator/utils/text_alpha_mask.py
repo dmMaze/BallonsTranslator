@@ -11,6 +11,8 @@ from .logger import logger as LOGGER
 TEXT_ALPHA_MASK_VERSION = 1
 ALPHA_BRUSH_MODES = ('erase', 'restore')
 ALPHA_BRUSH_SIMPLIFY_TOLERANCE = 0.25
+ALPHA_BRUSH_MIN_DIAMETER = 1.0
+ALPHA_BRUSH_MAX_DIAMETER = 500.0
 
 
 def _finite_number(name: str, value: Real) -> float:
@@ -49,8 +51,12 @@ class AlphaBrushStroke:
         if self.mode not in ALPHA_BRUSH_MODES:
             raise ValueError('alpha brush mode must be erase or restore')
         diameter = _finite_number('alpha brush diameter', self.diameter)
-        if diameter <= 0.0:
-            raise ValueError('alpha brush diameter must be greater than 0.0')
+        if not ALPHA_BRUSH_MIN_DIAMETER <= diameter <= ALPHA_BRUSH_MAX_DIAMETER:
+            raise ValueError(
+                'alpha brush diameter must be between '
+                f'{ALPHA_BRUSH_MIN_DIAMETER:g} and '
+                f'{ALPHA_BRUSH_MAX_DIAMETER:g}'
+            )
         points = tuple(_point_tuple(point) for point in self.points)
         if not points:
             raise ValueError('alpha brush stroke requires at least one point')

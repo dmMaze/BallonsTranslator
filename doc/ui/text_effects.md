@@ -54,7 +54,8 @@ leaving unmatched surplus occurrences in place.
 | Composition, padding, raster policy, preview namespaces, and caches | [`ui/text_engine/effects/renderer.py`](../../ballontranslator/ui/text_engine/effects/renderer.py), [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
 | Selection-scoped effect preview and commit | [`ui/text_engine/effects/edit_session.py`](../../ballontranslator/ui/text_engine/effects/edit_session.py) |
 | Image-generation request, logical crop, and background job | [`ui/text_engine/effects/image_generation.py`](../../ballontranslator/ui/text_engine/effects/image_generation.py), [`modules/llm_image.py`](../../ballontranslator/modules/llm_image.py) |
-| Panel projection and card controls | [`ui/text_engine/effects/panel.py`](../../ballontranslator/ui/text_engine/effects/panel.py), [`ui/text_engine/effects/gradient_editor.py`](../../ballontranslator/ui/text_engine/effects/gradient_editor.py) |
+| Selection and stack projection | [`ui/text_engine/effects/panel.py`](../../ballontranslator/ui/text_engine/effects/panel.py) |
+| Effect cards and shared card controls | [`ui/text_engine/effects/cards.py`](../../ballontranslator/ui/text_engine/effects/cards.py), [`ui/text_engine/effects/gradient_editor.py`](../../ballontranslator/ui/text_engine/effects/gradient_editor.py) |
 | Canvas brush input and mask undo | [`ui/text_engine/effects/alpha_mask_edit_session.py`](../../ballontranslator/ui/text_engine/effects/alpha_mask_edit_session.py) |
 | Effect and mask undo commands | [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
 | Source/visual bounds and the final global mapping | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py), [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
@@ -84,11 +85,12 @@ mapping. Texture uses the same blank Glossary-style raster field and embedded
 file picker as Image. An Empty Texture remains blank and keeps its
 Fill/Fit/Crop/Tile mapping; adding Texture does not open the chooser. Texture exists only for
 concrete project-item selections;
-global and itemless formatting never offers it. For a mixed Texture selection,
-asset, mapping, and scale compare independently. The chooser remains enabled
-when assets differ and selecting a file changes only the asset, retaining each
-item's mapping and scale. The file dialog, synchronous import, and any error
-message keep the formatting panel pinned for their complete lifetime. The
+global and itemless formatting never offers it. During multi-selection the card
+shows the primary item's exact asset, mapping, and scale. The chooser remains
+enabled on a matched card, and selecting a file changes only each target's
+asset, retaining that target's mapping and scale. The file dialog, synchronous
+import, and any error message keep the formatting panel pinned for their
+complete lifetime. The
 editor orders its
 square selected-stop color swatch and stop strip on one row, Opacity/Position
 row, then angle-dial/numeric Angle and Scale row. Dragging the dial pointer uses
@@ -283,7 +285,7 @@ and draws the synchronous `QImage` directly, avoiding transparent-edge color
 fringes and a redundant padded pixmap. The project decode cache lazily retains
 an immutable premultiplied companion only for transparent assets, so full and
 tiled sampling do not copy and premultiply the complete source on each tile. It
-retains at most two entries and 512 MiB of unique array storage; opaque assets
+retains at most 16 entries and 512 MiB of unique array storage; opaque assets
 share their straight representation.
 
 ## Coordinates, padding, and interaction
@@ -470,7 +472,11 @@ selection, caret, and IME feedback are painted afterward and never enter their
 input pixels.
 
 Image generation is available only for exactly one concrete selected text
-item. One request may run per panel. Source and Inpainted use the exact logical
+item. Model, context, and prompt edits remain a card-local non-undoable draft.
+A sibling stack add, delete, or reorder carries that draft across the card
+rebuild only when the exact immutable `ImageEffect` object survives; changing
+targets or deleting the Image discards it. One request may run per panel.
+Source and Inpainted use the exact logical
 pre-transform item rectangle from the corresponding page image; bounds must be
 finite, positive, and fully inside the page, with no clamping. Lettered starts
 from the Inpainted crop and draws only that item's logical horizontal or
@@ -502,8 +508,10 @@ one eligible selected text item, freezes the scene-to-source mapper and logical
 origin for the duration of a brush stroke, and keeps raw samples session-owned.
 First activation inserts an empty enabled mask as its own undo step. Each
 completed Erase or Restore stroke adds one immutable history entry and one undo
-command. Escape, selection/page/scene teardown, or starting another effect edit
-discards an incomplete stroke.
+command. Brush diameter is shared and validated as 1-500 logical pixels in both
+the editor and persisted domain; passive loading warns and drops only an invalid
+stroke while preserving valid siblings. Escape, selection/page/scene teardown,
+or starting another effect edit discards an incomplete stroke.
 
 Before save, undo/redo, page replacement, or scene teardown, resolve pending
 numeric/gradient edits and previews at their owning session. Do not let a
@@ -522,7 +530,7 @@ is instead shared at the project asset boundary:
 | Canonical glyph pixmap and lazy alpha | At most two entries; reuse across paint-only, Fill Opacity, and Blend previews while document, layout, source geometry, transform state, and render scale match. Repeated fills share this source and its mask rather than rerasterizing glyphs. |
 | Positioned Stroke coverage | At most two read-only alpha planes; key by canonical-source inputs plus Stroke width and position, excluding paint and opacity |
 | Gradient compiled kernel | Runtime acceleration only; the byte-identical NumPy path remains the pre-warm, unavailable, and quality-oracle fallback |
-| Decoded project raster | At most two positive entries per project, shared by Texture and Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached. One top-level paint shares one asset-keyed Image lookup map through its gates and full/visible-tile composite. |
+| Decoded project raster | At most 16 positive entries per project, shared by Texture and Image and keyed by immutable relative ref; successful import prewarms it, project reload clears it, and failures are never cached. One top-level paint shares one asset-keyed Image lookup map through its gates and full/visible-tile composite. |
 
 Within one generated batch, grow one exterior source silhouette as Stroke cards
 are encountered and reuse the same colored positioned Stroke band for its

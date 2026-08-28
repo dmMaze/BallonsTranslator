@@ -21,6 +21,7 @@ from ballontranslator.utils.llm_profiles import (
     profile_from_config,
 )
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.raster_assets import validate_raster_dimensions
 from ballontranslator.utils.text_effects import ImageGenerationRecipe
 from ..rendering.raster import EffectRasterAllocationError
 
@@ -269,6 +270,7 @@ def _encode_generated_png(image: np.ndarray) -> bytes:
             'ImageGeneration',
             'Image generation returned an invalid RGB(A) image.',
         ))
+    validate_raster_dimensions(image.shape[1], image.shape[0])
     import io
 
     output = io.BytesIO()

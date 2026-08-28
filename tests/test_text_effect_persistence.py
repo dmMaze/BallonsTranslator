@@ -212,6 +212,35 @@ class TextEffectPersistenceTest(unittest.TestCase):
 
         self.assertEqual(tuple(project._raster_asset_cache), (second.path,))
 
+    def test_raster_decode_cache_reuses_three_small_effect_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = ProjImgTrans()
+            project.directory = directory
+            assets = []
+            for index, color in enumerate((30, 90, 150)):
+                source_path = os.path.join(directory, f'asset-{index}.png')
+                Image.fromarray(np.full(
+                    (2, 3, 4), (color, 20, 40, 255), dtype=np.uint8
+                )).save(source_path)
+                assets.append(project.import_raster_asset(source_path))
+
+            with patch.object(
+                project,
+                '_decode_raster_asset_snapshot',
+                side_effect=AssertionError('warm asset decoded again'),
+            ), patch.object(
+                project,
+                '_hash_raster_asset_file',
+                side_effect=AssertionError('warm asset hashed again'),
+            ):
+                for asset in assets:
+                    self.assertIsNotNone(project.load_raster_asset(asset))
+
+            self.assertEqual(
+                tuple(project._raster_asset_cache),
+                tuple(asset.path for asset in assets),
+            )
+
     def test_changed_raster_bytes_are_reverified_before_interactive_decode(self):
         for replacement in ('invalid-bytes', 'valid-wrong-digest'):
             with (

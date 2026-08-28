@@ -19,7 +19,12 @@ from .textblock import (
     normalize_textblock_effect_payload,
 )
 from .fontformat import warn_ignored_legacy_effects
-from .raster_assets import RasterAssetRef
+from .raster_assets import (
+    RASTER_ASSET_MAX_DECODED_BYTES,
+    RASTER_ASSET_MAX_PIXELS,
+    RasterAssetRef,
+    validate_raster_dimensions,
+)
 from .rgba import premultiply_rgba_in_place
 from .text_alpha_mask import AlphaBrushStroke, TextAlphaMask
 from .config import pcfg, RunStatus
@@ -39,9 +44,10 @@ class ImgnameNotInProjectException(Exception):
 
 
 RASTER_ASSET_MAX_SOURCE_BYTES = 32 * 1024 * 1024
-RASTER_ASSET_MAX_PIXELS = 64 * 1024 * 1024
-RASTER_ASSET_MAX_DECODED_BYTES = RASTER_ASSET_MAX_PIXELS * 4
-RASTER_ASSET_DECODE_CACHE_ITEMS = 2
+# Small effect stacks commonly reuse several Image/Texture assets. The byte
+# budget remains the authoritative memory bound; this count only prevents a
+# large number of tiny decoded entries from accumulating.
+RASTER_ASSET_DECODE_CACHE_ITEMS = 16
 RASTER_ASSET_DECODE_CACHE_MAX_BYTES = RASTER_ASSET_MAX_DECODED_BYTES * 2
 _RASTER_ASSET_RGBA8_MODES = {
     '1', 'L', 'LA', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'HSV'
@@ -288,13 +294,7 @@ class ProjImgTrans:
                 with Image.open(path) as image:
                     extension = cls._raster_extension(image.format)
                     width, height = image.size
-                    pixels = width * height
-                    if pixels <= 0 or pixels > RASTER_ASSET_MAX_PIXELS:
-                        raise ValueError('raster asset exceeds the pixel limit')
-                    if pixels * 4 > RASTER_ASSET_MAX_DECODED_BYTES:
-                        raise ValueError(
-                            'raster asset exceeds the decoded-byte limit'
-                        )
+                    validate_raster_dimensions(width, height)
                     if image.mode not in _RASTER_ASSET_RGBA8_MODES:
                         raise ValueError(
                             'raster asset must use supported 8-bit channels'

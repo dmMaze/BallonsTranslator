@@ -272,6 +272,31 @@ class TextEffectPreviewTest(unittest.TestCase):
             [0.5, 2.0],
         )
 
+    def test_faster_preview_prepares_effect_geometry_once(self):
+        item = self._item(stack=self._stack())
+        renderer = item.effect_renderer
+        renderer.set_faster_preview(True)
+
+        with patch.object(
+            renderer,
+            '_sync_native_stroke_alignment',
+            wraps=renderer._sync_native_stroke_alignment,
+        ) as alignment, patch.object(
+            renderer,
+            '_update_effect_padding',
+            wraps=renderer._update_effect_padding,
+        ) as padding:
+            item.set_text_effects(self._stack(0.24), preview=True)
+            self.assertEqual(alignment.call_count, 1)
+            self.assertEqual(padding.call_count, 1)
+            alignment.reset_mock()
+            padding.reset_mock()
+
+            renderer.repaint_background()
+
+            self.assertEqual(alignment.call_count, 1)
+            self.assertEqual(padding.call_count, 1)
+
     def test_nonlinear_effect_preview_quality_follows_faster_toggle(self):
         item = self._item(stack=self._stack())
         item.set_text_transform(TextTransformStack((SineTextTransform(),)))

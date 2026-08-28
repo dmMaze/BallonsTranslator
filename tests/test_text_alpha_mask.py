@@ -9,6 +9,8 @@ from unittest.mock import patch
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.text_alpha_mask import (
+    ALPHA_BRUSH_MAX_DIAMETER,
+    ALPHA_BRUSH_MIN_DIAMETER,
     AlphaBrushStroke,
     TextAlphaMask,
     load_text_alpha_mask,
@@ -40,6 +42,9 @@ class TextAlphaMaskDomainTest(unittest.TestCase):
             ('erase', float('inf'), ((0, 0),)),
             ('restore', 3, ()),
             ('restore', 3, ((0, float('nan')),)),
+            ('erase', ALPHA_BRUSH_MIN_DIAMETER - 0.1, ((0, 0),)),
+            ('erase', ALPHA_BRUSH_MAX_DIAMETER + 0.1, ((0, 0),)),
+            ('erase', 1e300, ((0, 0),)),
         ):
             with self.subTest(args=args):
                 with self.assertRaises((TypeError, ValueError)):
@@ -55,6 +60,18 @@ class TextAlphaMaskDomainTest(unittest.TestCase):
 
         self.assertTrue(TextAlphaMask().is_neutral())
         self.assertTrue(TextAlphaMask(enabled=False, strokes=(stroke,)).is_neutral())
+        self.assertEqual(
+            AlphaBrushStroke(
+                'erase', ALPHA_BRUSH_MIN_DIAMETER, ((0, 0),)
+            ).diameter,
+            ALPHA_BRUSH_MIN_DIAMETER,
+        )
+        self.assertEqual(
+            AlphaBrushStroke(
+                'erase', ALPHA_BRUSH_MAX_DIAMETER, ((0, 0),)
+            ).diameter,
+            ALPHA_BRUSH_MAX_DIAMETER,
+        )
 
     def test_permissive_loader_isolates_bad_strokes_and_points(self):
         payload = {
@@ -69,6 +86,8 @@ class TextAlphaMaskDomainTest(unittest.TestCase):
                     'old_field': 1,
                 },
                 {'mode': 'erase', 'diameter': -1, 'points': [[5, 6]]},
+                {'mode': 'erase', 'diameter': 501, 'points': [[5, 6]]},
+                {'mode': 'erase', 'diameter': 1e300, 'points': [[5, 6]]},
                 {'mode': 'restore', 'diameter': 2, 'points': [[7, 8]]},
                 'broken',
             ],

@@ -192,7 +192,7 @@ class TextFilterRendererTest(unittest.TestCase):
                 ImageEffect(asset, mode='foreground'),
             )), text='')
             item.blk.text_alpha_mask = TextAlphaMask(strokes=(
-                AlphaBrushStroke('erase', 1000, ((160, 90),)),
+                AlphaBrushStroke('erase', 500, ((160, 90),)),
             ))
             scene = QGraphicsScene()
             scene.imgtrans_proj = project

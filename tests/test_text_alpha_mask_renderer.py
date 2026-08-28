@@ -151,7 +151,7 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
     @staticmethod
     def _erase_all() -> TextAlphaMask:
         return TextAlphaMask(strokes=(
-            AlphaBrushStroke('erase', 1000, ((160, 90),)),
+            AlphaBrushStroke('erase', 500, ((160, 90),)),
         ))
 
     @staticmethod
@@ -541,6 +541,39 @@ class TextAlphaMaskRendererTest(unittest.TestCase):
             item.set_text_alpha_mask(masks[1], preview=True)
             self.assertEqual(upstream.call_count, 1)
         self.assertEqual(item.blk.text_alpha_mask, self._partial_mask())
+
+    def test_first_mask_preview_reuses_warm_pre_mask_surface(self):
+        stack = TextEffectStack(effects=(
+            ShadowEffect(angle=34.0, distance=0.216, blur=0.08),
+            StrokeEffect(width=0.12, paint=LinearGradientPaint(angle=45.0)),
+        ))
+        item = self._item(stack)
+        renderer = item.effect_renderer
+        committed = renderer._effect_raster_state
+        self.assertIsNotNone(committed)
+        self.assertTrue(committed.pre_mask_cache)
+        before = self._render(item)
+
+        first = TextAlphaMask(strokes=(
+            AlphaBrushStroke('erase', 18, ((20, 20),)),
+        ))
+        with patch.object(
+            renderer,
+            '_render_pre_mask_effect_surface',
+            wraps=renderer._render_pre_mask_effect_surface,
+        ) as upstream:
+            item.set_text_alpha_mask(first, preview=True)
+            after = self._render(item)
+
+        self.assertEqual(upstream.call_count, 0)
+        self.assertLess(
+            np.count_nonzero(after[..., 3]),
+            np.count_nonzero(before[..., 3]),
+        )
+        self.assertIsNot(
+            renderer._preview_effect_raster_state.pre_mask_cache,
+            committed.pre_mask_cache,
+        )
 
     def test_mask_preview_reuses_pre_mask_tile_for_same_visible_region(self):
         stack = TextEffectStack(effects=(

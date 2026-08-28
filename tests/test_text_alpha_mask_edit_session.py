@@ -186,7 +186,7 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             self.assertTrue(self.session.handle_mouse_press(
                 self._event(Qt.MouseButton.LeftButton, 20, 30)
             ))
-            self.assertEqual(upstream.call_count, 1)
+            self.assertEqual(upstream.call_count, 0)
             for offset in range(1, 11):
                 self.assertTrue(self.session.handle_mouse_move(
                     self._event(
@@ -195,7 +195,7 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
                         30 + offset * 3,
                     )
                 ))
-            self.assertEqual(upstream.call_count, 1)
+            self.assertEqual(upstream.call_count, 0)
 
     def test_commit_rebuilds_when_preview_pixels_are_not_semantically_current(self):
         self._activate()
@@ -463,21 +463,21 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             )
             self.assertFalse(mask_card.visibility_button.icon().isNull())
             self.assertEqual(
-                mask_card.visibility_button.toolTip(), 'Hide Eraser'
+                mask_card.visibility_button.toolTip(), 'Hide'
             )
             self.assertEqual(
                 mask_card.visibility_button.accessibleName(),
-                'Hide Eraser',
+                'Hide',
             )
             self.assertEqual(
-                mask_card.remove_button.toolTip(), 'Remove Eraser'
+                mask_card.remove_button.toolTip(), 'Delete'
             )
             count = self.canvas.text_undo_stack.count()
             mask_card.visibility_button.click()
             self.assertFalse(self.item.blk.text_alpha_mask.enabled)
             self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
             self.assertEqual(
-                mask_card.visibility_button.toolTip(), 'Show Eraser'
+                mask_card.visibility_button.toolTip(), 'Show'
             )
             self.canvas.text_undo_stack.undo()
             self.assertTrue(self.item.blk.text_alpha_mask.enabled)

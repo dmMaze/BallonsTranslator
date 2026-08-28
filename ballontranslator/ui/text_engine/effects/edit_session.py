@@ -216,24 +216,17 @@ class TextEffectEditSession:
     def _convert_effect_paint(
         paint: EffectPaint,
         paint_type: str,
-        mixed_values: bool,
     ) -> GeneratedEffectPaint:
-        """Convert effect Fill without inventing a shared mixed value.
+        """Convert an effect Fill while preserving its visible color.
 
         >>> converted = TextEffectEditSession._convert_effect_paint(
-        ...     SolidPaint((1, 2, 3)), 'linear_gradient', False
+        ...     SolidPaint((1, 2, 3)), 'linear_gradient'
         ... )
         >>> converted.stops[-1].opacity
         0.0
         """
         if paint_type not in {'solid', 'linear_gradient'}:
             raise ValueError('unsupported effect paint type')
-        if mixed_values:
-            return (
-                SolidPaint()
-                if paint_type == 'solid'
-                else LinearGradientPaint()
-            )
         if paint_type == 'solid':
             if isinstance(paint, SolidPaint):
                 return paint
@@ -272,10 +265,9 @@ class TextEffectEditSession:
                     value = SolidPaint(value)
                 parameters['paint'] = value
             elif param_name == 'paint_type':
-                paint_type, mixed_values = value
                 parameters['paint'] = (
                     TextEffectEditSession._convert_effect_paint(
-                        effect.paint, paint_type, mixed_values
+                        effect.paint, value
                     )
                 )
             else:
@@ -291,10 +283,9 @@ class TextEffectEditSession:
                     value = SolidPaint(value)
                 parameters['paint'] = value
             elif param_name == 'paint_type':
-                paint_type, mixed_values = value
                 parameters['paint'] = (
                     TextEffectEditSession._convert_effect_paint(
-                        effect.paint, paint_type, mixed_values
+                        effect.paint, value
                     )
                 )
             else:
@@ -310,10 +301,9 @@ class TextEffectEditSession:
                     value = SolidPaint(value)
                 parameters['paint'] = value
             elif param_name == 'paint_type':
-                paint_type, mixed_values = value
                 parameters['paint'] = (
                     TextEffectEditSession._convert_effect_paint(
-                        effect.paint, paint_type, mixed_values
+                        effect.paint, value
                     )
                 )
             else:
@@ -587,8 +577,6 @@ class TextEffectEditSession:
             self.cancel_preview()
         before = self.preview_before or self._current_states()
         target_indices = self._target_indices(before, index)
-        if param_name == 'paint_type':
-            value = (value, False)
         try:
             after = [
                 state if target_index is None else self._with_value(
@@ -1127,10 +1115,6 @@ class TextEffectEditSession:
         if before is not None:
             self._sync_effect_ui()
         return changed
-
-    def _refresh_owner(self) -> None:
-        """Compatibility callback used by package-3 focused tests."""
-        self._sync_effect_ui()
 
     def finish_pending_edits(self) -> None:
         if self.controls is not None:

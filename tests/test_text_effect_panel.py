@@ -47,13 +47,15 @@ from ballontranslator.ui.misc import parse_stylesheet
 from ballontranslator.ui.text_engine.formatting.commands import (
     handle_ffmt_change,
 )
-from ballontranslator.ui.text_engine.effects.panel import (
+from ballontranslator.ui.text_engine.effects.cards import (
     FilterEffectCard,
+    GlowEffectCard,
+    ImageEffectCard,
     ShadowEffectCard,
     StrokeEffectCard,
     TextFillEffectCard,
-    TextEffectPanel,
 )
+from ballontranslator.ui.text_engine.effects.panel import TextEffectPanel
 from ballontranslator.ui.text_engine.effects.image_generation import (
     ImageGenerationBackend,
     ImageGenerationRequest,
@@ -62,7 +64,6 @@ from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.formatting.presets import TextStyleLabel
 from ballontranslator.ui.text_engine.effects.gradient_editor import (
-    GradientStopBar,
     InlineLinearGradientEditor,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
@@ -80,7 +81,6 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
-from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     FilterEffect,
     GlowEffect,
@@ -163,6 +163,13 @@ class TextEffectPanelTest(unittest.TestCase):
     def _stack(*strokes, opacity=1.0):
         return TextEffectStack(opacity, tuple(strokes))
 
+    def _cards(self, card_type, panel=None):
+        panel = self.panel.texteffect_panel if panel is None else panel
+        return [
+            card for card in panel.effect_cards
+            if isinstance(card, card_type)
+        ]
+
     @classmethod
     def _item(cls, stack=None):
         block = TextBlock([0, 0, 320, 180])
@@ -244,7 +251,7 @@ class TextEffectPanelTest(unittest.TestCase):
         before = self._stack(StrokeEffect(width=0.12))
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
         editor = card.width_control.editor
 
         editor.setText('0.45')
@@ -257,7 +264,7 @@ class TextEffectPanelTest(unittest.TestCase):
         committed = item.blk.fontformat.text_effects
         self.assertEqual(committed[0].width, 0.45)
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
 
         editor.setText('0.70')
         editor.textEdited.emit('0.70')
@@ -388,21 +395,21 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(len(item.blk.fontformat.text_effects), 3)
         self.assertEqual(self.canvas.stack.count(), 1)
 
-        effect_panel.stroke_cards[2].delete_button.click()
+        self._cards(StrokeEffectCard, effect_panel)[2].delete_button.click()
         self.assertEqual(len(item.blk.fontformat.text_effects), 2)
         self.assertEqual(self.canvas.stack.count(), 2)
 
-        effect_panel.stroke_cards[0].visibility_button.click()
+        self._cards(StrokeEffectCard, effect_panel)[0].visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[1].enabled)
         self.assertEqual(self.canvas.stack.count(), 3)
 
-        effect_panel.stroke_cards[1].move_up_button.click()
+        self._cards(StrokeEffectCard, effect_panel)[1].move_up_button.click()
         stack = item.blk.fontformat.text_effects
         self.assertEqual(stack[0].paint.color, (0, 0, 255))
         self.assertEqual(stack[1].paint.color, (255, 0, 0))
         self.assertEqual(self.canvas.stack.count(), 4)
         self.assertEqual(
-            [card.index for card in self.panel.texteffect_panel.stroke_cards],
+            [card.index for card in self._cards(StrokeEffectCard)],
             [1, 0],
         )
 
@@ -417,24 +424,24 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
         cards = (
-            effect_panel.stroke_cards[0],
-            effect_panel.shadow_cards[0],
-            effect_panel.glow_cards[0],
-            effect_panel.text_fill_cards[0],
+            self._cards(StrokeEffectCard, effect_panel)[0],
+            self._cards(ShadowEffectCard, effect_panel)[0],
+            self._cards(GlowEffectCard, effect_panel)[0],
+            self._cards(TextFillEffectCard, effect_panel)[0],
         )
         for card in cards:
             self.assertFalse(card.title_icon_label.pixmap().isNull())
             self.assertFalse(card.visibility_button.icon().isNull())
         self.assertEqual(
-            effect_panel.stroke_cards[0].visibility_button.toolTip(),
+            self._cards(StrokeEffectCard, effect_panel)[0].visibility_button.toolTip(),
             'Hide',
         )
         self.assertEqual(
-            effect_panel.shadow_cards[0].visibility_button.toolTip(),
+            self._cards(ShadowEffectCard, effect_panel)[0].visibility_button.toolTip(),
             'Show',
         )
         self.assertEqual(
-            effect_panel.glow_cards[0].visibility_button.toolTip(),
+            self._cards(GlowEffectCard, effect_panel)[0].visibility_button.toolTip(),
             'Hide',
         )
         self.assertEqual(
@@ -444,7 +451,8 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertTrue(effect_panel.hollow_toggle_button.isChecked())
         self.assertFalse(effect_panel.hollow_toggle_button.icon().isNull())
         self.assertEqual(
-            effect_panel.text_fill_cards[0].visibility_button.toolTip(),
+            self._cards(TextFillEffectCard, effect_panel)[0]
+            .visibility_button.toolTip(),
             'Hide',
         )
         self.assertEqual(cards[0].delete_button.toolTip(), 'Delete')
@@ -530,7 +538,7 @@ class TextEffectPanelTest(unittest.TestCase):
             ])
             self.app.processEvents()
 
-            card = effect_panel.stroke_cards[0]
+            card = self._cards(StrokeEffectCard, effect_panel)[0]
             self.assertEqual(host.height(), constrained_height)
             self.assertGreater(
                 effect_panel.verticalScrollBar().maximum(), 0
@@ -570,27 +578,18 @@ class TextEffectPanelTest(unittest.TestCase):
             host.deleteLater()
             self.app.processEvents()
 
-    def test_mixed_eye_click_enables_all_with_one_command(self):
+    def test_primary_eye_click_updates_all_matched_effects_once(self):
         enabled = self._item(self._stack(StrokeEffect(enabled=True)))
         disabled = self._item(self._stack(StrokeEffect(enabled=False)))
         self.canvas.selected = [enabled, disabled]
         self.panel.set_textblk_item(None, multi_select=True)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
 
-        mixed_icon_key = card.visibility_button.icon().cacheKey()
-        card.visibility_button.set_visibility(False)
-        self.assertNotEqual(
-            mixed_icon_key, card.visibility_button.icon().cacheKey()
-        )
-        card.visibility_button.set_visibility(None)
-        self.assertEqual(card.visibility_button.toolTip(), 'Show')
-        self.assertEqual(
-            card.visibility_button.accessibleName(), 'Show'
-        )
+        target_enabled = card.visibility_button.toolTip() == 'Show'
         card.visibility_button.click()
 
         self.assertTrue(all(
-            item.blk.fontformat.text_effects[0].enabled
+            item.blk.fontformat.text_effects[0].enabled == target_enabled
             for item in (enabled, disabled)
         ))
         self.assertEqual(self.canvas.stack.count(), 1)
@@ -638,10 +637,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertTrue(toggle.isChecked())
         self.assertEqual(toggle.accessibleName(), 'Disable Hollow')
 
-    def test_stroke_position_common_mixed_and_one_command_undo(self):
+    def test_stroke_position_primary_value_and_one_command_undo(self):
         item = self._item(self._stack(StrokeEffect(position='center')))
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
 
         self.assertEqual(card.position_selector.currentData(), 'center')
         card.position_selector.setCurrentIndex(
@@ -659,12 +658,12 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(
             item.blk.fontformat.text_effects[0].position, 'outside'
         )
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
 
         second = self._item(self._stack(StrokeEffect(position='inside')))
         self.canvas.selected = [item, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        mixed_card = self._cards(StrokeEffectCard)[0]
         self.assertEqual(mixed_card.position_selector.currentData(), 'inside')
         mixed_card.position_selector.setCurrentIndex(
             mixed_card.position_selector.findData('center')
@@ -675,12 +674,12 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 2)
 
-    def test_stroke_fill_conversion_and_mixed_selection(self):
+    def test_stroke_fill_conversion_and_multi_selection(self):
         solid = self._item(self._stack(StrokeEffect(
             paint=SolidPaint((12, 34, 56))
         )))
         self.panel.set_textblk_item(solid)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
         self.assertTrue(card.gradient_editor.isHidden())
         self.assertFalse(card.paint_button.isHidden())
         solid_content_height = (
@@ -725,7 +724,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [solid, gradient]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        mixed_card = self._cards(StrokeEffectCard)[0]
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
@@ -741,7 +740,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [first_solid, second_solid]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        mixed_card = self._cards(StrokeEffectCard)[0]
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'solid'
         )
@@ -773,7 +772,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [hetero_solid, hetero_gradient]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.stroke_cards[0]
+        mixed_card = self._cards(StrokeEffectCard)[0]
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
@@ -861,7 +860,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
         editor = card.gradient_editor
         self.assertFalse(editor.isHidden())
         self.assertTrue(card.paint_button.isHidden())
@@ -895,7 +894,7 @@ class TextEffectPanelTest(unittest.TestCase):
             Qt.KeyboardModifier.NoModifier,
         ))
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
         committed = item.blk.fontformat.text_effects
         self.assertNotEqual(committed, before)
         self.canvas.stack.undo()
@@ -981,7 +980,7 @@ class TextEffectPanelTest(unittest.TestCase):
                         layout = QVBoxLayout(host)
                         layout.setContentsMargins(11, 11, 11, 11)
                         card = card_type(0)
-                        card.set_values([effect])
+                        card.set_value(effect)
                         layout.addWidget(card)
                         requested_width = 316
                         host.resize(
@@ -1028,7 +1027,7 @@ class TextEffectPanelTest(unittest.TestCase):
                     host = QWidget()
                     layout = QVBoxLayout(host)
                     card = StrokeEffectCard(0)
-                    card.set_values([StrokeEffect(blend_mode='normal')])
+                    card.set_value(StrokeEffect(blend_mode='normal'))
                     layout.addWidget(card)
                     host.resize(
                         host.minimumSizeHint().width(),
@@ -1040,9 +1039,9 @@ class TextEffectPanelTest(unittest.TestCase):
                     before_host_minimum = host.minimumSizeHint().width()
                     before_host_width = host.width()
 
-                    card.set_values([
+                    card.set_value(
                         StrokeEffect(blend_mode='linear_dodge')
-                    ])
+                    )
                     layout.activate()
                     self.app.processEvents()
 
@@ -1068,7 +1067,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [item]
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
         editor = card.gradient_editor
         transform_session = self.panel.text_transform_session
         transform_session.preview_parameter_delta(
@@ -1093,7 +1092,7 @@ class TextEffectPanelTest(unittest.TestCase):
             self.assertEqual(self.canvas.selected, [item])
             self.assertEqual(self.panel.text_effect_session.items, [item])
             self.assertIs(self.panel.textblk_item, item)
-            self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+            self.assertIs(self._cards(StrokeEffectCard)[0], card)
             self.assertIsNotNone(transform_session.drag_before)
             self.assertAlmostEqual(
                 item._effective_text_transform()[0].horizontal_scale, 1.25
@@ -1122,7 +1121,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(self.panel.focusOnColorDialog)
         self.assertEqual(item.effective_text_effects(), before)
         self.assertEqual(self.canvas.stack.count(), 0)
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
 
         def preview_then_accept():
             assert_active_preview(QColor(20, 30, 40))
@@ -1144,10 +1143,10 @@ class TextEffectPanelTest(unittest.TestCase):
             (20, 30, 40),
         )
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
         self.canvas.stack.undo()
         self.assertEqual(item.blk.fontformat.text_effects, before)
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
         transform_session.cancel_preview()
         self.assertAlmostEqual(
             item._effective_text_transform()[0].horizontal_scale, 1.0
@@ -1164,10 +1163,13 @@ class TextEffectPanelTest(unittest.TestCase):
 
         self.assertTrue(effect_panel.add_effect_button.isEnabled())
         self.assertEqual(
-            [card.width_control.editor.text() for card in effect_panel.stroke_cards],
+            [
+                card.width_control.editor.text()
+                for card in self._cards(StrokeEffectCard, effect_panel)
+            ],
             ['0.50', '0.40'],
         )
-        matched, unmatched = effect_panel.stroke_cards
+        matched, unmatched = self._cards(StrokeEffectCard, effect_panel)
         self.assertTrue(matched.property('matched'))
         self.assertFalse(unmatched.property('matched'))
 
@@ -1202,7 +1204,7 @@ class TextEffectPanelTest(unittest.TestCase):
 
         self.panel.set_textblk_item(None, multi_select=True)
         self.assertEqual(
-            self.panel.texteffect_panel.stroke_cards[0]
+            self._cards(StrokeEffectCard)[0]
             .width_control.editor.text(),
             '0.85',
         )
@@ -1232,7 +1234,7 @@ class TextEffectPanelTest(unittest.TestCase):
         set_effect_items.assert_called_once_with([clicked, first, later])
         self.assertIs(self.panel.text_effect_session.items[0], clicked)
         self.assertEqual(
-            self.panel.texteffect_panel.stroke_cards[0]
+            self._cards(StrokeEffectCard)[0]
             .width_control.editor.text(),
             '0.15',
         )
@@ -1247,8 +1249,8 @@ class TextEffectPanelTest(unittest.TestCase):
         self.canvas.selected = [other, primary]
         self.panel.set_textblk_item(None, multi_select=True)
         controls = self.panel.texteffect_panel
-        stroke_card = controls.stroke_cards[0]
-        glow_card = controls.glow_cards[0]
+        stroke_card = self._cards(StrokeEffectCard, controls)[0]
+        glow_card = self._cards(GlowEffectCard, controls)[0]
         self.assertTrue(stroke_card.property('matched'))
         self.assertFalse(glow_card.property('matched'))
         self.assertEqual(stroke_card.width_control.editor.text(), '0.60')
@@ -1279,7 +1281,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.assertEqual(self.canvas.stack.count(), 2)
 
-        controls.stroke_cards[0].delete_button.click()
+        self._cards(StrokeEffectCard, controls)[0].delete_button.click()
         self.assertTrue(all(
             not any(
                 isinstance(effect, StrokeEffect)
@@ -1297,8 +1299,8 @@ class TextEffectPanelTest(unittest.TestCase):
         self.canvas.selected = [other, primary]
         self.panel.set_textblk_item(None, multi_select=True)
         controls = self.panel.texteffect_panel
-        glow = controls.glow_cards[0]
-        stroke = controls.stroke_cards[0]
+        glow = self._cards(GlowEffectCard, controls)[0]
+        stroke = self._cards(StrokeEffectCard, controls)[0]
 
         self.assertFalse(glow.property('matched'))
         self.assertTrue(stroke.property('matched'))
@@ -1381,9 +1383,15 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertIsInstance(
             primary.blk.fontformat.text_effects[1], GlowEffect
         )
-        added = next(card for card in controls.glow_cards if card.index == 1)
+        added = next(
+            card for card in self._cards(GlowEffectCard, controls)
+            if card.index == 1
+        )
         self.assertTrue(added.property('matched'))
-        surplus = next(card for card in controls.glow_cards if card.index == 0)
+        surplus = next(
+            card for card in self._cards(GlowEffectCard, controls)
+            if card.index == 0
+        )
         self.assertFalse(surplus.property('matched'))
         self.assertTrue(
             self.panel.text_effect_session.commit_value(
@@ -1407,11 +1415,11 @@ class TextEffectPanelTest(unittest.TestCase):
             isinstance(item.blk.fontformat.text_effects[0], FilterEffect)
             for item in (first, primary)
         ))
-        self.assertTrue(controls.filter_cards[-1].property('matched'))
+        self.assertTrue(self._cards(FilterEffectCard, controls)[-1].property('matched'))
         self.canvas.stack.undo()
-        self.assertEqual(controls.filter_cards, [])
+        self.assertEqual(self._cards(FilterEffectCard, controls), [])
         self.canvas.stack.redo()
-        filter_card = controls.filter_cards[-1]
+        filter_card = self._cards(FilterEffectCard, controls)[-1]
         self.assertTrue(filter_card.property('matched'))
         self.assertTrue(
             self.panel.text_effect_session.commit_value(
@@ -1439,7 +1447,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.canvas.selected = [aligned_first, aligned_primary]
         self.panel.set_textblk_item(None, multi_select=True)
-        stroke = controls.stroke_cards[0]
+        stroke = self._cards(StrokeEffectCard, controls)[0]
         self.assertTrue(stroke.move_up_button.isEnabled())
         stroke.move_up_button.click()
         self.assertEqual(self.canvas.stack.count(), 5)
@@ -1454,7 +1462,7 @@ class TextEffectPanelTest(unittest.TestCase):
     def test_run_created_stroke_appears_on_selection_refresh(self):
         item = self._item(TextEffectStack())
         self.panel.set_textblk_item(item)
-        self.assertEqual(self.panel.texteffect_panel.stroke_cards, [])
+        self.assertEqual(self._cards(StrokeEffectCard), [])
 
         item.blk.fontformat.text_effects = with_primary_stroke(
             item.blk.fontformat.text_effects,
@@ -1463,7 +1471,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         item.fontformat.text_effects = item.blk.fontformat.text_effects
         self.panel.set_textblk_item(item)
-        cards = self.panel.texteffect_panel.stroke_cards
+        cards = self._cards(StrokeEffectCard)
         self.assertEqual(len(cards), 1)
         self.assertEqual(cards[0].width_control.editor.text(), '0.32')
         self.assertEqual(cards[0].fill_type_selector.currentData(), 'solid')
@@ -1475,7 +1483,7 @@ class TextEffectPanelTest(unittest.TestCase):
     def test_color_dialog_signal_retains_selected_owner(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.stroke_cards[0]
+        card = self._cards(StrokeEffectCard)[0]
 
         def choose_color(*_args):
             self.assertTrue(self.panel.focusOnColorDialog)
@@ -1492,7 +1500,7 @@ class TextEffectPanelTest(unittest.TestCase):
             (70, 80, 90),
         )
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.stroke_cards[0], card)
+        self.assertIs(self._cards(StrokeEffectCard)[0], card)
 
     def test_shadow_numeric_preview_commit_escape_keeps_card(self):
         before = self._stack(
@@ -1500,7 +1508,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.shadow_cards[0]
+        card = self._cards(ShadowEffectCard)[0]
         editor = card.angle_control.editor
 
         editor.setText('45.0°')
@@ -1514,7 +1522,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(committed[0].angle, 45.0)
         self.assertEqual(committed[0].distance, 0.2)
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.shadow_cards[0], card)
+        self.assertIs(self._cards(ShadowEffectCard)[0], card)
 
         blur_editor = card.blur_control.editor
         blur_editor.setText('0.30')
@@ -1535,7 +1543,7 @@ class TextEffectPanelTest(unittest.TestCase):
         before = self._stack(ShadowEffect(angle=30.0, distance=0.2))
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.shadow_cards[0]
+        card = self._cards(ShadowEffectCard)[0]
 
         card.angle_dial.set_angle(90.0)
         card.angle_dial.angle_previewed.emit(90.0)
@@ -1551,7 +1559,7 @@ class TextEffectPanelTest(unittest.TestCase):
         before = self._stack(GlowEffect(size=0.12, spread=0.03))
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.glow_cards[0]
+        card = self._cards(GlowEffectCard)[0]
         editor = card.size_control.editor
 
         editor.setText('0.45')
@@ -1564,7 +1572,7 @@ class TextEffectPanelTest(unittest.TestCase):
         committed = item.blk.fontformat.text_effects
         self.assertEqual(committed[0].size, 0.45)
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.glow_cards[0], card)
+        self.assertIs(self._cards(GlowEffectCard)[0], card)
 
         spread_editor = card.spread_control.editor
         spread_editor.setText('0.30')
@@ -1581,20 +1589,20 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.effective_text_effects(), committed)
         self.assertEqual(self.canvas.stack.count(), 1)
 
-    def test_glow_add_type_reorder_eye_delete_and_mixed_fill(self):
+    def test_glow_add_type_reorder_eye_delete_and_multi_selection_fill(self):
         item = self._item(TextEffectStack())
         self.panel.set_textblk_item(item)
         effect_panel = self.panel.texteffect_panel
         effect_panel.add_effect_actions['glow'].trigger()
         effect_panel.add_effect_actions['glow'].trigger()
-        self.assertEqual(len(effect_panel.glow_cards), 2)
+        self.assertEqual(len(self._cards(GlowEffectCard, effect_panel)), 2)
         self.assertEqual(self.canvas.stack.count(), 2)
         self.assertTrue(all(
             isinstance(effect, GlowEffect)
             for effect in item.blk.fontformat.text_effects
         ))
 
-        second = effect_panel.glow_cards[1]
+        second = self._cards(GlowEffectCard, effect_panel)[1]
         second.type_selector.setCurrentIndex(
             second.type_selector.findData('inner')
         )
@@ -1614,7 +1622,7 @@ class TextEffectPanelTest(unittest.TestCase):
             StrokeEffect(),
         ))
         self.panel.set_textblk_item(interleaved)
-        self.panel.texteffect_panel.glow_cards[0].move_up_button.click()
+        self._cards(GlowEffectCard)[0].move_up_button.click()
         self.assertIsInstance(
             interleaved.blk.fontformat.text_effects[1], StrokeEffect
         )
@@ -1631,7 +1639,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [first_solid, second_solid]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        mixed_card = self._cards(GlowEffectCard)[0]
         self.assertEqual(mixed_card.fill_type_selector.currentData(), 'solid')
         self.assertTrue(mixed_card.paint_button.isEnabled())
         self.assertEqual(
@@ -1657,7 +1665,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [first_gradient, second_gradient]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        mixed_card = self._cards(GlowEffectCard)[0]
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
@@ -1670,7 +1678,7 @@ class TextEffectPanelTest(unittest.TestCase):
         inner_type = self._item(self._stack(GlowEffect(glow_type='inner')))
         self.canvas.selected = [outer_type, inner_type]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        mixed_card = self._cards(GlowEffectCard)[0]
         self.assertEqual(mixed_card.type_selector.currentData(), 'inner')
         self.assertEqual(mixed_card.spread_control.label.text(), 'Choke')
         mixed_card.type_selector.setCurrentIndex(
@@ -1690,7 +1698,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [solid_type, gradient_type]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.glow_cards[0]
+        mixed_card = self._cards(GlowEffectCard)[0]
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
@@ -1712,7 +1720,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.glow_cards[0]
+        card = self._cards(GlowEffectCard)[0]
         self.assertTrue(card.gradient_editor.isHidden())
         self.assertFalse(card.paint_button.isHidden())
         card.fill_type_selector.setCurrentIndex(
@@ -1749,7 +1757,7 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.angle_editor.editingFinished.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 2)
-        self.assertIs(self.panel.texteffect_panel.glow_cards[0], card)
+        self.assertIs(self._cards(GlowEffectCard)[0], card)
 
     def test_shadow_type_and_hollow_toggle_use_one_command_each(self):
         item = self._item(TextEffectStack())
@@ -1761,7 +1769,7 @@ class TextEffectPanelTest(unittest.TestCase):
             item.blk.fontformat.text_effects[0], ShadowEffect
         )
         self.assertEqual(self.canvas.stack.count(), 1)
-        shadow_card = effect_panel.shadow_cards[0]
+        shadow_card = self._cards(ShadowEffectCard, effect_panel)[0]
         shadow_card.type_selector.setCurrentIndex(
             shadow_card.type_selector.findData('long')
         )
@@ -1801,7 +1809,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.shadow_cards[0]
+        card = self._cards(ShadowEffectCard)[0]
 
         self.assertEqual(card.fill_type_selector.currentData(), 'solid')
         self.assertTrue(card.gradient_editor.isHidden())
@@ -1864,14 +1872,14 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.angle_editor.editingFinished.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 2)
-        self.assertIs(self.panel.texteffect_panel.shadow_cards[0], card)
+        self.assertIs(self._cards(ShadowEffectCard)[0], card)
 
         different = self._item(self._stack(ShadowEffect(
             paint=LinearGradientPaint(angle=120.0)
         )))
         self.canvas.selected = [item, different]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.shadow_cards[0]
+        mixed_card = self._cards(ShadowEffectCard)[0]
         self.assertEqual(
             mixed_card.fill_type_selector.currentData(), 'linear_gradient'
         )
@@ -1879,7 +1887,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertTrue(mixed_card.gradient_editor.angle_editor.isEnabled())
         self.assertEqual(mixed_card.gradient_editor.angle_editor.value(), 120.0)
 
-    def test_foreground_paint_top_level_add_repeat_edit_and_mixed_values(self):
+    def test_foreground_paint_add_repeat_edit_and_primary_values(self):
         original = self._constant_text_fill(angle=15.0)
         self.canvas.imgtrans_proj = Mock()
         item = self._item(self._stack(original))
@@ -1895,16 +1903,23 @@ class TextEffectPanelTest(unittest.TestCase):
             effect_panel.add_effect_actions[key].isEnabled()
             for key in ('gradient', 'texture')
         ))
-        self.assertEqual(len(effect_panel.text_fill_cards), 2)
+        self.assertEqual(len(self._cards(TextFillEffectCard, effect_panel)), 2)
         self.assertEqual(
-            [card.index for card in effect_panel.text_fill_cards], [1, 0]
+            [
+                card.index
+                for card in self._cards(TextFillEffectCard, effect_panel)
+            ],
+            [1, 0],
         )
         self.assertEqual(
-            [card.title_label.text() for card in effect_panel.text_fill_cards],
+            [
+                card.title_label.text()
+                for card in self._cards(TextFillEffectCard, effect_panel)
+            ],
             ['Gradient', 'Gradient'],
         )
 
-        card = effect_panel.text_fill_cards[-1]
+        card = self._cards(TextFillEffectCard, effect_panel)[-1]
         self.assertEqual(card.title_label.text(), 'Gradient')
 
         card.visibility_button.click()
@@ -1924,7 +1939,9 @@ class TextEffectPanelTest(unittest.TestCase):
         added_texture = item.blk.fontformat.text_effects[0]
         self.assertEqual(added_texture.paint, TexturePaint())
         self.assertEqual(
-            effect_panel.text_fill_cards[-1].title_label.text(), 'Texture'
+            self._cards(TextFillEffectCard, effect_panel)[-1]
+            .title_label.text(),
+            'Texture',
         )
         self.assertEqual(self.canvas.stack.count(), 4)
 
@@ -1934,14 +1951,16 @@ class TextEffectPanelTest(unittest.TestCase):
         second = self._item(self._stack(different))
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = effect_panel.text_fill_cards[0]
+        mixed_card = self._cards(TextFillEffectCard, effect_panel)[0]
         self.assertFalse(mixed_card.gradient_editor.isHidden())
         self.assertTrue(mixed_card.gradient_editor.angle_editor.isEnabled())
         self.assertEqual(mixed_card.gradient_editor.angle_editor.value(), 90.0)
 
         self.canvas.selected = [first]
         self.panel.set_textblk_item(None, multi_select=True)
-        self.assertIs(effect_panel.text_fill_cards[0], mixed_card)
+        self.assertIs(
+            self._cards(TextFillEffectCard, effect_panel)[0], mixed_card
+        )
         self.assertTrue(mixed_card.gradient_editor.angle_editor.isEnabled())
 
     @staticmethod
@@ -1958,7 +1977,7 @@ class TextEffectPanelTest(unittest.TestCase):
         before = self._stack(self._constant_text_fill())
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
+        card = self._cards(TextFillEffectCard)[0]
         editor = card.gradient_editor
         preview = LinearGradientPaint(
             stops=before[0].paint.stops, angle=60.0
@@ -1981,9 +2000,9 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.angle_editor.editingFinished.emit()
         self.assertEqual(item.blk.fontformat.text_effects[0].paint, preview)
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.text_fill_cards[0], card)
+        self.assertIs(self._cards(TextFillEffectCard)[0], card)
 
-    def test_blend_selectors_display_mixed_and_commit(self):
+    def test_blend_selectors_show_primary_value_and_commit(self):
         expected_modes = (
             'normal',
             'darken',
@@ -2015,10 +2034,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(first)
         controls = self.panel.texteffect_panel
         cards = (
-            controls.stroke_cards[0],
-            controls.shadow_cards[0],
-            controls.glow_cards[0],
-            controls.text_fill_cards[0],
+            self._cards(StrokeEffectCard, controls)[0],
+            self._cards(ShadowEffectCard, controls)[0],
+            self._cards(GlowEffectCard, controls)[0],
+            self._cards(TextFillEffectCard, controls)[0],
         )
         self.assertEqual(
             [card.blend_selector.current_mode() for card in cards],
@@ -2079,10 +2098,10 @@ class TextEffectPanelTest(unittest.TestCase):
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
         cards = (
-            controls.stroke_cards[0],
-            controls.shadow_cards[0],
-            controls.glow_cards[0],
-            controls.text_fill_cards[0],
+            self._cards(StrokeEffectCard, controls)[0],
+            self._cards(ShadowEffectCard, controls)[0],
+            self._cards(GlowEffectCard, controls)[0],
+            self._cards(TextFillEffectCard, controls)[0],
         )
         self.assertEqual(
             [card.blend_selector.current_mode() for card in cards],
@@ -2112,7 +2131,7 @@ class TextEffectPanelTest(unittest.TestCase):
         item = self._item(before)
         self.panel.set_textblk_item(item)
         editor = (
-            self.panel.texteffect_panel.text_fill_cards[0]
+            self._cards(TextFillEffectCard)[0]
             .opacity_control.editor
         )
 
@@ -2152,7 +2171,7 @@ class TextEffectPanelTest(unittest.TestCase):
         second = self._item(second_before)
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        cards = self.panel.texteffect_panel.text_fill_cards
+        cards = self._cards(TextFillEffectCard)
         self.assertEqual([card.index for card in cards], [2, 0])
         top, bottom = cards
         self.assertFalse(top.move_up_button.isEnabled())
@@ -2203,18 +2222,18 @@ class TextEffectPanelTest(unittest.TestCase):
 
         actions['builtin:noise'].trigger()
         actions['builtin:grain'].trigger()
-        self.assertEqual(len(controls.filter_cards), 2)
+        self.assertEqual(len(self._cards(FilterEffectCard, controls)), 2)
         self.assertEqual(self.canvas.stack.count(), 2)
         self.assertEqual(
             [effect.filter_id for effect in item.blk.fontformat.text_effects],
             ['builtin:grain', 'builtin:noise'],
         )
         self.assertEqual(
-            [card.filter_id for card in controls.filter_cards],
+            [card.filter_id for card in self._cards(FilterEffectCard, controls)],
             ['builtin:noise', 'builtin:grain'],
         )
 
-        noise_card = controls.filter_cards[0]
+        noise_card = self._cards(FilterEffectCard, controls)[0]
         amount = noise_card.numeric_controls['amount']
         amount.editor.setText('55.0')
         amount.editor.textEdited.emit('55.0')
@@ -2226,7 +2245,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         amount.editor.returnPressed.emit()
         self.assertEqual(self.canvas.stack.count(), 3)
-        self.assertIs(controls.filter_cards[0], noise_card)
+        self.assertIs(self._cards(FilterEffectCard, controls)[0], noise_card)
 
         mode = noise_card.choice_selectors['mode']
         mode.setCurrentIndex(mode.findData('color'))
@@ -2235,15 +2254,15 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         self.assertEqual(self.canvas.stack.count(), 4)
 
-        controls.filter_cards[0].move_down_button.click()
+        self._cards(FilterEffectCard, controls)[0].move_down_button.click()
         self.assertEqual(
             [effect.filter_id for effect in item.blk.fontformat.text_effects],
             ['builtin:noise', 'builtin:grain'],
         )
         self.assertEqual(self.canvas.stack.count(), 5)
-        controls.filter_cards[1].visibility_button.click()
+        self._cards(FilterEffectCard, controls)[1].visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
-        controls.filter_cards[1].delete_button.click()
+        self._cards(FilterEffectCard, controls)[1].delete_button.click()
         self.assertEqual(len(item.blk.fontformat.text_effects), 1)
         self.assertEqual(self.canvas.stack.count(), 7)
         self.canvas.stack.undo()
@@ -2257,7 +2276,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        cards = self.panel.texteffect_panel.filter_cards
+        cards = self._cards(FilterEffectCard)
         self.assertEqual(
             [card.title_label.text() for card in cards],
             ['Gaussian Blur', 'Glitch', 'Bloom'],
@@ -2298,23 +2317,26 @@ class TextEffectPanelTest(unittest.TestCase):
             item.blk.fontformat.text_effects[2].params_dict()['radius'], 8.5
         )
         self.assertEqual(self.canvas.stack.count(), 1)
-        self.assertIs(self.panel.texteffect_panel.filter_cards[0], gaussian)
+        self.assertIs(self._cards(FilterEffectCard)[0], gaussian)
         self.canvas.stack.undo()
         self.assertEqual(item.blk.fontformat.text_effects, before)
 
-    def test_filter_structural_mixed_ids_and_missing_card_recovery_controls(self):
+    def test_filter_heterogeneous_ids_and_missing_card_recovery_controls(self):
         first = self._item(self._stack(FilterEffect('builtin:noise')))
         second = self._item(self._stack(FilterEffect('builtin:grain')))
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
         controls = self.panel.texteffect_panel
-        self.assertEqual(len(controls.filter_cards), 1)
-        self.assertEqual(controls.filter_cards[0].title_label.text(), 'Grain')
-        self.assertFalse(controls.filter_cards[0].property('matched'))
+        self.assertEqual(len(self._cards(FilterEffectCard, controls)), 1)
+        self.assertEqual(
+            self._cards(FilterEffectCard, controls)[0].title_label.text(),
+            'Grain',
+        )
+        self.assertFalse(self._cards(FilterEffectCard, controls)[0].property('matched'))
 
         missing = self._item(self._stack(FilterEffect('missing:local')))
         self.panel.set_textblk_item(missing)
-        card = controls.filter_cards[0]
+        card = self._cards(FilterEffectCard, controls)[0]
         self.assertIsInstance(card, FilterEffectCard)
         self.assertEqual(card.title_label.text(), 'Missing Filter: missing:local')
         self.assertEqual(card.iter_controls(), ())
@@ -2335,7 +2357,7 @@ class TextEffectPanelTest(unittest.TestCase):
             params={'future': 'kept'},
         )))
         self.panel.set_textblk_item(newer)
-        card = controls.filter_cards[0]
+        card = self._cards(FilterEffectCard, controls)[0]
         self.assertEqual(card.title_label.text(), 'Noise')
         self.assertTrue(card.visibility_button.isEnabled())
         self.assertTrue(card.delete_button.isEnabled())
@@ -2351,8 +2373,9 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
 
         self.assertEqual(registry._modules, {})
-        self.assertEqual(controls.filter_cards[0].title_label.text(), 'Noise')
-        self.assertIn('amount', controls.filter_cards[0].numeric_controls)
+        filter_card = self._cards(FilterEffectCard, controls)[0]
+        self.assertEqual(filter_card.title_label.text(), 'Noise')
+        self.assertIn('amount', filter_card.numeric_controls)
 
     def test_filter_runtime_overflow_defaults_during_card_sync(self):
         huge = int('9' * 4001)
@@ -2363,7 +2386,7 @@ class TextEffectPanelTest(unittest.TestCase):
 
         self.panel.set_textblk_item(item)
 
-        card = self.panel.texteffect_panel.filter_cards[0]
+        card = self._cards(FilterEffectCard)[0]
         self.assertEqual(card.numeric_controls['amount'].editor.text(), '20.0%')
         self.assertEqual(
             item.blk.fontformat.text_effects[0].params_dict()['amount'], huge
@@ -2394,7 +2417,7 @@ class TextEffectPanelTest(unittest.TestCase):
             controls._set_effect_states((self._stack(
                 FilterEffect('builtin:noise')
             ),))
-            card = controls.filter_cards[0]
+            card = self._cards(FilterEffectCard, controls)[0]
             self.assertEqual(card.title_label.text(), 'Localized Noise')
             self.assertEqual(
                 card.numeric_controls['amount'].label.text(),
@@ -2410,10 +2433,10 @@ class TextEffectPanelTest(unittest.TestCase):
                 StrokeEffect(), ShadowEffect(), GlowEffect(), TextFillEffect()
             ),))
             blend_cards = (
-                controls.stroke_cards[0],
-                controls.shadow_cards[0],
-                controls.glow_cards[0],
-                controls.text_fill_cards[0],
+                self._cards(StrokeEffectCard, controls)[0],
+                self._cards(ShadowEffectCard, controls)[0],
+                self._cards(GlowEffectCard, controls)[0],
+                self._cards(TextFillEffectCard, controls)[0],
             )
             for blend_card in blend_cards:
                 selector = blend_card.blend_selector
@@ -2461,11 +2484,6 @@ class TextEffectPanelTest(unittest.TestCase):
                 self.assertTrue(
                     selector.accessibleName().endswith(': Localized Normal')
                 )
-                selector.set_mode(None)
-                self.assertEqual(selector.text(), 'Localized Mixed')
-                self.assertTrue(
-                    selector.accessibleName().endswith(': Localized Mixed')
-                )
 
             builtin = get_filter_registry().get_spec('builtin:noise')
             custom = replace(
@@ -2494,18 +2512,18 @@ class TextEffectPanelTest(unittest.TestCase):
         item = self._item(self._stack(FilterEffect('builtin:noise')))
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
-        card = controls.filter_cards[0]
+        card = self._cards(FilterEffectCard, controls)[0]
         registry = Mock()
         registry.get_runtime_failure.return_value = FilterUnavailableError(
             'Noise dependency is unavailable'
         )
 
         with patch(
-            'ballontranslator.ui.text_engine.effects.panel.'
+            'ballontranslator.ui.text_engine.effects.cards.'
             'get_filter_registry',
             return_value=registry,
         ):
-            card.set_values((item.blk.fontformat.text_effects[0],))
+            card.set_value(item.blk.fontformat.text_effects[0])
 
         self.assertEqual(card.title_label.text(), 'Noise')
         self.assertTrue(card.visibility_button.isEnabled())
@@ -2574,19 +2592,19 @@ class TextEffectPanelTest(unittest.TestCase):
         item = self._item(self._stack(FilterEffect('builtin:noise')))
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
-        old_card = controls.filter_cards[0]
+        old_card = self._cards(FilterEffectCard, controls)[0]
 
         item.blk.fontformat.text_effects = TextEffectStack()
         controls.set_effect_items((item,))
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
-        self.assertEqual(controls.filter_cards, [])
+        self.assertEqual(self._cards(FilterEffectCard, controls), [])
 
         item.blk.fontformat.text_effects = self._stack(
             FilterEffect('builtin:noise')
         )
         controls.set_effect_items((item,))
-        new_card = controls.filter_cards[0]
+        new_card = self._cards(FilterEffectCard, controls)[0]
         self.assertIsNot(new_card, old_card)
         new_card.visibility_button.click()
         self.assertFalse(item.blk.fontformat.text_effects[0].enabled)
@@ -2600,7 +2618,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
-        filter_card = controls.filter_cards[0]
+        filter_card = self._cards(FilterEffectCard, controls)[0]
 
         self.assertTrue(filter_card.move_up_button.isEnabled())
         self.assertTrue(filter_card.move_down_button.isEnabled())
@@ -2682,8 +2700,8 @@ class TextEffectPanelTest(unittest.TestCase):
             (ImageEffect(), StrokeEffect()),
         )
         self.assertEqual(first.blk.fontformat.text_effects.effects, (StrokeEffect(),))
-        self.assertEqual(len(controls.image_cards), 1)
-        card = controls.image_cards[0]
+        self.assertEqual(len(self._cards(ImageEffectCard, controls)), 1)
+        card = self._cards(ImageEffectCard, controls)[0]
         self.assertEqual(card.image_field.text(), '')
         self.assertEqual(card.image_button.text(), '')
         self.assertFalse(card.image_button.icon().isNull())
@@ -2732,7 +2750,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertIsInstance(
             second.blk.fontformat.text_effects.effects[1], ImageEffect
         )
-        card = controls.image_cards[0]
+        card = self._cards(ImageEffectCard, controls)[0]
         card.delete_button.click()
         self.assertEqual(self.canvas.stack.count(), 5)
         self.assertFalse(any(
@@ -2740,10 +2758,10 @@ class TextEffectPanelTest(unittest.TestCase):
             for effect in second.blk.fontformat.text_effects.effects
         ))
         self.canvas.stack.undo()
-        self.assertEqual(len(controls.image_cards), 1)
+        self.assertEqual(len(self._cards(ImageEffectCard, controls)), 1)
 
         action.trigger()
-        self.assertEqual(len(controls.image_cards), 2)
+        self.assertEqual(len(self._cards(ImageEffectCard, controls)), 2)
 
     def test_existing_multi_selection_image_card_is_primary_only(self):
         first = self._item(self._stack(
@@ -2754,7 +2772,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.canvas.selected = [first, primary]
         self.panel.set_textblk_item(None, multi_select=True)
-        card = self.panel.texteffect_panel.image_cards[0]
+        card = self._cards(ImageEffectCard)[0]
 
         self.assertFalse(card.property('matched'))
         self.assertEqual(card.mode_selector.currentData(), 'background')
@@ -2779,7 +2797,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         self.assertEqual(self.canvas.stack.count(), 2)
 
-        card = self.panel.texteffect_panel.image_cards[0]
+        card = self._cards(ImageEffectCard)[0]
         card.delete_button.click()
         self.assertIsInstance(
             first.blk.fontformat.text_effects[0], ImageEffect
@@ -2811,13 +2829,18 @@ class TextEffectPanelTest(unittest.TestCase):
 
             self.panel.set_textblk_item(first)
             controls = self.panel.texteffect_panel
-            self.assertTrue(controls.image_cards[0].generate_button.isEnabled())
+            self.assertTrue(
+                self._cards(ImageEffectCard, controls)[0]
+                .generate_button.isEnabled()
+            )
             controls.set_image_generation_state(0, 'running')
             active_card = next(
-                card for card in controls.image_cards if card.index == 0
+                card for card in self._cards(ImageEffectCard, controls)
+                if card.index == 0
             )
             other_card = next(
-                card for card in controls.image_cards if card.index != 0
+                card for card in self._cards(ImageEffectCard, controls)
+                if card.index != 0
             )
             self.assertEqual(active_card.generate_button.text(), 'Stop')
             self.assertTrue(active_card.generate_button.isEnabled())
@@ -2835,11 +2858,11 @@ class TextEffectPanelTest(unittest.TestCase):
             controls.set_effect_items((first,))
             self.assertTrue(all(
                 not card.generate_button.isEnabled()
-                for card in controls.image_cards
+                for card in self._cards(ImageEffectCard, controls)
             ))
             self.assertTrue(all(
                 card.generate_button.text() == 'Generate'
-                for card in controls.image_cards
+                for card in self._cards(ImageEffectCard, controls)
             ))
 
             controls.set_image_generation_state(0, 'idle')
@@ -2848,7 +2871,7 @@ class TextEffectPanelTest(unittest.TestCase):
                 ImageEffect(), ImageEffect()
             )
             self.panel.set_textblk_item(None, multi_select=True)
-            multi_card = controls.image_cards[0]
+            multi_card = self._cards(ImageEffectCard, controls)[0]
             self.assertFalse(multi_card.generate_button.isEnabled())
             self.assertTrue(multi_card.image_button.isEnabled())
             self.assertIn('exactly one', multi_card.generate_button.toolTip())
@@ -2881,7 +2904,7 @@ class TextEffectPanelTest(unittest.TestCase):
             )))
             scene.addItem(item)
             self.panel.set_textblk_item(item)
-            card = self.panel.texteffect_panel.image_cards[0]
+            card = self._cards(ImageEffectCard)[0]
             selector = card.model_selector
 
             before = item.blk.fontformat.text_effects
@@ -2901,7 +2924,7 @@ class TextEffectPanelTest(unittest.TestCase):
                     self.panel.set_textblk_item(None)
                     self.assertIs(self.panel.textblk_item, item)
                     self.assertIs(
-                        self.panel.texteffect_panel.image_cards[0], card
+                        self._cards(ImageEffectCard)[0], card
                     )
 
                 selector.menu.aboutToHide.connect(
@@ -2916,7 +2939,7 @@ class TextEffectPanelTest(unittest.TestCase):
                     self.panel.set_textblk_item(None)
                     self.assertIs(self.panel.textblk_item, item)
                     self.assertIs(
-                        self.panel.texteffect_panel.image_cards[0], card
+                        self._cards(ImageEffectCard)[0], card
                     )
                     action = next(
                         child
@@ -2942,7 +2965,7 @@ class TextEffectPanelTest(unittest.TestCase):
                 self.panel.set_textblk_item(None)
                 self.assertIs(self.panel.textblk_item, item)
                 self.assertIs(
-                    self.panel.texteffect_panel.image_cards[0], card
+                    self._cards(ImageEffectCard)[0], card
                 )
                 card.context_selector.hidePopup()
 
@@ -2955,7 +2978,7 @@ class TextEffectPanelTest(unittest.TestCase):
                 self.assertEqual(set_effects.call_count, 0)
                 self.assertEqual(push_undo.call_count, 0)
 
-            self.assertIs(self.panel.texteffect_panel.image_cards[0], card)
+            self.assertIs(self._cards(ImageEffectCard)[0], card)
             self.assertEqual(selector.profile_id, second_profile.id)
             self.assertEqual(selector.model, 'image-v2')
             self.assertEqual(
@@ -2983,21 +3006,95 @@ class TextEffectPanelTest(unittest.TestCase):
             self.assertEqual(item.blk.fontformat.text_effects, before)
             self.assertEqual(self.canvas.stack.count(), 0)
 
-            # A real target change projects the persisted recipe normally.
-            other = self._item(self._stack(ImageEffect()))
-            scene.addItem(other)
-            self.panel.set_textblk_item(other)
-            self.panel.set_textblk_item(item)
-            reset = self.panel.texteffect_panel.image_cards[0]
-            self.assertEqual(reset.model_selector.profile_id, first_profile.id)
-            self.assertNotEqual(reset.model_selector.model, 'image-v2')
-            self.assertEqual(
-                reset.prompt_editor.toPlainText(), 'Persisted prompt'
-            )
         finally:
             pcfg.module.llm_profiles = old_profiles
             pcfg.module.inpaint_llm_id = old_profile_id
             pcfg.module.inpainter = old_inpainter
+
+    def test_image_generation_draft_survives_sibling_stack_changes(self):
+        image = ImageEffect(generation=ImageGenerationRecipe(
+            prompt='Persisted prompt'
+        ))
+        stroke = StrokeEffect()
+        item = self._item(self._stack(image, stroke))
+        self.panel.set_textblk_item(item)
+        session = self.panel.text_effect_session
+
+        card = self._cards(ImageEffectCard)[0]
+        card.context_selector.setCurrentIndex(
+            card.context_selector.findData('none')
+        )
+        card.prompt_editor.setPlainText('Unsaved draft')
+
+        self.assertTrue(session.move_effect(1, -1))
+        self.assertIs(item.blk.fontformat.text_effects[1], image)
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'Unsaved draft',
+        )
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0].context_selector.currentData(),
+            'none',
+        )
+
+        self.assertTrue(session.add_effect('glow'))
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'Unsaved draft',
+        )
+        self.canvas.stack.undo()
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'Unsaved draft',
+        )
+        self.canvas.stack.redo()
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'Unsaved draft',
+        )
+
+        stroke_index = next(
+            index
+            for index, effect in enumerate(
+                item.blk.fontformat.text_effects.effects
+            )
+            if effect is stroke
+        )
+        self.assertTrue(session.remove_effect(stroke_index))
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'Unsaved draft',
+        )
+
+    def test_image_generation_draft_resets_on_real_target_change(self):
+        first = self._item(self._stack(ImageEffect(
+            generation=ImageGenerationRecipe(prompt='First persisted')
+        )))
+        second = self._item(self._stack(ImageEffect(
+            generation=ImageGenerationRecipe(prompt='Second persisted')
+        )))
+
+        self.panel.set_textblk_item(first)
+        self._cards(ImageEffectCard)[0].prompt_editor.setPlainText(
+            'Unsaved draft'
+        )
+        self.panel.set_textblk_item(second)
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'Second persisted',
+        )
+        self.panel.set_textblk_item(first)
+        self.assertEqual(
+            self._cards(ImageEffectCard)[0]
+            .prompt_editor.toPlainText(),
+            'First persisted',
+        )
 
     def test_generated_image_recipe_asset_and_history_use_one_command(self):
         old_asset = RasterAssetRef(
@@ -3030,7 +3127,7 @@ class TextEffectPanelTest(unittest.TestCase):
         scene.addItem(item)
         self.panel.set_textblk_item(item)
         session = self.panel.text_effect_session
-        card = self.panel.texteffect_panel.image_cards[0]
+        card = self._cards(ImageEffectCard)[0]
         card._generation_draft = new_recipe
         card._generation_draft_dirty = True
         card.model_selector.set_recipe(new_recipe)
@@ -3054,7 +3151,7 @@ class TextEffectPanelTest(unittest.TestCase):
         generated = item.blk.fontformat.text_effects[0]
         self.assertEqual(generated.asset, new_asset)
         self.assertEqual(generated.generation, new_recipe)
-        card = self.panel.texteffect_panel.image_cards[0]
+        card = self._cards(ImageEffectCard)[0]
         self.assertEqual(card.prompt_editor.toPlainText(), 'New prompt')
         self.assertFalse(card._generation_draft_dirty)
         project.import_raster_asset_bytes.assert_called_once_with(
@@ -3062,12 +3159,12 @@ class TextEffectPanelTest(unittest.TestCase):
         )
 
         self.canvas.stack.undo()
-        card = self.panel.texteffect_panel.image_cards[0]
+        card = self._cards(ImageEffectCard)[0]
         self.assertEqual(item.blk.fontformat.text_effects[0], original)
         self.assertEqual(card.prompt_editor.toPlainText(), 'Old prompt')
         self.assertEqual(card.model_selector.model, 'old-model')
         self.canvas.stack.redo()
-        card = self.panel.texteffect_panel.image_cards[0]
+        card = self._cards(ImageEffectCard)[0]
         self.assertEqual(card.prompt_editor.toPlainText(), 'New prompt')
         self.assertEqual(card.context_selector.currentData(), 'none')
 
@@ -3277,7 +3374,7 @@ class TextEffectPanelTest(unittest.TestCase):
         item = self._item(self._stack(ImageEffect(old_asset)))
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
-        card = controls.image_cards[0]
+        card = self._cards(ImageEffectCard, controls)[0]
 
         with patch.object(
             QFileDialog, 'getOpenFileName', return_value=('', '')
@@ -3337,7 +3434,7 @@ class TextEffectPanelTest(unittest.TestCase):
         scene.addItem(item)
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
-        card = controls.image_cards[0]
+        card = self._cards(ImageEffectCard, controls)[0]
         self.assertEqual(
             card.image_field.text(), 'Missing: restored.png'
         )
@@ -3377,7 +3474,7 @@ class TextEffectPanelTest(unittest.TestCase):
             paint=TexturePaint()
         )))
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
+        card = self._cards(TextFillEffectCard)[0]
 
         self.assertEqual(card.title_label.text(), 'Texture')
         self.assertEqual(
@@ -3469,13 +3566,13 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(item)
         controls = self.panel.texteffect_panel
         self.assertEqual(
-            [card.index for card in controls.text_fill_cards], [2, 0]
+            [card.index for card in self._cards(TextFillEffectCard, controls)], [2, 0]
         )
 
         with patch.object(QMessageBox, 'warning') as warning:
             controls.show_texture_import_error(1, 'stale card')
             warning.assert_not_called()
-            for card in controls.text_fill_cards:
+            for card in self._cards(TextFillEffectCard, controls):
                 card.texture_file_requested.emit(
                     card.index, '/tmp/broken.png'
                 )
@@ -3486,7 +3583,7 @@ class TextEffectPanelTest(unittest.TestCase):
         global_stack = self._stack(TextFillEffect())
         self.panel.global_format.text_effects = global_stack
         self.panel.set_active_format(self.panel.global_format)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
+        card = self._cards(TextFillEffectCard)[0]
         self.assertEqual(card.title_label.text(), 'Gradient')
         self.assertTrue(
             self.panel.texteffect_panel.add_effect_actions['gradient']
@@ -3526,7 +3623,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.texteffect_panel.set_active_format(arbitrary_format)
 
         self.assertEqual(arbitrary_format.text_effects, stack)
-        self.assertEqual(self.panel.texteffect_panel.text_fill_cards, [])
+        self.assertEqual(self._cards(TextFillEffectCard), [])
 
     def test_active_item_texture_is_omitted_when_updating_portable_preset(self):
         asset = RasterAssetRef(
@@ -3565,7 +3662,7 @@ class TextEffectPanelTest(unittest.TestCase):
         finally:
             preset.deleteLater()
 
-    def test_text_fill_mixed_texture_fields_and_asset_only_unification(self):
+    def test_text_fill_primary_texture_fields_and_asset_only_fanout(self):
         first_asset = RasterAssetRef(
             'assets/' + 'a' * 64 + '.png', 'paper.png'
         )
@@ -3583,7 +3680,7 @@ class TextEffectPanelTest(unittest.TestCase):
         )))
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
+        card = self._cards(TextFillEffectCard)[0]
 
         self.assertIn('paper.png', card.texture_field.text())
         self.assertTrue(card.texture_button.isEnabled())
@@ -3597,7 +3694,7 @@ class TextEffectPanelTest(unittest.TestCase):
         second.blk.fontformat.text_effects = second_stack
         second.fontformat.text_effects = second_stack
         self.panel.set_textblk_item(None, multi_select=True)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
+        card = self._cards(TextFillEffectCard)[0]
         self.assertIn('cloth.png', card.texture_field.text())
         self.assertTrue(card.texture_button.isEnabled())
 
@@ -3618,7 +3715,7 @@ class TextEffectPanelTest(unittest.TestCase):
             paint=TexturePaint()
         )))
         self.panel.set_textblk_item(item)
-        card = self.panel.texteffect_panel.text_fill_cards[0]
+        card = self._cards(TextFillEffectCard)[0]
         transitions = []
         card.color_dialog_active_changed.connect(transitions.append)
 
@@ -3660,7 +3757,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(item)
         cards = {
             card.title_label.text(): card
-            for card in self.panel.texteffect_panel.text_fill_cards
+            for card in self._cards(TextFillEffectCard)
         }
         self.assertEqual(set(cards), {'Gradient', 'Texture'})
         self.assertIsNotNone(cards['Gradient'].gradient_editor)
@@ -3673,9 +3770,9 @@ class TextEffectPanelTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             TextFillEffectCard(3, 'solid')
 
-        cards['Texture'].set_values([TextFillEffect(
+        cards['Texture'].set_value(TextFillEffect(
             paint=TexturePaint(asset, mapping='tile')
-        )])
+        ))
         self.assertFalse(cards['Texture'].texture_scale_control.isHidden())
 
     def test_gradient_angle_dial_previews_then_commits_once(self):
@@ -3683,7 +3780,7 @@ class TextEffectPanelTest(unittest.TestCase):
         item = self._item(before)
         self.panel.set_textblk_item(item)
         gradient = (
-            self.panel.texteffect_panel.text_fill_cards[0].gradient_editor
+            self._cards(TextFillEffectCard)[0].gradient_editor
         )
         dial = gradient.angle_dial
         center = QRectF(dial.rect()).center()
@@ -3751,7 +3848,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertFalse(item.effect_renderer.has_preview())
         self.assertEqual(self.canvas.stack.count(), 1)
 
-    def test_effect_reorder_is_global_and_mixed_shadow_type_stays_editable(self):
+    def test_effect_reorder_is_global_and_primary_shadow_stays_editable(self):
         top = ShadowEffect(paint=SolidPaint((255, 0, 0)))
         inner = ShadowEffect(
             shadow_type='inner', paint=SolidPaint((0, 255, 0))
@@ -3761,7 +3858,7 @@ class TextEffectPanelTest(unittest.TestCase):
             top, StrokeEffect(width=0.2), inner, bottom
         ))
         self.panel.set_textblk_item(first)
-        cards = self.panel.texteffect_panel.shadow_cards
+        cards = self._cards(ShadowEffectCard)
 
         self.assertTrue(cards[1].move_down_button.isEnabled())
         cards[1].move_down_button.click()
@@ -3780,7 +3877,7 @@ class TextEffectPanelTest(unittest.TestCase):
         ))
         self.canvas.selected = [first, second]
         self.panel.set_textblk_item(None, multi_select=True)
-        mixed_card = self.panel.texteffect_panel.shadow_cards[2]
+        mixed_card = self._cards(ShadowEffectCard)[2]
         self.assertEqual(mixed_card.type_selector.currentData(), 'inner')
         self.assertTrue(mixed_card.property('matched'))
         self.assertTrue(mixed_card.move_up_button.isEnabled())
@@ -3866,7 +3963,7 @@ class TextEffectPanelTest(unittest.TestCase):
     def test_page_change_commits_pending_effect_before_owner_merge(self):
         item = self._item(self._stack(StrokeEffect(width=0.1)))
         self.panel.set_textblk_item(item)
-        editor = self.panel.texteffect_panel.stroke_cards[0].width_control.editor
+        editor = self._cards(StrokeEffectCard)[0].width_control.editor
         editor.setText('0.55')
         editor.textEdited.emit('0.55')
         self.assertEqual(item.blk.fontformat.text_effects[0].width, 0.1)
@@ -3882,7 +3979,7 @@ class TextEffectPanelTest(unittest.TestCase):
     def test_page_change_commits_pending_inline_gradient(self):
         item = self._item(self._stack(self._constant_text_fill()))
         self.panel.set_textblk_item(item)
-        editor = self.panel.texteffect_panel.text_fill_cards[0].gradient_editor
+        editor = self._cards(TextFillEffectCard)[0].gradient_editor
         editor.angle_editor.setValue(75.0)
         self.assertEqual(item.blk.fontformat.text_effects[0].paint.angle, 0.0)
 
@@ -3895,7 +3992,7 @@ class TextEffectPanelTest(unittest.TestCase):
         before = self._stack(self._constant_text_fill())
         item = self._item(before)
         self.panel.set_textblk_item(item)
-        editor = self.panel.texteffect_panel.text_fill_cards[0].gradient_editor
+        editor = self._cards(TextFillEffectCard)[0].gradient_editor
         editor.angle_editor.setValue(75.0)
         self.assertEqual(item.effective_text_effects()[0].paint.angle, 75.0)
 
@@ -3912,7 +4009,7 @@ class TextEffectPanelTest(unittest.TestCase):
         item_effects = self._stack(StrokeEffect(width=0.1))
         item = self._item(item_effects)
         self.panel.set_textblk_item(item)
-        editor = self.panel.texteffect_panel.stroke_cards[0].width_control.editor
+        editor = self._cards(StrokeEffectCard)[0].width_control.editor
         editor.setText('0.65')
         editor.textEdited.emit('0.65')
         self.assertEqual(item.effective_text_effects()[0].width, 0.65)
@@ -3924,7 +4021,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(self.panel.text_effect_session.items, [])
         self.assertEqual(self.panel.text_transform_session.items, [])
         self.assertIsNone(self.panel.text_effect_session.preview_before)
-        cards = self.panel.texteffect_panel.stroke_cards
+        cards = self._cards(StrokeEffectCard)
         self.assertEqual(len(cards), 1)
         self.assertEqual(cards[0].width_control.editor.text(), '0.88')
         self.assertEqual(self.canvas.stack.count(), 0)
