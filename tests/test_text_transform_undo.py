@@ -1312,7 +1312,8 @@ class TextTransformPanelTest(TextTransformTestBase):
                 manager = SimpleNamespace(
                     canvas=canvas,
                     textEditList=SimpleNamespace(
-                        checked_list=[SimpleNamespace(idx=0)]
+                        checked_list=[SimpleNamespace(idx=0)],
+                        sel_anchor_widget=SimpleNamespace(idx=0),
                     ),
                     textblk_item_list=[item],
                     formatpanel=SimpleNamespace(

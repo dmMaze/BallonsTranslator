@@ -1,7 +1,7 @@
 """Selection/global preview and undo boundaries for text effects."""
 
 from dataclasses import replace
-from typing import Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from qtpy.QtCore import QCoreApplication
 
@@ -48,6 +48,92 @@ if TYPE_CHECKING:
 OVERALL_OPACITY_INDEX = -1
 
 
+def matched_effect_occurrences(
+    states: Sequence[TextEffectStack],
+) -> Dict[int, Tuple[int, ...]]:
+    """Map primary card indices to same-structure occurrences on every item.
+
+    Occurrences pair in panel-visible order. Relative order among unrelated
+    effect types is deliberately irrelevant, and Image remains item-specific.
+
+    >>> first = TextEffectStack(effects=(StrokeEffect(), ShadowEffect()))
+    >>> second = TextEffectStack(effects=(ShadowEffect(), StrokeEffect()))
+    >>> matched_effect_occurrences((first, second))
+    {1: (1, 0), 0: (0, 1)}
+    """
+    values = tuple(states)
+    if len(values) < 2:
+        return {}
+    candidates: Dict[object, List[int]] = {}
+    for index in range(len(values[0].effects) - 1, -1, -1):
+        effect = values[0].effects[index]
+        if isinstance(effect, (HollowEffect, ImageEffect)):
+            continue
+        candidates.setdefault(effect_structure_key(effect), []).append(index)
+    if not candidates:
+        return {}
+
+    matches = {
+        index: [index]
+        for indices in candidates.values()
+        for index in indices
+    }
+    for state in values[1:]:
+        available: Dict[object, List[int]] = {}
+        for index in range(len(state.effects) - 1, -1, -1):
+            effect = state.effects[index]
+            key = effect_structure_key(effect)
+            if key in candidates and not isinstance(
+                effect, (HollowEffect, ImageEffect)
+            ):
+                available.setdefault(key, []).append(index)
+        next_candidates = {}
+        for key, primary_indices in candidates.items():
+            target_indices = available.get(key, ())
+            paired_primary = primary_indices[:len(target_indices)]
+            if not paired_primary:
+                continue
+            next_candidates[key] = paired_primary
+            for primary_index, target_index in zip(
+                paired_primary, target_indices
+            ):
+                matches[primary_index].append(target_index)
+        candidates = next_candidates
+        if not candidates:
+            return {}
+    return {
+        index: tuple(matches[index])
+        for indices in candidates.values()
+        for index in indices
+    }
+
+
+def effect_reorder_is_aligned(
+    states: Sequence[TextEffectStack], index: int
+) -> bool:
+    """Return whether the card's relevant visible sequences align exactly."""
+    values = tuple(states)
+    if not values or not 0 <= index < len(values[0].effects):
+        return False
+    reference = values[0].effects[index]
+    family = (
+        (TextFillEffect,)
+        if isinstance(reference, TextFillEffect)
+        else (StrokeEffect, ShadowEffect, GlowEffect, ImageEffect, FilterEffect)
+    )
+    if not isinstance(reference, family):
+        return False
+    sequences = [
+        tuple(
+            effect_structure_key(effect)
+            for effect in reversed(state.effects)
+            if isinstance(effect, family)
+        )
+        for state in values
+    ]
+    return all(sequence == sequences[0] for sequence in sequences[1:])
+
+
 class TextEffectEditSession:
     """Own one complete-stack preview and commit transaction.
 
@@ -67,6 +153,7 @@ class TextEffectEditSession:
         self.items = []
         self.preview_before = None
         self.preview_key = None
+        self._matched_occurrences: Dict[int, Tuple[int, ...]] = {}
         self._pending_image_generation = None
         self._image_generation_controller = None
         if controls is not None:
@@ -124,21 +211,6 @@ class TextEffectEditSession:
         if any(not isinstance(value, TextEffectStack) for value in values):
             raise TypeError('effect edit session requires TextEffectStack values')
         return values
-
-    @staticmethod
-    def _effect_sequence(state: TextEffectStack) -> Tuple[object, ...]:
-        return tuple(
-            effect_structure_key(effect) for effect in state.effects
-        )
-
-    @classmethod
-    def _has_common_stack_shape(
-        cls, states: Sequence[TextEffectStack]
-    ) -> bool:
-        sequences = [cls._effect_sequence(state) for state in states]
-        return not sequences or all(
-            sequence == sequences[0] for sequence in sequences
-        )
 
     @staticmethod
     def _convert_effect_paint(
@@ -353,6 +425,7 @@ class TextEffectEditSession:
         return changed
 
     def _sync_effect_ui(self) -> None:
+        self._refresh_occurrence_mapping()
         controls = self.controls
         if self.items:
             if controls is not None:
@@ -403,6 +476,13 @@ class TextEffectEditSession:
             self.stop_image_generation(detach_card=True)
             self.cancel_preview()
         self.items = replacements
+        self._refresh_occurrence_mapping()
+
+    def _refresh_occurrence_mapping(
+        self, states: Optional[Sequence[TextEffectStack]] = None
+    ) -> None:
+        values = self._current_states() if states is None else tuple(states)
+        self._matched_occurrences = matched_effect_occurrences(values)
 
     def preview_states(self, states: Sequence[TextEffectStack]) -> bool:
         """Preview complete selected-item states for the item boundary API."""
@@ -445,21 +525,30 @@ class TextEffectEditSession:
             self.preview_key = key
         return self.preview_before
 
+    def _target_indices(
+        self, states: Sequence[TextEffectStack], index: int
+    ) -> Tuple[Optional[int], ...]:
+        if index == OVERALL_OPACITY_INDEX:
+            return (index,) * len(states)
+        if len(states) <= 1:
+            return (index,) * len(states)
+        matched = self._matched_occurrences.get(index)
+        if matched is not None:
+            return matched
+        return (index,) + (None,) * (len(states) - 1)
+
     def preview_value(
         self, index: int, param_name: str, value
     ) -> None:
         key = (int(index), str(param_name))
         before = self._begin_preview(key)
-        if (
-            index != OVERALL_OPACITY_INDEX
-            and not self._has_common_stack_shape(before)
-        ):
-            self.cancel_preview()
-            return
+        target_indices = self._target_indices(before, index)
         try:
             after = [
-                self._with_value(state, index, param_name, value)
-                for state in before
+                state if target_index is None else self._with_value(
+                    state, target_index, param_name, value
+                )
+                for state, target_index in zip(before, target_indices)
             ]
         except (
             AttributeError,
@@ -477,22 +566,17 @@ class TextEffectEditSession:
     ) -> None:
         key = (int(index), str(param_name))
         before = self._begin_preview(key)
-        if (
-            index != OVERALL_OPACITY_INDEX
-            and not self._has_common_stack_shape(before)
-        ):
-            self.cancel_preview()
-            return
+        target_indices = self._target_indices(before, index)
         try:
             after = [
-                self._with_value(
+                state if target_index is None else self._with_value(
                     state,
-                    index,
+                    target_index,
                     param_name,
-                    self._value_at(state, index, param_name)
+                    self._value_at(state, target_index, param_name)
                     + canonical_delta,
                 )
-                for state in before
+                for state, target_index in zip(before, target_indices)
             ]
         except (
             AttributeError,
@@ -510,27 +594,15 @@ class TextEffectEditSession:
         if self.preview_before is not None and self.preview_key != key:
             self.cancel_preview()
         before = self.preview_before or self._current_states()
-        if (
-            index != OVERALL_OPACITY_INDEX
-            and not self._has_common_stack_shape(before)
-        ):
-            self.cancel_preview()
-            self._sync_effect_ui()
-            return False
+        target_indices = self._target_indices(before, index)
         if param_name == 'paint_type':
-            try:
-                paints = {
-                    state.effects[index].paint for state in before
-                }
-            except (AttributeError, IndexError):
-                self.cancel_preview()
-                self._sync_effect_ui()
-                return False
-            value = (value, len(paints) > 1)
+            value = (value, False)
         try:
             after = [
-                self._with_value(state, index, param_name, value)
-                for state in before
+                state if target_index is None else self._with_value(
+                    state, target_index, param_name, value
+                )
+                for state, target_index in zip(before, target_indices)
             ]
         except (
             AttributeError,
@@ -553,16 +625,17 @@ class TextEffectEditSession:
         if self.preview_before is None or self.preview_key != key:
             return False
         before = self.preview_before
+        target_indices = self._target_indices(before, index)
         try:
             after = [
-                self._with_value(
+                state if target_index is None else self._with_value(
                     state,
-                    index,
+                    target_index,
                     param_name,
-                    self._value_at(state, index, param_name)
+                    self._value_at(state, target_index, param_name)
                     + canonical_delta,
                 )
-                for state in before
+                for state, target_index in zip(before, target_indices)
             ]
         except (
             AttributeError,
@@ -583,6 +656,7 @@ class TextEffectEditSession:
             self.controls.finish_pending_effect_edits()
             self.controls.cancel_effect_previews()
         self.cancel_preview()
+        self._refresh_occurrence_mapping()
 
     @staticmethod
     def _insertion_index(
@@ -594,12 +668,41 @@ class TextEffectEditSession:
         # therefore land at zero so reverse/application order appends them.
         return 0
 
+    @staticmethod
+    def _matched_insertion_index(
+        state: TextEffectStack,
+        effect: TextEffect,
+        visible_occurrence: int,
+    ) -> int:
+        """Insert after the occurrences already common to every target."""
+        key = effect_structure_key(effect)
+        visible_indices = [
+            index
+            for index in range(len(state.effects) - 1, -1, -1)
+            if effect_structure_key(state.effects[index]) == key
+        ]
+        if not visible_indices:
+            return TextEffectEditSession._insertion_index(state, effect)
+        if visible_occurrence >= len(visible_indices):
+            return TextEffectEditSession._insertion_index(state, effect)
+        return visible_indices[visible_occurrence] + 1
+
+    @staticmethod
+    def _common_occurrence_budget(
+        states: Sequence[TextEffectStack], effect: TextEffect
+    ) -> int:
+        key = effect_structure_key(effect)
+        return min(
+            sum(
+                effect_structure_key(candidate) == key
+                for candidate in state.effects
+            )
+            for state in states
+        )
+
     def add_effect(self, effect_type: str) -> bool:
         self._prepare_structure_change()
         before = self._current_states()
-        if not self._has_common_stack_shape(before):
-            self._sync_effect_ui()
-            return False
         constructors = {
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
@@ -617,14 +720,27 @@ class TextEffectEditSession:
                 not self.items
                 or getattr(SW.canvas, 'imgtrans_proj', None) is None
             )
+        ) or (
+            effect_type == 'image' and len(self.items) != 1
         ):
             self._sync_effect_ui()
             return False
+        effect = constructor()
+        common_budget = (
+            self._common_occurrence_budget(before, effect)
+            if len(before) > 1 else None
+        )
         after = []
         for state in before:
             effects = list(state.effects)
-            effect = constructor()
-            effects.insert(self._insertion_index(state, effect), effect)
+            effects.insert(
+                self._insertion_index(state, effect)
+                if common_budget is None
+                else self._matched_insertion_index(
+                    state, effect, common_budget
+                ),
+                effect,
+            )
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
 
@@ -632,22 +748,30 @@ class TextEffectEditSession:
         """Append one repeatable filter with its metadata defaults."""
         self._prepare_structure_change()
         before = self._current_states()
-        if not self._has_common_stack_shape(before):
-            self._sync_effect_ui()
-            return False
         spec = get_filter_registry().get_spec(filter_id)
         if spec is None:
             self._sync_effect_ui()
             return False
+        effect = FilterEffect(
+            spec.filter_id,
+            schema_version=spec.schema_version,
+            params=spec.default_params(),
+        )
+        common_budget = (
+            self._common_occurrence_budget(before, effect)
+            if len(before) > 1 else None
+        )
         after = []
         for state in before:
-            effect = FilterEffect(
-                spec.filter_id,
-                schema_version=spec.schema_version,
-                params=spec.default_params(),
-            )
             effects = list(state.effects)
-            effects.insert(self._insertion_index(state, effect), effect)
+            effects.insert(
+                self._insertion_index(state, effect)
+                if common_budget is None
+                else self._matched_insertion_index(
+                    state, effect, common_budget
+                ),
+                effect,
+            )
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
 
@@ -656,7 +780,7 @@ class TextEffectEditSession:
         return self._import_project_raster(index, source_path, 'texture')
 
     def import_image(self, index: int, source_path: str) -> bool:
-        """Import one managed asset across matching selected Image cards."""
+        """Import one managed asset for the primary Image card."""
         return self._import_project_raster(index, source_path, 'image')
 
     def generate_image(
@@ -828,9 +952,7 @@ class TextEffectEditSession:
             self._sync_effect_ui()
             return False
         before = self._current_states()
-        if not self._has_common_stack_shape(before):
-            self._sync_effect_ui()
-            return False
+        target_indices = self._target_indices(before, index)
         project = getattr(SW.canvas, 'imgtrans_proj', None)
         label = 'Text Fill texture' if kind == 'texture' else 'Image'
         try:
@@ -841,10 +963,13 @@ class TextEffectEditSession:
                 )
             asset = project.import_raster_asset(source_path)
             after = []
-            for state in before:
-                if index < 0 or index >= len(state.effects):
+            for state, target_index in zip(before, target_indices):
+                if target_index is None:
+                    after.append(state)
+                    continue
+                if target_index < 0 or target_index >= len(state.effects):
                     raise IndexError(f'{label} index is no longer current')
-                effect = state.effects[index]
+                effect = state.effects[target_index]
                 if kind == 'texture':
                     if not isinstance(effect, TextFillEffect):
                         raise TypeError('selected effect is not Text Fill')
@@ -859,7 +984,7 @@ class TextEffectEditSession:
                         raise TypeError('selected effect is not Image')
                     replacement = replace(effect, asset=asset)
                 effects = list(state.effects)
-                effects[index] = replacement
+                effects[target_index] = replacement
                 after.append(replace(state, effects=tuple(effects)))
         except (IndexError, OSError, TypeError, ValueError) as error:
             LOGGER.warning('Unable to import %s: %s', label, error)
@@ -917,20 +1042,20 @@ class TextEffectEditSession:
     def remove_effect(self, index: int) -> bool:
         self._prepare_structure_change()
         before = self._current_states()
-        if (
-            not self._has_common_stack_shape(before)
-            or index < 0
-            or any(
-                index >= len(state.effects)
-                for state in before
-            )
-        ):
+        target_indices = self._target_indices(before, index)
+        if index < 0:
             self._sync_effect_ui()
             return False
         after = []
-        for state in before:
+        for state, target_index in zip(before, target_indices):
+            if target_index is None:
+                after.append(state)
+                continue
+            if target_index >= len(state.effects):
+                self._sync_effect_ui()
+                return False
             effects = list(state.effects)
-            del effects[index]
+            del effects[target_index]
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
 
@@ -938,10 +1063,9 @@ class TextEffectEditSession:
         self._prepare_structure_change()
         before = self._current_states()
         if (
-            not self._has_common_stack_shape(before)
-            or direction not in (-1, 1)
+            direction not in (-1, 1)
             or index < 0
-            or any(index >= len(state.effects) for state in before)
+            or index >= len(before[0].effects)
         ):
             self._sync_effect_ui()
             return False
@@ -957,22 +1081,33 @@ class TextEffectEditSession:
         if not isinstance(effect, movable_types):
             self._sync_effect_ui()
             return False
-        movable_indices = [
-            effect_index
-            for effect_index, effect in enumerate(before[0].effects)
-            if isinstance(effect, movable_types)
-        ]
-        try:
-            position = movable_indices.index(index)
-            destination = movable_indices[position + direction]
-        except (IndexError, ValueError):
+        target_indices = self._target_indices(before, index)
+        if (
+            len(before) > 1
+            and all(target_index is not None for target_index in target_indices)
+            and not effect_reorder_is_aligned(before, index)
+        ):
             self._sync_effect_ui()
             return False
         after = []
-        for state in before:
+        for state, target_index in zip(before, target_indices):
+            if target_index is None:
+                after.append(state)
+                continue
+            movable_indices = [
+                effect_index
+                for effect_index, candidate in enumerate(state.effects)
+                if isinstance(candidate, movable_types)
+            ]
+            try:
+                position = movable_indices.index(target_index)
+                destination = movable_indices[position + direction]
+            except (IndexError, ValueError):
+                self._sync_effect_ui()
+                return False
             effects = list(state.effects)
-            effects[index], effects[destination] = (
-                effects[destination], effects[index]
+            effects[target_index], effects[destination] = (
+                effects[destination], effects[target_index]
             )
             after.append(replace(state, effects=tuple(effects)))
         return self._commit_complete_states(before, after)
@@ -1017,6 +1152,7 @@ class TextEffectEditSession:
         self.stop_image_generation(detach_card=True)
         self.resolve_for_save()
         self.items = []
+        self._matched_occurrences = {}
 
     def cancel_for_scene_change(self) -> None:
         self.stop_image_generation(detach_card=True)
@@ -1025,3 +1161,4 @@ class TextEffectEditSession:
             self.controls.cancel_effect_previews()
         self.cancel_preview()
         self.items = []
+        self._matched_occurrences = {}

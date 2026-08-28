@@ -26,6 +26,7 @@ from ballontranslator.ui.text_engine.editing.commands import (
 )
 from ballontranslator.ui.text_engine.effects.edit_session import (
     TextEffectEditSession,
+    matched_effect_occurrences,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.misc import pixmap2ndarray
@@ -41,14 +42,17 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    FilterEffect,
     GlowEffect,
     HollowEffect,
+    ImageEffect,
     LinearGradientPaint,
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
     TextFillEffect,
     TextEffectStack,
+    TexturePaint,
     TEXT_EFFECT_BLEND_MODES,
 )
 from ballontranslator.utils.textblock import TextBlock
@@ -84,6 +88,55 @@ class TextEffectPreviewTest(unittest.TestCase):
                 ),
             ),
         )
+
+    def test_occurrence_matching_uses_visible_order_and_intersects_budgets(self):
+        primary = TextEffectStack(effects=(
+            StrokeEffect(width=0.1),
+            ShadowEffect(),
+            StrokeEffect(width=0.2),
+            TextFillEffect(paint=LinearGradientPaint()),
+            TextFillEffect(paint=TexturePaint()),
+            ImageEffect(),
+            FilterEffect('builtin:noise'),
+        ))
+        second = TextEffectStack(effects=(
+            ShadowEffect(),
+            StrokeEffect(width=1.0),
+            TextFillEffect(paint=TexturePaint()),
+            StrokeEffect(width=2.0),
+            TextFillEffect(paint=LinearGradientPaint()),
+            FilterEffect('builtin:noise'),
+            ImageEffect(),
+        ))
+        third = TextEffectStack(effects=(
+            TextFillEffect(paint=TexturePaint()),
+            StrokeEffect(width=3.0),
+            FilterEffect('builtin:noise'),
+            TextFillEffect(paint=LinearGradientPaint()),
+            ShadowEffect(),
+        ))
+
+        matched = matched_effect_occurrences((primary, second, third))
+
+        self.assertEqual(matched[2], (2, 3, 1))
+        self.assertNotIn(0, matched)
+        self.assertEqual(matched[1], (1, 0, 4))
+        self.assertEqual(matched[3], (3, 4, 3))
+        self.assertEqual(matched[4], (4, 2, 0))
+        self.assertEqual(matched[6], (6, 5, 2))
+        self.assertNotIn(5, matched)
+        self.assertEqual(matched_effect_occurrences((
+            TextEffectStack(effects=(
+                FilterEffect('builtin:noise', schema_version=1),
+            )),
+            TextEffectStack(effects=(
+                FilterEffect('builtin:noise', schema_version=2),
+            )),
+        )), {})
+        self.assertEqual(matched_effect_occurrences((
+            TextEffectStack(effects=(FilterEffect('builtin:noise'),)),
+            TextEffectStack(effects=(FilterEffect('builtin:grain'),)),
+        )), {})
 
     @classmethod
     def _item(cls, vertical=False, stack=None):

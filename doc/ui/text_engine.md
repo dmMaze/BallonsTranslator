@@ -302,6 +302,17 @@ Transient canvas-selection signals while those widgets are active must retain
 the current text item and its card-local drafts; an actual target change still
 settles pending edits and projects the new item's persisted state.
 
+For multi-item Text Effect projection, selection ownership also supplies one
+small explicit primary anchor: the most recent canvas click or paired-list
+anchor wins, with the final selected item as the stable marquee/programmatic
+fallback. This effects-only projection does not reorder Text Transform session
+or panel targets. The panel derives non-Image structural occurrence matches
+from the current committed stacks on every sync; the effect session retains
+that derived map only between target/structural/history sync boundaries and
+never stores a merged stack or Mixed card values. Preview and commit still
+replace complete per-item stacks through the existing effect session and one
+canvas undo command.
+
 ## Change workflow
 
 Before editing this subsystem:

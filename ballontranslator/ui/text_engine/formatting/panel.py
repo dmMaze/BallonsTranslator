@@ -1299,6 +1299,7 @@ class FontFormatPanel(Widget):
         self,
         textblk_item: Optional[TextBlkItem] = None,
         multi_select: bool = False,
+        primary_item: Optional[TextBlkItem] = None,
     ) -> None:
         if textblk_item is not None:
             transform_items = [textblk_item]
@@ -1306,6 +1307,22 @@ class FontFormatPanel(Widget):
             transform_items = SW.canvas.selected_text_items()
         else:
             transform_items = []
+
+        effect_items = list(transform_items)
+        if multi_select and effect_items:
+            if primary_item not in transform_items:
+                primary_getter = getattr(
+                    SW.canvas, 'primary_selected_text_item', None
+                )
+                primary_item = (
+                    primary_getter(transform_items)
+                    if callable(primary_getter)
+                    else (transform_items[-1] if transform_items else None)
+                )
+            if primary_item is not None:
+                effect_items = [primary_item] + [
+                    item for item in effect_items if item is not primary_item
+                ]
 
         preserve_local_owner = False
         if textblk_item is None:
@@ -1324,6 +1341,7 @@ class FontFormatPanel(Widget):
                 # Formatting focus can briefly clear the canvas selection; use
                 # the retained local item when comparing effective owners.
                 transform_items = [self.textblk_item]
+                effect_items = list(transform_items)
 
         if not preserve_local_owner:
             # A real selection transition settles edits against the old target
@@ -1331,7 +1349,7 @@ class FontFormatPanel(Widget):
             self.text_transform_session.finish_pending_edits()
             self.text_effect_session.finish_pending_edits()
             self.text_transform_session.replace_targets(transform_items)
-            self.text_effect_session.replace_targets(transform_items)
+            self.text_effect_session.replace_targets(effect_items)
 
         if textblk_item is None:
             if not preserve_local_owner:
@@ -1365,7 +1383,7 @@ class FontFormatPanel(Widget):
                 self.set_globalfmt_title()
             if transform_items and not preserve_local_owner:
                 self.texttransform_panel.set_transform_items(transform_items)
-                self.texteffect_panel.set_effect_items(transform_items)
+                self.texteffect_panel.set_effect_items(effect_items)
             
         else:
             if not self.restoring_textblk:

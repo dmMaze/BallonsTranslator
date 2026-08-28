@@ -322,6 +322,7 @@ class Canvas(QGraphicsScene):
 
         self.stroke_img_item: StrokeImgItem = None
         self.erase_img_key = None
+        self._primary_selected_text_item: Optional[TextBlkItem] = None
 
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
@@ -1080,6 +1081,23 @@ class Canvas(QGraphicsScene):
             sel_textitems.sort(key = lambda x : x.idx)
         return sel_textitems
 
+    def set_primary_selected_text_item(
+        self, item: Optional[TextBlkItem]
+    ) -> None:
+        """Record the direct-click or paired-list anchor for panel projection."""
+        self._primary_selected_text_item = item
+
+    def primary_selected_text_item(
+        self, items: Optional[List[TextBlkItem]] = None
+    ) -> Optional[TextBlkItem]:
+        """Return the explicit selection anchor, or a stable final fallback."""
+        selected = self.selected_text_items() if items is None else list(items)
+        if self._primary_selected_text_item not in selected:
+            self._primary_selected_text_item = (
+                selected[-1] if selected else None
+            )
+        return self._primary_selected_text_item
+
     def handle_ctrlv(self) -> bool:
         if not self.textEditMode():
             return False        
@@ -1266,6 +1284,8 @@ class Canvas(QGraphicsScene):
     ) -> bool:
         if self.rubber_band_origin is not None:
             return False
+        if target == 'scene':
+            self._primary_selected_text_item = None
         self.rubber_band_origin = QPointF(scene_pos)
         self.rubber_band_modifiers = modifiers
         self._rubber_band_button = button

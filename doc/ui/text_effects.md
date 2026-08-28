@@ -32,10 +32,13 @@ Foreground paints and Hollow remain structural base state, independent of their
 serialized position. Foreground paints can be reordered only with each other;
 Hollow is not reordered.
 
-New movable effects and foreground paints are appended to their visible panel areas
-and therefore execute last within their respective stacks. This is stored at
-tuple index zero; existing persisted tuples are neither rewritten nor migrated
-for the presentation remapping.
+New movable effects and foreground paints normally append to their visible
+panel areas and therefore execute last within their respective stacks. This is
+stored at tuple index zero; existing persisted tuples are neither rewritten nor
+migrated for the presentation remapping. During multi-selection, a new effect
+is instead inserted after the occurrences of the same structural identity that
+are common to every target. That makes the newly added occurrence matched while
+leaving unmatched surplus occurrences in place.
 
 ## Owners
 
@@ -69,12 +72,12 @@ used by the Run dialog. The Blend control uses the same transparent
 bottom-border treatment on a native menu button so its families remain
 keyboard-accessible: Normal is direct, Darken contains Darken, Multiply, Color
 Burn, Linear Burn, and Darker Color, and Lighten contains Lighten, Screen,
-Color Dodge, Linear Dodge (Add), and Lighter Color. Mixed selections show
-Mixed with no checked leaf; a common value checks its leaf inside the relevant
-submenu. These modes add no mode-specific parameter row; each effect's existing
-Opacity remains independent. Stroke Position and Shadow/Glow Type follow the
-card title. Gradient expands the shared stop editor and puts Opacity and Blend
-in a compact two-column row below it. Texture has Image and Opacity on row one,
+Color Dodge, Linear Dodge (Add), and Lighter Color. The primary item's Blend
+leaf stays checked during multi-selection. These modes add no mode-specific
+parameter row; each effect's existing Opacity remains independent. Stroke
+Position and Shadow/Glow Type follow the card title. Gradient expands the
+shared stop editor and puts Opacity and Blend in a compact two-column row below
+it. Texture has Image and Opacity on row one,
 Mapping and Blend on row two, and exposes Scale on a third row only for Tile
 mapping. Texture uses the same blank Glossary-style raster field and embedded
 file picker as Image. An Empty Texture remains blank and keeps its
@@ -101,12 +104,14 @@ action.
 
 The panel projects Gradient/Texture structural cards first, followed by the complete
 movable Image/Stroke/Shadow/Glow/Filter execution order and finally Eraser.
-Image is project-only, repeatable, reorderable, and available for matching
-single- or multi-item project selections; global formatting and presets strip
-it. Its Image and In Front/Behind controls use the same compact card rows and
-pinned project-image chooser. Adding a card leaves its asset unset and its
-Glossary-style image field blank without opening that chooser, and defaults
-its eventual placement to In Front.
+Image is project-only, repeatable, reorderable, and available for single-item
+project selections; global formatting and presets strip it. During
+multi-selection, existing Image cards remain primary-item reference cards and
+Add Image is disabled because Image is excluded from occurrence matching. Its
+Image and In Front/Behind controls use the same compact card rows and pinned
+project-image chooser. Adding a card leaves its asset unset and its
+Glossary-style image field blank without opening that chooser, and defaults its
+eventual placement to In Front.
 The card tooltip explains that Image is intentionally hidden during native
 text editing. Each Image card also has a draft-only Generate section. Its
 Model, Context, and Prompt controls update only the live card's pending recipe;
@@ -401,12 +406,37 @@ adjacent movable Stroke/Shadow/Glow/Image/Filter cards while skipping structural
 adjacent Gradient/Texture values, even when generated entries occupy raw tuple
 positions between them; it never changes generated-layer order.
 
-Multiple selected items may edit matching indices only when their effect-type
-sequences agree. Values at those indices may still be mixed. One committed
-action snapshots the complete before/after stack for every target, so undo does
-not reconstruct state from individual controls. With no item targets, the same
-session updates the global format directly because there is no canvas state to
-put on the item undo stack.
+For multiple selected items, the panel always projects every card and exact
+parameter value from the primary item. The latest direct canvas click or paired-
+list selection anchor is primary; marquee and programmatic selections fall back
+to the stable final selected item. Cards never synthesize Mixed parameter
+values.
+
+Batch editing uses a derived occurrence map rather than a merged or persistent
+stack. Starting from the primary cards, it pairs each non-Image structural
+identity in panel-visible occurrence order and intersects the available count
+across every other item. Filter identity includes ID and schema, and Gradient
+and Texture remain distinct. Relative order among unrelated effect types does
+not affect a match. A card mapped across every item has a 2 px pink selection
+border. Its absolute edits fan out the chosen value, while numeric label-drag
+deltas remain relative to each target's own mapped value. An unmatched card,
+and every Image card, edits only the primary item. Overall Opacity and Hollow
+remain all-selected controls; Eraser remains single-item.
+
+Adding Stroke, Shadow, Glow, Gradient, Texture, or Filter inserts a new value in
+every selected stack. It lands after the occurrences of that structural
+identity already common to every target, so the new primary card is matched
+immediately even when one stack has unmatched surplus occurrences. Add Image is
+disabled during multi-selection. Deleting a matched card removes every mapped
+occurrence; deleting an unmatched or Image card changes only the primary stack.
+Reordering a matched card fans out only when the relevant visible movable or
+foreground-paint structural sequences align exactly; otherwise its controls
+are disabled. An unmatched card, including Image, may still reorder within the
+primary stack only. One
+committed action snapshots the complete before/after stack for every target, so
+undo does not reconstruct state from individual controls. With no item targets,
+the same session updates the global format directly because there is no canvas
+state to put on the item undo stack.
 
 Pixel-changing effect previews use requested quality by default, allowing a
 valid full-quality preview surface, including a higher device-scale tier, to

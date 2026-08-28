@@ -94,6 +94,10 @@ from .filters import (
     get_filter_registry,
 )
 from .gradient_editor import InlineLinearGradientEditor
+from .edit_session import (
+    effect_reorder_is_aligned,
+    matched_effect_occurrences,
+)
 
 if TYPE_CHECKING:
     from .alpha_mask_edit_session import TextAlphaMaskEditSession
@@ -217,8 +221,20 @@ class _EffectCard(QFrame):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._hovered = False
+        self._matched = False
         self._keyboard_focused_action: Optional[QToolButton] = None
         self._hover_actions: Tuple[Tuple[QToolButton, QIcon], ...] = ()
+        self.setProperty('matched', False)
+
+    def set_matched(self, matched: bool) -> None:
+        matched = bool(matched)
+        if self._matched == matched:
+            return
+        self._matched = matched
+        self.setProperty('matched', matched)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
 
     def set_hover_actions(
         self, buttons: Sequence[QToolButton]
@@ -3611,10 +3627,6 @@ class TextEffectPanel(PanelArea):
         top_row.addStretch()
         top_row.addWidget(self.overall_opacity_control)
 
-        self.mixed_label = QLabel(self.tr('Mixed'), self.scrollContent)
-        self.mixed_label.setObjectName('TextEffectMixedLabel')
-        self.mixed_label.setVisible(False)
-
         self.cards_layout = QVBoxLayout()
         self.cards_layout.setContentsMargins(0, 0, 0, 0)
         self.cards_layout.setSpacing(8)
@@ -3641,7 +3653,6 @@ class TextEffectPanel(PanelArea):
         layout.setSpacing(8)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addLayout(top_row)
-        layout.addWidget(self.mixed_label)
         layout.addLayout(self.base_card_layout)
         layout.addLayout(self.cards_layout)
         layout.addLayout(self.mask_card_layout)
@@ -3934,110 +3945,106 @@ class TextEffectPanel(PanelArea):
         )
         self._set_hollow_toggle_state(common_hollow)
 
-        sequences = [self._effect_sequence(state) for state in states]
-        common_sequence = (
-            sequences[0]
-            if all(sequence == sequences[0] for sequence in sequences)
-            else None
+        reference = states[0]
+        self.add_effect_button.setEnabled(True)
+        self._rebuild_effect_cards(self._effect_sequence(reference), reference)
+        matched = matched_effect_occurrences(states)
+        gradient_visibility_changed = False
+        movable_types = (
+            StrokeEffect, ShadowEffect, GlowEffect,
+            ImageEffect, FilterEffect,
         )
-        mixed = common_sequence is None
-        self.mixed_label.setVisible(mixed)
-        self.add_effect_button.setEnabled(not mixed)
-        if mixed:
-            self._rebuild_effect_cards(())
-        else:
-            self._rebuild_effect_cards(common_sequence, states[0])
-            gradient_visibility_changed = False
-            movable_types = (
-                StrokeEffect, ShadowEffect, GlowEffect,
-                ImageEffect, FilterEffect,
-            )
-            movable_indices = [
-                index
-                for index, effect in enumerate(states[0].effects)
-                if isinstance(effect, movable_types)
-            ]
-            fill_indices = [
-                index
-                for index, effect in enumerate(states[0].effects)
-                if isinstance(effect, TextFillEffect)
-            ]
-            for card in self.effect_cards:
-                values = [state.effects[card.index] for state in states]
-                gradient_editor = getattr(card, 'gradient_editor', None)
-                gradient_was_hidden = (
-                    gradient_editor.isHidden()
-                    if isinstance(
-                        card,
-                        (
-                            StrokeEffectCard,
-                            ShadowEffectCard,
-                            GlowEffectCard,
-                        ),
-                    )
-                    else None
+        movable_indices = [
+            index
+            for index, effect in enumerate(reference.effects)
+            if isinstance(effect, movable_types)
+        ]
+        fill_indices = [
+            index
+            for index, effect in enumerate(reference.effects)
+            if isinstance(effect, TextFillEffect)
+        ]
+        movable_aligned = (
+            effect_reorder_is_aligned(states, movable_indices[0])
+            if movable_indices else False
+        )
+        fill_aligned = (
+            effect_reorder_is_aligned(states, fill_indices[0])
+            if fill_indices else False
+        )
+        for card in self.effect_cards:
+            # Cards always expose the primary item's exact values. Matching is
+            # derived only for fan-out and never creates a synthetic stack.
+            values = [reference.effects[card.index]]
+            card_matched = len(states) > 1 and card.index in matched
+            card.set_matched(card_matched)
+            gradient_editor = getattr(card, 'gradient_editor', None)
+            gradient_was_hidden = (
+                gradient_editor.isHidden()
+                if isinstance(
+                    card,
+                    (StrokeEffectCard, ShadowEffectCard, GlowEffectCard),
                 )
-                if isinstance(card, TextFillEffectCard):
-                    card.set_values(
-                        values,
-                        texture_available=self._texture_available(values),
-                    )
-                elif isinstance(card, ImageEffectCard):
-                    card.set_values(
-                        values,
-                        available=self._image_available(values),
-                        generation_eligible=len(self._block_items) == 1,
-                        generation_eligibility_hint=self.tr(
-                            'Select exactly one text item to generate an Image.'
-                        ),
-                    )
-                    self._apply_image_generation_state(card)
-                elif isinstance(card, FilterEffectCard):
-                    card.set_values(values)
-                else:
-                    card.set_values(values)
-                if (
-                    gradient_was_hidden is not None
-                    and gradient_editor.isHidden() != gradient_was_hidden
-                ):
-                    gradient_visibility_changed = True
-                if isinstance(card, (
-                    StrokeEffectCard,
-                    ShadowEffectCard,
-                    GlowEffectCard,
-                    ImageEffectCard,
-                    FilterEffectCard,
-                )):
-                    position = movable_indices.index(card.index)
-                    card.set_move_enabled(
-                        position + 1 < len(movable_indices),
-                        position > 0,
-                    )
-                elif isinstance(card, TextFillEffectCard):
-                    position = fill_indices.index(card.index)
-                    card.set_move_enabled(
-                        position + 1 < len(fill_indices),
-                        position > 0,
-                    )
-            if gradient_visibility_changed:
-                self.cards_layout.invalidate()
-                self.content_layout.invalidate()
-        self.add_effect_actions['gradient'].setEnabled(
-            not mixed and common_sequence is not None
-        )
+                else None
+            )
+            if isinstance(card, TextFillEffectCard):
+                card.set_values(
+                    values,
+                    texture_available=self._texture_available(values),
+                )
+            elif isinstance(card, ImageEffectCard):
+                card.set_values(
+                    values,
+                    available=self._image_available(values),
+                    generation_eligible=len(self._block_items) == 1,
+                    generation_eligibility_hint=self.tr(
+                        'Select exactly one text item to generate an Image.'
+                    ),
+                )
+                self._apply_image_generation_state(card)
+            elif isinstance(card, FilterEffectCard):
+                card.set_values(values)
+            else:
+                card.set_values(values)
+            if (
+                gradient_was_hidden is not None
+                and gradient_editor.isHidden() != gradient_was_hidden
+            ):
+                gradient_visibility_changed = True
+
+            if isinstance(card, (
+                StrokeEffectCard,
+                ShadowEffectCard,
+                GlowEffectCard,
+                ImageEffectCard,
+                FilterEffectCard,
+            )):
+                position = movable_indices.index(card.index)
+                reorder_enabled = not card_matched or movable_aligned
+                card.set_move_enabled(
+                    reorder_enabled and position + 1 < len(movable_indices),
+                    reorder_enabled and position > 0,
+                )
+            elif isinstance(card, TextFillEffectCard):
+                position = fill_indices.index(card.index)
+                reorder_enabled = not card_matched or fill_aligned
+                card.set_move_enabled(
+                    reorder_enabled and position + 1 < len(fill_indices),
+                    reorder_enabled and position > 0,
+                )
+        if gradient_visibility_changed:
+            self.cards_layout.invalidate()
+            self.content_layout.invalidate()
+        self.add_effect_actions['gradient'].setEnabled(True)
         self.add_effect_actions['texture'].setEnabled(
             bool(self._block_items)
             and getattr(SW.canvas, 'imgtrans_proj', None) is not None
-            and not mixed
-            and common_sequence is not None
         )
         self.add_effect_actions['image'].setEnabled(
-            bool(self._block_items)
+            len(self._block_items) == 1
             and getattr(SW.canvas, 'imgtrans_proj', None) is not None
-            and not mixed
-            and common_sequence is not None
         )
-        self.filter_add_menu.setEnabled(not mixed)
+        self.filter_add_menu.setEnabled(True)
         self._sync_content_height()
 
     def set_active_format(self, font_format: FontFormat) -> None:

@@ -2404,6 +2404,10 @@ QFrame#TextTransformParameterPanel[selected="true"] {
     border: 2px solid rgb(30, 147, 229);
 }
 
+QFrame#TextEffectParameterPanel[matched="true"] {
+    border: 2px solid rgb(248, 64, 147);
+}
+
 QFrame#TextTransformParameterPanel QLabel,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelActions,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls,
@@ -2761,8 +2765,7 @@ QFrame#TextAlphaMaskCard QToolButton#TextAlphaMaskClearButton {
     padding: 0px 8px;
 }
 
-QLabel#TextTransformMixedLabel,
-QLabel#TextEffectMixedLabel {
+QLabel#TextTransformMixedLabel {
     color: @qwidgetForegroundColor;
     font-style: italic;
 }
