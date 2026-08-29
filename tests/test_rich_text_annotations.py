@@ -1632,6 +1632,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             self.skipTest('Noto Sans is unavailable')
         font.setPointSizeF(72.0)
         item = self._make_item(True, text='是！？')
+        item.setStandardVerticalRomanAlignment(False)
         item.startEdit()
         cursor = item.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
@@ -1654,6 +1655,9 @@ class RichTextAnnotationTest(unittest.TestCase):
         natural_bounds = tate_chu_yoko_natural_bounds(line)
         record = item.layout._line_record(block, 1)
         self.assertAlmostEqual(cell.width(), record['base_width'])
+        self.assertLessEqual(
+            natural_bounds.width(), record['base_width'] * 1.1
+        )
         ink = tate_chu_yoko_ink_bounds(line, cell)
         self.assertTrue(cell.adjusted(-0.01, -0.01, 0.01, 0.01).contains(ink))
         reference_line, reference_offset, reference_transform = (
@@ -1712,6 +1716,32 @@ class RichTextAnnotationTest(unittest.TestCase):
         ]
         self.assertEqual(positions, [1, 2, 3])
         self.assertEqual(item.toPlainText(), '是！？')
+
+    def test_roman_text_combine_keeps_natural_horizontal_width(self):
+        def metrics(standard_roman: bool):
+            item = self._make_item(True, text='年12345月')
+            item.setStandardVerticalRomanAlignment(standard_roman)
+            item.startEdit()
+            cursor = item.textCursor()
+            cursor.setPosition(1)
+            cursor.setPosition(6, QTextCursor.MoveMode.KeepAnchor)
+            item.setTextCursor(cursor)
+            item.setTateChuYoko(True)
+            block = item.document().firstBlock()
+            line = block.layout().lineAt(1)
+            cell = item.layout.tate_chu_yoko_cell_rect(block, 1)
+            placement = item.layout.vertical_line_placement(block, 1)
+            return cell, tate_chu_yoko_natural_bounds(line), placement[2]
+
+        roman_cell, roman_natural, roman_transform = metrics(True)
+        alternate_cell, alternate_natural, alternate_transform = metrics(False)
+
+        self.assertGreaterEqual(
+            roman_cell.width() + 0.01, roman_natural.width()
+        )
+        self.assertAlmostEqual(roman_transform.m11(), 1.0)
+        self.assertLess(alternate_cell.width(), alternate_natural.width())
+        self.assertLess(alternate_transform.m11(), 1.0)
 
     def test_text_combine_ignores_letter_spacing(self):
         def metrics(spacing: float) -> tuple[float, QRectF, QRectF]:
@@ -1886,6 +1916,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             bounds=(100, 20, 100, 90),
             text='甲12乙丙丁戊',
         )
+        item.setStandardVerticalRomanAlignment(False)
         item.startEdit()
         cursor = item.textCursor()
         cursor.setPosition(1)

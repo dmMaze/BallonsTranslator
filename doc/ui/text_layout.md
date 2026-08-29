@@ -67,12 +67,14 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
-Tate-chu-yoko is a horizontal Qt run occupying one vertical cell. Its layout
-ignores letter spacing, selects the matching half-, third-, or quarter-width
-font feature when available, then horizontally scales any remaining excess to
-one em. The resulting visible ink is centered in the cell without changing the
-stored text. Glyph ink may overhang the cell, but that overhang affects only
-painting and interaction bounds, never the column width or neighboring columns.
+Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Its
+layout ignores authored letter spacing and uses the font's half-width
+punctuation plus matching half-, third-, or quarter-width feature when
+available. Standard Roman mode keeps that shaped run's natural horizontal
+width; the alternate mode horizontally scales any remaining excess to one em.
+The resulting visible ink is centered without changing the stored text. Glyph
+ink may overhang the column, but that overhang affects only painting and
+interaction bounds, never neighboring columns.
 
 Ruby/furigana is attached layout content, not a detached overlay. Group Ruby is
 indivisible; mono Ruby may wrap only between base/reading pairs. Each unit uses

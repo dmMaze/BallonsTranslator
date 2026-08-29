@@ -49,6 +49,7 @@ from .rendering.indexing import (
 )
 from .rendering.tate_chu_yoko import (
     tate_chu_yoko_ink_bounds,
+    tate_chu_yoko_natural_bounds,
     tate_chu_yoko_transform,
 )
 from .rendering.ruby import (
@@ -100,6 +101,7 @@ _LINE_INK_BOUNDS_CACHE: KeyedLruCache[tuple, QRectF] = KeyedLruCache(
 # Layout-only format IDs share the private rendering range and are never saved.
 TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1243
 _TATE_CHU_YOKO_WIDTH_FEATURES = {2: 'hwid', 3: 'twid', 4: 'qwid'}
+_TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE = 'halt'
 
 PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’', '〟', '″'}
 PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘', '‶'}
@@ -125,6 +127,22 @@ def _is_non_fullwidth_roman(char: str) -> bool:
         return False
     name = unicodedata.name(char, '')
     return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
+
+
+def _needs_tate_chu_yoko_spacing_fallback(text: str) -> bool:
+    """Return whether Qt 5 can narrow fullwidth punctuation safely.
+
+    >>> _needs_tate_chu_yoko_spacing_fallback('！？')
+    True
+    >>> _needs_tate_chu_yoko_spacing_fallback('漢字')
+    False
+    """
+    return len(text) > 1 and all(
+        unicodedata.category(char).startswith('P')
+        and unicodedata.east_asian_width(char) in {'F', 'W'}
+        and unicodedata.normalize('NFKC', char) != char
+        for char in text
+    )
 
 
 def _inseparable_punctuation_run(
@@ -1853,8 +1871,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         for start, length, _group_id in ranges:
             end = start + length
             text = _utf16_slice(block.text(), start, length)
-            feature_name = _TATE_CHU_YOKO_WIDTH_FEATURES.get(
-                _grapheme_count(text)
+            grapheme_count = _grapheme_count(text)
+            feature_name = _TATE_CHU_YOKO_WIDTH_FEATURES.get(grapheme_count)
+            spacing = (
+                0.5
+                if not FONT_FEATURES_AVAILABLE
+                and _needs_tate_chu_yoko_spacing_fallback(text)
+                else 1.0
             )
             source_ranges = self.fragment_format_ranges(
                 block.blockNumber(), start, end
@@ -1863,17 +1886,24 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 char_format = QTextCharFormat()
                 if abs(letter_spacing_value(
                     source_format, self.letter_spacing
-                ) - 1.0) > 1e-9:
+                ) - spacing) > 1e-9:
                     char_format.setFontLetterSpacingType(
                         QFont.SpacingType.PercentageSpacing
                     )
-                    char_format.setFontLetterSpacing(100.0)
-                if FONT_FEATURES_AVAILABLE and feature_name is not None:
+                    char_format.setFontLetterSpacing(spacing * 100.0)
+                if FONT_FEATURES_AVAILABLE and grapheme_count > 1:
                     features = dict(source_format.fontFeatures())
-                    width_features = _TATE_CHU_YOKO_WIDTH_FEATURES.values()
+                    width_features = (
+                        *_TATE_CHU_YOKO_WIDTH_FEATURES.values(),
+                        _TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE,
+                    )
                     for width_feature in width_features:
                         features.pop(QFont.Tag.fromString(width_feature), None)
-                    features[QFont.Tag.fromString(feature_name)] = 1
+                    if feature_name is not None:
+                        features[QFont.Tag.fromString(feature_name)] = 1
+                    features[QFont.Tag.fromString(
+                        _TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE
+                    )] = 1
                     char_format.setFontFeatures(features)
                 char_format.setProperty(
                     TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY, True
@@ -2151,13 +2181,17 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     ).left()
 
                 if is_text_combine:
-                    # The leading fragment supplies the one-em cell. The
-                    # shared placement transform compresses any remaining
-                    # horizontal overflow without changing document content.
+                    # Standard Roman mode keeps the shaped horizontal width;
+                    # alternate mode retains the CSS-like one-em fit.
                     right_margin, left_margin = emphasis_margins(
                         block, line, vertical=True
                     )
                     text_combine_width = cfmt.tbr.width()
+                    if self.fontformat.standard_vertical_roman_alignment:
+                        text_combine_width = max(
+                            text_combine_width,
+                            tate_chu_yoko_natural_bounds(line).width(),
+                        )
                     text_combine_height = cfmt.tbr.height()
                     spacing_advance = 0.0
                     tbr_h = text_combine_height
