@@ -18,7 +18,7 @@ RELEASES_URL = 'https://github.com/dmMaze/BallonsTranslator/releases'
 LATEST_RELEASE_API_URL = 'https://api.github.com/repos/dmMaze/BallonsTranslator/releases/latest'
 RELEASE_RESPONSE_CACHE_FILENAME = 'github_release_response.json'
 UPDATE_BRANCH = 'userspace_update'
-SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources')
+SOURCE_UPDATE_DIRS = ('ballontranslator', 'resources', 'config/llm_profile_builtin', 'scripts')
 SOURCE_UPDATE_FILES = ('pyproject.toml', 'requirements.txt', 'launch_win.bat', 'launch.sh')
 
 

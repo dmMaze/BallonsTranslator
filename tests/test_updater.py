@@ -27,11 +27,9 @@ def _write_update_dirs(root: Path, marker: str) -> None:
 
 class UpdaterTests(unittest.TestCase):
 
-    def test_managed_payload_excludes_user_dirs_and_includes_launchers(self):
-        self.assertFalse(any(
-            path == 'config' or path.startswith('config/')
-            for path in updater.SOURCE_UPDATE_DIRS
-        ))
+    def test_managed_payload_includes_builtin_profiles_and_launchers(self):
+        self.assertIn('config/llm_profile_builtin', updater.SOURCE_UPDATE_DIRS)
+        self.assertIn('scripts', updater.SOURCE_UPDATE_DIRS)
         self.assertNotIn('custom_modules', updater.SOURCE_UPDATE_DIRS)
         self.assertIn('launch_win.bat', updater.SOURCE_UPDATE_FILES)
         self.assertIn('launch.sh', updater.SOURCE_UPDATE_FILES)

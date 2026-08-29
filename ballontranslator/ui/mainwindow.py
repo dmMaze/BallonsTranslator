@@ -886,6 +886,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.ps_bridge_trigger.connect(self.on_open_photoshop_bridge)
         self.titleBar.path_reorder_trigger.connect(self.on_path_reorder)
         self.canvas.path_reorder_mode_changed.connect(
             self.titleBar.path_reorder_action.setChecked
@@ -1115,6 +1116,114 @@ class MainWindow(mainwindow_cls):
             self.merge_dialog.activateWindow()
         else:
             self.merge_dialog.show()
+
+    def on_open_photoshop_bridge(self):
+        """Open Photoshop Bridge & Tools dialog"""
+        if not hasattr(self, 'ps_bridge_dialog') or self.ps_bridge_dialog is None:
+            from .ps_bridge_dialog import PhotoshopBridgeDialog
+            self.ps_bridge_dialog = PhotoshopBridgeDialog(self, project=self.imgtrans_proj)
+        
+        self.ps_bridge_dialog.refresh_status()
+        if self.ps_bridge_dialog.isVisible():
+            self.ps_bridge_dialog.raise_()
+            self.ps_bridge_dialog.activateWindow()
+        else:
+            self.ps_bridge_dialog.show()
+
+    def prepare_photoshop_bridge_context(self) -> dict:
+        """Save current app state before Photoshop reads the project snapshot."""
+        from .ps_bridge_dialog import project_state_matches_disk
+
+        project = self.imgtrans_proj
+        if not project.proj_path:
+            raise RuntimeError(self.tr("No project is open."))
+        self.saveCurrentPage(
+            update_scene_text=True,
+            save_proj=True,
+            restore_interface=True,
+            save_rst_only=False,
+            keep_exist_as_backup=True,
+        )
+        if not project_state_matches_disk(project):
+            raise RuntimeError(
+                self.tr("The project could not be saved before opening Photoshop.")
+            )
+        return {
+            "project_path": project.proj_path,
+            "active_page": project.current_img or "",
+        }
+
+    def apply_photoshop_bridge_updates(self, payload: dict) -> int:
+        """Validate and persist Photoshop changes through project ownership."""
+        from .ps_bridge_dialog import (
+            project_state_matches_disk,
+            validate_photoshop_bridge_updates,
+        )
+
+        if self.canvas.projstate_unsaved:
+            raise RuntimeError(
+                self.tr(
+                    "BallonsTranslator has unsaved changes. Save them, then check "
+                    "for the Photoshop update again."
+                )
+            )
+        if not project_state_matches_disk(self.imgtrans_proj):
+            raise RuntimeError(
+                self.tr(
+                    "The project file changed outside BallonsTranslator. Reload it "
+                    "before applying Photoshop changes."
+                )
+            )
+
+        page_name, updates = validate_photoshop_bridge_updates(
+            self.imgtrans_proj,
+            payload,
+        )
+        changed = []
+        for block, translation, font_size in updates:
+            if (
+                block.translation != translation
+                or (font_size is not None and block.font_size != font_size)
+            ):
+                changed.append((block, translation, font_size))
+        if not changed:
+            return 0
+
+        old_values = [
+            (block, block.translation, block.rich_text, block.font_size)
+            for block, _, _ in changed
+        ]
+        for block, translation, font_size in changed:
+            if block.translation != translation:
+                block.translation = translation
+                # Rich HTML contains its own text and would otherwise hide the
+                # plain translation received from Photoshop.
+                block.rich_text = ""
+            if font_size is not None:
+                block.font_size = font_size
+
+        current_page_updated = page_name == self.imgtrans_proj.current_img
+        try:
+            if current_page_updated:
+                self.st_manager.updateSceneTextitems()
+            self.imgtrans_proj.save(keep_exist_as_backup=True)
+        except Exception as error:
+            for block, translation, rich_text, font_size in old_values:
+                block.translation = translation
+                block.rich_text = rich_text
+                block.font_size = font_size
+            if current_page_updated:
+                self.st_manager.updateSceneTextitems()
+            raise RuntimeError(
+                self.tr("Failed to save Photoshop changes: {error}").format(
+                    error=error
+                )
+            ) from error
+
+        if current_page_updated:
+            self.canvas.setProjSaveState(False)
+            self.canvas.update_saved_undostep()
+        return len(changed)
 
     def on_path_reorder(self, checked: bool) -> None:
         if not checked:
