@@ -1,4 +1,3 @@
-import re
 import threading
 import traceback
 from typing import List
@@ -12,7 +11,11 @@ from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
 from .context_menu import create_text_edit_context_menu
 from ballontranslator.utils.config import pcfg
-from ...spellcheck import SpellCheckManager, SpellCheckHighlighter
+from ...spellcheck import (
+    SpellCheckHighlighter,
+    SpellCheckManager,
+    iter_spellcheck_words,
+)
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
@@ -198,6 +201,8 @@ class FloatingSuggestionLabel(QWidget):
 
 
 class SourceTextEdit(QTextEdit):
+    is_source_text_edit = True
+
     hover_enter = Signal(int)
     hover_leave = Signal(int)
     focus_in = Signal(int)
@@ -264,48 +269,73 @@ class SourceTextEdit(QTextEdit):
         
         self.handle_content_change()
 
-    def on_selection_changed(self):
+    def _spellcheck_is_enabled(self) -> bool:
+        return (
+            getattr(pcfg, 'spellcheck_enabled', True)
+            and (
+                not self.is_source_text_edit
+                or getattr(pcfg, 'spellcheck_on_source_enabled', False)
+            )
+        )
+
+    def _dismiss_suggestions(self) -> None:
+        if self.suggestion_popup is not None:
+            self.suggestion_popup.hide()
+        self.current_suggestion_word = None
+
+    def on_selection_changed(self) -> None:
         try:
-            manager = SpellCheckManager.get_instance()
-            if not manager.is_available():
-                return
-            if not getattr(pcfg, 'spellcheck_enabled', True):
+            # Do not scan selections or touch the optional dependency while the
+            # relevant spellcheck path is disabled.
+            if not self._spellcheck_is_enabled():
+                self._dismiss_suggestions()
                 return
 
             cursor = self.textCursor()
             if not cursor.hasSelection():
-                if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-                    self.suggestion_popup.hide()
-                self.current_suggestion_word = None
+                self._dismiss_suggestions()
                 return
 
-            selected_text = cursor.selectedText().strip()
-            # Only suggest for a single word
-            pattern = r'^[^\W\d_]+$'
-            if len(selected_text) > 1 and re.match(pattern, selected_text):
-                if not manager.is_correct(selected_text):
-                    self.current_suggestion_word = selected_text
-                    
-                    # Fetch suggestions in background thread to avoid freezing the UI thread
-                    def fetch_bg(c, w):
-                        try:
-                            sugs = manager.get_suggestions(w)
-                            self.suggestions_ready.emit(c, w, sugs)
-                        except Exception:
-                            pass
-                            
-                    t = threading.Thread(target=fetch_bg, args=(cursor, selected_text), daemon=True)
-                    t.start()
-                    return
+            selected_text = cursor.selectedText()
+            word = next(iter_spellcheck_words(selected_text), None)
+            if word is None or word[2] != selected_text:
+                self._dismiss_suggestions()
+                return
 
-            if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-                self.suggestion_popup.hide()
-            self.current_suggestion_word = None
-        except Exception as e:
+            manager = SpellCheckManager.get_instance()
+            if not manager.is_available() or manager.is_correct(selected_text):
+                self._dismiss_suggestions()
+                return
+
+            self.current_suggestion_word = selected_text
+
+            # Fetch suggestions in background to keep the UI thread responsive.
+            def fetch_bg(c, w):
+                try:
+                    sugs = manager.get_suggestions(w)
+                    self.suggestions_ready.emit(c, w, sugs)
+                except Exception:
+                    pass
+
+            thread = threading.Thread(
+                target=fetch_bg,
+                args=(cursor, selected_text),
+                daemon=True,
+            )
+            thread.start()
+        except Exception:
             traceback.print_exc()
 
-    def show_suggestions_popup(self, cursor, word, suggestions):
+    def show_suggestions_popup(
+        self,
+        cursor: QTextCursor,
+        word: str,
+        suggestions: List[str],
+    ) -> None:
         try:
+            if not self._spellcheck_is_enabled():
+                self._dismiss_suggestions()
+                return
             if getattr(self, 'current_suggestion_word', None) != word:
                 return
                 
@@ -333,7 +363,7 @@ class SourceTextEdit(QTextEdit):
             
             self.suggestion_popup.move(global_pos)
             self.suggestion_popup.show()
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     def contextMenuEvent(self, event):
@@ -454,13 +484,11 @@ class SourceTextEdit(QTextEdit):
     def focusOutEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(False)
         self.focus_out.emit(self.idx)
-        if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-            self.suggestion_popup.hide()
+        self._dismiss_suggestions()
         return super().focusOutEvent(event)
 
     def wheelEvent(self, event) -> None:
-        if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-            self.suggestion_popup.hide()
+        self._dismiss_suggestions()
         return super().wheelEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
@@ -544,6 +572,8 @@ class SourceTextEdit(QTextEdit):
 
         
 class TransTextEdit(SourceTextEdit):
+    is_source_text_edit = False
+
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         cursor = self.textCursor()
         menu, quick_insert_actions = create_text_edit_context_menu(
