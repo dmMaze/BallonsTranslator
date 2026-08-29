@@ -115,9 +115,6 @@ class PaddleOCRVLManga(OCRBase):
         input_length = inputs["input_ids"].shape[1]
         generated_tokens = generated[:, input_length:]
         answer = self.processor.batch_decode(generated_tokens, skip_special_tokens=True)[0]
-        
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
             
         return answer.split('\n')
 

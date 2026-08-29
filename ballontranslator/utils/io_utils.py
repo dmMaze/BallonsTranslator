@@ -163,20 +163,19 @@ def imread(imgpath, read_type=cv2.IMREAD_COLOR, max_retry_limit=5, retry_interva
             img = Image.open(imgpath)
             if img.mode == 'CMYK':
                 img = img.convert('RGB')
-            elif img.mode in ['LA', 'PA']:
+            elif img.mode == 'P':
                 img = img.convert('RGBA')
-            elif img.mode in ['P', '1']:
+            elif img.mode == 'LA':
+                # grayscale + alpha (2-channel) isn't handled below; promote to RGBA
+                img = img.convert('RGBA')
+            elif img.mode == '1':
                 img = img.convert('RGBA' if 'transparency' in img.info else 'RGB')
             if read_type == cv2.IMREAD_GRAYSCALE:
                 img = img.convert('L')
             img = np.array(img)
             if read_type != cv2.IMREAD_GRAYSCALE:
                 if img.ndim == 3 and img.shape[-1] == 1:
-                    img = img[..., 0]
-                if img.ndim == 3 and img.shape[-1] == 2:
-                    gray = img[..., 0]
-                    alpha = img[..., 1]
-                    img = np.dstack([gray, gray, gray, alpha])
+                    img = img[..., :2]
                 if img.ndim == 2:
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
