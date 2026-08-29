@@ -647,20 +647,26 @@ class PhotoshopBridgeDialog(QDialog):
             source_norm = os.path.normpath(source_path)
             target_norm = os.path.normpath(target_path)
             target_dir = os.path.dirname(target_norm)
-            params = f'/c if not exist "{target_dir}" mkdir "{target_dir}" && copy /y "{source_norm}" "{target_norm}"'
+            source_hash = get_file_md5(source_norm)
+
+            ps_params = (
+                f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
+                f"New-Item -ItemType Directory -Force -Path '{target_dir}' | Out-Null; "
+                f"Copy-Item -LiteralPath '{source_norm}' -Destination '{target_norm}' -Force"
+            )
             ret = ctypes.windll.shell32.ShellExecuteW(
                 None,
                 "runas",
-                "cmd.exe",
-                params,
+                "powershell.exe",
+                ps_params,
                 None,
                 0,
             )
             if ret > 32:
-                for _ in range(25):
-                    if os.path.isfile(target_norm):
-                        return True
+                for _ in range(40):
                     time.sleep(0.1)
+                    if os.path.isfile(target_norm) and get_file_md5(target_norm) == source_hash:
+                        return True
         except Exception as error:
             LOGGER.warning("Elevated copy failed: %s", error)
         return False
