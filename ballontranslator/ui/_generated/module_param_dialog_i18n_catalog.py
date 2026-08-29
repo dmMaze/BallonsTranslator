@@ -211,6 +211,18 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'google_vision', 'proxy', 'display_name'): {
         "source": 'proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'proxy'),
     },
+    ('ocr', 'hayai_ocr_v2', '', 'description'): {
+        "source": 'Hayai OCR v2 crop recognition model.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Hayai OCR v2 crop recognition model.'),
+    },
+    ('ocr', 'hayai_ocr_v2', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
+    },
+    ('ocr', 'hayai_ocr_v2', 'max_num_patches', 'description'): {
+        "source": 'Maximum image patches. Use 256 for standard lines, or 384/512 for dense panels.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Maximum image patches. Use 256 for standard lines, or 384/512 for dense panels.'),
+    },
+    ('ocr', 'hayai_ocr_v2', 'max_num_patches', 'display_name'): {
+        "source": 'Max Num Patches', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Num Patches'),
+    },
     ('ocr', 'manga_ocr', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
     },
