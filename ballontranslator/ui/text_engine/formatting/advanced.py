@@ -25,9 +25,9 @@ from qtpy.QtCore import (
 
 from ...custom_widget import (
     PanelArea,
-    SmallComboBox,
     SmallParamLabel,
 )
+from ...custom_widget.combobox import BottomBorderComboBox
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
 from ballontranslator.utils.fontformat import FontFormat
 from ..annotations import (
@@ -94,7 +94,8 @@ class RubyFuriganaGroup(QGroupBox):
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
-        self.type_combobox = SmallComboBox(parent=self)
+        self.type_combobox = BottomBorderComboBox(parent=self)
+        self.type_combobox.setObjectName('TextAdvancedFormatParamEditor')
         self.type_combobox.addItem(self.tr('Group'), 'group')
         self.type_combobox.addItem(self.tr('Mono'), 'mono')
         self.type_label = _word_wrap_label(
@@ -102,6 +103,7 @@ class RubyFuriganaGroup(QGroupBox):
         )
 
         self.text_edit = QLineEdit(self)
+        self.text_edit.setObjectName('TextAdvancedFormatParamEditor')
         self.text_edit.setPlaceholderText(self.tr('Ruby text'))
         self.text_edit.setToolTip(
             self.tr('For Mono Ruby, separate readings with whitespace')
@@ -111,7 +113,8 @@ class RubyFuriganaGroup(QGroupBox):
             SmallParamLabel(self.tr('Reading'), parent=self)
         )
 
-        self.position_combobox = SmallComboBox(parent=self)
+        self.position_combobox = BottomBorderComboBox(parent=self)
+        self.position_combobox.setObjectName('TextAdvancedFormatParamEditor')
         self.position_combobox.addItem(self.tr('Over / Right'), 'over')
         self.position_combobox.addItem(self.tr('Under / Left'), 'under')
         self.position_label = _word_wrap_label(
@@ -211,6 +214,7 @@ class TextAdvancedFormatPanel(PanelArea):
         self.scrollContent.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
+        self.scrollContent.setObjectName('TextAdvancedFormatContent')
 
         self._geometry_timer = QTimer(self)
         self._geometry_timer.setSingleShot(True)
@@ -228,13 +232,16 @@ class TextAdvancedFormatPanel(PanelArea):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
 
-        self.linespacing_type_combobox = SmallComboBox(
-            parent=self.top_section,
-            options=[
-                self.tr("Proportional"),
-                self.tr("Distance")
-            ]
+        self.linespacing_type_combobox = BottomBorderComboBox(
+            parent=self.top_section
         )
+        self.linespacing_type_combobox.setObjectName(
+            'TextAdvancedFormatParamEditor'
+        )
+        self.linespacing_type_combobox.addItems((
+            self.tr("Proportional"),
+            self.tr("Distance"),
+        ))
         self.linespacing_type_combobox.activated.connect(
             self.on_linespacing_type_changed
         )
@@ -291,7 +298,8 @@ class TextAdvancedFormatPanel(PanelArea):
         self.ligature_comboboxes = {}
         ligature_units = []
         for axis, label, tooltip in ligature_specs:
-            combo = SmallComboBox(parent=self.ligature_group)
+            combo = BottomBorderComboBox(parent=self.ligature_group)
+            combo.setObjectName('TextAdvancedFormatParamEditor')
             for option, value in zip(
                 (self.tr('Default'), self.tr('On'), self.tr('Off')),
                 LIGATURE_AXIS_VALUES,

@@ -2629,7 +2629,9 @@ QComboBox#TextTransformParamEditor,
 QLabel#TextEffectParamLabel,
 QLineEdit#TextEffectParamEditor,
 QDoubleSpinBox#TextEffectParamEditor,
-QComboBox#TextEffectParamEditor {
+QComboBox#TextEffectParamEditor,
+QComboBox#TextAdvancedFormatParamEditor,
+QLineEdit#TextAdvancedFormatParamEditor {
     font-size: 12px;
 }
 
@@ -2637,7 +2639,9 @@ QLineEdit#TextTransformParamEditor,
 QComboBox#TextTransformParamEditor,
 QLineEdit#TextEffectParamEditor,
 QDoubleSpinBox#TextEffectParamEditor,
-QComboBox#TextEffectParamEditor {
+QComboBox#TextEffectParamEditor,
+QComboBox#TextAdvancedFormatParamEditor,
+QLineEdit#TextAdvancedFormatParamEditor {
     min-height: 20px;
     max-height: 20px;
     height: 20px;
@@ -2686,13 +2690,18 @@ QLineEdit#TextEffectParamEditor:focus,
 QDoubleSpinBox#TextEffectParamEditor:hover,
 QDoubleSpinBox#TextEffectParamEditor:focus,
 QComboBox#TextEffectParamEditor:hover,
-QComboBox#TextEffectParamEditor:focus {
+QComboBox#TextEffectParamEditor:focus,
+QComboBox#TextAdvancedFormatParamEditor:hover,
+QComboBox#TextAdvancedFormatParamEditor:focus,
+QLineEdit#TextAdvancedFormatParamEditor:hover,
+QLineEdit#TextAdvancedFormatParamEditor:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QComboBox#TextTransformParamEditor::drop-down,
-QComboBox#TextEffectParamEditor::drop-down {
+QComboBox#TextEffectParamEditor::drop-down,
+QComboBox#TextAdvancedFormatParamEditor::drop-down {
     border: none;
     background-color: transparent;
 }
@@ -2769,6 +2778,17 @@ QLabel#TextTransformMixedLabel {
 QWidget#TextAdvancedFormatTopSection,
 QWidget#TextAdvancedFormatUnit {
     background-color: transparent;
+}
+
+PanelAreaContent#TextAdvancedFormatContent QGroupBox {
+    background-color: transparent;
+    font-size: 12px;
+}
+
+PanelAreaContent#TextAdvancedFormatContent QGroupBox::title {
+    background-color: transparent;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 /* Suggestion Popup (Spell Checker) */
