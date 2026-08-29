@@ -38,24 +38,18 @@ def _transform_from_ink(
     cell: QRectF,
     ink: QRectF,
 ) -> QTransform:
-    # A single character has no authored horizontal spacing to preserve.
-    # Center its ink without the asymmetric empty advance used by some
-    # full-width punctuation; natural bounds still size its cell and carets.
-    source = (
-        ink
-        if line.textLength() == 1
-        else _source_natural_bounds(line, ink)
-    )
-    if source.isEmpty() or cell.isEmpty():
+    natural = _source_natural_bounds(line, ink)
+    if natural.isEmpty() or ink.isEmpty() or cell.isEmpty():
         return QTransform()
-    source_center = source.center()
+    scale_x = min(1.0, cell.width() / natural.width())
+    source_center = ink.center()
     target_center = cell.center()
     return QTransform(
-        1.0,
+        scale_x,
         0.0,
         0.0,
         1.0,
-        target_center.x() - source_center.x(),
+        target_center.x() - source_center.x() * scale_x,
         target_center.y() - source_center.y(),
     )
 
@@ -64,10 +58,11 @@ def tate_chu_yoko_transform(
     line: QTextLine,
     cell: QRectF,
 ) -> QTransform:
-    """Center an unscaled horizontal run in its reserved vertical cell.
+    """Fit and center a horizontal run in its one-em vertical cell.
 
-    The cell may grow wider than one em so the run follows Photoshop-like
-    horizontal flow rather than CSS's one-em compression.
+    Width-specific glyph variants are selected during shaping when Qt exposes
+    them. This transform supplies the W3C geometric fallback when the resulting
+    horizontal advance still exceeds the cell.
 
     >>> callable(tate_chu_yoko_transform)
     True
@@ -83,6 +78,6 @@ def tate_chu_yoko_ink_bounds(
     line: QTextLine,
     cell: QRectF,
 ) -> QRectF:
-    """Return the translated natural ink used for visible-geometry checks."""
+    """Return the fitted ink used for visible-geometry checks."""
     source = _source_ink_bounds(line)
     return _transform_from_ink(line, cell, source).mapRect(source)

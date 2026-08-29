@@ -11,6 +11,11 @@ from qtpy.QtCore import QRectF, Qt
 from qtpy.QtGui import QPainter, QPixmap
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QWidget
 
+from ballontranslator.utils.rgba import (
+    premultiply_rgba_in_place,
+    unpremultiply_rgba_in_place,
+)
+
 from ...misc import ndarray2pixmap, pixmap2ndarray
 from .raster import (
     EffectRasterAllocationError,
@@ -103,14 +108,7 @@ class NonlinearTextSurfaceRenderer:
         source = pixmap2ndarray(source_pixmap, keep_alpha=True)
         # Interpolate premultiplied color so transparent glyph edges do not
         # borrow RGB from fully transparent pixels.
-        alpha = source[:, :, 3].astype(np.uint16)
-        for channel_index in range(3):
-            channel = source[:, :, channel_index].astype(np.uint16)
-            channel *= alpha
-            channel += 127
-            channel //= 255
-            source[:, :, channel_index] = channel.astype(np.uint8)
-        del alpha
+        premultiply_rgba_in_place(source)
         output_width = max(1, math.ceil(destination_rect.width() * scale))
         output_height = max(1, math.ceil(destination_rect.height() * scale))
         remap_key = (
@@ -176,18 +174,7 @@ class NonlinearTextSurfaceRenderer:
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(0, 0, 0, 0),
         )
-        output_alpha = output[:, :, 3]
-        nonzero = output_alpha > 0
-        if np.any(nonzero):
-            alpha_values = output_alpha[nonzero].astype(np.float32)
-            for channel_index in range(3):
-                channel = output[:, :, channel_index]
-                values = channel[nonzero].astype(np.float32)
-                values *= 255.0
-                values /= alpha_values
-                channel[nonzero] = np.clip(
-                    np.rint(values), 0, 255
-                ).astype(np.uint8)
+        unpremultiply_rgba_in_place(output)
         pixmap = ndarray2pixmap(output)
         if pixmap.isNull():
             raise EffectRasterAllocationError(

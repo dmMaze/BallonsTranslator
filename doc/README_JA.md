@@ -25,8 +25,9 @@
   マスク編集とインペイントのサポート（PSのスポットヒーリングブラシツールのようなもの）
 
 * テキストの編集
-  - リッチテキストフォーマットをサポートし、翻訳されたテキストはインタラクティブに編集することができます。
-  - [テキスト変形](https://github.com/dmMaze/BallonsTranslator/pull/1238)、検索と置換
+  - WYSIWYG形式のリッチテキスト編集と[テキストスタイルプリセット](https://github.com/dmMaze/BallonsTranslator/pull/311)に対応
+  - 豊富な[テキストエフェクト](https://github.com/dmMaze/BallonsTranslator/pull/1296)と[テキスト変形](https://github.com/dmMaze/BallonsTranslator/pull/1238)に対応
+  - 全文・原文・訳文の検索と置換、およびWord文書のインポート／エクスポートに対応
 
 * <details>
   <summary><i>文脈対応 LLM 翻訳と用語集</i></summary>

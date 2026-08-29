@@ -22,6 +22,7 @@ from .text_engine.shape_control import (
 )
 from .text_engine.transforms.grid_control import TextGridTransformControl
 from .text_engine.transforms.projective_control import TextProjectiveTransformControl
+from .text_engine.effects.alpha_mask_edit_session import TextAlphaMaskEditSession
 from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem
 from .page_search_widget import PageSearchWidget
@@ -321,6 +322,7 @@ class Canvas(QGraphicsScene):
 
         self.stroke_img_item: StrokeImgItem = None
         self.erase_img_key = None
+        self._primary_selected_text_item: Optional[TextBlkItem] = None
 
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
@@ -341,6 +343,7 @@ class Canvas(QGraphicsScene):
 
         self.textlayer_trans_slider: QSlider = None
         self.originallayer_trans_slider: QSlider = None
+        self.alpha_mask_edit_session = TextAlphaMaskEditSession(self)
 
     def on_switch_item(
         self,
@@ -428,6 +431,7 @@ class Canvas(QGraphicsScene):
         stack_index: int,
         **callbacks: Callable[..., None],
     ) -> None:
+        self.alpha_mask_edit_session.deactivate()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
         self.txtblkProjectiveControl.clear()
@@ -446,6 +450,7 @@ class Canvas(QGraphicsScene):
         stack_index: int,
         **callbacks: Callable[..., None],
     ) -> None:
+        self.alpha_mask_edit_session.deactivate()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
         self.txtblkGridControl.clear()
@@ -535,7 +540,10 @@ class Canvas(QGraphicsScene):
         export_effect_items = [
             item
             for item in text_items
-            if not item._text_transform_is_neutral()
+            if (
+                not item._text_transform_is_neutral()
+                or item.effect_renderer.has_raster_effects()
+            )
         ]
         enabled_export_effect_items = []
         painter = None
@@ -684,6 +692,7 @@ class Canvas(QGraphicsScene):
         self.scaleFactorLabel.startFadeAnimation()
 
     def on_selection_changed(self) -> None:
+        self.alpha_mask_edit_session.handle_selection_changed()
         if self.txtblkShapeControl.isVisible():
             blk_item = self.txtblkShapeControl.blk_item
             if blk_item is not None and blk_item.isEditing():
@@ -695,6 +704,10 @@ class Canvas(QGraphicsScene):
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
+
+        if key == QKEY.Key_Escape and self.alpha_mask_edit_session.handle_escape():
+            event.accept()
+            return
 
         if self._path_reorder_active:
             if key == QKEY.Key_Escape:
@@ -853,6 +866,7 @@ class Canvas(QGraphicsScene):
     def attach_text_item(self, item: TextBlkItem) -> None:
         """Attach a text item and its badge to their canvas-owned layers."""
         item.setParentItem(self.textLayer)
+        item.effect_renderer.project_assets_changed()
         item.set_order_badge_layer(self.orderBadgeLayer)
         item.set_order_badge_visible(self.order_badges_visible)
 
@@ -876,6 +890,7 @@ class Canvas(QGraphicsScene):
         if len(items) < 2:
             return False
 
+        self.alpha_mask_edit_session.deactivate()
         self.clear_states()
         self.clear_text_transform_controls()
         self.txtblkShapeControl.setBlkItem(None)
@@ -1004,6 +1019,9 @@ class Canvas(QGraphicsScene):
             self.path_reorder_finished.emit(touched_ids)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.alpha_mask_edit_session.handle_mouse_move(event):
+            event.accept()
+            return
         if self._path_reorder_drawing:
             self._extend_path_reorder_stroke(event.scenePos())
             event.accept()
@@ -1048,7 +1066,8 @@ class Canvas(QGraphicsScene):
     def scale_tool_mode(self):
         return self.drawMode() and self.gv.isVisible() and QApplication.keyboardModifiers() == Qt.KeyboardModifier.AltModifier
 
-    def clearToolStates(self):
+    def clearToolStates(self) -> None:
+        self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.end_scale_tool.emit()
 
@@ -1061,6 +1080,23 @@ class Canvas(QGraphicsScene):
         if sort:
             sel_textitems.sort(key = lambda x : x.idx)
         return sel_textitems
+
+    def set_primary_selected_text_item(
+        self, item: Optional[TextBlkItem]
+    ) -> None:
+        """Record the direct-click or paired-list anchor for panel projection."""
+        self._primary_selected_text_item = item
+
+    def primary_selected_text_item(
+        self, items: Optional[List[TextBlkItem]] = None
+    ) -> Optional[TextBlkItem]:
+        """Return the explicit selection anchor, or a stable final fallback."""
+        selected = self.selected_text_items() if items is None else list(items)
+        if self._primary_selected_text_item not in selected:
+            self._primary_selected_text_item = (
+                selected[-1] if selected else None
+            )
+        return self._primary_selected_text_item
 
     def handle_ctrlv(self) -> bool:
         if not self.textEditMode():
@@ -1084,6 +1120,9 @@ class Canvas(QGraphicsScene):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if self.alpha_mask_edit_session.handle_mouse_press(event):
+            event.accept()
+            return
         if self._path_reorder_active:
             if btn == Qt.MouseButton.LeftButton:
                 self._start_path_reorder_stroke(event.scenePos())
@@ -1170,6 +1209,9 @@ class Canvas(QGraphicsScene):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if self.alpha_mask_edit_session.handle_mouse_release(event):
+            event.accept()
+            return
         if self._path_reorder_drawing and btn == Qt.MouseButton.LeftButton:
             self._finish_path_reorder_stroke()
             event.accept()
@@ -1242,6 +1284,8 @@ class Canvas(QGraphicsScene):
     ) -> bool:
         if self.rubber_band_origin is not None:
             return False
+        if target == 'scene':
+            self._primary_selected_text_item = None
         self.rubber_band_origin = QPointF(scene_pos)
         self.rubber_band_modifiers = modifiers
         self._rubber_band_button = button
@@ -1291,6 +1335,7 @@ class Canvas(QGraphicsScene):
             )
 
     def updateCanvas(self) -> None:
+        self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.editing_textblkitem = None
         if self.stroke_img_item is not None:
@@ -1334,6 +1379,7 @@ class Canvas(QGraphicsScene):
         self.drawingLayer.setPixmap(drawing_map)
 
     def setPaintMode(self, painting: bool) -> None:
+        self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         if self.creating_textblock:
             self.clear_states()
@@ -1359,6 +1405,8 @@ class Canvas(QGraphicsScene):
         self.setTextLayerTransparency(slider_value / 100)
 
     def setTextBlockMode(self, mode: bool) -> None:
+        if mode:
+            self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.textblock_mode = mode
 
@@ -1465,7 +1513,8 @@ class Canvas(QGraphicsScene):
         self._rubber_band_update = None
         self._rubber_band_finish = None
     
-    def on_hide_canvas(self):
+    def on_hide_canvas(self) -> None:
+        self.alpha_mask_edit_session.deactivate()
         self.clear_states()
 
     def on_activation_changed(self) -> None:
@@ -1499,6 +1548,8 @@ class Canvas(QGraphicsScene):
     def removeItem(self, item: QGraphicsItem) -> None:
         self.block_selection_signal = True
         if isinstance(item, TextBlkItem):
+            if item is self.alpha_mask_edit_session.target:
+                self.alpha_mask_edit_session.deactivate()
             # Rejoin the badge to its owner before both leave the scene.
             item.set_order_badge_layer(None)
         if isinstance(item, StrokeImgItem):

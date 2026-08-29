@@ -16,6 +16,8 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     TextTransformStack,
 )
+from ballontranslator.utils.text_effects import TextEffectStack
+from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ...misc import doc_replace, doc_replace_no_shift
 from ..shape_control import TextBlkShapeControl
 from ...page_search_widget import PageSearchWidget, Matched
@@ -164,6 +166,100 @@ class SetTextTransformCommand(QUndoCommand):
     def _apply(self, states: Sequence[TextTransformStack]) -> None:
         for item, state in zip(self.items, states):
             item.set_text_transform(state, preview=False)
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+
+    def redo(self) -> None:
+        self._apply(self.after)
+
+    def undo(self) -> None:
+        self._apply(self.before)
+
+
+class SetTextEffectStackCommand(QUndoCommand):
+    """Atomically replace complete effect state on selected text items.
+
+    >>> SetTextEffectStackCommand.create([], [], []) is None
+    True
+    """
+
+    def __init__(
+        self,
+        items: Sequence[TextBlkItem],
+        before: Sequence[TextEffectStack],
+        after: Sequence[TextEffectStack],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__()
+        self.items = tuple(items)
+        if len(self.items) != len(before) or len(self.items) != len(after):
+            raise ValueError("items, before, and after must have the same length")
+        self.before = tuple(before)
+        self.after = tuple(after)
+        self.refresh_callback = refresh_callback
+
+    @classmethod
+    def create(
+        cls,
+        items: Sequence[TextBlkItem],
+        before: Sequence[TextEffectStack],
+        after: Sequence[TextEffectStack],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> Optional["SetTextEffectStackCommand"]:
+        command = cls(items, before, after, refresh_callback)
+        return None if command.before == command.after else command
+
+    def _apply(self, states: Sequence[TextEffectStack]) -> None:
+        for item, state in zip(self.items, states):
+            item.set_text_effects(state, preview=False)
+        if self.refresh_callback is not None:
+            self.refresh_callback()
+
+    def redo(self) -> None:
+        self._apply(self.after)
+
+    def undo(self) -> None:
+        self._apply(self.before)
+
+
+class SetTextAlphaMaskCommand(QUndoCommand):
+    """Replace one TextBlock-owned mask without touching document history.
+
+    >>> hasattr(SetTextAlphaMaskCommand, 'create')
+    True
+    """
+
+    def __init__(
+        self,
+        item: TextBlkItem,
+        before: Optional[TextAlphaMask],
+        after: Optional[TextAlphaMask],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__()
+        if before is not None and not isinstance(before, TextAlphaMask):
+            raise TypeError('before mask requires TextAlphaMask or None')
+        if after is not None and not isinstance(after, TextAlphaMask):
+            raise TypeError('after mask requires TextAlphaMask or None')
+        self.item = item
+        self.before = before
+        self.after = after
+        self.refresh_callback = refresh_callback
+
+    @classmethod
+    def create(
+        cls,
+        item: TextBlkItem,
+        before: Optional[TextAlphaMask],
+        after: Optional[TextAlphaMask],
+        refresh_callback: Optional[Callable[[], None]] = None,
+    ) -> Optional["SetTextAlphaMaskCommand"]:
+        if before == after:
+            return None
+        return cls(item, before, after, refresh_callback)
+
+    def _apply(self, mask: Optional[TextAlphaMask]) -> None:
+        self.item.set_text_alpha_mask(mask, preview=False)
         if self.refresh_callback is not None:
             self.refresh_callback()
 

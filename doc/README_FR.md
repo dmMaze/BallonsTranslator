@@ -35,9 +35,9 @@ Prend en charge l’export/import vers/depuis des documents Word
   - Adapté aux images à rapport hauteur/largeur extrême comme les webtoons
   
 * Édition de texte
-  - Prend en charge le formatage riche du texte et les [préréglages de style](https://github.com/dmMaze/BallonsTranslator/pull/311). Les textes traduits peuvent être édités interactivement.
-  - [Transformations de texte](https://github.com/dmMaze/BallonsTranslator/pull/1238), recherche et remplacement
-  - Prend en charge l’export/import vers/depuis des documents Word
+  - Prend en charge l’édition WYSIWYG de texte enrichi et les [préréglages de style](https://github.com/dmMaze/BallonsTranslator/pull/311)
+  - Prend en charge un large éventail d’[effets de texte](https://github.com/dmMaze/BallonsTranslator/pull/1296) et de [transformations de texte](https://github.com/dmMaze/BallonsTranslator/pull/1238)
+  - Prend en charge la recherche et le remplacement dans tout le texte, le texte source ou les traductions, ainsi que l’import/export de documents Word
 
 * <details>
   <summary><i>Traduction LLM sensible au contexte et glossaires</i></summary>

@@ -19,7 +19,11 @@
 
 
 
-<p align="center">交流反馈 QQ 群：719881337 </p>
+<p align="center">
+  <a href="https://t.me/BallonTranslatorforum"><img src="https://img.shields.io/badge/Telegram-%E7%94%A8%E6%88%B7%E4%BA%A4%E6%B5%81%E7%BE%A4-26A5E4?style=flat-square&logo=telegram&logoColor=white" style="vertical-align: middle;" alt="Telegram Group"/></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="vertical-align: middle;"><b>QQ 交流反馈群：</b><code>719881337</code></span>
+</p>
 
  
 
@@ -39,9 +43,9 @@
   支持掩膜编辑和修复画笔
   
 * 文本编辑  
-  - 支持所见即所得地富文本编辑和一些基础排版格式调整、[字体样式预设](https://github.com/dmMaze/BallonsTranslator/pull/311)
-  - [文本变形](https://github.com/dmMaze/BallonsTranslator/pull/1238)、全文/原文/译文查找替换
-  - 支持导入导出 word 文档
+  - 支持所见即所得地富文本编辑、[字体样式预设](https://github.com/dmMaze/BallonsTranslator/pull/311)
+  - 支持丰富的文本[特效](https://github.com/dmMaze/BallonsTranslator/pull/1296)和[变形](https://github.com/dmMaze/BallonsTranslator/pull/1238)
+  - 支持全文/原文/译文查找替换、导入导出 word 文档
 
 * <details>
   <summary><i>支持上下文和术语表的 LLM 翻译</i></summary>
