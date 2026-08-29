@@ -29,9 +29,9 @@
   - 웹툰과 같은 길다란 이미지도 편집 가능합니다
 
 * 텍스트 편집
-  - 풍부한 텍스트 포맷 지원 [텍스트 스타일 프리셋](https://github.com/dmMaze/BallonsTranslator/pull/311) 및, 번역된 텍스트는 대화형으로 편집할 수 있습니다.
-  - [텍스트 변형](https://github.com/dmMaze/BallonsTranslator/pull/1238), 찾기 & 바꾸기 지원
-  - 워드 문서를 불러오기/내보내기 지원
+  - WYSIWYG 리치 텍스트 편집 및 [텍스트 스타일 프리셋](https://github.com/dmMaze/BallonsTranslator/pull/311) 지원
+  - 다양한 [텍스트 효과](https://github.com/dmMaze/BallonsTranslator/pull/1296) 및 [텍스트 변형](https://github.com/dmMaze/BallonsTranslator/pull/1238) 지원
+  - 전체 텍스트/원문/번역문 찾기 및 바꾸기와 Word 문서 가져오기/내보내기 지원
 
 * <details>
   <summary><i>문맥 인식 LLM 번역 및 용어집</i></summary>

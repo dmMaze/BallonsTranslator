@@ -35,9 +35,9 @@
   - Adapted to images with extreme aspect ratio such as webtoons
   
 * Text editing  
-  - Support rich text formatting and [text style presets](https://github.com/dmMaze/BallonsTranslator/pull/311), translated texts can be edited interactively.
-  - [Text transforms](https://github.com/dmMaze/BallonsTranslator/pull/1238), Search & replace
-  - Support export/import to/from word documents
+  - Supports WYSIWYG rich-text editing and [text style presets](https://github.com/dmMaze/BallonsTranslator/pull/311)
+  - Supports a rich set of [text effects](https://github.com/dmMaze/BallonsTranslator/pull/1296) and [text transforms](https://github.com/dmMaze/BallonsTranslator/pull/1238)
+  - Supports find and replace across all text, source text, or translations, and Word document import/export
 
 * <details>
   <summary><i>Context-aware LLM translation & Glossary</i></summary>

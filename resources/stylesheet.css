@@ -2781,14 +2781,7 @@ QWidget#TextAdvancedFormatUnit {
 }
 
 PanelAreaContent#TextAdvancedFormatContent QGroupBox {
-    background-color: transparent;
     font-size: 12px;
-}
-
-PanelAreaContent#TextAdvancedFormatContent QGroupBox::title {
-    background-color: transparent;
-    font-size: 12px;
-    font-weight: 600;
 }
 
 /* Suggestion Popup (Spell Checker) */
