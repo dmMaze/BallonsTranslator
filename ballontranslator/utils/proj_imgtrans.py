@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import io
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
@@ -49,6 +50,8 @@ RASTER_ASSET_MAX_SOURCE_BYTES = 32 * 1024 * 1024
 # large number of tiny decoded entries from accumulating.
 RASTER_ASSET_DECODE_CACHE_ITEMS = 16
 RASTER_ASSET_DECODE_CACHE_MAX_BYTES = RASTER_ASSET_MAX_DECODED_BYTES * 2
+LLM_VISUAL_SUMMARY_VERSION = 1
+LLM_VISUAL_SUMMARY_MAX_CHARS = 1200
 _RASTER_ASSET_RGBA8_MODES = {
     '1', 'L', 'LA', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'HSV'
 }
@@ -662,6 +665,16 @@ class ProjImgTrans:
             if p not in self._image_info:
                 self._image_info[p] = {}
             img_info = self._image_info[p]
+            summary_record = img_info.get('llm_visual_summary')
+            if (
+                summary_record is not None
+                and not self._valid_llm_visual_summary(summary_record)
+            ):
+                LOGGER.warning(
+                    'Invalid llm_visual_summary for page %s; ignoring it.',
+                    p,
+                )
+                img_info.pop('llm_visual_summary', None)
             if 'finish_code' not in img_info:
                 page_blklist = self.pages[p]
                 has_empty_blk = len(page_blklist) == 0 or \
@@ -717,6 +730,78 @@ class ProjImgTrans:
     def mark_translation_finished(self, page_key, target_language):
         self.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
         self._image_info[page_key]['translation_target'] = target_language
+
+    @staticmethod
+    def _valid_llm_visual_summary(record: object) -> bool:
+        """Validate the optional per-page LLM summary payload.
+
+        Unknown record versions are ignored so optional feature data can never
+        prevent the rest of an older or newer project from loading.
+
+        >>> ProjImgTrans._valid_llm_visual_summary({})
+        False
+        """
+        if not isinstance(record, dict):
+            return False
+        text = record.get('text')
+        digest_fields = (
+            record.get('fingerprint'),
+            record.get('image_sha256'),
+            record.get('source_signature'),
+        )
+        return (
+            record.get('version') == LLM_VISUAL_SUMMARY_VERSION
+            and isinstance(text, str)
+            and bool(text.strip())
+            and len(text) <= LLM_VISUAL_SUMMARY_MAX_CHARS
+            and all(
+                isinstance(value, str)
+                and len(value) == 64
+                and all(char in '0123456789abcdef' for char in value)
+                for value in digest_fields
+            )
+            and all(
+                isinstance(record.get(key), str)
+                for key in (
+                    'source_language',
+                    'target_language',
+                    'profile_id',
+                    'provider',
+                    'vision_model',
+                )
+            )
+        )
+
+    def get_llm_visual_summary(self, page_key: str) -> Optional[Dict]:
+        """Return a detached valid summary record for one page, if present."""
+        info = self._image_info.get(str(page_key))
+        if not isinstance(info, dict):
+            return None
+        record = info.get('llm_visual_summary')
+        if record is None:
+            return None
+        if not self._valid_llm_visual_summary(record):
+            LOGGER.warning(
+                'Invalid llm_visual_summary for page %s; ignoring it.',
+                page_key,
+            )
+            info.pop('llm_visual_summary', None)
+            return None
+        return copy.deepcopy(record)
+
+    def set_llm_visual_summary(self, page_key: str, record: Dict) -> None:
+        """Persist a validated summary record at the project boundary."""
+        if page_key not in self._image_info:
+            raise ImgnameNotInProjectException
+        if not self._valid_llm_visual_summary(record):
+            raise ValueError('Invalid llm_visual_summary record.')
+        self._image_info[page_key]['llm_visual_summary'] = copy.deepcopy(record)
+
+    def clear_llm_visual_summary(self, page_key: str) -> None:
+        """Discard the optional summary without affecting page translations."""
+        if page_key not in self._image_info:
+            raise ImgnameNotInProjectException
+        self._image_info[page_key].pop('llm_visual_summary', None)
 
     def load_translation_from_txt(self, file_path: str, target_language=None):
         page_list = parse_txt_translation(file_path)

@@ -129,6 +129,9 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_prior_context_token_budget,
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
+            pcfg.module.llm_translate_vision,
+            pcfg.module.llm_translate_summary,
+            pcfg.module.llm_translate_memory,
         )
         self._visibility_states = (
             pcfg.show_textdetector_tool,
@@ -176,6 +179,9 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_prior_context_token_budget,
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
+            pcfg.module.llm_translate_vision,
+            pcfg.module.llm_translate_summary,
+            pcfg.module.llm_translate_memory,
         ) = self._pipeline_general_settings
         self._save_config_patcher.stop()
 
@@ -704,6 +710,39 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(dialog.prior_context_token_budget.value(), 16384)
         self.assertTrue(dialog.history_budget_row.isHidden())
         self.assertTrue(dialog.glossary_mode_combobox.isEnabled())
+        dialog.close()
+
+    def test_llm_visual_context_controls_enforce_supported_progression(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
+        pcfg.module.llm_translate_vision = False
+        pcfg.module.llm_translate_summary = False
+        pcfg.module.llm_translate_memory = False
+        dialog = RunPipelineDialog(
+            translator_metadata={'name': 'LLMTranslator'},
+        )
+
+        self.assertFalse(dialog.llm_features_row.isHidden())
+        self.assertFalse(dialog.llm_summary_checkbox.isEnabled())
+        self.assertFalse(dialog.llm_memory_checkbox.isEnabled())
+
+        dialog.llm_vision_checkbox.setChecked(True)
+        self.assertTrue(dialog.llm_summary_checkbox.isEnabled())
+        dialog.llm_summary_checkbox.setChecked(True)
+        self.assertFalse(dialog.llm_memory_checkbox.isEnabled())
+
+        history_index = dialog.llm_context_combobox.findData(
+            LLMTranslateContext.HISTORY
+        )
+        dialog.llm_context_combobox.setCurrentIndex(history_index)
+        self.assertTrue(dialog.llm_memory_checkbox.isEnabled())
+        dialog.llm_memory_checkbox.setChecked(True)
+        self.assertTrue(pcfg.module.llm_translate_memory)
+
+        dialog.llm_vision_checkbox.setChecked(False)
+        self.assertFalse(dialog.llm_summary_checkbox.isChecked())
+        self.assertFalse(dialog.llm_memory_checkbox.isChecked())
+        self.assertFalse(pcfg.module.llm_translate_summary)
+        self.assertFalse(pcfg.module.llm_translate_memory)
         dialog.close()
 
     def test_copy_source_glossary_error_preserves_clipboard(self):

@@ -118,6 +118,18 @@ def _reset_llm_key_required_dialogs():
         _shown_llm_base_url_dialog_profiles.clear()
 
 
+def _mark_translation_finished(
+    project: ProjImgTrans,
+    page_key: str,
+    translator: BaseTranslator,
+) -> None:
+    """Mark completion, then let the owning translator commit page context."""
+    project.mark_translation_finished(page_key, translator.lang_target)
+    finished_hook = getattr(translator, 'on_page_translation_finished', None)
+    if callable(finished_hook):
+        finished_hook(project, page_key)
+
+
 class ModuleThread(QThread):
     """Worker thread that prepares and swaps one lazily selected module.
 
@@ -624,7 +636,7 @@ class TranslateThread(ModuleThread):
                 self.tr('Page'),
             )
         if success:
-            project.mark_translation_finished(page_key, self.translator.lang_target)
+            _mark_translation_finished(project, page_key, self.translator)
         return success
 
     def push_pagekey_queue(self, page_key: str):
@@ -865,10 +877,7 @@ class ImgtransThread(QThread):
             full_page=True,
         )
         if success:
-            project.mark_translation_finished(
-                page_key,
-                self.translator.lang_target,
-            )
+            _mark_translation_finished(project, page_key, self.translator)
         return success
 
     def _blktrans_pipeline(
@@ -938,9 +947,10 @@ class ImgtransThread(QThread):
                     or bool(str(getattr(block, 'translation', '') or '').strip())
                     for block in page
                 ):
-                    self.imgtrans_proj.mark_translation_finished(
+                    _mark_translation_finished(
+                        self.imgtrans_proj,
                         page_key,
-                        self.translator.lang_target,
+                        self.translator,
                     )
             self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:

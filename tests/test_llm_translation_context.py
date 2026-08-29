@@ -1,8 +1,11 @@
+import json
 import os
 import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest import mock
+
+import numpy as np
 
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.context.glossary import GlossaryEntry
@@ -10,13 +13,19 @@ from ballontranslator.modules.context.history import (
     ContextAction,
     ContextReason,
     HistoryPage,
+    HistoryWindow,
+    HistoryWindowKey,
+    MemoryCheckpoint,
+    RenderedHistoryPage,
     RequestContext,
     eligible_history_for_request,
+    recover_context_length,
 )
 from ballontranslator.modules.context.token_usage import (
     MESSAGE_TOKEN_OVERHEAD,
     messages_token_count,
 )
+from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.translators.base import BaseTranslator
 from ballontranslator.modules.translators.trans_llm import (
     LLMTranslator,
@@ -48,7 +57,13 @@ class LLMTranslationContextTest(unittest.TestCase):
             'llm_prior_context_token_budget': pcfg.module.llm_prior_context_token_budget,
             'llm_glossary_path': pcfg.module.llm_glossary_path,
             'llm_glossary_mode': pcfg.module.llm_glossary_mode,
+            'llm_translate_vision': pcfg.module.llm_translate_vision,
+            'llm_translate_summary': pcfg.module.llm_translate_summary,
+            'llm_translate_memory': pcfg.module.llm_translate_memory,
         }
+        pcfg.module.llm_translate_vision = False
+        pcfg.module.llm_translate_summary = False
+        pcfg.module.llm_translate_memory = False
         self._retry_settings = {
             key: self.translator.get_param_value(key)
             for key in ('retry attempts', 'retry timeout')
@@ -176,6 +191,471 @@ class LLMTranslationContextTest(unittest.TestCase):
                 {'role': 'user', 'content': expected_prompt},
             ],
         )
+
+    def test_vision_is_a_current_message_suffix_and_uses_vision_model(self):
+        project = self._project(1)
+        project.read_img = mock.Mock(
+            return_value=np.zeros((32, 24, 3), dtype=np.uint8)
+        )
+        vision = self.translator._vision_request_context(
+            project,
+            '001.png',
+            self.profile,
+            ('source-1',),
+        )
+
+        text_messages, _ = self.translator._assemble_request(
+            ['source-1'],
+            self.profile,
+        )
+        vision_messages, _ = self.translator._assemble_request(
+            ['source-1'],
+            self.profile,
+            vision_request=vision,
+        )
+
+        self.assertEqual(vision_messages[:-1], text_messages[:-1])
+        self.assertEqual(
+            vision_messages[-1]['content'][0]['text'],
+            text_messages[-1]['content'],
+        )
+        self.assertEqual(
+            vision_messages[-1]['content'][1]['type'],
+            'image_url',
+        )
+        self.assertTrue(
+            vision_messages[-1]['content'][1]['image_url']['url'].startswith(
+                'data:image/jpeg;base64,'
+            )
+        )
+        self.assertEqual(
+            self.translator._api_args(
+                self.profile,
+                vision_messages,
+                vision_enabled=True,
+            )['model'],
+            self.profile.vision_model,
+        )
+
+    def test_vision_jpeg_preserves_project_rgb_channel_order(self):
+        project = self._project(1)
+        project.read_img = mock.Mock(
+            return_value=np.array([[[10, 20, 30]]], dtype=np.uint8)
+        )
+        encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.cv2.imencode',
+            return_value=(True, encoded),
+        ) as imencode:
+            self.translator._normalized_page_image(project, '001.png')
+
+        encoded_image = imencode.call_args.args[1]
+        self.assertEqual(encoded_image[0, 0].tolist(), [30, 20, 10])
+
+    def test_summary_uses_same_request_and_persists_after_page_finalization(self):
+        project = self._project(1)
+        project.pages['001.png'][0].translation = ''
+        project.read_img = mock.Mock(
+            return_value=np.zeros((32, 24, 3), dtype=np.uint8)
+        )
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary = True
+        response = json.dumps({
+            'translations': {'1': 'translated'},
+            'page_summary': 'A short-haired girl waits at a station.',
+        })
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value=response,
+        ) as request:
+            self.translator.translate_textblk_lst(
+                project.pages['001.png'],
+                project=project,
+                page_key='001.png',
+                full_page=True,
+            )
+
+        self.assertEqual(request.call_count, 1)
+        self.assertIsNone(project.get_llm_visual_summary('001.png'))
+        project.mark_translation_finished('001.png', '简体中文')
+        self.translator.on_page_translation_finished(project, '001.png')
+        record = project.get_llm_visual_summary('001.png')
+        self.assertEqual(
+            record['text'],
+            'A short-haired girl waits at a station.',
+        )
+        snapshot = self.translator._snapshot_history_page(
+            project,
+            '001.png',
+            '简体中文',
+            profile=self.profile,
+            summary_enabled=True,
+        )
+        self.assertEqual(snapshot.summary, record['text'])
+        project.pages['001.png'][0].text = ['changed source']
+        stale_snapshot = self.translator._snapshot_history_page(
+            project,
+            '001.png',
+            '简体中文',
+            profile=self.profile,
+            summary_enabled=True,
+        )
+        self.assertEqual(stale_snapshot.summary, '')
+
+    def test_missing_summary_keeps_valid_translations(self):
+        parsed = self.translator._parse_translation_response(
+            '{"translations":{"1":"translated"}}',
+            1,
+        )
+
+        self.assertEqual(parsed.translations, ('translated',))
+        self.assertEqual(parsed.page_summary, '')
+
+    def test_missing_summary_clears_old_summary_only_after_finalization(self):
+        project = self._project(1)
+        source_signature = self.translator._source_signature(('source-1',))
+        old_record = {
+            'version': 1,
+            'text': 'Old summary.',
+            'fingerprint': 'a' * 64,
+            'image_sha256': 'b' * 64,
+            'source_signature': source_signature,
+            'source_language': '日本語',
+            'target_language': '简体中文',
+            'profile_id': 'profile',
+            'provider': 'provider',
+            'vision_model': 'vision',
+        }
+        project.set_llm_visual_summary('001.png', old_record)
+        self.translator._pending_visual_summaries['001.png'] = {
+            **old_record,
+            'text': '',
+        }
+
+        self.assertIsNotNone(project.get_llm_visual_summary('001.png'))
+        self.translator.on_page_translation_finished(project, '001.png')
+
+        self.assertIsNone(project.get_llm_visual_summary('001.png'))
+
+    def test_partial_selection_does_not_persist_generated_summary(self):
+        project = self._project(1)
+        project.pages['001.png'] = [
+            _block('selected'),
+            _block('unselected', 'existing translation'),
+        ]
+        project.read_img = mock.Mock(
+            return_value=np.zeros((32, 24, 3), dtype=np.uint8)
+        )
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary = True
+        response = json.dumps({
+            'translations': {'1': 'translated'},
+            'page_summary': 'Must not be committed.',
+        })
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value=response,
+        ):
+            self.translator.translate_textblk_lst(
+                project.pages['001.png'][:1],
+                project=project,
+                page_key='001.png',
+            )
+
+        project.mark_translation_finished('001.png', '简体中文')
+        self.translator.on_page_translation_finished(project, '001.png')
+        self.assertIsNone(project.get_llm_visual_summary('001.png'))
+
+    def test_vision_image_is_encoded_once_across_translation_retries(self):
+        project = self._project(1)
+        project.pages['001.png'][0].translation = ''
+        project.read_img = mock.Mock(
+            return_value=np.zeros((32, 24, 3), dtype=np.uint8)
+        )
+        pcfg.module.llm_translate_vision = True
+        self.translator.set_param_value('retry timeout', 0)
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            side_effect=('not json', '{"1":"translated"}'),
+        ):
+            self.translator.translate_textblk_lst(
+                project.pages['001.png'],
+                project=project,
+                page_key='001.png',
+                full_page=True,
+            )
+
+        project.read_img.assert_called_once_with('001.png')
+
+    def test_memory_compacts_evicted_summary_before_recent_history(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_prior_context_token_budget = 10
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary = True
+        pcfg.module.llm_translate_memory = True
+        pages = {
+            key: HistoryPage(key, (key,), (f't-{key}',), f'summary-{key}')
+            for key in ('001.png', '002.png', '003.png')
+        }
+        project = SimpleNamespace(
+            pages={key: [] for key in (*pages, '004.png')},
+            load_identity=object(),
+        )
+        model = self.translator._vision_model(self.profile)
+        key = HistoryWindowKey(
+            load_identity=project.load_identity,
+            settings=(
+                ('source_language', str(self.translator.lang_source)),
+                ('model', model),
+                (
+                    'system_prompt',
+                    self.translator._system_prompt(
+                        self.profile,
+                        self.translator._translated_lang(
+                            self.translator.lang_target
+                        ),
+                        summary_enabled=True,
+                    ),
+                ),
+                ('token_budget', 10),
+                ('memory_enabled', True),
+            ),
+        )
+
+        def rendered(page, *_args, **_kwargs):
+            return RenderedHistoryPage(
+                snapshot=page,
+                messages=(('user', page.page_key), ('assistant', page.summary)),
+                token_count=4,
+            )
+
+        self.translator._history_window = HistoryWindow(
+            key=key,
+            request_page_key='003.png',
+            history=(rendered(pages['001.png']), rendered(pages['002.png'])),
+            token_count=8,
+        )
+        completion = SimpleNamespace(
+            content='{"memory":"The station meeting remains unresolved."}',
+            usage=None,
+        )
+
+        with mock.patch.object(
+            self.translator,
+            '_snapshot_history_page',
+            side_effect=lambda _project, page_key, *_args, **_kwargs: pages.get(
+                page_key
+            ),
+        ), mock.patch.object(
+            self.translator,
+            '_render_history_page',
+            side_effect=rendered,
+        ), mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            side_effect=lambda messages, _model: (
+                1
+                if str(messages[0].get('content', '')).startswith(
+                    'Compacted translation memory'
+                )
+                else 10
+            ),
+        ), mock.patch.object(
+            self.translator,
+            'request_chat_completion',
+            return_value=completion,
+        ) as compact_request:
+            context = self.translator._snapshot_request_context(
+                project,
+                '004.png',
+                self.profile,
+                model=model,
+                summary_enabled=True,
+            )
+
+        self.assertEqual(compact_request.call_count, 1)
+        self.assertEqual(context.memory.covered_page_keys, ('001.png',))
+        self.assertEqual(
+            [page.page_key for page in context.history],
+            ['002.png', '003.png'],
+        )
+        messages, _ = self.translator._assemble_request(
+            ['current'],
+            self.profile,
+            request_context=context,
+            summary_enabled=True,
+        )
+        self.assertEqual(
+            [message['role'] for message in messages],
+            ['system', 'system', 'user', 'assistant', 'user', 'assistant', 'user'],
+        )
+        self.assertTrue(
+            messages[1]['content'].startswith('Compacted translation memory')
+        )
+
+    def test_memory_compaction_failure_falls_back_to_page_eviction(self):
+        previous = MemoryCheckpoint('old memory', ('001.png',), 1)
+        retired = (
+            HistoryPage('002.png', ('s',), ('t',), 'new summary'),
+        )
+        retained = (
+            RenderedHistoryPage(retired[0], (), 2),
+        )
+
+        with mock.patch.object(
+            self.translator,
+            'request_chat_completion',
+            side_effect=RuntimeError('provider unavailable'),
+        ):
+            checkpoint = self.translator._compact_retired_summaries(
+                previous=previous,
+                pages=retired,
+                profile=self.profile,
+                model=self.profile.vision_model,
+                history_budget=1000,
+                retained_history=retained,
+            )
+
+        self.assertIs(checkpoint, previous)
+
+    def test_memory_compaction_honors_cancellation(self):
+        self.translator.stop_event = SimpleNamespace(is_set=lambda: True)
+        page = HistoryPage('001.png', ('s',), ('t',), 'summary')
+
+        with self.assertRaises(LLMRequestStopped):
+            self.translator._compact_retired_summaries(
+                previous=None,
+                pages=(page,),
+                profile=self.profile,
+                model=self.profile.vision_model,
+                history_budget=1000,
+                retained_history=(),
+            )
+
+    def test_memory_compaction_sends_only_not_yet_covered_summaries(self):
+        previous = MemoryCheckpoint('old memory', ('001.png',), 1)
+        pages = (
+            HistoryPage('001.png', ('s1',), ('t1',), 'covered summary'),
+            HistoryPage('002.png', ('s2',), ('t2',), 'new summary'),
+        )
+        completion = SimpleNamespace(
+            content='{"memory":"merged memory"}',
+            usage=None,
+        )
+
+        with mock.patch.object(
+            self.translator,
+            'request_chat_completion',
+            return_value=completion,
+        ) as request, mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ):
+            checkpoint = self.translator._compact_retired_summaries(
+                previous=previous,
+                pages=pages,
+                profile=self.profile,
+                model=self.profile.vision_model,
+                history_budget=1000,
+                retained_history=(),
+            )
+
+        user_payload = json.loads(
+            request.call_args.args[1]['messages'][1]['content']
+        )
+        self.assertEqual(
+            user_payload['retired_page_summaries'],
+            [{'page': '002.png', 'summary': 'new summary'}],
+        )
+        self.assertEqual(
+            checkpoint.covered_page_keys,
+            ('001.png', '002.png'),
+        )
+
+    def test_memory_tokens_reduce_available_recent_history_budget(self):
+        pages = tuple(
+            HistoryPage(str(index), (f's{index}',), (f't{index}',))
+            for index in range(1, 4)
+        )
+
+        def rendered(page):
+            return RenderedHistoryPage(page, (), 3)
+
+        key = HistoryWindowKey(object(), ())
+        window = HistoryWindow(
+            key,
+            '2',
+            (rendered(pages[0]), rendered(pages[1])),
+            6,
+        )
+        history, diagnostic = eligible_history_for_request(
+            window=window,
+            project=None,
+            page_key='3',
+            previous_page=pages[2],
+            token_budget=10,
+            rebuild_reason=None,
+            snapshot_page=lambda _key: None,
+            render_page=rendered,
+            reserved_tokens=3,
+        )
+
+        self.assertEqual([page.page_key for page in history], ['2', '3'])
+        self.assertEqual(diagnostic.evicted, 1)
+        self.assertEqual(diagnostic.token_count, 9)
+
+    def test_context_overflow_recovery_preserves_compacted_memory(self):
+        pages = tuple(
+            RenderedHistoryPage(
+                HistoryPage(str(index), ('s',), ('t',)),
+                (),
+                4,
+            )
+            for index in range(2)
+        )
+        memory = MemoryCheckpoint('memory', ('old',), 2)
+        recovered = recover_context_length(RequestContext(
+            history=pages,
+            history_budget=10,
+            memory=memory,
+        ))
+
+        self.assertIs(recovered.memory, memory)
+        self.assertEqual(len(recovered.history), 1)
+        self.assertEqual(recovered.diagnostic.token_count, 6)
 
     def test_history_eligibility_is_page_complete_target_compatible_and_past_only(self):
         pages = {

@@ -104,6 +104,9 @@ class ModuleConfig(Config):
     llm_prior_context_token_budget: int = 4096
     llm_glossary_path: str = ''
     llm_glossary_mode: str = LLMGlossaryMode.Matching
+    llm_translate_vision: bool = False
+    llm_translate_summary: bool = False
+    llm_translate_memory: bool = False
 
     check_need_inpaint: bool = True
     empty_runcache: bool = False
@@ -200,6 +203,29 @@ class ModuleConfig(Config):
             or self.llm_prior_context_token_budget <= 0
         ):
             self.llm_prior_context_token_budget = 4096
+        for feature in (
+            'llm_translate_vision',
+            'llm_translate_summary',
+            'llm_translate_memory',
+        ):
+            if not isinstance(getattr(self, feature), bool):
+                LOGGER.warning('Invalid %s value; disabling it.', feature)
+                setattr(self, feature, False)
+        if self.llm_translate_summary and not self.llm_translate_vision:
+            LOGGER.warning(
+                'LLM translation summary requires vision; disabling summary.'
+            )
+            self.llm_translate_summary = False
+        if self.llm_translate_memory and not (
+            self.llm_translate_vision
+            and self.llm_translate_summary
+            and self.llm_translate_context == LLMTranslateContext.HISTORY
+        ):
+            LOGGER.warning(
+                'LLM translation memory requires vision, summary, and history; '
+                'disabling memory.'
+            )
+            self.llm_translate_memory = False
         if not self.llm_profiles:
             self.llm_profiles = default_profiles()
         else:

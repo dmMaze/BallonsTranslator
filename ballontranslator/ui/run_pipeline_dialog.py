@@ -1058,6 +1058,60 @@ class RunPipelineDialog(QDialog):
         translation_grid.addWidget(glossary_row, 2, 0)
         translation_grid.addWidget(mode_row, 2, 1)
 
+        llm_features_row = QWidget(section)
+        self.llm_features_row = llm_features_row
+        llm_features_row.setObjectName('RunPipelineGeneralSettingRow')
+        llm_features_layout = QHBoxLayout(llm_features_row)
+        llm_features_layout.setContentsMargins(0, 0, 0, 0)
+        llm_features_layout.setSpacing(8)
+        llm_features_label = QLabel(
+            self.tr('Visual context'),
+            llm_features_row,
+        )
+        llm_features_label.setObjectName('RunPipelineSettingLabel')
+        llm_features_layout.addWidget(llm_features_label)
+        llm_features_layout.addStretch()
+        self.llm_vision_checkbox = QCheckBox(
+            self.tr('Vision'),
+            llm_features_row,
+        )
+        self.llm_vision_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_vision_checkbox.setChecked(pcfg.module.llm_translate_vision)
+        self.llm_summary_checkbox = QCheckBox(
+            self.tr('Summary'),
+            llm_features_row,
+        )
+        self.llm_summary_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_summary_checkbox.setChecked(pcfg.module.llm_translate_summary)
+        self.llm_memory_checkbox = QCheckBox(
+            self.tr('Memory'),
+            llm_features_row,
+        )
+        self.llm_memory_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_memory_checkbox.setChecked(pcfg.module.llm_translate_memory)
+        for checkbox in (
+            self.llm_vision_checkbox,
+            self.llm_summary_checkbox,
+            self.llm_memory_checkbox,
+        ):
+            llm_features_layout.addWidget(checkbox)
+        self.llm_vision_checkbox.setToolTip(self.tr(
+            'Attach the current page image to the translation request.'
+        ))
+        self.llm_summary_checkbox.setToolTip(self.tr(
+            'Return and save a page summary in the same vision request.'
+        ))
+        self.llm_memory_checkbox.setToolTip(self.tr(
+            'Compact older page summaries when the history budget is reached.'
+        ))
+        translation_grid.addWidget(llm_features_row, 3, 0, 1, 2)
+
         self.context_row.setVisible(not self._llm_settings_visible)
 
         self.source_combobox.currentTextChanged.connect(
@@ -1082,6 +1136,16 @@ class RunPipelineDialog(QDialog):
         self.glossary_mode_combobox.currentIndexChanged.connect(
             self._on_glossary_mode_changed
         )
+        self.llm_vision_checkbox.toggled.connect(
+            self._on_llm_vision_toggled
+        )
+        self.llm_summary_checkbox.toggled.connect(
+            self._on_llm_summary_toggled
+        )
+        self.llm_memory_checkbox.toggled.connect(
+            self._on_llm_memory_toggled
+        )
+        self._sync_llm_feature_controls()
 
     def setTranslatorMetadata(self, metadata: dict) -> None:
         self.translator_metadata = metadata or {}
@@ -1114,6 +1178,7 @@ class RunPipelineDialog(QDialog):
         )
         self.glossary_row.setVisible(self._llm_settings_visible)
         self.glossary_mode_row.setVisible(self._llm_settings_visible)
+        self._sync_llm_feature_controls()
         self._fit_to_current_workflow()
 
     def _on_translate_source_changed(self, source: str):
@@ -1135,6 +1200,58 @@ class RunPipelineDialog(QDialog):
             self._llm_settings_visible
             and context == LLMTranslateContext.HISTORY
         )
+        self._sync_llm_feature_controls()
+
+    @staticmethod
+    def _set_checkbox_checked(checkbox: QCheckBox, checked: bool) -> None:
+        blocker = QSignalBlocker(checkbox)
+        checkbox.setChecked(checked)
+        del blocker
+
+    def _sync_llm_feature_controls(self) -> None:
+        """Apply the supported Vision -> Summary -> Memory progression.
+
+        >>> callable(RunPipelineDialog._set_checkbox_checked)
+        True
+        """
+        self.llm_features_row.setVisible(self._llm_settings_visible)
+        vision_enabled = self.llm_vision_checkbox.isChecked()
+        summary_enabled = vision_enabled and self.llm_summary_checkbox.isChecked()
+        memory_allowed = (
+            summary_enabled
+            and pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY
+        )
+        if not vision_enabled and self.llm_summary_checkbox.isChecked():
+            self._set_checkbox_checked(self.llm_summary_checkbox, False)
+            pcfg.module.llm_translate_summary = False
+            summary_enabled = False
+        if not memory_allowed and self.llm_memory_checkbox.isChecked():
+            self._set_checkbox_checked(self.llm_memory_checkbox, False)
+            pcfg.module.llm_translate_memory = False
+        self.llm_summary_checkbox.setEnabled(vision_enabled)
+        self.llm_memory_checkbox.setEnabled(memory_allowed)
+
+    def _on_llm_vision_toggled(self, checked: bool) -> None:
+        pcfg.module.llm_translate_vision = checked
+        self._sync_llm_feature_controls()
+
+    def _on_llm_summary_toggled(self, checked: bool) -> None:
+        enabled = checked and self.llm_vision_checkbox.isChecked()
+        pcfg.module.llm_translate_summary = enabled
+        if checked != enabled:
+            self._set_checkbox_checked(self.llm_summary_checkbox, enabled)
+        self._sync_llm_feature_controls()
+
+    def _on_llm_memory_toggled(self, checked: bool) -> None:
+        enabled = (
+            checked
+            and self.llm_vision_checkbox.isChecked()
+            and self.llm_summary_checkbox.isChecked()
+            and pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY
+        )
+        pcfg.module.llm_translate_memory = enabled
+        if checked != enabled:
+            self._set_checkbox_checked(self.llm_memory_checkbox, enabled)
 
     def _on_prior_context_token_budget_changed(self, budget: int):
         pcfg.module.llm_prior_context_token_budget = budget
