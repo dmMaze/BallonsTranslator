@@ -577,6 +577,23 @@ class PhotoshopBridgeDialog(QDialog):
 
         scripts_dir = scripts_dir or os.path.join(ps_dir, "Presets", "Scripts")
         target_jsx = os.path.join(scripts_dir, os.path.basename(source_jsx))
+        is_update = os.path.isfile(target_jsx)
+
+        def _show_success() -> None:
+            self.refresh_status()
+            if is_update:
+                QMessageBox.information(
+                    self,
+                    self.tr("Updated"),
+                    self.tr("Bridge script updated. It is ready to use."),
+                )
+            else:
+                QMessageBox.information(
+                    self,
+                    self.tr("Installed"),
+                    self.tr("Bridge script installed. Restart Photoshop to refresh its Scripts menu."),
+                )
+
         try:
             os.makedirs(scripts_dir, exist_ok=True)
             shutil.copy2(source_jsx, target_jsx)
@@ -593,12 +610,7 @@ class PhotoshopBridgeDialog(QDialog):
                     QMessageBox.StandardButton.Yes,
                 )
                 if reply == QMessageBox.StandardButton.Yes and self._elevated_copy(source_jsx, target_jsx):
-                    self.refresh_status()
-                    QMessageBox.information(
-                        self,
-                        self.tr("Installed"),
-                        self.tr("Bridge script installed. Restart Photoshop to refresh its Scripts menu."),
-                    )
+                    _show_success()
                     return
 
             LOGGER.warning("Photoshop Bridge requires manual installation")
@@ -625,12 +637,7 @@ class PhotoshopBridgeDialog(QDialog):
             )
             return
 
-        self.refresh_status()
-        QMessageBox.information(
-            self,
-            self.tr("Installed"),
-            self.tr("Bridge script installed. Restart Photoshop to refresh its Scripts menu."),
-        )
+        _show_success()
 
     def _elevated_copy(self, source_path: str, target_path: str) -> bool:
         if sys.platform != "win32":
