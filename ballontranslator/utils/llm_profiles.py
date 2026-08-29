@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import re
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple, get_args, get_origin, get_type_hints
 
@@ -21,13 +20,6 @@ VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 PROVIDER_ALIASES = {
     "Google": "Gemini",
 }
-OPENAI_MAX_TOKENS_MODELS = frozenset({
-    "gpt-4.1",
-    "gpt-4.1-mini",
-    "gpt-4o",
-    "gpt-4o-mini",
-})
-
 PROVIDER_DEFAULTS = {
     "OpenAI": {
         "id": "openai",
@@ -203,44 +195,6 @@ class LLMProfile(Config):
 
     def to_dict(self) -> Dict:
         return copy.deepcopy(self.__dict__)
-
-
-def openai_chat_completion_args(profile: LLMProfile, model: str) -> Dict[str, Any]:
-    """Map provider-neutral profile values to OpenAI chat API arguments.
-
-    Native OpenAI models default to ``max_completion_tokens`` so future model
-    names do not need version-pattern guesses. Only explicitly listed older
-    models and compatibility endpoints retain ``max_tokens``. Native GPT-5.5+
-    models use the API's fixed default temperature, so omit that argument.
-
-    Example:
-        >>> profile = LLMProfile.from_provider('OpenAI')
-        >>> openai_chat_completion_args(profile, 'gpt-5.5')
-        {'top_p': 1.0, 'max_completion_tokens': 8192}
-        >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
-        0.1
-    """
-
-    base_url = _normal_url(profile.base_url)
-    openai_base_url = _normal_url(PROVIDER_DEFAULTS["OpenAI"]["base_url"])
-    model_name = str(model or "").rsplit("/", 1)[-1].lower()
-    is_native_openai = not base_url or base_url == openai_base_url
-    args: Dict[str, Any] = {"top_p": float(profile.top_p)}
-    version_match = re.match(r"^gpt-(\d+)(?:\.(\d+))?(?:-|$)", model_name)
-    gpt_version = (
-        (int(version_match.group(1)), int(version_match.group(2) or 0))
-        if version_match
-        else None
-    )
-    if not is_native_openai or gpt_version is None or gpt_version < (5, 5):
-        args["temperature"] = float(profile.temperature)
-    api_key = (
-        "max_completion_tokens"
-        if is_native_openai and model_name not in OPENAI_MAX_TOKENS_MODELS
-        else "max_tokens"
-    )
-    args[api_key] = int(profile.max_tokens)
-    return args
 
 
 def profile_from_config(profile: Any) -> LLMProfile:

@@ -1,13 +1,11 @@
 import json
 import re
-import time
 import traceback
 from typing import Dict, List, Optional, Tuple
 
 from ..context.errors import (
     ContextLengthError,
     is_context_length_error,
-    provider_error_message,
 )
 from ..context.glossary import (
     GlossaryEntry,
@@ -32,6 +30,11 @@ from ..context.token_usage import (
     format_completion_token_usage,
     messages_token_count,
 )
+from ..llm_chat import (
+    LLMChatRequester,
+    LLMChatRequestError,
+    openai_chat_completion_args,
+)
 from .base import BaseTranslator, register_translator
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import (
@@ -44,10 +47,8 @@ from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
-    openai_chat_completion_args,
     profile_by_id,
     profile_from_config,
-    resolve_api_key,
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
@@ -57,7 +58,7 @@ class InvalidNumTranslations(Exception):
 
 
 @register_translator("LLMTranslator")
-class LLMTranslator(BaseTranslator):
+class LLMTranslator(LLMChatRequester, BaseTranslator):
     """Profile-backed OpenAI-compatible translator.
 
     Example:
@@ -67,7 +68,6 @@ class LLMTranslator(BaseTranslator):
     """
 
     dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
-    dummy_api_key = 'dummy-key'
 
     concate_text = False
     cht_require_convert = True
@@ -125,12 +125,6 @@ class LLMTranslator(BaseTranslator):
         self.lang_map['Tamil'] = 'Tamil'
         self.lang_map['Hindi'] = 'Hindi'
 
-        self.client = None
-        self.client_cache_key = None
-        self.last_request_time = 0
-        self.request_count_minute = 0
-        self.minute_start_time = time.time()
-        self.stop_event = None
         self._history_window: Optional[HistoryWindow] = None
 
     @property
@@ -154,9 +148,6 @@ class LLMTranslator(BaseTranslator):
         if not model or not model_options:
             raise LLMModelRequiredError(profile.id, profile.name)
         return model
-
-    def set_stop_event(self, stop_event):
-        self.stop_event = stop_event
 
     def unload_model(self, empty_cache=False):
         self._history_window = None
@@ -218,68 +209,6 @@ class LLMTranslator(BaseTranslator):
 
     def delay(self) -> float:
         return self.get_param_value('delay')
-
-    def _wait(self, seconds: float):
-        if seconds <= 0:
-            return
-        if self.stop_event is not None:
-            if self.stop_event.wait(seconds):
-                raise LLMRequestStopped()
-            return
-        time.sleep(seconds)
-
-    def _openai_module(self):
-        import openai  # type: ignore
-
-        return openai
-
-    def _http_client(self, proxy: str):
-        import httpx  # type: ignore
-
-        if not proxy:
-            return httpx.Client()
-        try:
-            mounts = {
-                "http://": httpx.HTTPTransport(proxy=proxy),
-                "https://": httpx.HTTPTransport(proxy=proxy),
-            }
-            return httpx.Client(mounts=mounts)
-        except Exception as e:
-            self.logger.error(f"Failed to initialize proxy '{proxy}': {e}. Proceeding without proxy.")
-            return httpx.Client()
-
-    def _api_key_for_profile(self, profile: LLMProfile) -> str:
-        api_key = resolve_api_key(profile).strip()
-        if profile.require_api_key and not api_key:
-            raise LLMApiKeyRequiredError(profile.id, profile.name)
-        return api_key
-
-    def _client_api_key_for_profile(self, profile: LLMProfile) -> str:
-        api_key = self._api_key_for_profile(profile)
-        if not api_key:
-            self.logger.debug(
-                f'LLM profile "{profile.name or profile.id}" does not require an API key; '
-                'using a dummy API key for OpenAI-compatible client initialization.'
-            )
-            return self.dummy_api_key
-        return api_key
-
-    def _initialize_client(self, profile: LLMProfile):
-        api_key = self._client_api_key_for_profile(profile)
-        base_url = profile.base_url or None
-        proxy = self.get_param_value('proxy') or ''
-        cache_key = (api_key, base_url, proxy)
-        if self.client is not None and self.client_cache_key == cache_key:
-            return self.client
-
-        openai = self._openai_module()
-        self.client = openai.OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=self._http_client(proxy),
-        )
-        self.client_cache_key = cache_key
-        return self.client
 
     def _translated_lang(self, lang: str) -> str:
         return self.lang_map.get(lang, lang)
@@ -638,29 +567,6 @@ class LLMTranslator(BaseTranslator):
             selected_glossary,
         ).strip()
 
-    def _respect_delay(self):
-        current_time = time.time()
-        rpm = self.get_param_value('max requests per minute')
-        delay = self.get_param_value('delay')
-        if rpm > 0:
-            if current_time - self.minute_start_time >= 60:
-                self.request_count_minute = 0
-                self.minute_start_time = current_time
-            if self.request_count_minute >= rpm:
-                wait_time = 60.1 - (current_time - self.minute_start_time)
-                if wait_time > 0:
-                    self.logger.warning(f"Global RPM limit ({rpm}) reached. Waiting {wait_time:.2f} seconds.")
-                    self._wait(wait_time)
-                self.request_count_minute = 0
-                self.minute_start_time = time.time()
-
-        time_since_last_request = current_time - self.last_request_time
-        if time_since_last_request < delay:
-            self._wait(delay - time_since_last_request)
-
-        self.last_request_time = time.time()
-        self.request_count_minute += 1
-
     @staticmethod
     def _json_schema(expected_translations: int = 1) -> Dict:
         """Build a schema that requires every response ID exactly once.
@@ -748,37 +654,26 @@ class LLMTranslator(BaseTranslator):
         usage_page_key=None,
         usage_attempt: Optional[int] = None,
     ) -> str:
-        openai = self._openai_module()
-        client = self._initialize_client(profile)
-        self._respect_delay()
         try:
-            completion = client.chat.completions.create(**self._api_args(
+            result = self.request_chat_completion(
                 profile,
-                messages,
-                expected_translations,
-            ))
-        except getattr(openai, 'AuthenticationError') as e:
-            raise LLMApiKeyRequiredError(profile.id, profile.name) from e
-        except getattr(openai, 'APIStatusError') as e:
-            message = provider_error_message(e)
-            if is_context_length_error(e):
-                raise ContextLengthError(message) from e
-            raise RuntimeError(message) from e
+                self._api_args(
+                    profile,
+                    messages,
+                    expected_translations,
+                ),
+            )
+        except LLMChatRequestError as error:
+            if is_context_length_error(error.provider_error):
+                raise ContextLengthError(str(error)) from error.provider_error
+            raise
 
         self._log_token_usage(
-            completion,
+            result,
             page_key=usage_page_key,
             attempt=usage_attempt,
         )
-
-        for choice in completion.choices:
-            message = getattr(choice, 'message', None)
-            content = getattr(message, 'content', None)
-            if content:
-                return content
-            if hasattr(choice, 'text') and choice.text:
-                return choice.text
-        return completion.choices[0].message.content
+        return result.content
 
     def _parse_response(self, raw_content: str, expected: int) -> List[str]:
         json_to_parse = raw_content.strip()

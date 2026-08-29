@@ -17,7 +17,8 @@ preserve behavior that spans several files.
 
 | Concern | Owner |
 | --- | --- |
-| Prompt assembly, provider request, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| Prompt assembly, translation request shape, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| Chat client lifecycle, throttling, provider argument quirks, status normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
 | History selection, rebuild, eviction, and overflow recovery | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
 | Glossary parsing and matching | [`context/glossary.py`](../../ballontranslator/modules/context/glossary.py) |
@@ -37,7 +38,8 @@ worker
      -> decide commit_history_window
      -> LLMTranslator.translate(...)
         -> resolve profile and freeze RequestContext
-        -> assemble messages and call chat.completions.create(...)
+        -> assemble messages and translation-specific API arguments
+        -> LLMChatRequester calls chat.completions.create(...)
         -> parse JSON and validate the exact ID set
         -> commit reusable window state after a valid parse
      -> finalize results and assign TextBlock.translation
@@ -48,10 +50,10 @@ worker
 one-based JSON item. The canonical response is:
 
 ```json
-{"translations":[{"id":1,"translation":"..."}]}
+{"1":"..."}
 ```
 
-The parser tolerates the compatibility shapes implemented in
+The parser also tolerates the compatibility shapes implemented in
 `_parse_response()`, but always requires exactly IDs `1..N`. Full-page results
 then run normalization, result substitutions, and optional uppercase before
 the page can become history. Selected-block translation retains its narrower
@@ -237,6 +239,7 @@ Before changing this subsystem, preserve these contracts:
 - the translation queue remains sequential when `+history` is active.
 
 Focused executable specifications are
+[`test_llm_chat.py`](../../tests/test_llm_chat.py),
 [`test_llm_translator.py`](../../tests/test_llm_translator.py),
 [`test_llm_translation_context.py`](../../tests/test_llm_translation_context.py),
 [`test_proj_imgtrans_translation_context.py`](../../tests/test_proj_imgtrans_translation_context.py),
