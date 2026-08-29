@@ -1,10 +1,10 @@
 // BallonTranslator_PS_Bridge.jsx
-// Version: 2.5.2
+// Version: 2.5.3
 // Multilingual Bidirectional Bridge between BallonsTranslator and Adobe Photoshop (CC 2019 - CC 2026+)
 
 #target photoshop
 
-var BT_BRIDGE_VERSION = "2.5.2";
+var BT_BRIDGE_VERSION = "2.5.3";
 
 
 
@@ -190,9 +190,9 @@ var BT_I18N = {
             zh: "\u5782\u76f4\u5c45\u4e2d (\u81ea\u52a8\u5782\u76f4\u5c45\u4e2d\u5e76\u88c1\u526a\u6587\u672c\u6846)"
         },
         btnSavePSD: {
-            en: "Save PSD to JSON",
-            ru: "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c PSD \u0432 JSON",
-            zh: "\u4fdd\u5b58PSD\u5230JSON"
+            en: "Send Changes to BallonsTranslator",
+            ru: "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u0432 BallonsTranslator",
+            zh: "\u5c06\u66f4\u6539\u53d1\u9001\u5230BallonsTranslator"
         },
         btnImport: {
             en: "Import Selected Pages",
@@ -210,9 +210,9 @@ var BT_I18N = {
             zh: "\u6210\u529f\u5bfc\u5165 {count} \u9875\u5230 Photoshop\uff01"
         },
         saveSuccess: {
-            en: "Successfully saved {count} text blocks back to page '{page}' in project JSON!",
-            ru: "\u0423\u0441\u043f\u0435\u0448\u043d\u043e \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u043e {count} \u0431\u043b\u043e\u043a\u043e\u0432 \u0434\u043b\u044f \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b '{page}' \u0432 JSON!",
-            zh: "\u6210\u529f\u4fdd\u5b58 {count} \u4e2a\u6587\u672c\u5757\u5230 '{page}' \u9875\u7684\u9879\u76eeJSON\uff01"
+            en: "Sent {count} text block change(s) for page '{page}' to BallonsTranslator.",
+            ru: "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0439: {count}, \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 '{page}'.",
+            zh: "\u5df2\u5c06 '{page}' \u9875\u7684 {count} \u4e2a\u6587\u672c\u5757\u66f4\u6539\u53d1\u9001\u5230BallonsTranslator\u3002"
         },
         fontWarning: {
             en: "Note: The following font(s) were not found in Photoshop and used default fallback:\n{fonts}",
@@ -465,6 +465,36 @@ function getCleanPath(f) {
     return p;
 }
 
+function getBlockIndexFromLayerName(layerName) {
+    var match = /^#(\d+)\s*:/.exec(layerName || "");
+    if (!match) return -1;
+    return parseInt(match[1], 10) - 1;
+}
+
+function writeBridgeUpdate(updateFile, payload) {
+    var tempFile = new File(updateFile.fsName + ".tmp");
+    tempFile.encoding = "UTF-8";
+    if (!tempFile.open("w")) {
+        throw new Error("Could not open the Photoshop update file.");
+    }
+    try {
+        tempFile.write(JSON.stringify(payload, null, 2));
+    } finally {
+        tempFile.close();
+    }
+
+    if (updateFile.exists) {
+        tempFile.remove();
+        throw new Error(
+            "A previous Photoshop update is still waiting to be applied."
+        );
+    }
+    if (!tempFile.rename(updateFile.name)) {
+        tempFile.remove();
+        throw new Error("Could not publish the Photoshop update.");
+    }
+}
+
 // Find existing image file on disk safely
 function findFile(baseDir, relativeName) {
     var cleanBase = getCleanPath(baseDir);
@@ -492,6 +522,8 @@ function runBallonTranslatorBridge() {
     // 1. Open project JSON (Check for Bridge Context from BallonsTranslator first)
     var jsonFile = null;
     var initialActivePage = null;
+    var bridgeUpdateFile = null;
+    var bridgeSessionId = "";
     try {
         var tempFolder = Folder.temp;
         var ctxFile = new File(tempFolder.fsName + "/bt_ps_bridge_context.json");
@@ -511,6 +543,10 @@ function runBallonTranslatorBridge() {
                             if (ctx.active_page) {
                                 initialActivePage = ctx.active_page;
                             }
+                            if (ctx.update_path) {
+                                bridgeUpdateFile = new File(ctx.update_path);
+                            }
+                            bridgeSessionId = ctx.session_id || "";
                         }
                     }
                 }
@@ -526,6 +562,12 @@ function runBallonTranslatorBridge() {
         );
     }
     if (!jsonFile || !jsonFile.exists) return;
+
+    if (!bridgeUpdateFile) {
+        bridgeUpdateFile = new File(
+            jsonFile.fsName + ".ps_bridge_updates.json"
+        );
+    }
 
     var projectDir = jsonFile.parent;
     var projectDirClean = getCleanPath(projectDir);
@@ -693,14 +735,27 @@ function runBallonTranslatorBridge() {
             return;
         }
         var activeDoc = app.activeDocument;
-        var activeDocName = decodeURI(activeDoc.name).replace(/\.[^\.]+$/, "");
+        var decodedDocName = decodeURI(activeDoc.name);
+        var activeDocName = decodedDocName.replace(/\.[^\.]+$/, "");
         
         var matchedPage = null;
         for (var p = 0; p < pageNames.length; p++) {
-            var rawPageName = decodeURI(pageNames[p]).replace(/\.[^\.]+$/, "");
-            if (activeDocName === rawPageName || activeDoc.name === pageNames[p]) {
+            if (decodedDocName === decodeURI(pageNames[p])) {
                 matchedPage = pageNames[p];
                 break;
+            }
+        }
+        if (!matchedPage) {
+            var stemMatches = [];
+            for (var stemP = 0; stemP < pageNames.length; stemP++) {
+                var rawPageName = decodeURI(pageNames[stemP])
+                    .replace(/\.[^\.]+$/, "");
+                if (activeDocName === rawPageName) {
+                    stemMatches.push(pageNames[stemP]);
+                }
+            }
+            if (stemMatches.length === 1) {
+                matchedPage = stemMatches[0];
             }
         }
         if (!matchedPage) {
@@ -713,24 +768,21 @@ function runBallonTranslatorBridge() {
 
         var transGroup = null;
         for (var g = 0; g < activeDoc.layerSets.length; g++) {
-            if (activeDoc.layerSets[g].name.indexOf("Translations") !== -1) {
+            if (activeDoc.layerSets[g].name === "[BT] Translations") {
                 transGroup = activeDoc.layerSets[g];
                 break;
             }
         }
 
+        if (!transGroup) {
+            alert("The '[BT] Translations' layer group was not found.", "Notice");
+            return;
+        }
+
         var textLayers = [];
-        if (transGroup) {
-            for (var l = 0; l < transGroup.artLayers.length; l++) {
-                if (transGroup.artLayers[l].kind === LayerKind.TEXT) {
-                    textLayers.push(transGroup.artLayers[l]);
-                }
-            }
-        } else {
-            for (var l2 = 0; l2 < activeDoc.artLayers.length; l2++) {
-                if (activeDoc.artLayers[l2].kind === LayerKind.TEXT) {
-                    textLayers.push(activeDoc.artLayers[l2]);
-                }
+        for (var l = 0; l < transGroup.artLayers.length; l++) {
+            if (transGroup.artLayers[l].kind === LayerKind.TEXT) {
+                textLayers.push(transGroup.artLayers[l]);
             }
         }
 
@@ -740,39 +792,104 @@ function runBallonTranslatorBridge() {
         }
 
         var pageBlocks = projectData.pages[matchedPage] || [];
-        var updatedCount = 0;
+        var updates = [];
+        var skippedLayers = [];
+        var seenBlockIndices = {};
 
         var activeDocRes = (activeDoc.resolution && activeDoc.resolution > 0) ? activeDoc.resolution : 72;
 
         for (var t = 0; t < textLayers.length; t++) {
             var tLayer = textLayers[t];
-            var contents = tLayer.textItem.contents;
-            if (t < pageBlocks.length) {
-                pageBlocks[t].translation = contents;
-                if (pageBlocks[t].fontformat) {
-                    try {
-                        var sizePt = tLayer.textItem.size.as("pt");
-                        pageBlocks[t].fontformat.font_size = Math.round(sizePt * (activeDocRes / 72.0));
-                    } catch (e) {
-                        try {
-                            pageBlocks[t].fontformat.font_size = Math.round(tLayer.textItem.size.as("px"));
-                        } catch (e2) {}
-                    }
-                }
-                updatedCount++;
+            var blockIndex = getBlockIndexFromLayerName(tLayer.name);
+            if (blockIndex < 0 || blockIndex >= pageBlocks.length) {
+                skippedLayers.push(tLayer.name);
+                continue;
             }
+            if (seenBlockIndices[blockIndex]) {
+                alert(
+                    "More than one layer is labeled as block #" +
+                    (blockIndex + 1) + ". No changes were sent.",
+                    "Warning"
+                );
+                return;
+            }
+            seenBlockIndices[blockIndex] = true;
+
+            var block = pageBlocks[blockIndex];
+            var contents = tLayer.textItem.contents
+                .replace(/\r\n/g, "\n")
+                .replace(/\r/g, "\n");
+            var fontSize = null;
+            if (block.fontformat) {
+                try {
+                    var sizePt = tLayer.textItem.size.as("pt");
+                    fontSize = Math.round(sizePt * (activeDocRes / 72.0));
+                } catch (e) {
+                    try {
+                        fontSize = Math.round(tLayer.textItem.size.as("px"));
+                    } catch (e2) {}
+                }
+            }
+
+            var originalTranslation = block.translation || "";
+            var originalFontSize = block.fontformat ?
+                block.fontformat.font_size : null;
+            if (
+                contents === originalTranslation.replace(/\r\n/g, "\n").replace(/\r/g, "\n") &&
+                (fontSize === null || fontSize === originalFontSize)
+            ) {
+                continue;
+            }
+
+            updates.push({
+                block_index: blockIndex,
+                translation: contents,
+                font_size: fontSize,
+                base: {
+                    translation: originalTranslation,
+                    rich_text: block.rich_text || "",
+                    font_size: originalFontSize,
+                    text: block.text || [],
+                    xyxy: block.xyxy || [],
+                    bounding_rect: (typeof block._bounding_rect === "undefined") ?
+                        null : block._bounding_rect
+                }
+            });
         }
 
-        projectData.pages[matchedPage] = pageBlocks;
+        if (updates.length === 0) {
+            alert("No changed BallonsTranslator text layers were found.", "Notice");
+            return;
+        }
 
         try {
-            jsonFile.encoding = "UTF-8";
-            jsonFile.open("w");
-            jsonFile.write(JSON.stringify(projectData, null, 2));
-            jsonFile.close();
-            alert(BT_I18N.t("saveSuccess", { count: updatedCount, page: matchedPage }), "Success");
+            writeBridgeUpdate(bridgeUpdateFile, {
+                version: 1,
+                session_id: bridgeSessionId,
+                project_path: getCleanPath(jsonFile),
+                page: matchedPage,
+                block_count: pageBlocks.length,
+                updates: updates,
+                skipped_layers: skippedLayers,
+                timestamp: new Date().getTime() / 1000
+            });
+            for (var u = 0; u < updates.length; u++) {
+                var sent = updates[u];
+                var sentBlock = pageBlocks[sent.block_index];
+                if (sentBlock.translation !== sent.translation) {
+                    sentBlock.rich_text = "";
+                }
+                sentBlock.translation = sent.translation;
+                if (sent.font_size !== null && sentBlock.fontformat) {
+                    sentBlock.fontformat.font_size = sent.font_size;
+                }
+            }
+            // One sidecar represents one validated snapshot. Rerun the script
+            // after BallonsTranslator consumes it to send another set.
+            btnExportBack.enabled = false;
+            alert(BT_I18N.t("saveSuccess", { count: updates.length, page: matchedPage }), "Success");
         } catch (saveErr) {
-            alert("Failed to write to JSON:\n" + saveErr.message, "Error", true);
+            alert("Failed to send changes to BallonsTranslator:\n" + saveErr.message, "Error", true);
         }
     };
 

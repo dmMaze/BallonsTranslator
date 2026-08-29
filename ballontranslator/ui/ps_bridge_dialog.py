@@ -3,22 +3,199 @@ import sys
 import glob
 import re
 import hashlib
+import json
+import math
+import shutil
 import subprocess
+import tempfile
+import time
+import uuid
+from typing import Any, List, Optional, Tuple
+
 from qtpy.QtWidgets import (
     QDialog,
     QVBoxLayout,
-    QHBoxLayout,
     QGroupBox,
     QFormLayout,
     QLabel,
     QPushButton,
     QMessageBox,
     QSizePolicy,
-    QSpacerItem,
 )
 from qtpy.QtCore import Qt, QTimer
+from qtpy.QtGui import QHideEvent, QShowEvent
 
 from ballontranslator.utils.logger import logger as LOGGER
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
+from ballontranslator.utils.textblock import TextBlock
+
+
+class PhotoshopBridgeUpdateError(ValueError):
+    """Raised when a Photoshop update is stale or unsafe to apply."""
+
+
+def _json_value(value: Any) -> Any:
+    return json.loads(json.dumps(value, ensure_ascii=False, cls=TextBlkEncoder))
+
+
+def _canonical_path(path: str) -> str:
+    return os.path.normcase(os.path.realpath(os.path.abspath(path)))
+
+
+def _project_page_blocks(
+    project: ProjImgTrans,
+    page_name: str,
+) -> Optional[List[TextBlock]]:
+    blocks = project.pages.get(page_name)
+    if blocks is None:
+        blocks = getattr(project, "not_found_pages", {}).get(page_name)
+    return blocks
+
+
+def photoshop_bridge_block_snapshot(block: TextBlock) -> dict:
+    block_data = _json_value(block.to_dict())
+    fontformat = block_data.get("fontformat") or {}
+    return {
+        "translation": block_data.get("translation", ""),
+        "rich_text": block_data.get("rich_text", ""),
+        "font_size": fontformat.get("font_size"),
+        "text": block_data.get("text", []),
+        "xyxy": block_data.get("xyxy", []),
+        "bounding_rect": block_data.get("_bounding_rect"),
+    }
+
+
+def project_state_matches_disk(project: ProjImgTrans) -> bool:
+    """Return whether the live project still matches its canonical JSON file."""
+    project_path = getattr(project, "proj_path", "")
+    if not project_path or not os.path.isfile(project_path):
+        return False
+    try:
+        with open(project_path, "r", encoding="utf-8") as project_file:
+            disk_data = json.load(project_file)
+        live_data = _json_value(project.to_dict())
+        disk_data = _json_value(disk_data)
+        # Page selection can change without dirtying project content and is
+        # passed to Photoshop separately in the launch context.
+        live_data.pop("current_img", None)
+        disk_data.pop("current_img", None)
+        return disk_data == live_data
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def validate_photoshop_bridge_updates(
+    project: ProjImgTrans,
+    payload: dict,
+) -> Tuple[str, List[Tuple[TextBlock, str, Optional[float]]]]:
+    """Validate a complete bridge payload before any project state is changed.
+
+    >>> from types import SimpleNamespace
+    >>> from ballontranslator.utils.textblock import TextBlock
+    >>> block = TextBlock(translation="old")
+    >>> project = SimpleNamespace(
+    ...     proj_path="project.json", pages={"page.png": [block]}
+    ... )
+    >>> payload = {
+    ...     "version": 1,
+    ...     "project_path": "project.json",
+    ...     "page": "page.png",
+    ...     "block_count": 1,
+    ...     "updates": [{
+    ...         "block_index": 0,
+    ...         "translation": "new",
+    ...         "font_size": None,
+    ...         "base": photoshop_bridge_block_snapshot(block),
+    ...     }],
+    ... }
+    >>> validate_photoshop_bridge_updates(project, payload)[0]
+    'page.png'
+    """
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        raise PhotoshopBridgeUpdateError("Unsupported Photoshop update format.")
+
+    payload_path = payload.get("project_path")
+    project_path = getattr(project, "proj_path", "")
+    if (
+        not isinstance(payload_path, str)
+        or not project_path
+        or _canonical_path(payload_path) != _canonical_path(project_path)
+    ):
+        raise PhotoshopBridgeUpdateError(
+            "The Photoshop update belongs to a different project."
+        )
+
+    page_name = payload.get("page")
+    if not isinstance(page_name, str):
+        raise PhotoshopBridgeUpdateError("The Photoshop update has no valid page.")
+    blocks = _project_page_blocks(project, page_name)
+    if blocks is None:
+        raise PhotoshopBridgeUpdateError(
+            f"Page '{page_name}' is no longer in this project."
+        )
+    block_count = payload.get("block_count")
+    if (
+        not isinstance(block_count, int)
+        or isinstance(block_count, bool)
+        or block_count != len(blocks)
+    ):
+        raise PhotoshopBridgeUpdateError(
+            f"The blocks on page '{page_name}' changed after it was opened in Photoshop."
+        )
+
+    raw_updates = payload.get("updates")
+    if not isinstance(raw_updates, list):
+        raise PhotoshopBridgeUpdateError("The Photoshop update list is invalid.")
+
+    validated = []
+    seen_indices = set()
+    for update in raw_updates:
+        if not isinstance(update, dict):
+            raise PhotoshopBridgeUpdateError("A Photoshop block update is invalid.")
+        block_index = update.get("block_index")
+        if (
+            not isinstance(block_index, int)
+            or isinstance(block_index, bool)
+            or block_index < 0
+            or block_index >= len(blocks)
+            or block_index in seen_indices
+        ):
+            raise PhotoshopBridgeUpdateError(
+                "A Photoshop layer has an invalid or duplicate block number."
+            )
+        seen_indices.add(block_index)
+
+        block = blocks[block_index]
+        if update.get("base") != photoshop_bridge_block_snapshot(block):
+            raise PhotoshopBridgeUpdateError(
+                f"Block #{block_index + 1} on page '{page_name}' changed after "
+                "it was opened in Photoshop."
+            )
+
+        translation = update.get("translation")
+        if not isinstance(translation, str):
+            raise PhotoshopBridgeUpdateError(
+                f"Block #{block_index + 1} has invalid text."
+            )
+        font_size = update.get("font_size")
+        if font_size is not None and (
+            not isinstance(font_size, (int, float))
+            or isinstance(font_size, bool)
+            or not math.isfinite(font_size)
+            or font_size <= 0
+        ):
+            raise PhotoshopBridgeUpdateError(
+                f"Block #{block_index + 1} has an invalid font size."
+            )
+        validated.append(
+            (
+                block,
+                translation.replace("\r\n", "\n").replace("\r", "\n"),
+                font_size,
+            )
+        )
+
+    return page_name, validated
 
 
 def get_photoshop_paths():
@@ -117,9 +294,14 @@ def get_file_md5(file_path: str) -> str:
 
 
 class PhotoshopBridgeDialog(QDialog):
-    def __init__(self, parent=None, project=None):
+    def __init__(self, parent=None, project=None) -> None:
         super().__init__(parent)
         self.project = project
+        self._bridge_session_id = ""
+        self._pending_update_path = ""
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(2000)
+        self._update_timer.timeout.connect(self._consume_bridge_update)
         self.setObjectName("PhotoshopBridgeDialog")
         self.setWindowTitle(self.tr("Photoshop Bridge"))
         self.setMinimumWidth(480)
@@ -133,6 +315,15 @@ class PhotoshopBridgeDialog(QDialog):
 
         self.init_ui()
         self.refresh_status()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._pending_update_path:
+            self._update_timer.start()
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        self._update_timer.stop()
+        super().hideEvent(event)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -188,6 +379,15 @@ class PhotoshopBridgeDialog(QDialog):
         self.script_status_label.setWordWrap(True)
         status_layout.addRow(lbl_script, self.script_status_label)
 
+        lbl_sync = QLabel(self.tr("Photoshop Changes:"))
+        lbl_sync.setStyleSheet("background: transparent;")
+        self.sync_status_label = QLabel(self.tr("No pending changes"))
+        self.sync_status_label.setWordWrap(True)
+        self.sync_status_label.setStyleSheet(
+            "background: transparent; color: gray;"
+        )
+        status_layout.addRow(lbl_sync, self.sync_status_label)
+
         self.check_update_btn = QPushButton(self.tr("Check Update"))
         self.check_update_btn.setFixedHeight(28)
         self.check_update_btn.clicked.connect(self.refresh_status)
@@ -234,14 +434,14 @@ class PhotoshopBridgeDialog(QDialog):
         info_label.setStyleSheet("background: transparent; color: gray; font-size: 11px;")
         layout.addWidget(info_label)
 
-    def refresh_status(self):
+    def refresh_status(self) -> None:
         ps_dir, scripts_dir, exe_path = get_photoshop_paths()
         source_jsx = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
             "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
         )
 
-        source_ver = extract_jsx_version(source_jsx) or "2.5.2"
+        source_ver = extract_jsx_version(source_jsx) or "2.5.3"
         source_hash = get_file_md5(source_jsx)
 
         installed_jsx = os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx") if scripts_dir else None
@@ -281,52 +481,223 @@ class PhotoshopBridgeDialog(QDialog):
             )
             self.install_btn.setText(self.tr("Install Script in Photoshop"))
 
-    def on_install_script(self):
-        scripts_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-            "scripts", "export to photoshop"
+        self._consume_bridge_update()
+
+    def _set_sync_status(self, message: str, color: str) -> None:
+        self.sync_status_label.setText(message)
+        self.sync_status_label.setStyleSheet(
+            f"background: transparent; color: {color};"
         )
-        bat_file = os.path.join(scripts_dir, "install_ps_script.bat")
 
-        if os.path.isfile(bat_file):
+    def _bridge_update_paths(self) -> List[str]:
+        paths = []
+        if self._pending_update_path:
+            paths.append(self._pending_update_path)
+        project_path = getattr(self.project, "proj_path", "")
+        if project_path:
+            fallback_path = project_path + ".ps_bridge_updates.json"
+            if fallback_path not in paths:
+                paths.append(fallback_path)
+        return paths
+
+    def _consume_bridge_update(self) -> None:
+        for update_path in self._bridge_update_paths():
+            if not os.path.isfile(update_path):
+                continue
             try:
-                subprocess.Popen(f'cmd.exe /c "{bat_file}"', shell=True, cwd=scripts_dir)
-                QTimer.singleShot(2000, self.refresh_status)
-                QTimer.singleShot(5000, self.refresh_status)
-            except Exception as e:
-                QMessageBox.warning(self, self.tr("Error"), f"{self.tr('Failed to start installer')}: {e}")
-        else:
-            QMessageBox.warning(self, self.tr("Error"), self.tr("Installer script not found."))
+                with open(update_path, "r", encoding="utf-8") as update_file:
+                    payload = json.load(update_file)
+            except (OSError, ValueError):
+                # Photoshop may still be replacing the sidecar; retry instead
+                # of treating a partial read as bridge data.
+                self._set_sync_status(
+                    self.tr("Waiting for Photoshop to finish writing changes..."),
+                    "#FFA000",
+                )
+                return
 
-    def on_open_in_photoshop(self):
-        _, scripts_dir, exe_path = get_photoshop_paths()
-        target_jsx = os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx") if scripts_dir else None
-        if not target_jsx or not os.path.isfile(target_jsx):
-            target_jsx = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
+            session_id = (
+                payload.get("session_id") if isinstance(payload, dict) else None
             )
+            if (
+                update_path == self._pending_update_path
+                and session_id != self._bridge_session_id
+            ):
+                self._update_timer.stop()
+                self._set_sync_status(
+                    self.tr("Ignored changes from an expired Photoshop session."),
+                    "#F44336",
+                )
+                return
 
-        if not os.path.isfile(target_jsx):
+            apply_updates = getattr(
+                self.parent(), "apply_photoshop_bridge_updates", None
+            )
+            if not callable(apply_updates):
+                self._update_timer.stop()
+                self._set_sync_status(
+                    self.tr("BallonsTranslator cannot apply Photoshop changes."),
+                    "#F44336",
+                )
+                return
+            try:
+                updated_count = apply_updates(payload)
+                os.remove(update_path)
+            except (OSError, PhotoshopBridgeUpdateError, RuntimeError) as error:
+                self._update_timer.stop()
+                LOGGER.warning("Photoshop Bridge update was not applied: %s", error)
+                self._set_sync_status(str(error), "#F44336")
+                return
+
+            if update_path == self._pending_update_path:
+                self._pending_update_path = ""
+                self._bridge_session_id = ""
+                self._update_timer.stop()
+            self._set_sync_status(
+                self.tr("Applied {count} Photoshop change(s).").format(
+                    count=updated_count
+                ),
+                "#4CAF50",
+            )
+            return
+
+    def on_install_script(self) -> None:
+        ps_dir, scripts_dir, _ = get_photoshop_paths()
+        source_jsx = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
+        )
+        if not ps_dir or not os.path.isfile(source_jsx):
+            QMessageBox.warning(
+                self,
+                self.tr("Error"),
+                self.tr("Photoshop or the Bridge JSX script was not found."),
+            )
+            return
+
+        scripts_dir = scripts_dir or os.path.join(ps_dir, "Presets", "Scripts")
+        target_jsx = os.path.join(scripts_dir, os.path.basename(source_jsx))
+        try:
+            os.makedirs(scripts_dir, exist_ok=True)
+            shutil.copy2(source_jsx, target_jsx)
+        except PermissionError as error:
+            LOGGER.warning("Photoshop Bridge requires manual installation: %s", error)
+            QMessageBox.warning(
+                self,
+                self.tr("Manual Installation Required"),
+                self.tr(
+                    "BallonsTranslator cannot write to Photoshop's Scripts "
+                    "folder without administrator permission. The source and "
+                    "destination folders will be opened so you can copy the "
+                    "JSX file with Explorer."
+                ),
+            )
+            self._open_manual_install_folders(source_jsx, scripts_dir)
+            return
+        except OSError as error:
+            LOGGER.warning("Failed to install Photoshop Bridge: %s", error)
+            QMessageBox.warning(
+                self,
+                self.tr("Error"),
+                self.tr("Failed to install the Bridge script: {error}").format(
+                    error=error
+                ),
+            )
+            return
+
+        self.refresh_status()
+        QMessageBox.information(
+            self,
+            self.tr("Installed"),
+            self.tr("Bridge script installed. Restart Photoshop to refresh its Scripts menu."),
+        )
+
+    def _open_manual_install_folders(
+        self,
+        source_jsx: str,
+        scripts_dir: str,
+    ) -> None:
+        if sys.platform != "win32":
+            return
+        destination_dir = scripts_dir
+        while not os.path.isdir(destination_dir):
+            parent_dir = os.path.dirname(destination_dir)
+            if parent_dir == destination_dir:
+                break
+            destination_dir = parent_dir
+        try:
+            subprocess.Popen([
+                "explorer.exe",
+                f"/select,{os.path.normpath(source_jsx)}",
+            ])
+            subprocess.Popen(["explorer.exe", destination_dir])
+        except OSError as error:
+            LOGGER.warning("Failed to open manual Photoshop install folders: %s", error)
+
+    def on_open_in_photoshop(self) -> None:
+        _, scripts_dir, exe_path = get_photoshop_paths()
+        bundled_jsx = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+            "scripts", "export to photoshop", "BallonTranslator_PS_Bridge.jsx"
+        )
+        installed_jsx = (
+            os.path.join(scripts_dir, "BallonTranslator_PS_Bridge.jsx")
+            if scripts_dir else None
+        )
+        # The quick action must use the app-matched protocol even when an older
+        # copy is still installed in Photoshop's Scripts menu.
+        target_jsx = bundled_jsx if os.path.isfile(bundled_jsx) else installed_jsx
+
+        if not target_jsx or not os.path.isfile(target_jsx):
             QMessageBox.warning(self, self.tr("Error"), self.tr("Bridge JSX script not found."))
             return
 
-        # Write Bridge Context for seamless automatic project pickup in Photoshop
+        context_written = False
+        # Save through the application before Photoshop takes its conflict-check
+        # snapshot, then give this launch a unique return sidecar.
         if self.project and getattr(self.project, 'proj_path', None) and os.path.isfile(self.project.proj_path):
             try:
-                import json
-                import tempfile
-                import time
+                prepare_context = getattr(
+                    self.parent(), "prepare_photoshop_bridge_context", None
+                )
+                if callable(prepare_context):
+                    ctx_data = prepare_context()
+                else:
+                    ctx_data = {
+                        "project_path": os.path.abspath(self.project.proj_path),
+                        "active_page": getattr(
+                            self.project, "current_img", ""
+                        ) or "",
+                    }
+                session_id = uuid.uuid4().hex
+                update_path = os.path.join(
+                    tempfile.gettempdir(),
+                    f"bt_ps_bridge_updates_{session_id}.json",
+                )
                 context_file = os.path.join(tempfile.gettempdir(), "bt_ps_bridge_context.json")
-                ctx_data = {
-                    "project_path": os.path.abspath(self.project.proj_path).replace("\\", "/"),
-                    "active_page": getattr(self.project, "curr_imgname", "") or "",
+                ctx_data.update({
+                    "project_path": os.path.abspath(
+                        ctx_data["project_path"]
+                    ).replace("\\", "/"),
                     "timestamp": time.time(),
-                }
-                with open(context_file, "w", encoding="utf-8") as f:
-                    json.dump(ctx_data, f, ensure_ascii=False, indent=2)
+                    "session_id": session_id,
+                    "update_path": update_path.replace("\\", "/"),
+                })
+                context_tmp = context_file + ".tmp"
+                with open(context_tmp, "w", encoding="utf-8") as context_stream:
+                    json.dump(ctx_data, context_stream, ensure_ascii=False, indent=2)
+                os.replace(context_tmp, context_file)
+                self._bridge_session_id = session_id
+                self._pending_update_path = update_path
+                context_written = True
             except Exception as ctx_err:
-                LOGGER.warning(f"Failed to write Photoshop Bridge context: {ctx_err}")
+                LOGGER.warning("Failed to prepare Photoshop Bridge context: %s", ctx_err)
+                QMessageBox.warning(
+                    self,
+                    self.tr("Error"),
+                    f"{self.tr('Failed to prepare Photoshop Bridge')}: {ctx_err}",
+                )
+                return
 
         if exe_path and os.path.isfile(exe_path):
             try:
@@ -339,6 +710,14 @@ class PhotoshopBridgeDialog(QDialog):
                 os.startfile(target_jsx)
             except Exception as e:
                 QMessageBox.warning(self, self.tr("Error"), f"{self.tr('Failed to open Photoshop')}: {e}")
+                return
+
+        if context_written:
+            self._set_sync_status(
+                self.tr("Waiting for changes from Photoshop..."),
+                "#FFA000",
+            )
+            self._update_timer.start()
 
     def on_open_folder(self):
         scripts_dir = os.path.join(
@@ -347,7 +726,7 @@ class PhotoshopBridgeDialog(QDialog):
         )
         if os.path.isdir(scripts_dir):
             if sys.platform == 'win32':
-                subprocess.Popen(f'explorer.exe "{scripts_dir}"', shell=True)
+                subprocess.Popen(['explorer.exe', scripts_dir])
             elif sys.platform == 'darwin':
                 subprocess.Popen(['open', scripts_dir])
             else:

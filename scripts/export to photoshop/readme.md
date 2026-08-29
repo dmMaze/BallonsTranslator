@@ -13,12 +13,10 @@ BallonsTranslator (Qt UI)
    │    └─ PhotoshopBridgeDialog (ballontranslator/ui/ps_bridge_dialog.py)
    │         ├─ Status detector: Registry lookup & version/MD5 check
    │         ├─ One-click launcher: Launches photoshop.exe with -r script
-   │         └─ Auto-installer: Runs install_ps_script.bat (Admin UAC)
+   │         └─ Installer: Non-elevated JSX copy with manual fallback
    │
    └─ scripts/export to photoshop/
         ├─ BallonTranslator_PS_Bridge.jsx (Standalone ExtendScript v2.5+)
-        ├─ install_ps_script.ps1 (PowerShell Registry & disk installer)
-        ├─ install_ps_script.bat (Elevation wrapper)
         └─ install_manual.md (User guide)
 ```
 
