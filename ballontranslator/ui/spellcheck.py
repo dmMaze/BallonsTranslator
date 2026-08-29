@@ -2,7 +2,8 @@ import os
 import re
 import weakref
 import threading
-from typing import List, Set
+from itertools import chain
+from typing import Iterator, List, Set, Tuple
 
 from qtpy.QtCore import Qt, QTimer, QThread, Signal, QSize, QObject
 from qtpy.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor
@@ -16,8 +17,62 @@ from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.download_util import download_url_to_file
 from ballontranslator.utils.logger import logger as LOGGER
 
-# Regex pattern matching CJK ideographs, Hiragana, Katakana, and Hangul
-CJK_PATTERN = re.compile(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff66-\uff9f\uac00-\ud7af]')
+# Match dictionary-checkable runs directly; CJK ranges act as separators so a
+# mixed token such as ``helo世界`` still checks its Latin portion.
+_SPELLCHECK_WORD_PATTERN = re.compile(
+    r'[^\W\d_'
+    r'\u1100-\u11ff'
+    r'\u2e80-\u4dbf'
+    r'\u4e00-\u9fff'
+    r'\ua960-\ua97f'
+    r'\uac00-\ud7ff'
+    r'\uf900-\ufaff'
+    r'\uff66-\uffdc'
+    r'\U0001b000-\U0001b16f'
+    r'\U0001f200-\U0001f2ff'
+    r'\U00020000-\U0002ee5f'
+    r'\U0002f800-\U0002fa1f'
+    r'\U00030000-\U000323af'
+    r']{2,}'
+)
+
+
+def iter_spellcheck_words(text: str) -> Iterator[Tuple[int, int, str]]:
+    """Yield checkable word spans as Qt UTF-16 start, length, and text.
+
+    CJK characters split mixed-script tokens instead of making the whole token
+    correct, so adjacent alphabetic words still reach the dictionary.
+
+    >>> list(iter_spellcheck_words('漢字 helo世界 wrld'))
+    [(3, 4, 'helo'), (10, 4, 'wrld')]
+    >>> list(iter_spellcheck_words('𠀀helo'))
+    [(2, 4, 'helo')]
+    """
+    matches = _SPELLCHECK_WORD_PATTERN.finditer(text)
+    first_match = next(matches, None)
+    if first_match is None:
+        return
+
+    matches = chain((first_match,), matches)
+    if text.isascii() or len(text.encode('utf-16-le')) == len(text) * 2:
+        for match in matches:
+            yield match.start(), match.end() - match.start(), match.group()
+        return
+
+    # Astral characters occupy two positions in Qt. Convert each disjoint
+    # piece once so multiple words remain linear in the block length.
+    previous_end = 0
+    utf16_position = 0
+    for match in matches:
+        utf16_position += len(
+            text[previous_end:match.start()].encode('utf-16-le')
+        ) // 2
+        word = match.group()
+        word_length = len(word.encode('utf-16-le')) // 2
+        yield utf16_position, word_length, word
+        utf16_position += word_length
+        previous_end = match.end()
+
 
 # Predefined dictionary repository URLs mapping language names to LibreOffice raw URLs.
 DICTIONARY_URLS = {
@@ -315,10 +370,6 @@ class SpellCheckManager(QObject):
         if word_lower in self.custom_words or word_lower in self.external_words:
             return True
 
-        # Never treat CJK characters (Japanese Kana, Kanji, Korean Hangul) as misspelled
-        if CJK_PATTERN.search(word_lower):
-            return True
-
         # If it contains digits or special chars, ignore it
         if not word_lower.isalpha():
             return True
@@ -340,7 +391,7 @@ class SpellCheckManager(QObject):
         >>> isinstance(manager.get_suggestions("helo"), list)
         True
         """
-        if len(word) > 15 or CJK_PATTERN.search(word):
+        if len(word) > 15:
             return []
 
         if self.spell is None:
@@ -481,37 +532,29 @@ class SpellCheckHighlighter(QSyntaxHighlighter):
             pass
 
     def highlightBlock(self, text):
-        # Check if spellcheck is enabled in settings and if spellchecker package is installed
+        # Keep the disabled path ahead of package and per-character checks.
         if not getattr(pcfg, 'spellcheck_enabled', True):
+            return
+
+        editor = self.parent()
+        if editor is not None and not isinstance(editor, QTextEdit):
+            parent = editor.parent()
+            if isinstance(parent, QTextEdit):
+                editor = parent
+        if (
+            getattr(editor, 'is_source_text_edit', False)
+            and not getattr(pcfg, 'spellcheck_on_source_enabled', False)
+        ):
             return
         if not self.manager.is_available():
             return
 
-        # Check if editor is a Source block editor and if spell checking on source is enabled
-        editor = self.parent()
-        if editor is not None:
-            if not isinstance(editor, QTextEdit) and hasattr(editor, 'parent'):
-                p = editor.parent()
-                if isinstance(p, QTextEdit):
-                    editor = p
-            if editor.__class__.__name__ == 'SourceTextEdit':
-                if not getattr(pcfg, 'spellcheck_on_source_enabled', False):
-                    return
-
-        # Pattern matches words in any language using Unicode character classes
-        pattern = r'\b[^\W\d_]+\b'
-        for match in re.finditer(pattern, text):
-            word = match.group(0)
-            if len(word) <= 1 or CJK_PATTERN.search(word):
-                continue
-            
+        for start, length, word in iter_spellcheck_words(text):
             word_lower = word.lower()
             if word_lower not in self._cache:
                 self._cache[word_lower] = self.manager.is_correct(word_lower)
                 
             if not self._cache[word_lower]:
-                start = match.start()
-                length = match.end() - start
                 self.setFormat(start, length, self.misspelled_format)
 
 
