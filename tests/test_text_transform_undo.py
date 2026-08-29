@@ -1543,44 +1543,50 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
-    def test_pair_editor_paste_at_document_start_stays_synced(self):
-        item, pair = self._make_pair(0, '012345', True)
-        edit = pair.e_trans
-        pair.show()
-        edit.setFocus()
-        self.app.processEvents()
-        cursor = edit.textCursor()
-        cursor.setPosition(0)
-        cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
-        edit.setTextCursor(cursor)
-        propagated = []
+    def test_pair_editor_paste_shortcuts_at_document_start_stay_synced(self):
+        shortcuts = (
+            (Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier),
+            (Qt.Key.Key_Insert, Qt.KeyboardModifier.ShiftModifier),
+        )
+        for key, modifiers in shortcuts:
+            with self.subTest(key=key, modifiers=modifiers):
+                item, pair = self._make_pair(0, '012345', True)
+                edit = pair.e_trans
+                pair.show()
+                edit.setFocus()
+                self.app.processEvents()
+                cursor = edit.textCursor()
+                cursor.setPosition(0)
+                cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+                edit.setTextCursor(cursor)
+                propagated = []
 
-        def record_and_propagate(
-            position: int,
-            removed: int,
-            added_text: str,
-            joint_previous: bool,
-        ) -> None:
-            edit_args = (position, removed, added_text, joint_previous)
-            propagated.append(edit_args)
-            propagate_user_edit(item, *edit_args)
+                def record_and_propagate(
+                    position: int,
+                    removed: int,
+                    added_text: str,
+                    joint_previous: bool,
+                ) -> None:
+                    edit_args = (
+                        position, removed, added_text, joint_previous
+                    )
+                    propagated.append(edit_args)
+                    propagate_user_edit(item, *edit_args)
 
-        edit.propagate_user_edited.connect(record_and_propagate)
-        try:
-            self.app.clipboard().setText('X')
-            QTest.keyClick(
-                edit,
-                Qt.Key.Key_V,
-                Qt.KeyboardModifier.ControlModifier,
-            )
-            self.app.processEvents()
-        finally:
-            edit.propagate_user_edited.disconnect(record_and_propagate)
-            pair.hide()
+                edit.propagate_user_edited.connect(record_and_propagate)
+                try:
+                    self.app.clipboard().setText('X')
+                    QTest.keyClick(edit, key, modifiers)
+                    self.app.processEvents()
+                finally:
+                    edit.propagate_user_edited.disconnect(
+                        record_and_propagate
+                    )
+                    pair.hide()
 
-        self.assertEqual(propagated, [(0, 1, 'X', False)])
-        self.assertEqual(edit.toPlainText(), 'X12345')
-        self.assertEqual(item.toPlainText(), 'X12345')
+                self.assertEqual(propagated, [(0, 1, 'X', False)])
+                self.assertEqual(edit.toPlainText(), 'X12345')
+                self.assertEqual(item.toPlainText(), 'X12345')
 
     def test_pair_editor_emits_raw_utf16_replacement_range(self):
         _item, pair = self._make_pair(0, 'aX', False)

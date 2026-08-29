@@ -4,7 +4,7 @@ from typing import List
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
+from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QKeySequence, QTextCursor, QMouseEvent, QDrag, QPixmap
 import numpy as np
 
 from ...custom_widget import ScrollBar, Widget, SeparatorWidget
@@ -541,6 +541,13 @@ class SourceTextEdit(QTextEdit):
             self.input_method_text = ''
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
+        if e.matches(QKeySequence.StandardKey.Paste):
+            self._capture_paste_selection()
+            self.paste_flag = True
+            try:
+                return super().keyPressEvent(e)
+            finally:
+                self.paste_flag = False
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -550,13 +557,6 @@ class SourceTextEdit(QTextEdit):
                 e.accept()
                 self.redo_signal.emit()
                 return
-            elif e.key() == Qt.Key.Key_V:
-                self._capture_paste_selection()
-                self.paste_flag = True
-                try:
-                    return super().keyPressEvent(e)
-                finally:
-                    self.paste_flag = False
         elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
