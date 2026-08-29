@@ -8,10 +8,12 @@ from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QBrush,
+    QFont,
     QPainter,
     QTextBlock,
     QTextCharFormat,
     QTextDocument,
+    QTextLayout,
     QTextLine,
     QTextOption,
     QTransform,
@@ -20,7 +22,11 @@ from qtpy.QtGui import (
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
-from .annotations import text_combine_upright_ranges
+from .annotations import (
+    FONT_FEATURES_AVAILABLE,
+    letter_spacing_value,
+    text_combine_upright_ranges,
+)
 from .cache import KeyedLruCache
 from .layout import (
     CharFontFormat,
@@ -43,7 +49,6 @@ from .rendering.indexing import (
 )
 from .rendering.tate_chu_yoko import (
     tate_chu_yoko_ink_bounds,
-    tate_chu_yoko_natural_bounds,
     tate_chu_yoko_transform,
 )
 from .rendering.ruby import (
@@ -92,6 +97,9 @@ LINE_INK_BOUNDS_CACHE_MAX_ENTRIES = 2048
 _LINE_INK_BOUNDS_CACHE: KeyedLruCache[tuple, QRectF] = KeyedLruCache(
     LINE_INK_BOUNDS_CACHE_MAX_ENTRIES
 )
+# Layout-only format IDs share the private rendering range and are never saved.
+TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1243
+_TATE_CHU_YOKO_WIDTH_FEATURES = {2: 'hwid', 3: 'twid', 4: 'qwid'}
 
 PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’', '〟', '″'}
 PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘', '‶'}
@@ -1823,7 +1831,62 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         return self._source_hit_test(self.map_input_point(point))
 
-    def layoutBlock(self, block: QTextBlock):
+    def _prepare_tate_chu_yoko_layout_formats(
+        self,
+        block: QTextBlock,
+        ranges: Tuple[Tuple[int, int, str], ...],
+    ) -> None:
+        """Apply transient W3C tate-chu-yoko shaping to one block.
+
+        >>> callable(VerticalTextDocumentLayout._prepare_tate_chu_yoko_layout_formats)
+        True
+        """
+        layout = block.layout()
+        previous = list(layout.formats())
+        formats = [
+            entry
+            for entry in previous
+            if not bool(entry.format.property(
+                TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY
+            ))
+        ]
+        for start, length, _group_id in ranges:
+            end = start + length
+            text = _utf16_slice(block.text(), start, length)
+            feature_name = _TATE_CHU_YOKO_WIDTH_FEATURES.get(
+                _grapheme_count(text)
+            )
+            source_ranges = self.fragment_format_ranges(
+                block.blockNumber(), start, end
+            ) or ((start, end, block.charFormat()),)
+            for range_start, range_end, source_format in source_ranges:
+                char_format = QTextCharFormat()
+                if abs(letter_spacing_value(
+                    source_format, self.letter_spacing
+                ) - 1.0) > 1e-9:
+                    char_format.setFontLetterSpacingType(
+                        QFont.SpacingType.PercentageSpacing
+                    )
+                    char_format.setFontLetterSpacing(100.0)
+                if FONT_FEATURES_AVAILABLE and feature_name is not None:
+                    features = dict(source_format.fontFeatures())
+                    width_features = _TATE_CHU_YOKO_WIDTH_FEATURES.values()
+                    for width_feature in width_features:
+                        features.pop(QFont.Tag.fromString(width_feature), None)
+                    features[QFont.Tag.fromString(feature_name)] = 1
+                    char_format.setFontFeatures(features)
+                char_format.setProperty(
+                    TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY, True
+                )
+                entry = QTextLayout.FormatRange()
+                entry.start = range_start
+                entry.length = range_end - range_start
+                entry.format = char_format
+                formats.append(entry)
+        if ranges or len(formats) != len(previous):
+            layout.setFormats(formats)
+
+    def layoutBlock(self, block: QTextBlock) -> None:
         doc = self.document()
         compact_punctuation = pcfg.compact_vertical_punctuation_spacing
 
@@ -1839,6 +1902,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
         self.text_combine_ranges.append(text_combine_ranges)
+        self._prepare_tate_chu_yoko_layout_formats(
+            block, text_combine_ranges
+        )
         ruby_metrics = vertical_ruby_metrics(
             block,
             self.needs_vertical_rotation,
@@ -2085,24 +2151,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     ).left()
 
                 if is_text_combine:
-                    # A grouped run has no separate container format. Its
-                    # leading fragment supplies the normal cell while natural
-                    # horizontal flow and every fragment style are retained.
+                    # The leading fragment supplies the one-em cell. The
+                    # shared placement transform compresses any remaining
+                    # horizontal overflow without changing document content.
                     right_margin, left_margin = emphasis_margins(
                         block, line, vertical=True
                     )
-                    natural_bounds = tate_chu_yoko_natural_bounds(line)
-                    text_combine_width = max(
-                        cfmt.tbr.width(),
-                        natural_bounds.width(),
-                    )
-                    text_combine_height = max(
-                        cfmt.tbr.height(), natural_bounds.height()
-                    )
-                    spacing_advance = (
-                        text_combine_height * (cfmt.letter_spacing - 1)
-                    )
-                    tbr_h = text_combine_height + spacing_advance
+                    text_combine_width = cfmt.tbr.width()
+                    text_combine_height = cfmt.tbr.height()
+                    spacing_advance = 0.0
+                    tbr_h = text_combine_height
                     text_combine_line_metrics = (
                         cfmt.tbr.width(),
                         right_margin,

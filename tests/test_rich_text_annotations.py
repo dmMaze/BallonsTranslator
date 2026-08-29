@@ -1626,10 +1626,18 @@ class RichTextAnnotationTest(unittest.TestCase):
             'all',
         )
 
-    def test_text_combine_uses_one_natural_width_vertical_cell(self):
-        item = self._make_item(True, text='年12月')
+    def test_text_combine_fits_one_vertical_cell(self):
+        font = QFont('Noto Sans')
+        if QFontInfo(font).family() != 'Noto Sans':
+            self.skipTest('Noto Sans is unavailable')
+        font.setPointSizeF(72.0)
+        item = self._make_item(True, text='是！？')
         item.startEdit()
         cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        char_format = QTextCharFormat()
+        char_format.setFont(font)
+        cursor.mergeCharFormat(char_format)
         cursor.setPosition(1)
         cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
         item.setTextCursor(cursor)
@@ -1638,19 +1646,40 @@ class RichTextAnnotationTest(unittest.TestCase):
 
         block = item.document().firstBlock()
         text_layout = block.layout()
-        self.assertEqual(text_layout.lineCount(), 3)
+        self.assertEqual(text_layout.lineCount(), 2)
         line = text_layout.lineAt(1)
         self.assertEqual((line.textStart(), line.textLength()), (1, 2))
         cell = item.layout.tate_chu_yoko_cell_rect(block, 1)
         self.assertIsNotNone(cell)
         natural_bounds = tate_chu_yoko_natural_bounds(line)
-        self.assertGreaterEqual(cell.width(), natural_bounds.width())
+        record = item.layout._line_record(block, 1)
+        self.assertAlmostEqual(cell.width(), record['base_width'])
         ink = tate_chu_yoko_ink_bounds(line, cell)
         self.assertTrue(cell.adjusted(-0.01, -0.01, 0.01, 0.01).contains(ink))
+        reference_line, reference_offset, reference_transform = (
+            item.layout.vertical_line_placement(block, 0)
+        )
+        reference_ink = glyph_rendering.glyph_geometry(
+            reference_line,
+            reference_line.textStart(),
+            reference_line.textLength(),
+            reference_offset,
+            reference_transform,
+            0.0,
+        ).bounds
+        self.assertAlmostEqual(
+            ink.center().x(), reference_ink.center().x(),
+            delta=1 / 64 + 0.001,
+        )
         _line, offset, orientation = item.layout.vertical_line_placement(
             block, 1
         )
-        self.assertAlmostEqual(orientation.m11(), 1.0)
+        self.assertGreater(orientation.m11(), 0.0)
+        self.assertLessEqual(orientation.m11(), 1.0)
+        self.assertAlmostEqual(
+            orientation.m11(),
+            min(1.0, cell.width() / natural_bounds.width()),
+        )
         self.assertAlmostEqual(orientation.m22(), 1.0)
         self.assertAlmostEqual(orientation.m12(), 0.0)
         self.assertAlmostEqual(orientation.m21(), 0.0)
@@ -1682,6 +1711,32 @@ class RichTextAnnotationTest(unittest.TestCase):
             )
         ]
         self.assertEqual(positions, [1, 2, 3])
+        self.assertEqual(item.toPlainText(), '是！？')
+
+    def test_text_combine_ignores_letter_spacing(self):
+        def metrics(spacing: float) -> tuple[float, QRectF, QRectF]:
+            item = self._make_item(True, text='年12月')
+            item.startEdit()
+            cursor = item.textCursor()
+            cursor.setPosition(1)
+            cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+            apply_letter_spacing(cursor, spacing, vertical=True)
+            item.setTextCursor(cursor)
+            item.setTateChuYoko(True)
+            block = item.document().firstBlock()
+            line = block.layout().lineAt(1)
+            cell = item.layout.tate_chu_yoko_cell_rect(block, 1)
+            return (
+                line.naturalTextWidth(),
+                cell,
+                tate_chu_yoko_ink_bounds(line, cell),
+            )
+
+        plain_width, plain_cell, plain_ink = metrics(1.0)
+        spaced_width, spaced_cell, spaced_ink = metrics(3.0)
+        self.assertAlmostEqual(spaced_width, plain_width)
+        self.assertEqual(spaced_cell, plain_cell)
+        self.assertEqual(spaced_ink, plain_ink)
 
     def test_single_character_text_combine_centers_visible_ink(self):
         tolerance = 1 / 64 + 0.001
@@ -1790,11 +1845,16 @@ class RichTextAnnotationTest(unittest.TestCase):
             mixed_block, 1
         )
         mixed_ink = tate_chu_yoko_ink_bounds(mixed_line, mixed_cell)
-        self.assertTrue(
-            mixed_cell.adjusted(-0.01, -0.01, 0.01, 0.01).contains(
-                mixed_ink
-            )
+        self.assertAlmostEqual(
+            mixed_ink.center().x(), mixed_cell.center().x(),
+            delta=1 / 64 + 0.001,
         )
+        self.assertAlmostEqual(
+            mixed_ink.center().y(), mixed_cell.center().y(),
+            delta=1 / 64 + 0.001,
+        )
+        self.assertGreater(mixed_ink.height(), mixed_cell.height())
+        self.assertTrue(mixed_size.boundingRect().contains(mixed_ink))
 
         partial_mark = self._make_item(True, text='12')
         partial_mark.startEdit()
@@ -1820,7 +1880,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             ).isEmpty()
         )
 
-    def test_text_combine_overhang_does_not_move_columns_or_border(self):
+    def test_text_combine_compression_does_not_move_columns_or_border(self):
         item = self._make_item(
             True,
             bounds=(100, 20, 100, 90),
@@ -1860,7 +1920,9 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertEqual(item.rect(), logical_rect)
         self.assertAlmostEqual(item.layout.max_width, layout_width)
         self.assertEqual(line_x_positions(), column_positions)
-        self.assertGreater(item.boundingRect().width(), old_paint_width)
+        self.assertAlmostEqual(item.boundingRect().width(), old_paint_width)
+        self.assertAlmostEqual(ink.center().x(), cell.center().x())
+        self.assertLessEqual(ink.width(), cell.width() + 0.01)
         self.assertTrue(item.boundingRect().contains(ink))
         left_hit = QPointF(cell.left() + 0.01, cell.center().y())
         right_hit = QPointF(cell.right() - 0.01, cell.center().y())
@@ -1908,6 +1970,11 @@ class RichTextAnnotationTest(unittest.TestCase):
         vertical_layout = combined.document().firstBlock().layout()
         self.assertEqual(vertical_layout.lineCount(), 3)
         self.assertEqual(vertical_layout.lineAt(1).textLength(), 2)
+        combined.setVertical(False)
+        horizontal_line = combined.document().firstBlock().layout().lineAt(0)
+        self.assertAlmostEqual(
+            horizontal_line.naturalTextWidth(), plain_line.naturalTextWidth()
+        )
 
     def test_wrapped_text_combine_reserves_its_own_visible_column_width(self):
         item = self._make_item(
@@ -2043,15 +2110,18 @@ class RichTextAnnotationTest(unittest.TestCase):
                 self.app.processEvents()
 
                 source = scene.itemsBoundingRect()
+                target = QRectF(
+                    0.0, 0.0, source.width() * 4, source.height() * 4
+                )
                 image = QImage(
-                    max(1, round(source.width() * 4)),
-                    max(1, round(source.height() * 4)),
+                    max(1, math.ceil(target.width())),
+                    max(1, math.ceil(target.height())),
                     QImage.Format.Format_ARGB32_Premultiplied,
                 )
                 image.fill(Qt.GlobalColor.transparent)
                 painter = QPainter(image)
                 try:
-                    scene.render(painter, QRectF(image.rect()), source)
+                    scene.render(painter, target, source)
                 finally:
                     painter.end()
 
