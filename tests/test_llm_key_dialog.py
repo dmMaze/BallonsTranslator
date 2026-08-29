@@ -143,6 +143,14 @@ class FailingRuntimeOCR(OCRBase):
         raise RuntimeError('ocr failed')
 
 
+class ReorderingOCR(OCRBase):
+    def _ocr_blk_list(self, _img, blk_list, *args, **kwargs):
+        self.full_page = kwargs.get('full_page', False)
+        for index, block in enumerate(blk_list):
+            block.text = [f'text {index}']
+        return list(reversed(blk_list))
+
+
 class MissingKeyInpainter:
     def inpaint(self, _img, _mask):
         raise LLMApiKeyRequiredError('profile-1', 'Profile 1')
@@ -606,6 +614,40 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
         self.assertNotIn('translation_target', info)
         self.assertIn('Page: page-1', show_error.call_args.args[1])
+
+    def test_full_pipeline_commits_ocr_returned_block_order(self):
+        first = TextBlock(xyxy=[0, 0, 4, 4])
+        second = TextBlock(xyxy=[4, 0, 8, 4])
+        project = ProjImgTrans()
+        project.pages = {'page-1': [first, second]}
+        project._image_info = {'page-1': {'finish_code': 0}}
+        project.read_img = lambda _page: np.zeros(
+            (8, 8, 3),
+            dtype=np.uint8,
+        )
+        ocr = ReorderingOCR()
+        thread = module_manager.ImgtransThread(
+            SimpleNamespace(textdetector=None),
+            FakeOCRThread(ocr),
+            FakeTranslateThread(None),
+            SimpleNamespace(inpainter=None),
+        )
+        thread.imgtrans_proj = project
+        thread.process_idx_to_page_idx = {}
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        old_restore_empty = pcfg.restore_ocr_empty
+        try:
+            pcfg.restore_ocr_empty = False
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 1)
+            thread._imgtrans_pipeline()
+        finally:
+            pcfg.restore_ocr_empty = old_restore_empty
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
+
+        self.assertTrue(ocr.full_page)
+        self.assertEqual(project.pages['page-1'], [second, first])
 
     def test_missing_llm_key_stops_ocr_block_pipeline(self):
         ocr = MissingKeyOCR()

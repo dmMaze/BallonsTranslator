@@ -1,4 +1,4 @@
-from typing import List, Mapping, Sequence, Union
+from typing import List, Mapping, Optional, Sequence, Union
 from copy import deepcopy
 import numpy as np
 import cv2
@@ -75,7 +75,14 @@ class OCRBase(BaseModule):
                 if self.name != 'none_ocr':
                     blk.text = []
 
-            self._ocr_blk_list(img, blk_list, *args, **kwargs)
+            ordered_blk_list = self._ocr_blk_list(
+                img,
+                blk_list,
+                *args,
+                **kwargs,
+            )
+            if isinstance(ordered_blk_list, list):
+                blk_list = ordered_blk_list
             for blk in blk_list:
                 blk.text = postprocess_ocr_text(
                     blk.get_text(),
@@ -117,8 +124,14 @@ class OCRBase(BaseModule):
                 blk._detected_font_name = ''
                 blk._detected_font_confidence = 0.0
 
-    def _ocr_blk_list(self, img: np.ndarray, blk_list: List[TextBlock], *args, **kwargs) -> None:
-        """Processes a list of text blocks on the image."""
+    def _ocr_blk_list(
+        self,
+        img: np.ndarray,
+        blk_list: List[TextBlock],
+        *args,
+        **kwargs,
+    ) -> Optional[List[TextBlock]]:
+        """Process blocks and optionally return their canonical order."""
         im_h, im_w = img.shape[:2]
 
         for i, blk in enumerate(blk_list):
@@ -136,6 +149,7 @@ class OCRBase(BaseModule):
                 blk.text = self.ocr_img(cropped_img, **kwargs)
             else:
                 blk.text = ""
+        return None
 
     def ocr_img(self, img: np.ndarray, **kwargs) -> str:
         raise NotImplementedError

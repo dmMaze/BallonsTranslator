@@ -1084,7 +1084,14 @@ class ImgtransThread(QThread):
                 if hasattr(self.ocr, 'set_stop_event'):
                     self.ocr.set_stop_event(self.stop_event)
                 try:
-                    self.ocr.run_ocr(img, blk_list)
+                    ocr_result = self.ocr.run_ocr(
+                        img,
+                        blk_list,
+                        full_page=True,
+                    )
+                    if isinstance(ocr_result, list):
+                        blk_list = ocr_result
+                    self.imgtrans_proj.pages[imgname] = blk_list
                     self.ocr_counter += 1
 
                     if pcfg.restore_ocr_empty:

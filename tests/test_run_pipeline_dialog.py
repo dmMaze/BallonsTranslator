@@ -120,6 +120,12 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
         )
+        self._llm_ocr_settings = (
+            pcfg.module.ocr,
+            pcfg.module.ocr_llm_page_level,
+            pcfg.module.ocr_llm_mask_non_text,
+            pcfg.module.ocr_llm_sort_reading_order,
+        )
         self._visibility_states = (
             pcfg.show_textdetector_tool,
             pcfg.show_ocr_tool,
@@ -167,6 +173,12 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_glossary_path,
             pcfg.module.llm_glossary_mode,
         ) = self._pipeline_general_settings
+        (
+            pcfg.module.ocr,
+            pcfg.module.ocr_llm_page_level,
+            pcfg.module.ocr_llm_mask_non_text,
+            pcfg.module.ocr_llm_sort_reading_order,
+        ) = self._llm_ocr_settings
         self._save_config_patcher.stop()
 
     def test_ocr_text_postprocess_radio_buttons_update_module_config(self):
@@ -639,6 +651,34 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertTrue(dialog.llm_context_row.isHidden())
         self.assertTrue(dialog.history_budget_row.isHidden())
         self.assertFalse(hasattr(dialog, 'show_MT_keyword_window'))
+        dialog.close()
+
+    def test_llm_ocr_run_settings_are_conditional_and_persistent(self):
+        pcfg.module.ocr = 'LLMOCR'
+        pcfg.module.ocr_llm_page_level = False
+        pcfg.module.ocr_llm_mask_non_text = True
+        pcfg.module.ocr_llm_sort_reading_order = False
+        dialog = RunPipelineDialog()
+
+        self.assertFalse(dialog.llm_ocr_settings.isHidden())
+        self.assertFalse(dialog.llm_ocr_mask_non_text.isEnabled())
+        self.assertFalse(dialog.llm_ocr_reading_order.isEnabled())
+
+        dialog.llm_ocr_page_level.click()
+        self.assertTrue(pcfg.module.ocr_llm_page_level)
+        self.assertTrue(dialog.llm_ocr_mask_non_text.isEnabled())
+        self.assertTrue(dialog.llm_ocr_reading_order.isEnabled())
+        dialog.llm_ocr_mask_non_text.click()
+        dialog.llm_ocr_reading_order.click()
+        self.assertFalse(pcfg.module.ocr_llm_mask_non_text)
+        self.assertTrue(pcfg.module.ocr_llm_sort_reading_order)
+
+        dialog.setModuleSelection('ocr', 'mit48px')
+        self.assertTrue(dialog.llm_ocr_settings.isHidden())
+        dialog.setModuleSelection('ocr', 'LLMOCR')
+        self.assertFalse(dialog.llm_ocr_settings.isHidden())
+        self.assertFalse(dialog.llm_ocr_mask_non_text.isChecked())
+        self.assertTrue(dialog.llm_ocr_reading_order.isChecked())
         dialog.close()
 
     def test_llm_context_and_glossary_controls_persist_disabled_values(self):
