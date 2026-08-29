@@ -14,6 +14,12 @@
   <a href="/README.md">简体中文</a> | English | <a href="/doc/README_RU.md">Русский</a> | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | <a href="/doc/README_FR.md">Français</a> | <a href="/doc/README_PT-BR.md">pt-BR</a> | <a href="/doc/README_KO.md">한국어</a> | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>
 </p>
 
+<p align="center">
+  <a href="https://t.me/BallonTranslatorforum"><img src="https://img.shields.io/badge/Telegram-Discussion%20Group-26A5E4?style=flat-square&logo=telegram&logoColor=white" style="vertical-align: middle;" alt="Telegram Group"/></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="vertical-align: middle;"><b>QQ Group:</b> <code>719881337</code></span>
+</p>
+
 # Features
 > [!IMPORTANT]
 > **If you're sharing the translated result publicly and no experienced human translator participated in a throughout translating or proofreading, please mark it as machine translation somewhere clear to see.**
