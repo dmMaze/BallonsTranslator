@@ -1,6 +1,6 @@
 
 from enum import Enum
-from typing import List, Sequence, Union, Tuple
+from typing import List, Optional, Sequence, Union, Tuple
 import numpy as np
 import copy
 
@@ -476,11 +476,12 @@ class SceneTextManager(QObject):
         if key_event is not None:
             key_event.accept()
 
-    def setTextEditMode(self, edit: bool = False):
+    def setTextEditMode(self, edit: bool = False) -> None:
         if edit:
             self.textpanel.show()
             self.canvas.textLayer.show()
         else:
+            self.canvas.alpha_mask_edit_session.deactivate()
             self.canvas.cancel_path_reorder()
             self.txtblkShapeControl.setBlkItem(None)
             self.textpanel.hide()
@@ -490,8 +491,10 @@ class SceneTextManager(QObject):
     def clearSceneTextitems(
         self,
         reason=SceneTextReplacementReason.CURRENT_PAGE_RELOAD,
-    ):
+    ) -> None:
+        self.canvas.alpha_mask_edit_session.deactivate()
         self.canvas.cancel_path_reorder()
+        self.canvas.set_primary_selected_text_item(None)
         if reason is not SceneTextReplacementReason.PAGE_CHANGE:
             self.formatpanel.cancel_text_transform_edits_for_scene_change()
         self._text_move_snapshot.clear()
@@ -664,6 +667,7 @@ class SceneTextManager(QObject):
 
     def onLeftbuttonPressed(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]
+        self.canvas.set_primary_selected_text_item(blk_item)
         self.txtblkShapeControl.setBlkItem(blk_item)
         selections = self.canvas.selected_text_items(sort=False)
         if blk_item not in selections:
@@ -841,11 +845,19 @@ class SceneTextManager(QObject):
             self.textEditList.set_selected_list([t.idx for t in textitems])
             self._update_selection_panels(textitems)
 
-    def _update_selection_panels(self, textitems: List[TextBlkItem]) -> None:
+    def _update_selection_panels(
+        self,
+        textitems: List[TextBlkItem],
+        primary_item: Optional[TextBlkItem] = None,
+    ) -> None:
         if len(textitems) == 1:
             self.formatpanel.set_textblk_item(textitems[-1])
         else:
-            self.formatpanel.set_textblk_item(multi_select=bool(textitems))
+            if primary_item is None:
+                primary_item = self.canvas.primary_selected_text_item(textitems)
+            self.formatpanel.set_textblk_item(
+                multi_select=bool(textitems), primary_item=primary_item
+            )
 
     def on_projective_scale_requested(self, item: TextBlkItem) -> None:
         session = self.formatpanel.text_transform_session
@@ -1166,12 +1178,20 @@ class SceneTextManager(QObject):
         )
         self.canvas.push_text_command(command=None, update_pushed_step=True)
 
-    def apply_fontformat(self, fontformat: FontFormat):
+    def apply_fontformat(self, fontformat: FontFormat) -> None:
+        """Apply one whole format after settling transient edit owners.
+
+        >>> callable(SceneTextManager.apply_fontformat)
+        True
+        """
         selected_blks = self.canvas.selected_text_items()
         trans_widget_list = []
         for blk in selected_blks:
             trans_widget_list.append(self.pairwidget_list[blk.idx].e_trans)
         if len(selected_blks) > 0:
+            # Whole-format replacement can reindex or remove Image effects;
+            # settle the same transient owners used by undo/redo first.
+            self.formatpanel.resolve_text_transform_edits_for_history_change()
             self.canvas.push_undo_command(
                 ApplyFontformatCommand(
                     selected_blks,
@@ -1206,9 +1226,18 @@ class SceneTextManager(QObject):
                 self.textblk_item_list[idx].setSelected(True)
         finally:
             self.canvas.block_selection_signal = False
+        selected = self.canvas.selected_text_items()
+        anchor = self.textEditList.sel_anchor_widget
+        primary_item = (
+            self.textblk_item_list[anchor.idx]
+            if anchor is not None
+            and self.textblk_item_list[anchor.idx] in selected
+            else None
+        )
+        self.canvas.set_primary_selected_text_item(primary_item)
         # Refresh transform/format consumers without syncing back into the
         # pair list and discarding its Shift/drag anchor.
-        self._update_selection_panels(self.canvas.selected_text_items())
+        self._update_selection_panels(selected, primary_item)
 
     def on_textedit_list_focusout(self):
         fw = self.app.focusWidget()

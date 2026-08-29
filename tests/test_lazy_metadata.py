@@ -87,6 +87,32 @@ class DemoDetector:
         self.assertEqual(specs[0].params['model path']['options'], ['data/models/demo_a.pt'])
         self.assertEqual(validate_lazy_module_specs(specs), [])
 
+    def test_llm_inpaint_real_file_keeps_safe_lazy_request_metadata(self):
+        from ballontranslator.modules.llm_image import LLMImageRequestPolicy
+
+        specs = _scan_file(
+            'ballontranslator/modules/inpaint/inpaint_llm.py', 'inpainter'
+        )
+        spec = next(spec for spec in specs if spec.key == 'LLMInpaint')
+        self.assertIsNotNone(spec.params)
+        expected = {
+            'max requests per minute': 'max_requests_per_minute',
+            'delay': 'delay',
+            'retry attempts': 'retry_attempts',
+            'retry timeout': 'retry_timeout',
+            'request timeout': 'request_timeout',
+            'max resolution': 'max_resolution',
+            'proxy': 'proxy',
+        }
+        policy = LLMImageRequestPolicy()
+        for param_key, policy_key in expected.items():
+            self.assertIn(param_key, spec.params)
+            self.assertEqual(
+                spec.params[param_key]['value'], getattr(policy, policy_key)
+            )
+        warnings = validate_lazy_module_specs(specs)
+        self.assertEqual(warnings, [])
+
     def test_current_lazy_registry_metadata_is_complete(self):
         from ballontranslator.modules import GET_VALID_TEXTDETECTORS, INPAINTERS, OCR, TEXTDETECTORS, TRANSLATORS
 

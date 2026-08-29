@@ -1,13 +1,27 @@
 import base64
 import copy
 import io
+import threading
+import time
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
 
-from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMBaseURLRequiredError, LLMModelRequiredError
+from ballontranslator.modules.exceptions import (
+    LLMApiKeyRequiredError,
+    LLMBaseURLRequiredError,
+    LLMModelRequiredError,
+    LLMRequestStopped,
+)
 from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
+from ballontranslator.modules import llm_image
+from ballontranslator.modules.llm_image import (
+    LLMImageRequester,
+    LLMImageRequestPolicy,
+    _SharedLLMImageThrottle,
+)
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile
 
@@ -84,6 +98,102 @@ class FakeInpaint(LLMInpaint):
 
     def _respect_delay(self):
         pass
+
+
+class LLMImageThrottleTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.throttle = _SharedLLMImageThrottle()
+        self.throttle_patch = patch.object(
+            llm_image, '_LLM_IMAGE_THROTTLE', self.throttle
+        )
+        self.throttle_patch.start()
+
+    def tearDown(self) -> None:
+        self.throttle_patch.stop()
+
+    @staticmethod
+    def _requester(delay: float, rpm: int = 0) -> LLMImageRequester:
+        return LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=delay,
+            max_requests_per_minute=rpm,
+        ))
+
+    def test_delay_is_shared_across_fresh_requesters(self):
+        first = self._requester(0.04)
+        second = self._requester(0.04)
+        started = time.monotonic()
+        first._respect_delay()
+        second._respect_delay()
+
+        self.assertGreaterEqual(time.monotonic() - started, 0.025)
+
+    def test_concurrent_fresh_requesters_reserve_distinct_slots(self):
+        requesters = (self._requester(0.04), self._requester(0.04))
+        barrier = threading.Barrier(3)
+        completed = []
+        errors = []
+
+        def reserve(requester) -> None:
+            try:
+                barrier.wait()
+                requester._respect_delay()
+                completed.append(time.monotonic())
+            except Exception as error:
+                errors.append(error)
+
+        threads = [
+            threading.Thread(target=reserve, args=(requester,))
+            for requester in requesters
+        ]
+        for thread in threads:
+            thread.start()
+        barrier.wait()
+        for thread in threads:
+            thread.join(1.0)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(len(completed), 2)
+        self.assertGreaterEqual(abs(completed[1] - completed[0]), 0.025)
+
+    def test_rpm_is_shared_and_throttle_wait_is_stoppable(self):
+        first = self._requester(0.0, rpm=1)
+        second = self._requester(0.0, rpm=1)
+        first._respect_delay()
+        with self.throttle._condition:
+            almost_expired = time.monotonic() - 59.9
+            self.throttle._request_times.clear()
+            self.throttle._request_times.append(almost_expired)
+            self.throttle._last_request_time = almost_expired
+            self.throttle._next_allowed_time = 0.0
+
+        started = time.monotonic()
+        second._respect_delay()
+        self.assertGreaterEqual(time.monotonic() - started, 0.12)
+
+        with self.throttle._condition:
+            self.throttle._request_times.clear()
+            self.throttle._last_request_time = None
+            self.throttle._next_allowed_time = 0.0
+        blocker = self._requester(10.0)
+        waiter = self._requester(10.0)
+        blocker._respect_delay()
+        stop_event = threading.Event()
+        waiter.set_stop_event(stop_event)
+        stopped = []
+
+        def wait_for_slot() -> None:
+            try:
+                waiter._respect_delay()
+            except LLMRequestStopped:
+                stopped.append(True)
+
+        thread = threading.Thread(target=wait_for_slot)
+        thread.start()
+        time.sleep(0.02)
+        stop_event.set()
+        thread.join(0.5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(stopped, [True])
 
 
 class LLMInpaintTest(unittest.TestCase):
@@ -208,6 +318,41 @@ class LLMInpaintTest(unittest.TestCase):
         call = self.inpainter.http_client.calls[0]
         self.assertEqual(call['url'], 'https://image.example/v1/images/edits')
 
+    def test_prompt_only_openai_request_uses_generation_endpoint_and_json(self):
+        profile = self.inpainter.profile
+        profile.image_base_url = 'https://image.example/v1/images/edits'
+
+        result = self.inpainter.request_image(
+            profile, None, prompt='Draw paper', model='image-v2'
+        )
+
+        self.assertEqual(result.shape, (2, 2, 3))
+        call = self.inpainter.http_client.calls[0]
+        self.assertEqual(
+            call['url'], 'https://image.example/v1/images/generations'
+        )
+        self.assertEqual(
+            call['json'], {'model': 'image-v2', 'prompt': 'Draw paper'}
+        )
+        self.assertNotIn('files', call)
+        self.assertNotIn('data', call)
+
+    def test_stop_after_throttle_reservation_skips_provider_dispatch(self):
+        profile = self.inpainter.profile
+        stop_event = threading.Event()
+        self.inpainter.set_stop_event(stop_event)
+
+        with patch.object(
+            self.inpainter, '_respect_delay', side_effect=stop_event.set
+        ), self.assertRaises(LLMRequestStopped):
+            self.inpainter.request_image(
+                profile,
+                np.zeros((2, 2, 3), dtype=np.uint8),
+                prompt='Do not dispatch',
+            )
+
+        self.assertEqual(self.inpainter.http_client.calls, [])
+
     def test_openrouter_request_accepts_final_images_endpoint(self):
         profile = self.inpainter.profile
         profile.image_base_url = 'https://openrouter.ai/api/v1/images'
@@ -216,6 +361,17 @@ class LLMInpaintTest(unittest.TestCase):
 
         call = self.inpainter.http_client.calls[0]
         self.assertEqual(call['url'], 'https://openrouter.ai/api/v1/images')
+
+    def test_prompt_only_openrouter_request_omits_image_reference(self):
+        profile = self.inpainter.profile
+
+        self.inpainter.request_image(
+            profile, None, prompt='Draw paper', model='image-v2'
+        )
+
+        payload = self.inpainter.http_client.calls[0]['json']
+        self.assertEqual(payload['prompt'], 'Draw paper')
+        self.assertNotIn('input_references', payload)
 
     def test_gemini_request_uses_generate_content_endpoint_and_x_goog_key(self):
         profile = _gemini_image_profile()
@@ -253,6 +409,19 @@ class LLMInpaintTest(unittest.TestCase):
             call['url'],
             'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
         )
+
+    def test_prompt_only_gemini_request_omits_inline_image(self):
+        profile = _gemini_image_profile()
+        inpainter = FakeInpaint(FakeResponse(json_data={
+            'output_image': {'data': _encoded_png()},
+        }))
+
+        inpainter.request_image(
+            profile, None, prompt='Draw paper', model=profile.image_model
+        )
+
+        parts = inpainter.http_client.calls[0]['json']['contents'][0]['parts']
+        self.assertEqual(parts, [{'text': 'Draw paper'}])
 
     def test_gemini_response_decodes_inline_data_image(self):
         response = {

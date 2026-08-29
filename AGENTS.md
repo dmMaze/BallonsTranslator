@@ -54,6 +54,11 @@ Important areas:
 - Tests should protect behavior and failure modes, not obsolete architecture. After simplifying a feature, adjust tests to cover fallback behavior and real public helpers instead of preserving removed injection or wrapper APIs.
 - Do not test incidental widget hierarchy, object names, exact sizes, margins, spacing, stretch factors, or other cosmetic implementation details. Protect observable behavior and failure modes; verify styling with themed visual checks instead.
 
+## Documentation Rules
+
+- Keep maintainer documentation as concise current-state guidance, not an implementation diary. Document architecture and ownership, stable contracts, failure modes, extension points, and verification; leave control-by-control UI details, pixel measurements, temporary decisions, change history, and behavior already clear from code or tests out of the guide.
+- Keep each fact in one owning guide and link to it from overview documents. When behavior changes, replace stale prose and remove nearby duplication in the same pass instead of appending another narrative layer.
+
 ## Performance Rules
 
 - For startup or UI latency regressions, trace the real caller chain and repeated lifecycle events before optimizing. Check whether a signal path, selection mirror, or config-panel refresh is rebuilding the same widget more than once.

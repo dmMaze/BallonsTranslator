@@ -1,15 +1,32 @@
+import hashlib
+import io
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
+import tempfile
+import warnings
 from docx.shared import Inches
 from docx import Document
 import piexif.helper
 import numpy as np
 import os.path as osp
-from typing import Tuple, Union, List, Dict
+from typing import BinaryIO, Optional, Tuple, Union, List, Dict
 from PIL import Image
 
 from .logger import logger as LOGGER
 from .io_utils import find_all_imgs, imread, imwrite, NumpyEncoder
-from .textblock import TextBlock, FontFormat
+from .textblock import (
+    FontFormat,
+    TextBlock,
+    normalize_textblock_effect_payload,
+)
+from .fontformat import warn_ignored_legacy_effects
+from .raster_assets import (
+    RASTER_ASSET_MAX_DECODED_BYTES,
+    RASTER_ASSET_MAX_PIXELS,
+    RasterAssetRef,
+    validate_raster_dimensions,
+)
+from .rgba import premultiply_rgba_in_place
+from .text_alpha_mask import AlphaBrushStroke, TextAlphaMask
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -24,6 +41,17 @@ class ProjectNotSupportedException(Exception):
 
 class ImgnameNotInProjectException(Exception):
     pass
+
+
+RASTER_ASSET_MAX_SOURCE_BYTES = 32 * 1024 * 1024
+# Small effect stacks commonly reuse several Image/Texture assets. The byte
+# budget remains the authoritative memory bound; this count only prevents a
+# large number of tiny decoded entries from accumulating.
+RASTER_ASSET_DECODE_CACHE_ITEMS = 16
+RASTER_ASSET_DECODE_CACHE_MAX_BYTES = RASTER_ASSET_MAX_DECODED_BYTES * 2
+_RASTER_ASSET_RGBA8_MODES = {
+    '1', 'L', 'LA', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'HSV'
+}
 
 
 def get_last_modified_file(file_prefix, exts, ext_fallback=None):
@@ -96,6 +124,8 @@ class TextBlkEncoder(NumpyEncoder):
             return obj.to_dict()
         elif isinstance(obj, FontFormat):
             return obj.to_serializable_dict()
+        elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke)):
+            return obj.to_serializable_dict()
         return NumpyEncoder.default(self, obj)
 
 
@@ -103,6 +133,14 @@ class ProjImgTrans:
 
     def __init__(self, directory: str = None):
         self._load_identity = object()
+        self._raster_asset_cache: Dict[
+            str,
+            Tuple[
+                Tuple[int, int, int, int],
+                np.ndarray,
+                Optional[np.ndarray],
+            ],
+        ] = {}
         self.type = 'imgtrans'
         self.directory: str = None
         self.pages: Dict[str, List[TextBlock]] = {}
@@ -145,6 +183,7 @@ class ProjImgTrans:
         return self.type+'_'+osp.basename(self.directory)
 
     def load(self, directory: str, json_path: str = None) -> bool:
+        self._raster_asset_cache.clear()
         self.directory = directory
         if json_path is None:
             self.proj_path = osp.join(
@@ -179,8 +218,418 @@ class ProjImgTrans:
     def result_dir(self):
         return osp.join(self.directory, 'result')
 
+    def assets_dir(self) -> str:
+        """Return the project-owned directory for reusable immutable assets."""
+        return osp.join(self.directory, 'assets')
+
+    def _resolved_assets_root(self, *, create: bool = False) -> str:
+        """Return the real assets root only when it stays in the project."""
+        if not self.directory or not osp.isdir(self.directory):
+            raise ProjectDirNotExistException
+        assets_dir = self.assets_dir()
+        if create:
+            os.makedirs(assets_dir, exist_ok=True)
+        project_root = osp.realpath(self.directory)
+        assets_root = osp.realpath(assets_dir)
+        try:
+            contained = (
+                osp.commonpath((project_root, assets_root)) == project_root
+            )
+        except ValueError:
+            contained = False
+        if not contained:
+            raise OSError('project assets directory resolves outside the project')
+        return assets_root
+
+    @staticmethod
+    def _raster_extension(image_format: str) -> str:
+        extensions = {
+            'BMP': '.bmp',
+            'JPEG': '.jpg',
+            'JPEGXL': '.jxl',
+            'JXL': '.jxl',
+            'PNG': '.png',
+            'WEBP': '.webp',
+        }
+        try:
+            return extensions[image_format.upper()]
+        except (AttributeError, KeyError) as error:
+            raise ValueError('unsupported raster asset format') from error
+
+    @staticmethod
+    def _hash_raster_asset_file(path: str) -> str:
+        """Hash one size-bounded raster file.
+
+        >>> len(ProjImgTrans._hash_raster_asset_file(__file__))
+        64
+        """
+        digest = hashlib.sha256()
+        total = 0
+        with open(path, 'rb') as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                total += len(chunk)
+                if total > RASTER_ASSET_MAX_SOURCE_BYTES:
+                    raise ValueError('raster asset exceeds the source-byte limit')
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    @classmethod
+    def _decode_raster_asset_snapshot(
+        cls, path: str
+    ) -> Tuple[str, np.ndarray]:
+        """Fully decode one bounded snapshot to owned immutable RGBA8 pixels.
+
+        Source bytes are capped at 32 MiB, images at 64 Mpx, and decoded RGBA
+        storage at 256 MiB. Integer/float images wider than eight bits are
+        rejected rather than truncated.
+
+        >>> callable(ProjImgTrans._decode_raster_asset_snapshot)
+        True
+        """
+        if osp.getsize(path) > RASTER_ASSET_MAX_SOURCE_BYTES:
+            raise ValueError('raster asset exceeds the source-byte limit')
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter('error', Image.DecompressionBombWarning)
+                with Image.open(path) as image:
+                    extension = cls._raster_extension(image.format)
+                    width, height = image.size
+                    validate_raster_dimensions(width, height)
+                    if image.mode not in _RASTER_ASSET_RGBA8_MODES:
+                        raise ValueError(
+                            'raster asset must use supported 8-bit channels'
+                        )
+                    rgba = np.array(image.convert('RGBA'), dtype=np.uint8)
+        except ValueError:
+            raise
+        except (
+            Image.DecompressionBombError,
+            Image.DecompressionBombWarning,
+            MemoryError,
+            OSError,
+        ) as error:
+            raise ValueError('unable to decode raster asset') from error
+        if rgba.shape != (height, width, 4):
+            raise ValueError('unable to decode raster asset as RGBA8')
+        rgba = np.ascontiguousarray(rgba)
+        rgba.flags.writeable = False
+        return extension, rgba
+
+    @staticmethod
+    def _raster_asset_signature(path: str) -> Tuple[int, int, int, int]:
+        stat = os.stat(path)
+        return stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+    def _cache_raster_asset(
+        self,
+        asset: RasterAssetRef,
+        rgba: np.ndarray,
+        signature: Tuple[int, int, int, int],
+    ) -> None:
+        key = asset.path
+        self._raster_asset_cache.pop(key, None)
+        self._raster_asset_cache[key] = (signature, rgba, None)
+        self._trim_raster_asset_cache(key)
+
+    @staticmethod
+    def _raster_asset_cache_entry_bytes(
+        cached: Tuple[
+            Tuple[int, int, int, int],
+            np.ndarray,
+            Optional[np.ndarray],
+        ],
+    ) -> int:
+        """Count unique straight and premultiplied storage in one entry.
+
+        >>> rgba = np.zeros((2, 3, 4), dtype=np.uint8)
+        >>> cached = ((0, 0, 0, 0), rgba, rgba)
+        >>> ProjImgTrans._raster_asset_cache_entry_bytes(cached)
+        24
+        """
+        rgba, premultiplied = cached[1], cached[2]
+        return rgba.nbytes + (
+            premultiplied.nbytes
+            if premultiplied is not None and premultiplied is not rgba
+            else 0
+        )
+
+    def _trim_raster_asset_cache(self, retained_path: str) -> None:
+        """Retain the requested asset while enforcing count and byte bounds.
+
+        >>> callable(ProjImgTrans._trim_raster_asset_cache)
+        True
+        """
+        while len(self._raster_asset_cache) > 1:
+            cached_bytes = sum(
+                self._raster_asset_cache_entry_bytes(cached)
+                for cached in self._raster_asset_cache.values()
+            )
+            if (
+                len(self._raster_asset_cache)
+                <= RASTER_ASSET_DECODE_CACHE_ITEMS
+                and cached_bytes <= RASTER_ASSET_DECODE_CACHE_MAX_BYTES
+            ):
+                break
+            oldest = next(
+                path for path in self._raster_asset_cache
+                if path != retained_path
+            )
+            self._raster_asset_cache.pop(oldest)
+
+    def _cached_raster_asset_pixels(
+        self,
+        asset: RasterAssetRef,
+        cached: Tuple[
+            Tuple[int, int, int, int],
+            np.ndarray,
+            Optional[np.ndarray],
+        ],
+        *,
+        premultiplied: bool,
+    ) -> np.ndarray:
+        """Return the requested immutable representation from one cache entry.
+
+        >>> callable(ProjImgTrans._cached_raster_asset_pixels)
+        True
+        """
+        if not premultiplied:
+            return cached[1]
+        if cached[2] is None:
+            rgba = cached[1]
+            if np.all(rgba[..., 3] == 255):
+                premultiplied_rgba = rgba
+            else:
+                premultiplied_rgba = np.array(rgba, copy=True, order='C')
+                premultiply_rgba_in_place(premultiplied_rgba)
+                premultiplied_rgba.flags.writeable = False
+            cached = (cached[0], rgba, premultiplied_rgba)
+            self._raster_asset_cache[asset.path] = cached
+            self._trim_raster_asset_cache(asset.path)
+        assert cached[2] is not None
+        return cached[2]
+
+    def _import_raster_asset_stream(
+        self,
+        source: BinaryIO,
+        display_name: str,
+    ) -> RasterAssetRef:
+        """Validate and atomically install one already-open raster stream."""
+        assets_dir = self._resolved_assets_root(create=True)
+        temporary_path = None
+        try:
+            digest = hashlib.sha256()
+            total = 0
+            with tempfile.NamedTemporaryFile(
+                mode='wb', prefix='.import-', dir=assets_dir, delete=False
+            ) as temporary:
+                temporary_path = temporary.name
+                for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                    total += len(chunk)
+                    if total > RASTER_ASSET_MAX_SOURCE_BYTES:
+                        raise ValueError(
+                            'raster asset exceeds the source-byte limit'
+                        )
+                    digest.update(chunk)
+                    temporary.write(chunk)
+            extension, rgba = self._decode_raster_asset_snapshot(
+                temporary_path
+            )
+            digest_hex = digest.hexdigest()
+            filename = digest_hex + extension
+            destination = osp.join(assets_dir, filename)
+            if (
+                osp.commonpath((assets_dir, osp.realpath(destination)))
+                != assets_dir
+            ):
+                raise OSError(
+                    'raster asset destination resolves outside assets'
+                )
+            if osp.exists(destination):
+                if self._hash_raster_asset_file(destination) != digest_hex:
+                    raise OSError(
+                        'content-addressed raster asset has unexpected contents'
+                    )
+            else:
+                os.replace(temporary_path, destination)
+                temporary_path = None
+            asset = RasterAssetRef(
+                f'assets/{filename}', osp.basename(display_name)
+            )
+            self._cache_raster_asset(
+                asset, rgba, self._raster_asset_signature(destination)
+            )
+            return asset
+        except (
+            Image.DecompressionBombError,
+            Image.DecompressionBombWarning,
+            MemoryError,
+        ) as error:
+            raise ValueError('unable to read raster asset') from error
+        finally:
+            if temporary_path is not None and osp.exists(temporary_path):
+                os.unlink(temporary_path)
+
+    def import_raster_asset(self, source_path: str) -> RasterAssetRef:
+        """Snapshot and validate one raster before content-addressing it.
+
+        The source is opened once. Hashing and decoding both use the bounded
+        temporary copy, so a concurrently replaced source cannot split the
+        identity from the pixels that were validated.
+
+        >>> callable(ProjImgTrans.import_raster_asset)
+        True
+        """
+        if not isinstance(source_path, str) or not osp.isfile(source_path):
+            raise ValueError('raster asset source must be an existing file')
+        with open(source_path, 'rb') as source:
+            return self._import_raster_asset_stream(source, source_path)
+
+    def import_raster_asset_bytes(
+        self,
+        payload: bytes,
+        display_name: str = 'generated.png',
+    ) -> RasterAssetRef:
+        """Import generated raster bytes through the normal asset boundary.
+
+        >>> callable(ProjImgTrans.import_raster_asset_bytes)
+        True
+        """
+        if not isinstance(payload, bytes) or not payload:
+            raise ValueError('raster asset payload must be non-empty bytes')
+        if not isinstance(display_name, str) or not display_name.strip():
+            raise ValueError('raster asset display name must be non-empty')
+        return self._import_raster_asset_stream(
+            io.BytesIO(payload), display_name
+        )
+
+    def _resolve_raster_asset_path(
+        self,
+        asset: RasterAssetRef,
+    ) -> Optional[str]:
+        """Resolve containment and existence without reading asset bytes."""
+        try:
+            assets_root = self._resolved_assets_root()
+        except (OSError, ProjectDirNotExistException):
+            return None
+        path = osp.realpath(osp.join(self.directory, *asset.path.split('/')))
+        try:
+            contained = osp.commonpath((assets_root, path)) == assets_root
+        except ValueError:
+            contained = False
+        return path if contained and osp.isfile(path) else None
+
+    def resolve_raster_asset(
+        self,
+        asset: RasterAssetRef,
+        *,
+        strict: bool = False,
+    ) -> Optional[str]:
+        """Resolve a managed relative reference without escaping ``assets``.
+
+        Missing optional assets are bypassed during interactive rendering;
+        strict export receives an exception instead.
+        """
+        if not isinstance(asset, RasterAssetRef):
+            raise TypeError('raster asset resolution requires RasterAssetRef')
+        path = self._resolve_raster_asset_path(asset)
+        if path is not None:
+            if strict:
+                signature = self._raster_asset_signature(path)
+                digest = self._hash_raster_asset_file(path)
+                if self._raster_asset_signature(path) != signature:
+                    raise OSError('raster asset changed while it was verified')
+                if digest != asset.digest:
+                    raise OSError(
+                        f'Raster asset contents do not match: {asset.path}'
+                    )
+            return path
+        message = f'Raster asset is unavailable: {asset.path}'
+        if strict:
+            raise FileNotFoundError(message)
+        LOGGER.warning(message)
+        return None
+
+    def load_raster_asset(
+        self,
+        asset: RasterAssetRef,
+        *,
+        strict: bool = False,
+        premultiplied: bool = False,
+    ) -> Optional[np.ndarray]:
+        """Return shared immutable straight or premultiplied RGBA8 pixels.
+
+        Every read resolves existence and containment before a decoded-cache
+        hit. Unchanged warm entries stay hash-free; cold or stat-changed files
+        are digest-verified before decoding. Strict reads always verify source
+        bytes inside the same signature bracket as cache reuse or decode.
+        Failures are not cached, so restore plus invalidation recovers.
+        """
+        if not isinstance(asset, RasterAssetRef):
+            raise TypeError('raster asset loading requires RasterAssetRef')
+        path = self._resolve_raster_asset_path(asset)
+        if path is None:
+            message = f'Raster asset is unavailable: {asset.path}'
+            if strict:
+                raise FileNotFoundError(message)
+            LOGGER.warning(message)
+            return None
+        try:
+            signature = self._raster_asset_signature(path)
+            cached = self._raster_asset_cache.get(asset.path)
+            warm = cached is not None and cached[0] == signature
+            if warm and not strict:
+                return self._cached_raster_asset_pixels(
+                    asset, cached, premultiplied=premultiplied
+                )
+            if not warm:
+                self._raster_asset_cache.pop(asset.path, None)
+            digest = self._hash_raster_asset_file(path)
+            if digest != asset.digest:
+                raise OSError(
+                    f'Raster asset contents do not match: {asset.path}'
+                )
+            if warm:
+                assert cached is not None
+                rgba = self._cached_raster_asset_pixels(
+                    asset, cached, premultiplied=premultiplied
+                )
+            else:
+                extension, rgba = self._decode_raster_asset_snapshot(path)
+                if not asset.path.endswith(extension):
+                    raise ValueError(
+                        'raster asset format does not match its ref'
+                    )
+            if self._raster_asset_signature(path) != signature:
+                raise OSError('raster asset changed while it was loading')
+            if warm:
+                return rgba
+        except (OSError, TypeError, ValueError) as error:
+            self._raster_asset_cache.pop(asset.path, None)
+            if strict:
+                raise
+            LOGGER.warning('Unable to decode Raster asset: %s', error)
+            return None
+        self._cache_raster_asset(asset, rgba, signature)
+        cached = self._raster_asset_cache[asset.path]
+        return self._cached_raster_asset_pixels(
+            asset, cached, premultiplied=premultiplied
+        )
+
     def load_from_dict(self, proj_dict: dict):
+        self._raster_asset_cache.clear()
         self.set_current_img(None)
+        effect_notices = set()
+
+        def load_blocks(records: List[dict]) -> List[TextBlock]:
+            blocks = []
+            for record in records:
+                normalized, notices = normalize_textblock_effect_payload(
+                    record
+                )
+                effect_notices.update(notices)
+                blocks.append(TextBlock(**normalized))
+            return blocks
+
         try:
             self.pages = {}
             self._pagename2idx = {}
@@ -191,7 +640,7 @@ class ProjImgTrans:
             found_pages = find_all_imgs(img_dir=self.directory, abs_path=False, sort=True)
             for ii, imname in enumerate(found_pages):
                 if imname in page_dict:
-                    self.pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
+                    self.pages[imname] = load_blocks(page_dict[imname])
                     not_found_pages.remove(imname)
                 else:
                     self.pages[imname] = []
@@ -199,9 +648,10 @@ class ProjImgTrans:
                 self._pagename2idx[imname] = ii
                 self._idx2pagename[ii] = imname
             for imname in not_found_pages:
-                self.not_found_pages[imname] = [TextBlock(**blk_dict) for blk_dict in page_dict[imname]]
+                self.not_found_pages[imname] = load_blocks(page_dict[imname])
         except Exception as e:
             raise ProjectNotSupportedException(e)
+        warn_ignored_legacy_effects(effect_notices, 'project')
         
         if 'image_info' in proj_dict:
             self._image_info = proj_dict['image_info']
@@ -382,6 +832,7 @@ class ProjImgTrans:
     def new_project(self):
         if not osp.exists(self.directory):
             raise ProjectDirNotExistException
+        self._raster_asset_cache.clear()
         self.set_current_img(None)
         imglist = find_all_imgs(self.directory, abs_path=False, sort=True)
         self.pages = {}
@@ -628,6 +1079,7 @@ class ProjImgTrans:
         body_xml_str = doc._body._element.xml
 
         pages = {}
+        effect_notices = set()
         bub_index = 0
         for tbl in re.findall(r'<w:tbl>(.*?)</w:tbl>', body_xml_str, re.DOTALL):
             for tr in re.findall(r'<w:tr(.*?)>(.*?)</w:tr>', tbl, re.DOTALL):
@@ -654,11 +1106,16 @@ class ProjImgTrans:
                     imgkey = meta_dict.pop("imgkey")
                     if not imgkey in pages:
                         pages[imgkey] = []
-                    pages[imgkey].append(TextBlock(**meta_dict))
+                    normalized, notices = normalize_textblock_effect_payload(
+                        meta_dict
+                    )
+                    effect_notices.update(notices)
+                    pages[imgkey].append(TextBlock(**normalized))
                     
                     if fin_page_signal is not None:
                         fin_page_signal.emit()
 
+        warn_ignored_legacy_effects(effect_notices, 'document import')
         self.merge_from_proj_dict(pages)
         if delete_tmp_folder:
             shutil.rmtree(tmp_bubble_folder)

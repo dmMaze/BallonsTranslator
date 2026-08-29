@@ -6,15 +6,25 @@ from dataclasses import (
     replace,
 )
 import enum
+import math
+from numbers import Real
 import re
 import copy
-from typing import ClassVar, Iterator, Sequence
+from typing import ClassVar, Iterator, Mapping, Sequence, Set, Tuple
 
 import numpy as np
 
 from . import shared
 from .logger import logger as LOGGER
 from .structures import Union, List, Config, field, nested_dataclass
+from .text_effects import (
+    SolidPaint,
+    TextEffectStack,
+    coerce_text_effect_stack,
+    effect_paint_fallback_color,
+    primary_stroke,
+    with_primary_stroke,
+)
 
 
 TEXT_TRANSFORM_SCALE_MIN = 0.1
@@ -565,6 +575,129 @@ def font_weight_from_qt(weight: int) -> FontWeight:
     return coerce_font_weight(int(weight))
 
 
+_TEXT_EFFECTS_ABSENT = object()
+_LEGACY_EFFECT_VIEW_NAMES = {'opacity', 'stroke_width', 'srgb'}
+_NEUTRAL_LEGACY_EFFECT_FIELDS = {
+    'shadow_radius': 0.0,
+    'shadow_strength': 1.0,
+    'shadow_color': [0, 0, 0],
+    'shadow_offset': [0.0, 0.0],
+    'gradient_enabled': False,
+}
+
+
+def _legacy_sequence_differs(value: object, default: tuple) -> bool:
+    try:
+        return tuple(value) != default
+    except TypeError:
+        return True
+
+
+def _ignored_legacy_effect_notices(
+    payload: Mapping[str, object],
+) -> Set[str]:
+    notices = set()
+    if (
+        payload.get('shadow_radius', 0.0) not in (0, 0.0, None)
+        or payload.get('shadow_strength', 1.0) not in (1, 1.0, None)
+        or _legacy_sequence_differs(
+            payload.get('shadow_color', (0, 0, 0)), (0, 0, 0)
+        )
+        or _legacy_sequence_differs(
+            payload.get('shadow_offset', (0.0, 0.0)), (0.0, 0.0)
+        )
+    ):
+        notices.add('shadow')
+    if payload.get('gradient_enabled', False) not in (False, 0, None):
+        notices.add('gradient')
+    return notices
+
+
+def warn_ignored_legacy_effects(
+    notices: Set[str], owner: str
+) -> None:
+    """Warn once per ignored legacy effect family for one load owner."""
+    if 'shadow' in notices:
+        LOGGER.warning(
+            'Ignoring legacy text Shadow settings while loading %s.', owner
+        )
+    if 'gradient' in notices:
+        LOGGER.warning(
+            'Ignoring legacy text Gradient settings while loading %s.', owner
+        )
+
+
+def _migrate_legacy_text_effects(
+    payload: Mapping[str, object],
+) -> TextEffectStack:
+    stack = TextEffectStack()
+    try:
+        stack = replace(
+            stack,
+            overall_opacity=payload.get('opacity', 1.0),
+        )
+    except (TypeError, ValueError) as error:
+        LOGGER.warning(
+            'Ignoring invalid legacy text opacity (%s); using 1.0.', error
+        )
+
+    width = payload.get('stroke_width', 0.0)
+    if isinstance(width, bool) or not isinstance(width, Real):
+        LOGGER.warning(
+            'Ignoring invalid legacy Stroke width %r.', width
+        )
+        return stack
+    width = float(width)
+    if not math.isfinite(width) or width < 0.0:
+        LOGGER.warning(
+            'Ignoring invalid legacy Stroke width %r.', width
+        )
+        return stack
+    if width == 0.0:
+        return stack
+
+    try:
+        paint = SolidPaint(payload.get('srgb', (0, 0, 0)))
+    except (TypeError, ValueError) as error:
+        LOGGER.warning(
+            'Ignoring invalid legacy Stroke color (%s); using black.', error
+        )
+        paint = SolidPaint()
+    return with_primary_stroke(
+        stack,
+        width=width,
+        paint=paint,
+        position='outside',
+    )
+
+
+def normalize_fontformat_effect_payload(
+    payload: Mapping[str, object],
+) -> Tuple[dict, Set[str]]:
+    """Normalize one passive FontFormat payload before construction.
+
+    Presence of ``text_effects`` is authoritative, including malformed or
+    empty values. Legacy Shadow/Gradient fields are neutralized for the
+    temporary renderer adapter and reported to the caller for aggregation.
+
+    >>> normalized, notices = normalize_fontformat_effect_payload({
+    ...     'opacity': 0.7, 'stroke_width': 0.2, 'srgb': [1, 2, 3]
+    ... })
+    >>> coerce_text_effect_stack(normalized['text_effects']).overall_opacity
+    0.7
+    >>> notices
+    set()
+    """
+    normalized = dict(payload)
+    notices = _ignored_legacy_effect_notices(normalized)
+    if 'text_effects' not in normalized:
+        normalized['text_effects'] = (
+            _migrate_legacy_text_effects(normalized).to_serializable_dict()
+        )
+    normalized.update(copy.deepcopy(_NEUTRAL_LEGACY_EFFECT_FIELDS))
+    return normalized, notices
+
+
 @nested_dataclass
 class FontFormat(Config):
 
@@ -606,7 +739,70 @@ class FontFormat(Config):
     text_transform: Union[TextTransformStack, List] = field(
         default_factory=TextTransformStack
     )
+    text_effects: Union[TextEffectStack, dict] = _TEXT_EFFECTS_ABSENT
     deprecated_attributes: dict = field(default_factory = lambda: dict())
+
+    def __getattribute__(self, name: str):
+        # Pipeline/headless compatibility still exposes these legacy names,
+        # but their only live owner is text_effects. The UI edits the stack.
+        if name in _LEGACY_EFFECT_VIEW_NAMES:
+            data = object.__getattribute__(self, '__dict__')
+            stack = data.get('text_effects')
+            if isinstance(stack, TextEffectStack):
+                if name == 'opacity':
+                    return stack.overall_opacity
+                stroke = primary_stroke(stack)
+                if name == 'stroke_width':
+                    if (
+                        stroke is None
+                        or not stroke.enabled
+                        or stroke.opacity == 0.0
+                    ):
+                        return 0.0
+                    return stroke.width
+                return (
+                    list(effect_paint_fallback_color(stroke.paint))
+                    if stroke is not None
+                    else [0, 0, 0]
+                )
+        return object.__getattribute__(self, name)
+
+    def __setattr__(self, name: str, value: object) -> None:
+        data = object.__getattribute__(self, '__dict__')
+        stack = data.get('text_effects')
+        if name == 'text_effects' and 'text_effects' in data:
+            if not isinstance(value, TextEffectStack):
+                raise TypeError('live text_effects requires TextEffectStack')
+        if name in _LEGACY_EFFECT_VIEW_NAMES and isinstance(
+            stack, TextEffectStack
+        ):
+            if name == 'opacity':
+                object.__setattr__(
+                    self,
+                    'text_effects',
+                    replace(stack, overall_opacity=value),
+                )
+                return
+            if name == 'stroke_width':
+                object.__setattr__(
+                    self,
+                    'text_effects',
+                    with_primary_stroke(stack, width=value),
+                )
+                return
+            if isinstance(value, np.ndarray):
+                value = value.tolist()
+            parameters = {'paint': SolidPaint(value)}
+            if primary_stroke(stack) is None:
+                # A detected/overridden paint may exist before width is known.
+                parameters['width'] = 0.0
+            object.__setattr__(
+                self,
+                'text_effects',
+                with_primary_stroke(stack, **parameters),
+            )
+            return
+        object.__setattr__(self, name, value)
 
     @property
     def size_pt(self):
@@ -691,6 +887,21 @@ class FontFormat(Config):
                 self.text_transform,
                 glyph_slant_angle=glyph_slant_angle,
             )
+
+        raw_text_effects = self.__dict__.get(
+            'text_effects', _TEXT_EFFECTS_ABSENT
+        )
+        effects_present = raw_text_effects is not _TEXT_EFFECTS_ABSENT
+        if effects_present:
+            text_effects = coerce_text_effect_stack(raw_text_effects)
+        else:
+            text_effects = _migrate_legacy_text_effects(self.__dict__)
+        object.__setattr__(self, 'text_effects', text_effects)
+        object.__setattr__(
+            self, '_text_effects_payload_present', effects_present
+        )
+        for name in _LEGACY_EFFECT_VIEW_NAMES:
+            self.__dict__.pop(name, None)
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:
@@ -704,6 +915,23 @@ class FontFormat(Config):
         serialized['glyph_slant_angle'] = (
             self.text_transform.glyph_slant_angle
         )
+        serialized.pop('_text_effects_payload_present', None)
+        serialized['text_effects'] = self.text_effects.to_serializable_dict()
+        serialized['opacity'] = self.text_effects.overall_opacity
+        stroke = primary_stroke(self.text_effects)
+        compatible_stroke = (
+            stroke is not None
+            and not stroke.is_neutral()
+        )
+        serialized['stroke_width'] = (
+            stroke.width if compatible_stroke else 0.0
+        )
+        serialized['srgb'] = (
+            list(effect_paint_fallback_color(stroke.paint))
+            if compatible_stroke
+            else [0, 0, 0]
+        )
+        serialized.update(copy.deepcopy(_NEUTRAL_LEGACY_EFFECT_FIELDS))
         return serialized
 
     def deepcopy(self):
@@ -716,6 +944,26 @@ class FontFormat(Config):
             return set()
         tgt_keys = target.annotations_set()
         updated_keys = set()
+        has_effect_stack = isinstance(
+            getattr(target, 'text_effects', None), TextEffectStack
+        )
+        if has_effect_stack:
+            old_opacity = self.opacity
+            old_width = self.stroke_width
+            old_color = self.srgb
+            effects_changed = self.text_effects != target.text_effects
+            if not compare or effects_changed:
+                self.text_effects = copy.deepcopy(target.text_effects)
+            if compare and effects_changed:
+                updated_keys.add('text_effects')
+                if old_opacity != target.opacity:
+                    updated_keys.add('opacity')
+                if old_width != target.stroke_width:
+                    updated_keys.add('stroke_width')
+                if old_color != target.srgb:
+                    updated_keys.add('srgb')
+            tgt_keys -= _LEGACY_EFFECT_VIEW_NAMES
+        tgt_keys.discard('text_effects')
         for key in tgt_keys:
             if not hasattr(self, key):
                 continue

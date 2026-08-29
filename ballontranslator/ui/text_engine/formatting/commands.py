@@ -196,18 +196,6 @@ def ffmt_change_frgb(param_name: str, values: tuple, act_ffmt: FontFormat, is_gl
     for blkitem, value in zip(blkitems, values):
         blkitem.setFontColor(value, **set_kwargs)
 
-@font_formating(push_undostack=True)
-def ffmt_change_srgb(param_name: str, values: tuple, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setStrokeColor(value, **set_kwargs)
-
-@font_formating(push_undostack=True)
-def ffmt_change_stroke_width(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setStrokeWidth(value, **set_kwargs)
-
 @font_formating()
 def ffmt_change_font_size(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], clip_size=False, **kwargs):
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
@@ -229,39 +217,17 @@ def ffmt_change_alignment(param_name: str, values: float, act_ffmt: FontFormat, 
     for blkitem, value in zip(blkitems, values):
         blkitem.setAlignment(value, restore_cursor=restore_cursor)
 
-@font_formating(push_undostack=True)
-def ffmt_change_opacity(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setOpacity(value)
-
 @font_formating()
 def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     for blkitem, value in zip(blkitems, values):
         blkitem.setLineSpacingType(value)
 
 
-@font_formating(push_undostack=True)
-def ffmt_change_shadow_offset(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setBGAttribute(param_name, value)
-
-
-@font_formating()
-def ffmt_change_gradient_enabled(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
-    for blkitem, value in zip(blkitems, values):
-        blkitem.setGradientAttribute(param_name, value)
-
-
-ffmt_change_shadow_radius = ffmt_change_shadow_offset
-ffmt_change_shadow_strength = ffmt_change_shadow_offset
-ffmt_change_shadow_color = ffmt_change_shadow_offset
-
-ffmt_change_gradient_start_color = ffmt_change_gradient_enabled
-ffmt_change_gradient_end_color = ffmt_change_gradient_enabled
-ffmt_change_gradient_angle = ffmt_change_gradient_enabled
-ffmt_change_gradient_size = ffmt_change_gradient_enabled
-
 handle_ffmt_change = {
     name: globals().get(f'ffmt_change_{name}', empty_func)
     for name in (*FontFormat.params(), 'rel_font_size')
+    if name not in {
+        'opacity', 'srgb', 'stroke_width',
+        'shadow_radius', 'shadow_strength', 'shadow_color', 'shadow_offset',
+    }
 }

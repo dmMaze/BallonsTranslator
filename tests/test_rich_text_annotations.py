@@ -1,7 +1,10 @@
 import os
+import math
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
+
+import numpy as np
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -9,12 +12,10 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
-    QBrush,
     QColor,
     QFont,
     QFontInfo,
     QImage,
-    QLinearGradient,
     QPainter,
     QPen,
     QPixmap,
@@ -38,6 +39,7 @@ except ImportError:
 
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.text_engine import horizontal_layout
 from ballontranslator.ui.misc import doc_replace, pixmap2ndarray
 from ballontranslator.ui.text_engine.annotations import (
     AnnotationProperty,
@@ -85,7 +87,7 @@ from ballontranslator.ui.text_engine.formatting.panel import (
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine.editing.commands import TextItemEditCommand
 from ballontranslator.ui.text_engine.editing.commands import propagate_user_edit
-from ballontranslator.ui.text_engine import effect_renderer as effect_rendering
+from ballontranslator.ui.text_engine.effects import renderer as effect_rendering
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering import emphasis as emphasis_rendering
 from ballontranslator.ui.text_engine.rendering import glyph as glyph_rendering
@@ -111,6 +113,17 @@ from ballontranslator.utils.fontformat import (
     pt2px,
 )
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_effects import (
+    GlowEffect,
+    TextFillEffect,
+    GradientStop,
+    LinearGradientPaint,
+    ShadowEffect,
+    SolidPaint,
+    StrokeEffect,
+    TextEffectStack,
+    with_primary_stroke,
+)
 
 
 def _format_at(document: QTextDocument, start: int, length: int = 1):
@@ -1934,10 +1947,15 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.vertical = True
         block.translation = '年12月'
         block.fontformat.glyph_slant_angle = 12.0
-        block.fontformat.stroke_width = 0.08
-        block.fontformat.shadow_radius = 0.06
-        block.fontformat.shadow_strength = 0.7
-        block.fontformat.shadow_offset = [0.05, 0.04]
+        block.fontformat.text_effects = TextEffectStack(effects=(
+            StrokeEffect(width=0.08),
+            ShadowEffect(
+                opacity=0.7,
+                blur=0.06,
+                angle=38.66,
+                distance=0.064,
+            ),
+        ))
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()
         scene.addItem(item)
@@ -2003,9 +2021,14 @@ class RichTextAnnotationTest(unittest.TestCase):
                 if effect == 'stroke':
                     block.fontformat.stroke_width = 0.2
                 else:
-                    block.fontformat.shadow_radius = 0.04
-                    block.fontformat.shadow_strength = 0.8
-                    block.fontformat.shadow_offset = [0.04, 0.04]
+                    block.fontformat.text_effects = TextEffectStack(effects=(
+                        ShadowEffect(
+                            opacity=0.8,
+                            blur=0.04,
+                            angle=45.0,
+                            distance=0.057,
+                        ),
+                    ))
                 item = TextBlkItem(block, 0)
                 scene = QGraphicsScene()
                 scene.addItem(item)
@@ -2135,6 +2158,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.fontformat.font_family = 'Source Han Sans'
         block.fontformat.font_size = 7.0
         block.fontformat.stroke_width = 0.2
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         block.fontformat.frgb = [255, 0, 0]
         block.fontformat.srgb = [0, 0, 255]
         item = TextBlkItem(block, 0)
@@ -2269,8 +2296,9 @@ class RichTextAnnotationTest(unittest.TestCase):
                 if effect == 'stroke width':
                     block.fontformat.stroke_width = 0.05
                 else:
-                    block.fontformat.shadow_radius = 0.1
-                    block.fontformat.shadow_strength = 0.8
+                    block.fontformat.text_effects = TextEffectStack(effects=(
+                        ShadowEffect(opacity=0.8, blur=0.1),
+                    ))
                 item = TextBlkItem(block, 0)
                 item.setSelected(True)
                 scene = QGraphicsScene()
@@ -2283,9 +2311,13 @@ class RichTextAnnotationTest(unittest.TestCase):
                 if effect == 'stroke width':
                     item.setStrokeWidth(0.2)
                 else:
-                    shadow = item.fontformat.deepcopy()
-                    shadow.shadow_color = [255, 0, 0]
-                    item.setShadow(shadow)
+                    item.set_text_effects(TextEffectStack(effects=(
+                        ShadowEffect(
+                            opacity=0.8,
+                            blur=0.1,
+                            paint=SolidPaint((255, 0, 0)),
+                        ),
+                    )))
                 self.app.processEvents()
 
                 self.assertFalse(item.isEditing())
@@ -2304,6 +2336,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.translation = '!'
         block.fontformat.font_size = 48
         block.fontformat.stroke_width = 0.4
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         item = TextBlkItem(block, 0)
 
         item.startEdit()
@@ -2488,12 +2524,9 @@ class RichTextAnnotationTest(unittest.TestCase):
         font.setUnderline(True)
         font.setOverline(True)
         font.setStrikeOut(True)
-        gradient = QLinearGradient(0.0, 0.0, 100.0, 0.0)
-        gradient.setColorAt(0.0, QColor('#e03020'))
-        gradient.setColorAt(1.0, QColor('#2040e0'))
         source = QTextCharFormat()
         source.setFont(font)
-        source.setForeground(QBrush(gradient))
+        source.setForeground(QColor('#e03020'))
         source.setBackground(QColor('#40ff80'))
         source.setTextOutline(QPen(QColor('#102030'), 12.0))
         source.setProperty(
@@ -2601,106 +2634,60 @@ class RichTextAnnotationTest(unittest.TestCase):
             NATIVE_DOCUMENT_CACHE.values(),
         )
 
-    def test_emphasis_native_document_preserves_gradient_and_opacity(self):
-        item = self._make_item(False, text='A     A')
-        item.fontformat.gradient_start_color = [230, 30, 20]
-        item.fontformat.gradient_end_color = [20, 40, 230]
+    def test_typed_text_fill_colors_native_emphasis_composite(self):
+        item = self._make_item(
+            False, bounds=(0, 0, 420, 180), text='A            A'
+        )
+        item.fontformat.font_size = 52.0
+        item.fontformat.frgb = [30, 160, 30]
+        item.set_text_effects(TextEffectStack(effects=(
+            TextFillEffect(paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, (240, 20, 20)),
+                GradientStop(0.3, (240, 20, 20)),
+                GradientStop(0.3, (20, 30, 240)),
+                GradientStop(1.0, (20, 30, 240)),
+            ))),
+            GlowEffect(
+                glow_type='inner',
+                paint=LinearGradientPaint(stops=(
+                    GradientStop(0.0, (240, 20, 20)),
+                    GradientStop(1.0, (20, 30, 240)),
+                )),
+                size=0.05,
+            ),
+        )))
         item.startEdit()
         cursor = item.textCursor()
         cursor.select(QTextCursor.SelectionType.Document)
         item.setTextCursor(cursor)
         item.setEmphasis('filled circle', 'over right')
-        cursor = item.textCursor()
-        cursor.select(QTextCursor.SelectionType.Document)
-        item.setTextCursor(cursor)
-        item.setGradientEnabled(True)
+        item.layout.reLayoutEverything()
+        item.endEdit(keep_focus=False)
 
-        NATIVE_DOCUMENT_CACHE.clear()
-        self.addCleanup(
-            NATIVE_DOCUMENT_CACHE.clear
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        self.addCleanup(scene.removeItem, item)
+        scene_rect = item.sceneBoundingRect()
+        image = QImage(
+            520, 240, QImage.Format.Format_ARGB32_Premultiplied
         )
-        block = item.document().firstBlock()
-        line = block.layout().lineAt(0)
-        context = QAbstractTextDocumentLayout.PaintContext()
-        marks = tuple(
-            emphasis_rendering._iter_emphasis_marks(
-                block,
-                line,
-                vertical=False,
-                context=context,
-            )
-        )
-        self.assertEqual(len(marks), 2)
-        cached_foreground = _format_at(
-            marks[0].source.document, 0
-        ).foreground()
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        try:
+            with patch.object(
+                horizontal_layout,
+                'draw_emphasis_marks',
+                wraps=draw_emphasis_marks,
+            ) as draw_marks:
+                scene.render(painter, QRectF(image.rect()), scene_rect)
+        finally:
+            painter.end()
 
-        def render(opacity: float) -> QImage:
-            image = QImage(
-                800,
-                300,
-                QImage.Format.Format_ARGB32_Premultiplied,
-            )
-            image.fill(Qt.GlobalColor.transparent)
-            painter = QPainter(image)
-            try:
-                painter.translate(80.0, 120.0)
-                painter.setOpacity(opacity)
-                draw_emphasis_marks(
-                    painter,
-                    block,
-                    line,
-                    context,
-                    vertical=False,
-                )
-            finally:
-                painter.end()
-            return image
-
-        opaque = render(1.0)
-        translucent = render(0.4)
-        self.assertEqual(
-            _format_at(marks[0].source.document, 0).foreground(),
-            cached_foreground,
-        )
-
-        def channel_means(image: QImage, mark) -> tuple[float, float]:
-            bounds = mark.ink_bounds.translated(80.0, 120.0).toAlignedRect()
-            colors = []
-            for y in range(
-                max(0, bounds.top()),
-                min(image.height(), bounds.bottom() + 1),
-            ):
-                for x in range(
-                    max(0, bounds.left()),
-                    min(image.width(), bounds.right() + 1),
-                ):
-                    color = image.pixelColor(x, y)
-                    if color.alpha() > 64:
-                        colors.append(color)
-            self.assertTrue(colors)
-            return (
-                sum(color.red() for color in colors) / len(colors),
-                sum(color.blue() for color in colors) / len(colors),
-            )
-
-        left_red, left_blue = channel_means(opaque, marks[0])
-        right_red, right_blue = channel_means(opaque, marks[1])
-        self.assertGreater(left_red, left_blue)
-        self.assertGreater(left_red, right_red)
-        self.assertGreater(right_blue, left_blue)
-        self.assertLess(
-            max(
-                translucent.pixelColor(x, y).alpha()
-                for y in range(translucent.height())
-                for x in range(translucent.width())
-            ),
-            max(
-                opaque.pixelColor(x, y).alpha()
-                for y in range(opaque.height())
-                for x in range(opaque.width())
-            ),
-        )
+        pixels = pixmap2ndarray(image, keep_alpha=True)
+        visible = pixels[..., 3] > 96
+        self.assertTrue(np.any((pixels[..., 0] > pixels[..., 2]) & visible))
+        self.assertTrue(np.any((pixels[..., 2] > pixels[..., 0]) & visible))
+        self.assertGreater(draw_marks.call_count, 0)
 
     def test_native_emphasis_ink_uses_shared_horizontal_and_vertical_placement(self):
         for vertical in (False, True):
@@ -2817,6 +2804,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.translation = 'A'
         block.fontformat.font_size = 40.0
         block.fontformat.stroke_width = 0.25
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         item = TextBlkItem(block, 0)
         item.startEdit()
         cursor = item.textCursor()
@@ -2825,36 +2816,57 @@ class RichTextAnnotationTest(unittest.TestCase):
         item.setEmphasis('open circle', 'over right')
         item.endEdit(keep_focus=False)
 
-        NATIVE_DOCUMENT_CACHE.clear()
-        self.addCleanup(
-            NATIVE_DOCUMENT_CACHE.clear
-        )
-        item.repaint_background()
-
-        outlined = [
-            _format_at(entry.document, 0)
-            for entry in NATIVE_DOCUMENT_CACHE.values()
-            if _format_at(entry.document, 0).textOutline().style()
-            != Qt.PenStyle.NoPen
-            and _format_at(entry.document, 0).textOutline().color().alpha()
-            > 0
-        ]
-        self.assertTrue(outlined)
+        document_block = item.document().firstBlock()
+        line = document_block.layout().lineAt(0)
+        normal_mark = next(emphasis_rendering._iter_emphasis_marks(
+            document_block,
+            line,
+            vertical=False,
+        ))
+        stroke_context = item.effect_renderer._stroke_paint_context()
+        outlined_mark = next(emphasis_rendering._iter_emphasis_marks(
+            document_block,
+            line,
+            vertical=False,
+            context=stroke_context,
+        ))
+        source_cursor = QTextCursor(outlined_mark.source.document)
+        source_cursor.select(QTextCursor.SelectionType.Document)
+        mark_format = source_cursor.charFormat()
         expected_width = (
             pt2px(_format_at(item.document(), 0).fontPointSize())
             * item.fontformat.stroke_width
             * emphasis_rendering.EMPHASIS_FONT_SCALE
         )
-        for mark_format in outlined:
-            self.assertAlmostEqual(
-                mark_format.textOutline().widthF(),
-                expected_width,
+        self.assertAlmostEqual(
+            mark_format.textOutline().widthF(),
+            expected_width,
+        )
+        self.assertFalse(
+            mark_format.hasProperty(
+                glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY
             )
-            self.assertFalse(
-                mark_format.hasProperty(
-                    glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY
-                )
-            )
+        )
+        self.assertAlmostEqual(
+            outlined_mark.ink_bounds.width()
+            - normal_mark.ink_bounds.width(),
+            expected_width,
+        )
+
+        surface_rect = QRectF(item.boundingRect())
+        item.repaint_background()
+        final_alpha = pixmap2ndarray(
+            item.effect_renderer.background_pixmap,
+            keep_alpha=True,
+        )[..., 3]
+        local = QRectF(outlined_mark.ink_bounds).translated(
+            -surface_rect.topLeft()
+        ).toAlignedRect()
+        mark_region = final_alpha[
+            max(0, local.top()):min(final_alpha.shape[0], local.bottom() + 1),
+            max(0, local.left()):min(final_alpha.shape[1], local.right() + 1),
+        ]
+        self.assertTrue(mark_region.any())
 
     def test_vertical_glyph_slant_stroke_keeps_emphasis_out_of_dilation(self):
         block = TextBlock([0, 0, 180, 220])
@@ -2863,6 +2875,10 @@ class RichTextAnnotationTest(unittest.TestCase):
         block.vertical = True
         block.fontformat.font_size = 48.0
         block.fontformat.stroke_width = 0.2
+        block.fontformat.text_effects = with_primary_stroke(
+            block.fontformat.text_effects,
+            position='center',
+        )
         block.fontformat.text_transform = TextTransformStack((), 11.0)
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()
@@ -2891,48 +2907,6 @@ class RichTextAnnotationTest(unittest.TestCase):
         )
         normal_bounds = QRectF(normal_mark.ink_bounds)
         surface_rect = QRectF(item.boundingRect())
-        NATIVE_DOCUMENT_CACHE.clear()
-        self.addCleanup(
-            NATIVE_DOCUMENT_CACHE.clear
-        )
-
-        mask_flags = []
-        dilation_inputs = []
-        native_documents = []
-        draw_mask = item.geometry_controller.draw_layout_selection_mask
-        dilate = effect_rendering.cv2.dilate
-        native_draw = QTextDocument.drawContents
-
-        def record_mask(painter, context, *, include_annotations=True):
-            mask_flags.append(include_annotations)
-            return draw_mask(
-                painter,
-                context,
-                include_annotations=include_annotations,
-            )
-
-        def record_dilate(source, kernel, *args, **kwargs):
-            dilation_inputs.append(source.copy())
-            return dilate(source, kernel, *args, **kwargs)
-
-        def record_document(document, *args):
-            native_documents.append(document)
-            return native_draw(document, *args)
-
-        with patch.object(
-            item.geometry_controller,
-            'draw_layout_selection_mask',
-            new=record_mask,
-        ), patch.object(
-            effect_rendering.cv2,
-            'dilate',
-            new=record_dilate,
-        ), patch.object(
-            QTextDocument,
-            'drawContents',
-            new=record_document,
-        ):
-            item.repaint_background()
 
         def alpha_region(alpha, bounds: QRectF, padding: float = 0.0):
             local = QRectF(bounds).translated(-surface_rect.topLeft())
@@ -2944,44 +2918,31 @@ class RichTextAnnotationTest(unittest.TestCase):
             bottom = min(alpha.shape[0], pixels.bottom() + 1)
             return alpha[top:bottom, left:right]
 
-        self.assertTrue(mask_flags)
-        self.assertFalse(any(mask_flags))
-        self.assertTrue(dilation_inputs)
-        self.assertTrue(all(alpha.any() for alpha in dilation_inputs))
-        self.assertTrue(
-            all(
-                not alpha_region(alpha, normal_bounds).any()
-                for alpha in dilation_inputs
-            )
+        stroke_context = item.effect_renderer._stroke_paint_context()
+        mask_pixmap = QPixmap(
+            max(1, math.ceil(surface_rect.width())),
+            max(1, math.ceil(surface_rect.height())),
         )
+        mask_pixmap.fill(Qt.GlobalColor.transparent)
+        mask_painter = QPainter(mask_pixmap)
+        try:
+            mask_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            mask_painter.translate(-surface_rect.topLeft())
+            item.geometry_controller.draw_layout_selection_mask(
+                mask_painter,
+                stroke_context,
+                include_annotations=False,
+            )
+        finally:
+            mask_painter.end()
+        mask_alpha = pixmap2ndarray(mask_pixmap, keep_alpha=True)[..., 3]
+        self.assertFalse(alpha_region(mask_alpha, normal_bounds).any())
 
         expected_width = (
             pt2px(_format_at(item.document(), 0).fontPointSize())
             * item.fontformat.stroke_width
             * emphasis_rendering.EMPHASIS_FONT_SCALE
         )
-        outlined_documents = []
-        for entry in NATIVE_DOCUMENT_CACHE.values():
-            mark_format = _format_at(entry.document, 0)
-            if (
-                mark_format.textOutline().style() == Qt.PenStyle.NoPen
-                or mark_format.textOutline().color().alpha() == 0
-            ):
-                continue
-            outlined_documents.append(entry.document)
-            self.assertAlmostEqual(
-                mark_format.textOutline().widthF(), expected_width
-            )
-        self.assertTrue(outlined_documents)
-        self.assertTrue(
-            any(
-                painted is outlined
-                for painted in native_documents
-                for outlined in outlined_documents
-            )
-        )
-
-        stroke_context = item.effect_renderer._stroke_paint_context()
         outlined_mark = next(
             emphasis_rendering._iter_emphasis_marks(
                 document_block,
@@ -2992,6 +2953,15 @@ class RichTextAnnotationTest(unittest.TestCase):
                 orientation=orientation,
             )
         )
+        source_cursor = QTextCursor(outlined_mark.source.document)
+        source_cursor.select(QTextCursor.SelectionType.Document)
+        mark_format = source_cursor.charFormat()
+        self.assertAlmostEqual(
+            mark_format.textOutline().widthF(), expected_width
+        )
+        self.assertFalse(mark_format.hasProperty(
+            glyph_rendering.GLYPH_DILATED_STROKE_FORMAT_PROPERTY
+        ))
         self.assertAlmostEqual(
             outlined_mark.ink_bounds.width() - normal_bounds.width(),
             expected_width,
@@ -3001,6 +2971,7 @@ class RichTextAnnotationTest(unittest.TestCase):
                 -0.02, -0.02, 0.02, 0.02
             ).contains(outlined_mark.ink_bounds)
         )
+        item.repaint_background()
         final_alpha = pixmap2ndarray(
             item.effect_renderer.background_pixmap,
             keep_alpha=True,

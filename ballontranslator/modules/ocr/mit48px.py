@@ -143,6 +143,10 @@ class Model48pxOCR:
     def __call__(self, textblk_lst: List[TextBlock], regions: List[np.ndarray], textblk_lst_indices: List, chunk_size = 16) -> None:
         perm = range(len(regions))
         chunck_idx = 0
+        color_totals = defaultdict(
+            lambda: [np.zeros(3, dtype=np.float32),
+                     np.zeros(3, dtype=np.float32)]
+        )
         for indices in chunks(perm, chunk_size):
             N = len(indices)
             widths = [regions[i].shape[1] for i in indices]
@@ -204,11 +208,16 @@ class Model48pxOCR:
                 bb = min(max(int(bb()), 0), 255)
                 # self.logger.info(f'prob: {prob} {txt} fg: ({fr}, {fg}, {fb}) bg: ({br}, {bg}, {bb})')
                 
-                cur_region = textblk_lst[textblk_lst_indices[i+chunck_idx]]
+                block_index = textblk_lst_indices[i+chunck_idx]
+                cur_region = textblk_lst[block_index]
                 cur_region.text.append(txt)
-                cur_region.update_font_colors(np.array([fr, fg, fb]), np.array([br, bg, bb]))
+                color_totals[block_index][0] += np.array([fr, fg, fb])
+                color_totals[block_index][1] += np.array([br, bg, bb])
 
             chunck_idx += N
+
+        for block_index, (fg_total, bg_total) in color_totals.items():
+            textblk_lst[block_index].update_font_colors(fg_total, bg_total)
 
 
 

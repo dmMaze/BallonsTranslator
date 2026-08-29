@@ -1,1 +1,1 @@
-"""Text glyph, effect, raster, and nonlinear-surface rendering."""
+"""Text glyph, raster, and nonlinear-surface rendering."""
