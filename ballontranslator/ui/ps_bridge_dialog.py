@@ -597,31 +597,21 @@ class PhotoshopBridgeDialog(QDialog):
         try:
             os.makedirs(scripts_dir, exist_ok=True)
             shutil.copy2(source_jsx, target_jsx)
-        except PermissionError:
-            if sys.platform == "win32":
-                reply = QMessageBox.question(
-                    self,
-                    self.tr("Administrator Permission Required"),
-                    self.tr(
-                        "Writing to Photoshop's Scripts folder requires administrator permission.\n\n"
-                        "Would you like to install the script with administrator permission?"
-                    ),
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.Yes,
-                )
-                if reply == QMessageBox.StandardButton.Yes and self._elevated_copy(source_jsx, target_jsx):
-                    _show_success()
-                    return
-
-            LOGGER.warning("Photoshop Bridge requires manual installation")
+        except PermissionError as error:
+            LOGGER.warning("Photoshop Bridge requires manual installation: %s", error)
             QMessageBox.warning(
                 self,
                 self.tr("Manual Installation Required"),
                 self.tr(
                     "BallonsTranslator cannot write to Photoshop's Scripts "
-                    "folder without administrator permission. The source and "
-                    "destination folders will be opened so you can copy the "
-                    "JSX file with Explorer."
+                    "folder without administrator permission.\n\n"
+                    "Copy this file:\n{source}\n\n"
+                    "To this folder:\n{destination}\n\n"
+                    "Then restart Photoshop. Explorer will now open the source "
+                    "file and destination location."
+                ).format(
+                    source=os.path.normpath(source_jsx),
+                    destination=os.path.normpath(scripts_dir),
                 ),
             )
             self._open_manual_install_folders(source_jsx, scripts_dir)
@@ -638,38 +628,6 @@ class PhotoshopBridgeDialog(QDialog):
             return
 
         _show_success()
-
-    def _elevated_copy(self, source_path: str, target_path: str) -> bool:
-        if sys.platform != "win32":
-            return False
-        try:
-            import ctypes
-            source_norm = os.path.normpath(source_path)
-            target_norm = os.path.normpath(target_path)
-            target_dir = os.path.dirname(target_norm)
-            source_hash = get_file_md5(source_norm)
-
-            ps_params = (
-                f"-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "
-                f"New-Item -ItemType Directory -Force -Path '{target_dir}' | Out-Null; "
-                f"Copy-Item -LiteralPath '{source_norm}' -Destination '{target_norm}' -Force"
-            )
-            ret = ctypes.windll.shell32.ShellExecuteW(
-                None,
-                "runas",
-                "powershell.exe",
-                ps_params,
-                None,
-                0,
-            )
-            if ret > 32:
-                for _ in range(40):
-                    time.sleep(0.1)
-                    if os.path.isfile(target_norm) and get_file_md5(target_norm) == source_hash:
-                        return True
-        except Exception as error:
-            LOGGER.warning("Elevated copy failed: %s", error)
-        return False
 
     def _open_manual_install_folders(
         self,

@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtWidgets import QApplication, QMessageBox
+from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.ps_bridge_dialog import (
@@ -200,9 +200,6 @@ class PhotoshopBridgeTest(unittest.TestCase):
         ), patch(
             "ballontranslator.ui.ps_bridge_dialog.shutil.copy2",
             side_effect=PermissionError("protected"),
-        ), patch(
-            "ballontranslator.ui.ps_bridge_dialog.QMessageBox.question",
-            return_value=QMessageBox.StandardButton.No,
         ), patch.object(
             dialog, "refresh_status"
         ) as refresh, patch.object(
@@ -213,39 +210,13 @@ class PhotoshopBridgeTest(unittest.TestCase):
             dialog.on_install_script()
 
         manual.assert_called_once()
+        source_jsx, destination = manual.call_args.args
+        self.assertEqual(destination, scripts_dir)
         refresh.assert_not_called()
         warning.assert_called_once()
-        dialog.deleteLater()
-
-    def test_installer_elevated_copy_success(self) -> None:
-        photoshop_dir = os.path.join(self.temp_dir.name, "Photoshop")
-        scripts_dir = os.path.join(photoshop_dir, "Presets", "Scripts")
-        os.makedirs(scripts_dir)
-        dialog = PhotoshopBridgeDialog(project=self.project)
-        with patch(
-            "ballontranslator.ui.ps_bridge_dialog.get_photoshop_paths",
-            return_value=(photoshop_dir, scripts_dir, None),
-        ), patch(
-            "ballontranslator.ui.ps_bridge_dialog.shutil.copy2",
-            side_effect=PermissionError("protected"),
-        ), patch(
-            "ballontranslator.ui.ps_bridge_dialog.QMessageBox.question",
-            return_value=QMessageBox.StandardButton.Yes,
-        ), patch.object(
-            dialog, "_elevated_copy", return_value=True
-        ) as elevated_copy, patch.object(
-            dialog, "refresh_status"
-        ) as refresh, patch.object(
-            dialog, "_open_manual_install_folders"
-        ) as manual, patch(
-            "ballontranslator.ui.ps_bridge_dialog.QMessageBox.information"
-        ) as info:
-            dialog.on_install_script()
-
-        elevated_copy.assert_called_once()
-        refresh.assert_called_once()
-        manual.assert_not_called()
-        info.assert_called_once()
+        warning_text = warning.call_args.args[2]
+        self.assertIn(os.path.normpath(source_jsx), warning_text)
+        self.assertIn(os.path.normpath(scripts_dir), warning_text)
         dialog.deleteLater()
 
 
