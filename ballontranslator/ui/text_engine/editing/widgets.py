@@ -236,6 +236,8 @@ class SourceTextEdit(QTextEdit):
         self.text_content_changed = False
         self.highlighting = False
         self.paste_flag = False
+        self.paste_from: int = 0
+        self.paste_removed: int = 0
 
         self.in_acts = False
 
@@ -371,6 +373,7 @@ class SourceTextEdit(QTextEdit):
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         acts = menu.actions()
 
+        self._capture_paste_selection()
         self.in_acts = True
         rst = menu.exec_(event.globalPos())
 
@@ -386,6 +389,11 @@ class SourceTextEdit(QTextEdit):
 
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
+
+    def _capture_paste_selection(self) -> None:
+        cursor = self.textCursor()
+        self.paste_from = cursor.selectionStart()
+        self.paste_removed = cursor.selectionEnd() - self.paste_from
 
     def on_content_changing(self, from_: int, removed: int, added: int):
         if not self.pre_editing:
@@ -417,6 +425,9 @@ class SourceTextEdit(QTextEdit):
             
             if self.paste_flag:
                 self.paste_flag = False
+                # Qt can report a whole-block replacement when pasting at 0.
+                change_from = self.paste_from
+                removed = self.paste_removed
                 cursor = self.textCursor()
                 cursor.setPosition(change_from)
                 cursor.setPosition(self.textCursor().position(), QTextCursor.MoveMode.KeepAnchor)
@@ -540,8 +551,12 @@ class SourceTextEdit(QTextEdit):
                 self.redo_signal.emit()
                 return
             elif e.key() == Qt.Key.Key_V:
+                self._capture_paste_selection()
                 self.paste_flag = True
-                return super().keyPressEvent(e)
+                try:
+                    return super().keyPressEvent(e)
+                finally:
+                    self.paste_flag = False
         elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -601,6 +616,7 @@ class TransTextEdit(SourceTextEdit):
             elif operation == 'copy':
                 self.copy()
             elif operation == 'paste':
+                self._capture_paste_selection()
                 self.paste_flag = True
                 self.paste()
                 changed = True
