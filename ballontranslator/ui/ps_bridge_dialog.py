@@ -580,8 +580,28 @@ class PhotoshopBridgeDialog(QDialog):
         try:
             os.makedirs(scripts_dir, exist_ok=True)
             shutil.copy2(source_jsx, target_jsx)
-        except PermissionError as error:
-            LOGGER.warning("Photoshop Bridge requires manual installation: %s", error)
+        except PermissionError:
+            if sys.platform == "win32":
+                reply = QMessageBox.question(
+                    self,
+                    self.tr("Administrator Permission Required"),
+                    self.tr(
+                        "Writing to Photoshop's Scripts folder requires administrator permission.\n\n"
+                        "Would you like to install the script with administrator permission?"
+                    ),
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                if reply == QMessageBox.StandardButton.Yes and self._elevated_copy(source_jsx, target_jsx):
+                    self.refresh_status()
+                    QMessageBox.information(
+                        self,
+                        self.tr("Installed"),
+                        self.tr("Bridge script installed. Restart Photoshop to refresh its Scripts menu."),
+                    )
+                    return
+
+            LOGGER.warning("Photoshop Bridge requires manual installation")
             QMessageBox.warning(
                 self,
                 self.tr("Manual Installation Required"),
@@ -612,6 +632,32 @@ class PhotoshopBridgeDialog(QDialog):
             self.tr("Bridge script installed. Restart Photoshop to refresh its Scripts menu."),
         )
 
+    def _elevated_copy(self, source_path: str, target_path: str) -> bool:
+        if sys.platform != "win32":
+            return False
+        try:
+            import ctypes
+            source_norm = os.path.normpath(source_path)
+            target_norm = os.path.normpath(target_path)
+            target_dir = os.path.dirname(target_norm)
+            params = f'/c if not exist "{target_dir}" mkdir "{target_dir}" && copy /y "{source_norm}" "{target_norm}"'
+            ret = ctypes.windll.shell32.ShellExecuteW(
+                None,
+                "runas",
+                "cmd.exe",
+                params,
+                None,
+                0,
+            )
+            if ret > 32:
+                for _ in range(25):
+                    if os.path.isfile(target_norm):
+                        return True
+                    time.sleep(0.1)
+        except Exception as error:
+            LOGGER.warning("Elevated copy failed: %s", error)
+        return False
+
     def _open_manual_install_folders(
         self,
         source_jsx: str,
@@ -620,17 +666,16 @@ class PhotoshopBridgeDialog(QDialog):
         if sys.platform != "win32":
             return
         destination_dir = scripts_dir
-        while not os.path.isdir(destination_dir):
+        while destination_dir and not os.path.isdir(destination_dir):
             parent_dir = os.path.dirname(destination_dir)
             if parent_dir == destination_dir:
                 break
             destination_dir = parent_dir
         try:
-            subprocess.Popen([
-                "explorer.exe",
-                f"/select,{os.path.normpath(source_jsx)}",
-            ])
-            subprocess.Popen(["explorer.exe", destination_dir])
+            source_norm = os.path.normpath(source_jsx)
+            subprocess.Popen(f'explorer.exe /select,"{source_norm}"')
+            if destination_dir and os.path.isdir(destination_dir):
+                subprocess.Popen(f'explorer.exe "{os.path.normpath(destination_dir)}"')
         except OSError as error:
             LOGGER.warning("Failed to open manual Photoshop install folders: %s", error)
 
