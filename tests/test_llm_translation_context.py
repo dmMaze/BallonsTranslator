@@ -15,16 +15,20 @@ from ballontranslator.modules.context.history import (
     HistoryPage,
     HistoryWindow,
     HistoryWindowKey,
-    MemoryCheckpoint,
-    PageSummary,
     RenderedHistoryPage,
-    RequestContext,
     eligible_history_for_request,
-    recover_context_length,
 )
 from ballontranslator.modules.context.token_usage import (
     MESSAGE_TOKEN_OVERHEAD,
     messages_token_count,
+)
+from ballontranslator.modules.context.translation_context import (
+    MemoryCheckpoint,
+    PageSummary,
+    RequestContext,
+    fit_page_summaries,
+    page_summary_context_token_count,
+    recover_context_length,
 )
 from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.translators.base import BaseTranslator
@@ -372,6 +376,9 @@ class LLMTranslationContextTest(unittest.TestCase):
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.messages_token_count',
             return_value=1,
+        ), mock.patch(
+            'ballontranslator.modules.context.translation_context.messages_token_count',
+            return_value=1,
         ):
             context = self.translator._snapshot_request_context(
                 project,
@@ -433,6 +440,9 @@ class LLMTranslationContextTest(unittest.TestCase):
 
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ), mock.patch(
+            'ballontranslator.modules.context.translation_context.messages_token_count',
             return_value=1,
         ):
             first_context = self.translator._snapshot_request_context(
@@ -504,12 +514,12 @@ class LLMTranslationContextTest(unittest.TestCase):
             PageSummary(str(index), f'summary-{index}')
             for index in range(1, 4)
         )
-        budget = self.translator._page_summary_context_token_count(
+        budget = page_summary_context_token_count(
             summaries[1:],
             self.profile.model,
         )
 
-        selected = self.translator._fit_page_summaries(
+        selected = fit_page_summaries(
             summaries,
             self.profile.model,
             budget,
@@ -751,9 +761,8 @@ class LLMTranslationContextTest(unittest.TestCase):
             side_effect=lambda _project, page_key, *_args, **_kwargs: pages.get(
                 page_key
             ),
-        ), mock.patch.object(
-            self.translator,
-            '_snapshot_page_summary',
+        ), mock.patch(
+            'ballontranslator.modules.context.translation_context.snapshot_page_summary',
             side_effect=lambda _project, page_key: summaries.get(page_key),
         ), mock.patch.object(
             self.translator,

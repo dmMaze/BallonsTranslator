@@ -24,7 +24,8 @@ preserve behavior that spans several files.
 | Prompt assembly, translation request shape, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
 | Chat client lifecycle, throttling, provider argument quirks, status normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
-| History selection, rebuild, eviction, and overflow recovery | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
+| Bilingual history selection, rebuild, and whole-page eviction | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
+| Immutable request context, saved-summary fitting, compact-memory rendering, and overflow recovery | [`context/translation_context.py`](../../ballontranslator/modules/context/translation_context.py) |
 | Glossary parsing and matching | [`context/glossary.py`](../../ballontranslator/modules/context/glossary.py) |
 | Token estimates and provider usage fields | [`context/token_usage.py`](../../ballontranslator/modules/context/token_usage.py) |
 | Context settings and LLM profiles | [`config.py`](../../ballontranslator/utils/config.py), [`llm_profiles.py`](../../ballontranslator/utils/llm_profiles.py) |

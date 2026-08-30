@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
-from .glossary import GlossaryEntry
-
 if TYPE_CHECKING:
     from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
@@ -64,18 +62,6 @@ class HistoryPage:
 
 
 @dataclass(frozen=True)
-class PageSummary:
-    """One user-owned saved page summary, independent of translation state.
-
-    >>> PageSummary('001.png', 'A hero arrives.').text
-    'A hero arrives.'
-    """
-
-    page_key: str
-    text: str
-
-
-@dataclass(frozen=True)
 class RenderedHistoryPage:
     """A page snapshot plus its immutable provider messages and token cost.
 
@@ -107,19 +93,6 @@ class HistoryWindowKey:
 
 
 @dataclass(frozen=True)
-class MemoryCheckpoint:
-    """Project memory plus descriptive page-summary coverage.
-
-    >>> MemoryCheckpoint('memory', ('001.png',), 4).covered_page_keys
-    ('001.png',)
-    """
-
-    text: str
-    covered_page_keys: Tuple[str, ...]
-    token_count: int
-
-
-@dataclass(frozen=True)
 class HistoryWindow:
     """Committed history state from the most recent successful request.
 
@@ -132,7 +105,6 @@ class HistoryWindow:
     request_page_key: str
     history: Tuple[RenderedHistoryPage, ...]
     token_count: int
-    memory: Optional[MemoryCheckpoint] = None
 
 
 @dataclass(frozen=True)
@@ -174,27 +146,6 @@ class ContextDiagnostic:
         if self.rebuild_reason is not None:
             details.append('reason={}'.format(self.rebuild_reason.value))
         return ', '.join(details)
-
-
-@dataclass(frozen=True)
-class RequestContext:
-    """Immutable translation context used for provider retries.
-
-    >>> RequestContext(()).history
-    ()
-    """
-
-    history: Tuple[RenderedHistoryPage, ...]
-    glossary: Tuple[GlossaryEntry, ...] = ()
-    glossary_mode: str = ''
-    history_budget: int = 0
-    window_key: Optional[HistoryWindowKey] = None
-    request_page_key: Optional[str] = None
-    diagnostic: Optional[ContextDiagnostic] = None
-    memory: Optional[MemoryCheckpoint] = None
-    page_summaries: Tuple[PageSummary, ...] = ()
-    summary_token_count: int = 0
-    current_summary_token_count: int = 0
 
 
 def eligible_history_for_request(
@@ -368,99 +319,3 @@ def window_rebuild_reason(
     ):
         return ContextReason.NON_ADJACENT
     return None
-
-
-def recover_context_length(
-    request_context: Optional[RequestContext],
-) -> Optional[RequestContext]:
-    """Remove optional summaries, then pages, while retaining current input.
-
-    >>> int(4096 * HISTORY_LOW_WATER_RATIO)
-    2457
-    """
-
-    if request_context is None:
-        return None
-
-    current_summaries = tuple(
-        summary
-        for summary in request_context.page_summaries
-        if summary.page_key == request_context.request_page_key
-    )
-    summaries_evicted = (
-        len(request_context.page_summaries) - len(current_summaries)
-    )
-    if summaries_evicted:
-        reserved_tokens = (
-            request_context.memory.token_count
-            if request_context.memory is not None
-            else 0
-        ) + request_context.current_summary_token_count
-        diagnostic = ContextDiagnostic(
-            page_key=str(request_context.request_page_key or ''),
-            action=ContextAction.CONTEXT_RECOVERY,
-            page_count=len(request_context.history),
-            token_count=(
-                sum(page.token_count for page in request_context.history)
-                + reserved_tokens
-            ),
-            token_budget=request_context.history_budget,
-            summaries_evicted=summaries_evicted,
-        )
-        return RequestContext(
-            history=request_context.history,
-            glossary=request_context.glossary,
-            glossary_mode=request_context.glossary_mode,
-            history_budget=request_context.history_budget,
-            window_key=request_context.window_key,
-            request_page_key=request_context.request_page_key,
-            diagnostic=diagnostic,
-            memory=request_context.memory,
-            page_summaries=current_summaries,
-            summary_token_count=request_context.current_summary_token_count,
-            current_summary_token_count=(
-                request_context.current_summary_token_count
-            ),
-        )
-    if not request_context.history:
-        return None
-
-    history = list(request_context.history)
-    reserved_tokens = (
-        request_context.memory.token_count
-        if request_context.memory is not None
-        else 0
-    ) + request_context.summary_token_count
-    token_count = sum(page.token_count for page in history)
-    low_water = int(request_context.history_budget * HISTORY_LOW_WATER_RATIO)
-    evicted = 0
-    # Remove at least one whole page because provider tokenization may exceed
-    # the estimator even when the estimated window is below its configured limit.
-    while history and (
-        token_count + reserved_tokens > low_water
-        or evicted == 0
-    ):
-        token_count -= history.pop(0).token_count
-        evicted += 1
-
-    diagnostic = ContextDiagnostic(
-        page_key=str(request_context.request_page_key or ''),
-        action=ContextAction.CONTEXT_RECOVERY,
-        page_count=len(history),
-        token_count=token_count + reserved_tokens,
-        token_budget=request_context.history_budget,
-        evicted=evicted,
-    )
-    return RequestContext(
-        history=tuple(history),
-        glossary=request_context.glossary,
-        glossary_mode=request_context.glossary_mode,
-        history_budget=request_context.history_budget,
-        window_key=request_context.window_key,
-        request_page_key=request_context.request_page_key,
-        diagnostic=diagnostic,
-        memory=request_context.memory,
-        page_summaries=request_context.page_summaries,
-        summary_token_count=request_context.summary_token_count,
-        current_summary_token_count=request_context.current_summary_token_count,
-    )
