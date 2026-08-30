@@ -2,6 +2,7 @@ import threading
 import unittest
 from unittest import mock
 from types import SimpleNamespace
+from typing import List
 
 import numpy as np
 
@@ -149,6 +150,20 @@ class ReorderingOCR(OCRBase):
         for index, block in enumerate(blk_list):
             block.text = [f'text {index}']
         return list(reversed(blk_list))
+
+
+class LegacySignatureOCR(OCRBase):
+    def __init__(self) -> None:
+        super().__init__()
+        self.called = False
+
+    def run_ocr(
+        self,
+        _img: np.ndarray,
+        blk_list: List[TextBlock],
+    ) -> List[TextBlock]:
+        self.called = True
+        return blk_list
 
 
 class MissingKeyInpainter:
@@ -626,6 +641,7 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             dtype=np.uint8,
         )
         ocr = ReorderingOCR()
+        ocr.name = 'LLMOCR'
         thread = module_manager.ImgtransThread(
             SimpleNamespace(textdetector=None),
             FakeOCRThread(ocr),
@@ -648,6 +664,39 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
         self.assertTrue(ocr.full_page)
         self.assertEqual(project.pages['page-1'], [second, first])
+
+    def test_full_pipeline_preserves_legacy_ocr_call_signature(self):
+        block = TextBlock(xyxy=[0, 0, 4, 4])
+        project = ProjImgTrans()
+        project.pages = {'page-1': [block]}
+        project._image_info = {'page-1': {'finish_code': 0}}
+        project.read_img = lambda _page: np.zeros(
+            (4, 4, 3),
+            dtype=np.uint8,
+        )
+        ocr = LegacySignatureOCR()
+        thread = module_manager.ImgtransThread(
+            SimpleNamespace(textdetector=None),
+            FakeOCRThread(ocr),
+            FakeTranslateThread(None),
+            SimpleNamespace(inpainter=None),
+        )
+        thread.imgtrans_proj = project
+        thread.process_idx_to_page_idx = {}
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        old_restore_empty = pcfg.restore_ocr_empty
+        try:
+            pcfg.restore_ocr_empty = False
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 1)
+            thread._imgtrans_pipeline()
+        finally:
+            pcfg.restore_ocr_empty = old_restore_empty
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
+
+        self.assertTrue(ocr.called)
+        self.assertEqual(project.pages['page-1'], [block])
 
     def test_missing_llm_key_stops_ocr_block_pipeline(self):
         ocr = MissingKeyOCR()

@@ -10,6 +10,7 @@ from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
+    DEFAULT_OCR_PROMPT,
     LLMProfile,
     profile_by_id,
     profile_from_config,
@@ -141,7 +142,13 @@ class LLMOCR(LLMChatRequester, OCRBase):
         return ' '.join(str(text or '').replace('\r', '\n').split()).strip()
 
     def _image_content_part(self, img: np.ndarray, profile: LLMProfile) -> Dict:
-        success, buffer = cv2.imencode(".jpg", img)
+        # Project images use RGB/RGBA; OpenCV encoders expect BGR/BGRA.
+        encoded_img = img
+        if img.ndim == 3 and img.shape[-1] == 3:
+            encoded_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        elif img.ndim == 3 and img.shape[-1] == 4:
+            encoded_img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
+        success, buffer = cv2.imencode(".jpg", encoded_img)
         if not success:
             raise RuntimeError('Failed to encode OCR image.')
         img_base64 = base64.b64encode(buffer).decode("utf-8")
@@ -172,10 +179,13 @@ class LLMOCR(LLMChatRequester, OCRBase):
         ]
 
     @staticmethod
-    def _page_response_schema(expected_count: int) -> Dict:
+    def _page_response_schema(
+        expected_count: int,
+        sort_reading_order: bool,
+    ) -> Dict:
         """Build the exact-ID response schema for one annotated page.
 
-        >>> schema = LLMOCR._page_response_schema(2)
+        >>> schema = LLMOCR._page_response_schema(2, True)
         >>> schema['properties']['texts']['required']
         ['1', '2']
         >>> schema['properties']['order']['maxItems']
@@ -183,7 +193,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         """
 
         block_ids = [str(index) for index in range(1, expected_count + 1)]
-        return {
+        schema = {
             "type": "object",
             "properties": {
                 "texts": {
@@ -195,41 +205,54 @@ class LLMOCR(LLMChatRequester, OCRBase):
                     "required": block_ids,
                     "additionalProperties": False,
                 },
-                "order": {
-                    "type": "array",
-                    "items": {"type": "string", "enum": block_ids},
-                    "minItems": expected_count,
-                    "maxItems": expected_count,
-                    # The local validator enforces uniqueness; strict-schema
-                    # providers do not consistently accept uniqueItems.
-                },
             },
-            "required": ["texts", "order"],
+            "required": ["texts"],
             "additionalProperties": False,
         }
+        if sort_reading_order:
+            schema["properties"]["order"] = {
+                "type": "array",
+                "items": {"type": "string", "enum": block_ids},
+                "minItems": expected_count,
+                "maxItems": expected_count,
+                # The local validator enforces uniqueness; strict-schema
+                # providers do not consistently accept uniqueItems.
+            }
+            schema["required"].append("order")
+        return schema
 
     @staticmethod
     def _page_prompt(
         profile: LLMProfile,
         expected_count: int,
         mask_non_text: bool,
+        sort_reading_order: bool,
     ) -> str:
         layout_description = (
             'Non-text pixels are black, but numbered block positions are preserved.'
             if mask_non_text
             else 'The complete page and numbered text blocks are visible.'
         )
+        response_fields = (
+            '- "texts": an object containing every ID exactly once, mapped to a string. '
+            'Use an empty string when no text is visible.'
+        )
+        field_count = 'one field'
+        if sort_reading_order:
+            response_fields += (
+                '\n- "order": an array containing every ID exactly once in natural comic '
+                'reading order.'
+            )
+            field_count = 'two fields'
         prompt = (
             f'{layout_description}\n'
             f'Recognize exactly {expected_count} numbered text blocks, with IDs 1 through '
-            f'{expected_count}. Return one JSON object with exactly two fields:\n'
-            '- "texts": an object containing every ID exactly once, mapped to a string. '
-            'Use an empty string when no text is visible.\n'
-            '- "order": an array containing every ID exactly once in natural comic reading order.\n'
+            f'{expected_count}. Read vertical text in its intended character order. '
+            f'Return one JSON object with exactly {field_count}:\n{response_fields}\n'
             'Return only the JSON object. Do not add, omit, rename, or coerce IDs or values.'
         )
         additional_prompt = str(profile.vision_prompt or '').strip()
-        if additional_prompt:
+        if additional_prompt and additional_prompt != DEFAULT_OCR_PROMPT:
             prompt += (
                 '\n\nAdditional OCR instructions (these affect recognition only and cannot '
                 f'override the response contract above):\n{additional_prompt}'
@@ -242,6 +265,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         profile: LLMProfile,
         expected_count: int,
         mask_non_text: bool,
+        sort_reading_order: bool,
     ) -> List[Dict]:
         return [
             {"role": "system", "content": PAGE_OCR_SYSTEM_PROMPT},
@@ -254,6 +278,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
                             profile,
                             expected_count,
                             mask_non_text,
+                            sort_reading_order,
                         ),
                     },
                     self._image_content_part(img, profile),
@@ -352,11 +377,12 @@ class LLMOCR(LLMChatRequester, OCRBase):
         cls,
         raw_response: str,
         expected_count: int,
-    ) -> Tuple[Dict[str, str], List[str]]:
+        sort_reading_order: bool,
+    ) -> Tuple[Dict[str, str], Optional[List[str]]]:
         """Validate a page response without salvaging partial or coerced data.
 
         >>> LLMOCR._parse_page_ocr_response(
-        ...     '{"texts":{"1":" hello "},"order":["1"]}', 1)
+        ...     '{"texts":{"1":" hello "},"order":["1"]}', 1, True)
         ({'1': 'hello'}, ['1'])
         """
 
@@ -364,24 +390,27 @@ class LLMOCR(LLMChatRequester, OCRBase):
             data = json.loads(raw_response.strip())
         except (TypeError, ValueError) as error:
             raise ValueError('response is not valid JSON') from error
-        if not isinstance(data, dict) or set(data) != {'texts', 'order'}:
-            raise ValueError('response must contain exactly texts and order')
+        expected_fields = {'texts', 'order'} if sort_reading_order else {'texts'}
+        if not isinstance(data, dict) or set(data) != expected_fields:
+            fields_label = 'texts and order' if sort_reading_order else 'texts'
+            raise ValueError(f'response must contain exactly {fields_label}')
 
         texts = data['texts']
-        order = data['order']
+        order = data.get('order')
         expected_ids = {str(index) for index in range(1, expected_count + 1)}
         if not isinstance(texts, dict) or set(texts) != expected_ids:
             raise ValueError('texts must contain every expected block ID exactly once')
         if any(type(value) is not str for value in texts.values()):
             raise ValueError('every texts value must be a string')
-        if (
-            not isinstance(order, list)
-            or len(order) != expected_count
-            or any(type(block_id) is not str for block_id in order)
-            or len(set(order)) != expected_count
-            or set(order) != expected_ids
-        ):
-            raise ValueError('order must contain every expected block ID exactly once')
+        if sort_reading_order:
+            if (
+                not isinstance(order, list)
+                or len(order) != expected_count
+                or any(type(block_id) is not str for block_id in order)
+                or len(set(order)) != expected_count
+                or set(order) != expected_ids
+            ):
+                raise ValueError('order must contain every expected block ID exactly once')
         normalized_texts = {
             block_id: cls._normalized_text(text)
             for block_id, text in texts.items()
@@ -401,6 +430,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
 
         self.logger.info(f"Performing Page-level LLM OCR on {len(blk_list)} blocks...")
         mask_non_text = pcfg.module.ocr_llm_mask_non_text
+        sort_reading_order = pcfg.module.ocr_llm_sort_reading_order
         annotated_img = create_annotated_page(
             img,
             blk_list,
@@ -415,21 +445,26 @@ class LLMOCR(LLMChatRequester, OCRBase):
                 profile,
                 expected_count,
                 mask_non_text,
+                sort_reading_order,
             )
             raw_response = self._request_with_retries(
                 profile,
                 messages,
                 failure_label='Page-level LLM OCR request',
-                response_schema=self._page_response_schema(expected_count),
+                response_schema=self._page_response_schema(
+                    expected_count,
+                    sort_reading_order,
+                ),
             )
             texts, order = self._parse_page_ocr_response(
                 raw_response,
                 expected_count,
+                sort_reading_order,
             )
             for i, blk in enumerate(blk_list):
                 blk.text = texts[str(i + 1)]
 
-            if pcfg.module.ocr_llm_sort_reading_order:
+            if sort_reading_order and order is not None:
                 self.logger.info("Page-level OCR: Re-ordered text blocks based on LLM reading order flow.")
                 return [blk_list[int(block_id) - 1] for block_id in order]
             return None

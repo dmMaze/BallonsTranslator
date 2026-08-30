@@ -42,7 +42,7 @@ from .custom_widget import ImgtransProgressMessageBox, ParamComboBox, ProgressMe
 from .configpanel import ConfigPanel
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.config import pcfg, RunStatus, save_config
-from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY
+from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY, LLM_OCR_KEY
 from ballontranslator.utils.global_callbacks import register_global_callback
 cfg_module = pcfg.module
 
@@ -1094,11 +1094,16 @@ class ImgtransThread(QThread):
                 if hasattr(self.ocr, 'set_stop_event'):
                     self.ocr.set_stop_event(self.stop_event)
                 try:
-                    ocr_result = self.ocr.run_ocr(
-                        img,
-                        blk_list,
-                        full_page=True,
-                    )
+                    # full_page is an LLMOCR-only extension; preserve the
+                    # historical two-argument contract for custom OCR modules.
+                    if getattr(self.ocr, 'name', '') == LLM_OCR_KEY:
+                        ocr_result = self.ocr.run_ocr(
+                            img,
+                            blk_list,
+                            full_page=True,
+                        )
+                    else:
+                        ocr_result = self.ocr.run_ocr(img, blk_list)
                     if isinstance(ocr_result, list):
                         blk_list = ocr_result
                     self.imgtrans_proj.pages[imgname] = blk_list

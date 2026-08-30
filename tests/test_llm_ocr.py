@@ -2,6 +2,7 @@ import copy
 import json
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 
@@ -11,7 +12,7 @@ from ballontranslator.modules.exceptions import (
     LLMModelRequiredError,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import DEFAULT_OCR_PROMPT, default_profile
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -122,7 +123,7 @@ class LLMOCRTest(unittest.TestCase):
     def test_page_request_uses_strict_schema_or_json_object(self):
         profile = self.ocr.profile
         messages = [{'role': 'user', 'content': 'x'}]
-        schema = self.ocr._page_response_schema(2)
+        schema = self.ocr._page_response_schema(2, True)
 
         profile.json_schema_response_format = True
         strict_args = self.ocr._api_args(profile, messages, schema)
@@ -140,12 +141,21 @@ class LLMOCRTest(unittest.TestCase):
         )
 
     def test_page_prompt_includes_profile_vision_prompt_below_contract(self):
-        prompt = self.ocr._page_prompt(self.ocr.profile, 2, True)
+        prompt = self.ocr._page_prompt(self.ocr.profile, 2, True, True)
 
         self.assertIn('"texts"', prompt)
         self.assertIn('"order"', prompt)
         self.assertIn('cannot override the response contract', prompt)
         self.assertTrue(prompt.endswith('Read vertical text carefully.'))
+
+    def test_page_prompt_does_not_append_builtin_crop_prompt(self):
+        profile = self.ocr.profile
+        profile.vision_prompt = DEFAULT_OCR_PROMPT
+
+        prompt = self.ocr._page_prompt(profile, 2, True, False)
+
+        self.assertNotIn(DEFAULT_OCR_PROMPT, prompt)
+        self.assertNotIn('"order"', prompt)
 
     def test_none_detail_omits_image_detail(self):
         profile = self.ocr.profile
@@ -154,6 +164,21 @@ class LLMOCRTest(unittest.TestCase):
         image_part = self.ocr._image_content_part(np.zeros((2, 2, 3), dtype=np.uint8), profile)
 
         self.assertNotIn('detail', image_part['image_url'])
+
+    def test_jpeg_encoding_preserves_project_rgb_channel_order(self):
+        encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
+
+        with mock.patch(
+            'ballontranslator.modules.ocr.ocr_llm.cv2.imencode',
+            return_value=(True, encoded),
+        ) as imencode:
+            self.ocr._image_content_part(
+                np.array([[[10, 20, 30]]], dtype=np.uint8),
+                self.ocr.profile,
+            )
+
+        encoded_image = imencode.call_args.args[1]
+        self.assertEqual(encoded_image[0, 0].tolist(), [30, 20, 10])
 
     def test_blank_vision_model_requires_model(self):
         profile = self.ocr.profile
@@ -195,7 +220,7 @@ class LLMOCRTest(unittest.TestCase):
         })
 
         self.assertEqual(
-            self.ocr._parse_page_ocr_response(valid, 2),
+            self.ocr._parse_page_ocr_response(valid, 2, True),
             ({'1': 'first line', '2': ''}, ['2', '1']),
         )
         invalid_responses = (
@@ -217,7 +242,18 @@ class LLMOCRTest(unittest.TestCase):
         for response in invalid_responses:
             with self.subTest(response=response):
                 with self.assertRaises(ValueError):
-                    self.ocr._parse_page_ocr_response(response, 2)
+                    self.ocr._parse_page_ocr_response(response, 2, True)
+
+    def test_page_contract_omits_order_when_sorting_is_disabled(self):
+        schema = self.ocr._page_response_schema(2, False)
+        response = json.dumps({'texts': {'1': 'first', '2': 'second'}})
+
+        self.assertEqual(schema['required'], ['texts'])
+        self.assertNotIn('order', schema['properties'])
+        self.assertEqual(
+            self.ocr._parse_page_ocr_response(response, 2, False),
+            ({'1': 'first', '2': 'second'}, None),
+        )
 
     def test_full_page_ocr_returns_validated_project_order(self):
         response = json.dumps({
@@ -241,6 +277,29 @@ class LLMOCRTest(unittest.TestCase):
         self.assertEqual(second.text, 'second')
         self.assertEqual(blocks, [first, second])
         self.assertIn('response_format', ocr.completions.calls[0])
+
+    def test_full_page_ocr_without_sorting_accepts_texts_only(self):
+        response = json.dumps({
+            'texts': {'1': 'first', '2': 'second'},
+        })
+        ocr = FakeOCR(contents=[response])
+        first = TextBlock(xyxy=[0, 0, 4, 4])
+        second = TextBlock(xyxy=[4, 0, 8, 4])
+        blocks = [first, second]
+        pcfg.module.ocr_llm_page_level = True
+        pcfg.module.ocr_llm_sort_reading_order = False
+
+        result = ocr.run_ocr(
+            np.zeros((8, 8, 3), dtype=np.uint8),
+            blocks,
+            full_page=True,
+        )
+
+        self.assertIs(result, blocks)
+        self.assertEqual([block.text for block in blocks], ['first', 'second'])
+        self.assertEqual(len(ocr.completions.calls), 1)
+        prompt = ocr.completions.calls[0]['messages'][1]['content'][0]['text']
+        self.assertNotIn('"order"', prompt)
 
     def test_selected_blocks_keep_crop_ocr_when_page_mode_is_enabled(self):
         ocr = FakeOCR(contents=['crop one', 'crop two'])
