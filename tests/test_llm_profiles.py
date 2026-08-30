@@ -15,6 +15,7 @@ from ballontranslator.utils.llm_profiles import (
     default_profile,
     profile_by_id,
     load_profiles,
+    new_cli_profile,
     profile_to_dict,
     profile_to_export_dict,
     profiles_from_json,
@@ -24,6 +25,21 @@ from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_cli_profile_round_trip_preserves_transport_settings(self):
+        profile = new_cli_profile('antigravity')
+        profile.cli_executable = '/opt/tools/agy'
+        profile.support_vision = True
+        profile.support_image = True
+
+        loaded = load_profiles([profile_to_dict(profile)])[0]
+
+        self.assertEqual(loaded.transport, 'cli')
+        self.assertEqual(loaded.cli_backend, 'antigravity')
+        self.assertEqual(loaded.cli_executable, '/opt/tools/agy')
+        self.assertEqual(loaded.model, 'default')
+        self.assertFalse(loaded.support_vision)
+        self.assertFalse(loaded.support_image)
+
     def test_load_profiles_merges_builtin_option_lists_and_selections(self):
         profile = default_profile('OpenAI')
         profile.model = 'saved-text-model'

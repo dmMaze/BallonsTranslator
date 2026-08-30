@@ -10,8 +10,13 @@ from ballontranslator.modules.translators.trans_llm import (
     InvalidNumTranslations,
     LLMTranslator,
 )
+from ballontranslator.modules.llm_cli import LLMCLINonRetryableError
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import copy_profile, default_profile
+from ballontranslator.utils.llm_profiles import (
+    copy_profile,
+    default_profile,
+    new_cli_profile,
+)
 
 
 class FakeAuthError(Exception):
@@ -269,6 +274,39 @@ class LLMTranslatorTest(unittest.TestCase):
 
         self.assertEqual(result, ['甲', '乙', '丙'])
         self.assertEqual(request.call_args.kwargs['expected_translations'], 3)
+
+    def test_cli_profile_reuses_translation_contract_and_parser(self):
+        profile = new_cli_profile('codex')
+        self.translator.set_param_value('request timeout', 12)
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.request_cli_translation',
+            return_value='{"1":"甲","2":"乙"}',
+        ) as request:
+            result = self.translator._translate(
+                ['a', 'b'],
+                profile=profile,
+            )
+
+        self.assertEqual(result, ['甲', '乙'])
+        self.assertEqual(
+            request.call_args.args[2]['required'],
+            ['1', '2'],
+        )
+        self.assertEqual(request.call_args.kwargs['timeout'], 12)
+
+    def test_cli_setup_failure_is_not_retried(self):
+        profile = new_cli_profile('claude')
+        self.translator.set_param_value('retry attempts', 3)
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.request_cli_translation',
+            side_effect=LLMCLINonRetryableError('not logged in'),
+        ) as request:
+            with self.assertRaisesRegex(LLMCLINonRetryableError, 'not logged in'):
+                self.translator._translate(['a'], profile=profile)
+
+        request.assert_called_once()
 
     def test_stop_event_interrupts_wait(self):
         event = threading.Event()

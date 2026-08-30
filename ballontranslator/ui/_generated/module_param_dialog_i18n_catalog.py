@@ -598,6 +598,12 @@ MODULE_PARAM_CATALOG = {
     ('translator', 'LLMTranslator', 'proxy', 'display_name'): {
         "source": 'Proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy'),
     },
+    ('translator', 'LLMTranslator', 'request timeout', 'description'): {
+        "source": 'Maximum time for one CLI translation request in seconds.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Maximum time for one CLI translation request in seconds.'),
+    },
+    ('translator', 'LLMTranslator', 'request timeout', 'display_name'): {
+        "source": 'Request Timeout', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Request Timeout'),
+    },
     ('translator', 'LLMTranslator', 'retry attempts', 'description'): {
         "source": 'Retries for API or parsing failures.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Retries for API or parsing failures.'),
     },

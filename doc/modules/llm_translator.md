@@ -18,6 +18,7 @@ preserve behavior that spans several files.
 | Concern | Owner |
 | --- | --- |
 | Prompt assembly, provider request, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| Codex, Claude, and Antigravity subprocess transport | [`llm_cli.py`](../../ballontranslator/modules/llm_cli.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
 | History selection, rebuild, eviction, and overflow recovery | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
 | Glossary parsing and matching | [`context/glossary.py`](../../ballontranslator/modules/context/glossary.py) |
@@ -37,7 +38,7 @@ worker
      -> decide commit_history_window
      -> LLMTranslator.translate(...)
         -> resolve profile and freeze RequestContext
-        -> assemble messages and call chat.completions.create(...)
+        -> assemble messages and call the selected API or CLI transport
         -> parse JSON and validate the exact ID set
         -> commit reusable window state after a valid parse
      -> finalize results and assign TextBlock.translation
@@ -56,6 +57,25 @@ The parser tolerates the compatibility shapes implemented in
 then run normalization, result substitutions, and optional uppercase before
 the page can become history. Selected-block translation retains its narrower
 postprocessing behavior.
+
+## CLI profiles
+
+Use **New -> CLI Profiles** in the LLM profile panel to create a Codex,
+Claude, or Antigravity text profile. CLI profiles reuse the normal
+translation prompt, glossary, history, retries, and exact-ID response parser.
+They do not enable OCR or image generation.
+
+The profile model `default` leaves model selection to the CLI. Add another
+model in the normal text-model selector to pass an explicit model override.
+Leave **CLI Executable** empty to search `PATH`, `~/.local/bin`, Homebrew, and
+`/usr/local/bin`, or enter an absolute executable path when the GUI process has
+a different environment from the user's shell.
+
+The app never installs or logs in to a CLI. Run the selected CLI interactively
+once to authenticate it. Each request runs in an empty temporary directory,
+sends project text over stdin, disables or restricts tools, strips unrelated
+environment secrets, validates the response IDs, and deletes the temporary
+directory. The request timeout and stop button terminate the child process.
 
 ## Prompt layout and context modes
 
@@ -214,8 +234,9 @@ than silently translating without it.
   project after restart.
 - `ProjImgTrans.load_identity` invalidates a window even when the same path is
   reopened.
-- The synchronous provider call cannot be interrupted in flight; the stop event
-  prevents later attempts and interrupts waits.
+- Synchronous API calls cannot be interrupted in flight. CLI calls poll the
+  stop event and terminate their child process; both transports prevent later
+  attempts and interrupt waits.
 
 Context logs normally expose aggregate page, action, page-count, token-budget,
 attempt, and provider cache fields. A healthy contiguous run is usually
@@ -237,6 +258,7 @@ Before changing this subsystem, preserve these contracts:
 - the translation queue remains sequential when `+history` is active.
 
 Focused executable specifications are
+[`test_llm_cli.py`](../../tests/test_llm_cli.py),
 [`test_llm_translator.py`](../../tests/test_llm_translator.py),
 [`test_llm_translation_context.py`](../../tests/test_llm_translation_context.py),
 [`test_proj_imgtrans_translation_context.py`](../../tests/test_proj_imgtrans_translation_context.py),

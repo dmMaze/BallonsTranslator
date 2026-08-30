@@ -32,6 +32,7 @@ from ..context.token_usage import (
     format_completion_token_usage,
     messages_token_count,
 )
+from ..llm_cli import LLMCLINonRetryableError, request_cli_translation
 from .base import BaseTranslator, register_translator
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import (
@@ -48,6 +49,7 @@ from ballontranslator.utils.llm_profiles import (
     profile_by_id,
     profile_from_config,
     resolve_api_key,
+    is_cli_profile,
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
@@ -92,6 +94,11 @@ class LLMTranslator(BaseTranslator):
             "value": 7.0,
             "display_name": "Retry Timeout",
             "description": "Delay between retries in seconds.",
+        },
+        "request timeout": {
+            "value": 300.0,
+            "display_name": "Request Timeout",
+            "description": "Maximum time for one CLI translation request in seconds.",
         },
         "proxy": {
             "value": "",
@@ -748,9 +755,18 @@ class LLMTranslator(BaseTranslator):
         usage_page_key=None,
         usage_attempt: Optional[int] = None,
     ) -> str:
+        self._respect_delay()
+        if is_cli_profile(profile):
+            return request_cli_translation(
+                profile,
+                messages,
+                self._json_schema(expected_translations),
+                stop_event=self.stop_event,
+                timeout=self.get_param_value('request timeout'),
+            )
+
         openai = self._openai_module()
         client = self._initialize_client(profile)
-        self._respect_delay()
         try:
             completion = client.chat.completions.create(**self._api_args(
                 profile,
@@ -881,6 +897,8 @@ class LLMTranslator(BaseTranslator):
             except LLMModelRequiredError:
                 raise
             except LLMRequestStopped:
+                raise
+            except LLMCLINonRetryableError:
                 raise
             except Exception as e:
                 if isinstance(e, InvalidNumTranslations):
