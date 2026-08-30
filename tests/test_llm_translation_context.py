@@ -16,6 +16,7 @@ from ballontranslator.modules.context.history import (
     HistoryWindow,
     HistoryWindowKey,
     MemoryCheckpoint,
+    PageSummary,
     RenderedHistoryPage,
     RequestContext,
     eligible_history_for_request,
@@ -350,6 +351,173 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertEqual(record['model'], self.profile.model)
         self.assertEqual(record['image_sha256'], '')
 
+    def test_saved_summaries_are_independent_from_exact_history_completion(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_translate_summary = True
+        project = self._project(3)
+        self._complete(project, '001.png')
+        project.set_llm_visual_summary_text(
+            '001.png',
+            'Completed page summary.',
+        )
+        project.set_llm_visual_summary_text(
+            '002.png',
+            'User summary from an incomplete page.',
+        )
+        project.set_llm_visual_summary_text(
+            '003.png',
+            'User summary for the current page.',
+        )
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ):
+            context = self.translator._snapshot_request_context(
+                project,
+                '003.png',
+                self.profile,
+                summary_enabled=True,
+            )
+
+        self.assertEqual(
+            [page.page_key for page in context.history],
+            ['001.png'],
+        )
+        self.assertEqual(
+            context.history[0].snapshot.summary,
+            'Completed page summary.',
+        )
+        self.assertIsNone(self.translator._snapshot_history_page(
+            project,
+            '002.png',
+            '简体中文',
+            summary_enabled=True,
+        ))
+        self.assertEqual(
+            context.page_summaries,
+            (
+                PageSummary(
+                    '002.png',
+                    'User summary from an incomplete page.',
+                ),
+                PageSummary(
+                    '003.png',
+                    'User summary for the current page.',
+                ),
+            ),
+        )
+
+        messages, _ = self.translator._assemble_request(
+            ['current'],
+            self.profile,
+            request_context=context,
+            summary_enabled=True,
+        )
+        history_response = messages[2]['content']
+        current_prompt = messages[-1]['content']
+        self.assertIn('Completed page summary.', history_response)
+        self.assertNotIn('Completed page summary.', current_prompt)
+        self.assertIn(
+            'User summary from an incomplete page.',
+            current_prompt,
+        )
+        self.assertIn('User summary for the current page.', current_prompt)
+
+    def test_saved_summary_edits_change_only_the_current_request_suffix(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_translate_summary = True
+        project = self._project(2)
+        self._complete(project, '001.png')
+        project.set_llm_visual_summary_text('002.png', 'First user edit.')
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ):
+            first_context = self.translator._snapshot_request_context(
+                project,
+                '002.png',
+                self.profile,
+                summary_enabled=True,
+            )
+            first_messages, _ = self.translator._assemble_request(
+                ['current'],
+                self.profile,
+                request_context=first_context,
+                summary_enabled=True,
+            )
+            project.set_llm_visual_summary_text(
+                '002.png',
+                'Second user edit.',
+            )
+            second_context = self.translator._snapshot_request_context(
+                project,
+                '002.png',
+                self.profile,
+                summary_enabled=True,
+            )
+            second_messages, _ = self.translator._assemble_request(
+                ['current'],
+                self.profile,
+                request_context=second_context,
+                summary_enabled=True,
+            )
+
+        self.assertEqual(first_messages[:-1], second_messages[:-1])
+        self.assertIn('First user edit.', first_messages[-1]['content'])
+        self.assertIn('Second user edit.', second_messages[-1]['content'])
+
+    def test_saved_current_summary_applies_without_history(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
+        pcfg.module.llm_translate_summary = True
+        project = self._project(1)
+        project.set_llm_visual_summary_text(
+            '001.png',
+            'The user identifies the masked speaker as Kuro.',
+        )
+
+        context = self.translator._snapshot_request_context(
+            project,
+            '001.png',
+            self.profile,
+            summary_enabled=True,
+        )
+        messages, _ = self.translator._assemble_request(
+            ['current'],
+            self.profile,
+            request_context=context,
+            summary_enabled=True,
+        )
+
+        self.assertEqual(
+            [message['role'] for message in messages],
+            ['system', 'user'],
+        )
+        self.assertIn(
+            'The user identifies the masked speaker as Kuro.',
+            messages[-1]['content'],
+        )
+
+    def test_saved_summary_context_keeps_recent_whole_entries(self):
+        summaries = tuple(
+            PageSummary(str(index), f'summary-{index}')
+            for index in range(1, 4)
+        )
+        budget = self.translator._page_summary_context_token_count(
+            summaries[1:],
+            self.profile.model,
+        )
+
+        selected = self.translator._fit_page_summaries(
+            summaries,
+            self.profile.model,
+            budget,
+            required_page_key='3',
+        )
+
+        self.assertEqual(selected, summaries[1:])
+
     def test_missing_summary_keeps_valid_translations(self):
         parsed = self.translator._parse_translation_response(
             '{"translations":{"1":"translated"}}',
@@ -529,6 +697,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             key: HistoryPage(key, (key,), (f't-{key}',), f'summary-{key}')
             for key in ('001.png', '002.png', '003.png')
         }
+        summaries = {
+            key: PageSummary(key, f'summary-{key}')
+            for key in pages
+        }
         project = SimpleNamespace(
             pages={key: [] for key in (*pages, '004.png')},
             load_identity=object(),
@@ -581,6 +753,10 @@ class LLMTranslationContextTest(unittest.TestCase):
             ),
         ), mock.patch.object(
             self.translator,
+            '_snapshot_page_summary',
+            side_effect=lambda _project, page_key: summaries.get(page_key),
+        ), mock.patch.object(
+            self.translator,
             '_render_history_page',
             side_effect=rendered,
         ), mock.patch(
@@ -625,44 +801,188 @@ class LLMTranslationContextTest(unittest.TestCase):
             messages[1]['content'].startswith('Compacted translation memory')
         )
 
+    def test_memory_compaction_reads_incomplete_page_summary_directly(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_translate_memory = True
+        project = self._project(2)
+        project.set_llm_visual_summary_text(
+            '001.png',
+            'User-owned summary without completed translation.',
+        )
+
+        with mock.patch.object(
+            self.translator,
+            '_compact_omitted_summaries',
+            return_value=None,
+        ) as compact:
+            context = self.translator._snapshot_request_context(
+                project,
+                '002.png',
+                self.profile,
+            )
+
+        self.assertEqual(context.history, ())
+        self.assertEqual(
+            compact.call_args.kwargs['summaries'],
+            (PageSummary(
+                '001.png',
+                'User-owned summary without completed translation.',
+            ),),
+        )
+
+    def test_memory_discovers_late_summary_during_adjacent_growth(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_translate_memory = True
+        pcfg.module.llm_prior_context_token_budget = 10
+        project = self._project(3)
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value='{"1":"target-2"}',
+        ):
+            self.translator._translate(
+                ['source-2'],
+                profile=self.profile,
+                request_context=self.translator._snapshot_request_context(
+                    project,
+                    '002.png',
+                    self.profile,
+                ),
+            )
+            self._complete(project, '002.png')
+            project.set_llm_visual_summary_text(
+                '001.png',
+                'Late summary from an incomplete page.',
+            )
+            project.set_llm_visual_summary_text(
+                '002.png',
+                'Summary from the exact page at risk of eviction.',
+            )
+            with mock.patch.object(
+                self.translator,
+                '_compact_omitted_summaries',
+                return_value=MemoryCheckpoint(
+                    'Coverage: page summaries ["001.png"].\n\nMemory.',
+                    ('001.png',),
+                    3,
+                ),
+            ) as compact, mock.patch(
+                'ballontranslator.modules.translators.trans_llm.messages_token_count',
+                return_value=8,
+            ):
+                context = self.translator._snapshot_request_context(
+                    project,
+                    '003.png',
+                    self.profile,
+                )
+
+        self.assertEqual(context.diagnostic.action, ContextAction.GROW)
+        self.assertEqual(
+            tuple(page.page_key for page in context.history),
+            ('002.png',),
+        )
+        self.assertEqual(context.diagnostic.evicted, 0)
+        self.assertEqual(context.diagnostic.token_count, 8)
+        self.assertLessEqual(
+            context.diagnostic.token_count,
+            context.history_budget,
+        )
+        self.assertEqual(
+            compact.call_args.kwargs['summaries'],
+            (PageSummary(
+                '001.png',
+                'Late summary from an incomplete page.',
+            ),),
+        )
+        self.assertEqual(compact.call_args.kwargs['memory_token_limit'], 2)
+        self.assertIsNone(context.memory)
+
+    def test_memory_only_summary_edits_keep_exact_history_reusable(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_translate_memory = True
+        project = self._project(3)
+        self._complete(project, '001.png')
+        project.set_llm_visual_summary_text('001.png', 'First summary edit.')
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            return_value=1,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value='{"1":"target-2"}',
+        ):
+            self.translator._translate(
+                ['source-2'],
+                profile=self.profile,
+                request_context=self.translator._snapshot_request_context(
+                    project,
+                    '002.png',
+                    self.profile,
+                ),
+            )
+            self._complete(project, '002.png')
+            project.set_llm_visual_summary_text(
+                '001.png',
+                'Second summary edit.',
+            )
+            context = self.translator._snapshot_request_context(
+                project,
+                '003.png',
+                self.profile,
+            )
+
+        self.assertEqual(context.diagnostic.action, ContextAction.GROW)
+        self.assertIsNone(context.diagnostic.rebuild_reason)
+        self.assertTrue(all(
+            not page.snapshot.summary
+            for page in context.history
+        ))
+
     def test_memory_compaction_failure_falls_back_to_page_eviction(self):
         previous = MemoryCheckpoint('old memory', ('001.png',), 1)
         retired = (
-            HistoryPage('002.png', ('s',), ('t',), 'new summary'),
+            PageSummary('002.png', 'new summary'),
         )
         with mock.patch.object(
             self.translator,
             'request_chat_completion',
             side_effect=RuntimeError('provider unavailable'),
         ):
-            checkpoint = self.translator._compact_retired_summaries(
+            checkpoint = self.translator._compact_omitted_summaries(
                 previous=previous,
-                pages=retired,
+                summaries=retired,
                 profile=self.profile,
                 model=self.profile.vision_model,
                 history_budget=1000,
+                memory_token_limit=1000,
             )
 
         self.assertIs(checkpoint, previous)
 
     def test_memory_compaction_honors_cancellation(self):
         self.translator.stop_event = SimpleNamespace(is_set=lambda: True)
-        page = HistoryPage('001.png', ('s',), ('t',), 'summary')
+        summary = PageSummary('001.png', 'summary')
 
         with self.assertRaises(LLMRequestStopped):
-            self.translator._compact_retired_summaries(
+            self.translator._compact_omitted_summaries(
                 previous=None,
-                pages=(page,),
+                summaries=(summary,),
                 profile=self.profile,
                 model=self.profile.vision_model,
                 history_budget=1000,
+                memory_token_limit=1000,
             )
 
     def test_memory_compaction_sends_only_not_yet_covered_summaries(self):
         previous = MemoryCheckpoint('old memory', ('001.png',), 1)
-        pages = (
-            HistoryPage('001.png', ('s1',), ('t1',), 'covered summary'),
-            HistoryPage('002.png', ('s2',), ('t2',), 'new summary'),
+        summaries = (
+            PageSummary('001.png', 'covered summary'),
+            PageSummary('002.png', 'new summary'),
         )
         completion = SimpleNamespace(
             content='{"memory":"merged memory"}',
@@ -677,19 +997,20 @@ class LLMTranslationContextTest(unittest.TestCase):
             'ballontranslator.modules.translators.trans_llm.messages_token_count',
             return_value=1,
         ):
-            checkpoint = self.translator._compact_retired_summaries(
+            checkpoint = self.translator._compact_omitted_summaries(
                 previous=previous,
-                pages=pages,
+                summaries=summaries,
                 profile=self.profile,
                 model=self.profile.vision_model,
                 history_budget=1000,
+                memory_token_limit=1000,
             )
 
         user_payload = json.loads(
             request.call_args.args[1]['messages'][1]['content']
         )
         self.assertEqual(
-            user_payload['retired_page_summaries'],
+            user_payload['page_summaries'],
             [{'page': '002.png', 'summary': 'new summary'}],
         )
         self.assertEqual(
@@ -703,6 +1024,34 @@ class LLMTranslationContextTest(unittest.TestCase):
             request.call_args.args[1]['model'],
             self.profile.model,
         )
+
+    def test_memory_compaction_rechecks_limit_for_translation_model(self):
+        completion = SimpleNamespace(
+            content='{"memory":"merged memory"}',
+            usage=None,
+        )
+
+        def token_count(_messages, model):
+            return 3 if model == 'vision-model' else 1
+
+        with mock.patch.object(
+            self.translator,
+            'request_chat_completion',
+            return_value=completion,
+        ), mock.patch(
+            'ballontranslator.modules.translators.trans_llm.messages_token_count',
+            side_effect=token_count,
+        ):
+            checkpoint = self.translator._compact_omitted_summaries(
+                previous=None,
+                summaries=(PageSummary('001.png', 'summary'),),
+                profile=self.profile,
+                model='vision-model',
+                history_budget=10,
+                memory_token_limit=2,
+            )
+
+        self.assertIsNone(checkpoint)
 
     def test_persisted_memory_applies_without_vision_summary_or_history(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
@@ -864,15 +1213,59 @@ class LLMTranslationContextTest(unittest.TestCase):
             for index in range(2)
         )
         memory = MemoryCheckpoint('memory', ('old',), 2)
+        summary = PageSummary('current', 'Current page context.')
         recovered = recover_context_length(RequestContext(
             history=pages,
-            history_budget=10,
+            history_budget=12,
             memory=memory,
+            request_page_key='current',
+            page_summaries=(summary,),
+            summary_token_count=1,
+            current_summary_token_count=1,
         ))
 
         self.assertIs(recovered.memory, memory)
+        self.assertEqual(recovered.page_summaries, (summary,))
         self.assertEqual(len(recovered.history), 1)
-        self.assertEqual(recovered.diagnostic.token_count, 6)
+        self.assertEqual(recovered.diagnostic.token_count, 7)
+
+    def test_context_overflow_drops_prior_summaries_before_current_page(self):
+        prior = PageSummary('001.png', 'Prior context.')
+        current = PageSummary('002.png', 'Current context.')
+        context = RequestContext(
+            history=(),
+            history_budget=20,
+            request_page_key='002.png',
+            page_summaries=(prior, current),
+            summary_token_count=10,
+            current_summary_token_count=4,
+        )
+        recovered = recover_context_length(context)
+        self.assertEqual(recovered.page_summaries, (current,))
+        self.assertEqual(recovered.summary_token_count, 4)
+        self.assertEqual(recovered.diagnostic.token_count, 4)
+        self.assertEqual(recovered.diagnostic.summaries_evicted, 1)
+
+        with mock.patch.object(
+            self.translator,
+            '_request_translation',
+            side_effect=(
+                ContextLengthError('maximum context length exceeded'),
+                '{"1":"translated"}',
+            ),
+        ) as request:
+            translated = self.translator._translate(
+                ['source'],
+                profile=self.profile,
+                request_context=context,
+            )
+
+        self.assertEqual(translated, ['translated'])
+        first_prompt = request.call_args_list[0].args[1][-1]['content']
+        recovered_prompt = request.call_args_list[1].args[1][-1]['content']
+        self.assertIn('Prior context.', first_prompt)
+        self.assertNotIn('Prior context.', recovered_prompt)
+        self.assertIn('Current context.', recovered_prompt)
 
     def test_history_eligibility_is_page_complete_target_compatible_and_past_only(self):
         pages = {
@@ -1221,6 +1614,36 @@ class LLMTranslationContextTest(unittest.TestCase):
             ContextReason.OVERSIZED_PAGE,
         )
         self.assertEqual(third.history, second.history)
+
+    def test_oversized_adjacent_page_refits_history_for_current_summary(self):
+        retained = RenderedHistoryPage(
+            HistoryPage('001.png', ('s1',), ('t1',)),
+            (),
+            4,
+        )
+        window = HistoryWindow(
+            HistoryWindowKey(object(), ()),
+            '001.png',
+            (retained,),
+            4,
+        )
+
+        history, diagnostic = eligible_history_for_request(
+            window=window,
+            project=None,
+            page_key='002.png',
+            previous_page=HistoryPage('001.png', ('large',), ('large',)),
+            token_budget=10,
+            rebuild_reason=None,
+            snapshot_page=lambda _page_key: None,
+            render_page=lambda page: RenderedHistoryPage(page, (), 7),
+            reserved_tokens=8,
+        )
+
+        self.assertEqual(history, ())
+        self.assertEqual(diagnostic.action, ContextAction.EVICT)
+        self.assertEqual(diagnostic.evicted, 1)
+        self.assertEqual(diagnostic.token_count, 8)
 
     def test_page_jumps_and_failed_previous_page_rebuild(self):
         project = self._project(5)

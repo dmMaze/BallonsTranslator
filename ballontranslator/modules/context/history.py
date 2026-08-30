@@ -64,6 +64,18 @@ class HistoryPage:
 
 
 @dataclass(frozen=True)
+class PageSummary:
+    """One user-owned saved page summary, independent of translation state.
+
+    >>> PageSummary('001.png', 'A hero arrives.').text
+    'A hero arrives.'
+    """
+
+    page_key: str
+    text: str
+
+
+@dataclass(frozen=True)
 class RenderedHistoryPage:
     """A page snapshot plus its immutable provider messages and token cost.
 
@@ -138,6 +150,7 @@ class ContextDiagnostic:
     token_budget: int
     appended: int = 0
     evicted: int = 0
+    summaries_evicted: int = 0
     rebuild_reason: Optional[ContextReason] = None
 
     def __str__(self) -> str:
@@ -154,6 +167,10 @@ class ContextDiagnostic:
             details.append('appended={}'.format(self.appended))
         if self.evicted:
             details.append('evicted={}'.format(self.evicted))
+        if self.summaries_evicted:
+            details.append(
+                'summaries_evicted={}'.format(self.summaries_evicted)
+            )
         if self.rebuild_reason is not None:
             details.append('reason={}'.format(self.rebuild_reason.value))
         return ', '.join(details)
@@ -161,7 +178,7 @@ class ContextDiagnostic:
 
 @dataclass(frozen=True)
 class RequestContext:
-    """Immutable history and optional glossary used for provider retries.
+    """Immutable translation context used for provider retries.
 
     >>> RequestContext(()).history
     ()
@@ -175,6 +192,9 @@ class RequestContext:
     request_page_key: Optional[str] = None
     diagnostic: Optional[ContextDiagnostic] = None
     memory: Optional[MemoryCheckpoint] = None
+    page_summaries: Tuple[PageSummary, ...] = ()
+    summary_token_count: int = 0
+    current_summary_token_count: int = 0
 
 
 def eligible_history_for_request(
@@ -255,12 +275,24 @@ def eligible_history_for_request(
     history_limit = max(0, token_budget - reserved_tokens)
     if rendered_previous_page.token_count > history_limit:
         # Keep the existing prefix stable rather than splitting an oversized page.
+        evicted = 0
+        if token_count > history_limit:
+            low_water = max(
+                0,
+                int(token_budget * HISTORY_LOW_WATER_RATIO) - reserved_tokens,
+            )
+            while history and token_count > low_water:
+                token_count -= history.pop(0).token_count
+                evicted += 1
         return tuple(history), ContextDiagnostic(
             page_key=page_key,
-            action=ContextAction.REUSE,
+            action=(
+                ContextAction.EVICT if evicted else ContextAction.REUSE
+            ),
             page_count=len(history),
             token_count=token_count + reserved_tokens,
             token_budget=token_budget,
+            evicted=evicted,
             rebuild_reason=ContextReason.OVERSIZED_PAGE,
         )
 
@@ -341,13 +373,56 @@ def window_rebuild_reason(
 def recover_context_length(
     request_context: Optional[RequestContext],
 ) -> Optional[RequestContext]:
-    """Remove whole oldest pages toward the shared low-water target.
+    """Remove optional summaries, then pages, while retaining current input.
 
     >>> int(4096 * HISTORY_LOW_WATER_RATIO)
     2457
     """
 
-    if request_context is None or not request_context.history:
+    if request_context is None:
+        return None
+
+    current_summaries = tuple(
+        summary
+        for summary in request_context.page_summaries
+        if summary.page_key == request_context.request_page_key
+    )
+    summaries_evicted = (
+        len(request_context.page_summaries) - len(current_summaries)
+    )
+    if summaries_evicted:
+        reserved_tokens = (
+            request_context.memory.token_count
+            if request_context.memory is not None
+            else 0
+        ) + request_context.current_summary_token_count
+        diagnostic = ContextDiagnostic(
+            page_key=str(request_context.request_page_key or ''),
+            action=ContextAction.CONTEXT_RECOVERY,
+            page_count=len(request_context.history),
+            token_count=(
+                sum(page.token_count for page in request_context.history)
+                + reserved_tokens
+            ),
+            token_budget=request_context.history_budget,
+            summaries_evicted=summaries_evicted,
+        )
+        return RequestContext(
+            history=request_context.history,
+            glossary=request_context.glossary,
+            glossary_mode=request_context.glossary_mode,
+            history_budget=request_context.history_budget,
+            window_key=request_context.window_key,
+            request_page_key=request_context.request_page_key,
+            diagnostic=diagnostic,
+            memory=request_context.memory,
+            page_summaries=current_summaries,
+            summary_token_count=request_context.current_summary_token_count,
+            current_summary_token_count=(
+                request_context.current_summary_token_count
+            ),
+        )
+    if not request_context.history:
         return None
 
     history = list(request_context.history)
@@ -355,7 +430,7 @@ def recover_context_length(
         request_context.memory.token_count
         if request_context.memory is not None
         else 0
-    )
+    ) + request_context.summary_token_count
     token_count = sum(page.token_count for page in history)
     low_water = int(request_context.history_budget * HISTORY_LOW_WATER_RATIO)
     evicted = 0
@@ -385,4 +460,7 @@ def recover_context_length(
         request_page_key=request_context.request_page_key,
         diagnostic=diagnostic,
         memory=request_context.memory,
+        page_summaries=request_context.page_summaries,
+        summary_token_count=request_context.summary_token_count,
+        current_summary_token_count=request_context.current_summary_token_count,
     )

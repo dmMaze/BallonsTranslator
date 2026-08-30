@@ -84,7 +84,8 @@ system: translation contract + profile instructions
 system: complete glossary                         # All mode only
 system: compacted older-page memory               # Memory only
 user / assistant: completed history page pairs   # +history only
-user: current JSON + matching glossary + image    # image is Vision only
+user: saved page context + current JSON + matching glossary + image
+                                                    # image is Vision only
 ```
 
 The system contract fixes target language, IDs, item count, and JSON shape;
@@ -136,6 +137,16 @@ English narrative memory alongside translations, then fills an empty
 diagnostic only. A saved summary remains usable across source, image, language,
 profile, model, and page-order changes until the user edits or clears it.
 
+Saved summaries have their own immutable request snapshot and do not inherit
+bilingual-history eligibility. With Summary enabled, current and preceding
+saved summaries that are not already represented by selected history are added
+to the final user message as read-only context. Thus an incomplete page cannot
+become a translation example, but its user-owned summary can still guide later
+translation. The current summary is retained; additional summaries are selected
+newest-first as whole entries within the existing context budget. Because this
+block is in the volatile final message, summary edits do not disturb the stable
+system/memory/history prefix.
+
 The translator keeps a generated summary pending until the worker has
 postprocessed and assigned translations and marked the page complete. Partial
 selections and failed pages therefore do not add one. Generated results never
@@ -150,18 +161,28 @@ also starts with an explicit `Coverage:` line.
 
 Automatic compaction runs when history selection leaves summarized older pages
 outside the recent suffix, either at ordinary eviction or while rebuilding a
-window. One text-model request merges the previous memory with newly retired
-page summaries. Failure or an oversized result keeps the previous record and
-ordinary whole-page eviction. A successful result is staged until page
-finalization, then stored in the project unless the user edited memory while the
-request was running.
+window. It reads saved summaries directly, so translation completion controls
+only bilingual examples and cannot hide an edited summary from compaction. Each
+request also checks omitted prior pages, allowing a summary added later to an
+incomplete page to participate without forcing a history rebuild. One text-model
+request merges the previous memory with newly omitted page summaries. Failure
+or an oversized result keeps the previous record and ordinary whole-page
+eviction. A successful result is staged until page finalization, then stored in
+the project unless the user edited memory while the request was running.
+The accepted checkpoint is capped by the budget left after mandatory summary
+context and selected exact history, so compaction cannot silently displace a
+page whose summary was absent from that compaction input.
+
+Page summaries and compact memory remain independently user-owned. Editing a
+summary already named by memory coverage does not silently regenerate,
+invalidate, or overwrite the memory; the memory editor remains authoritative.
 
 ## Runtime history window
 
-`RequestContext` freezes history, glossary, and optional compacted memory for
-one request. Ordinary retries reuse the same messages. `_history_window`
-records only the most recent successful sequential state; it does not persist
-project data.
+`RequestContext` freezes history, saved summary context, glossary, and optional
+compacted memory for one request. Ordinary retries reuse the same messages.
+`_history_window` records only the most recent successful sequential state; it
+does not persist project data.
 
 The window can grow only when the same project load and prompt-shaping settings
 are active, retained snapshots still match, and the requested page immediately
@@ -176,7 +197,8 @@ Glossary settings are excluded because stored history pairs are glossary-free.
 Diagnostics name the transition: `empty`/`rebuild` selects a recent eligible
 suffix, `grow` appends the previous page, `reuse` keeps the prefix when that
 page is too large, `evict` removes oldest pages before appending, and
-`context-recovery` removes more history after a provider overflow.
+`context-recovery` first removes optional prior summaries, then more history,
+after a provider overflow. Current-page summary context is retained.
 
 Project reloads, page jumps, prompt/model/language/budget changes, edited
 snapshots, or an incomplete previous page force a rebuild.
@@ -215,15 +237,17 @@ filling the budget. Removing an oldest page changes an early prefix; bulk
 eviction pays that cache break once and leaves room for several append-only
 requests.
 
-The history budget counts rendered history pairs and compacted memory. Memory
-is not silently dropped when its user-owned text exceeds that budget; recent
-history simply receives no remaining space. Other
+The history budget counts rendered history pairs, compacted memory, and saved
+summary context. Current-page summary text and memory are not silently dropped
+when their user-owned text exceeds that budget; recent history simply receives
+no remaining space. Other
 system instructions, the current batch, glossary, image, and output are outside
 it. Known models use
-`tiktoken`; unknown models use the deterministic fallback estimator. Pages are
-indivisible. On a recognized provider overflow, recovery removes oldest whole
-pages without consuming the ordinary retry budget and never truncates the
-current input or glossary.
+`tiktoken`; unknown models use the deterministic fallback estimator. Pages and
+summaries are indivisible. On a recognized provider overflow, recovery removes
+optional prior summaries and then oldest whole pages without consuming the
+ordinary retry budget; it never truncates the current input, current-page
+summary, or glossary.
 
 For useful cache behavior, process contiguous pages in order, keep stable
 material first, avoid rewriting old pairs, and keep one translator instance's
