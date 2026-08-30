@@ -1914,22 +1914,22 @@ QCheckBox#LLMContextChecker::indicator:checked
 }
 
 QWidget#LLMContextEditor {
-    background-color: @widgetBackgroundColor;
-    border-left: 1px solid @borderColor;
-    border-right: 1px solid @borderColor;
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-radius: 5px;
 }
 
 QFrame#LLMContextEditorCard {
-    background-color: @transtexteditBackgroundColor;
+    background-color: @emptyContentBackgroundColor;
     border: 1px solid @borderColor;
-    border-radius: 8px;
+    border-radius: 5px;
 }
 
 QFrame#LLMContextEditorHeader {
     background-color: @emptyContentBackgroundColor;
     border: none;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
 }
 
 QLabel#LLMContextEditorTitle {
@@ -1944,11 +1944,11 @@ QLabel#LLMContextEditorDetail {
 }
 
 QPlainTextEdit#LLMContextTextEdit {
-    background-color: @transtexteditBackgroundColor;
+    background-color: @emptyContentBackgroundColor;
     border: none;
     border-top: 1px solid @borderColor;
-    border-bottom-left-radius: 7px;
-    border-bottom-right-radius: 7px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
     padding: 8px;
 }
 
@@ -1964,6 +1964,11 @@ QSplitter#LLMContextVerticalSplitter::handle {
 QSplitter#LLMContextVerticalSplitter::handle:hover,
 QSplitter#LLMContextVerticalSplitter::handle:pressed {
     background-color: rgb(30, 147, 229);
+}
+
+QListWidget#PageListArea,
+CustomGV {
+    border-radius: 5px;
 }
 
 

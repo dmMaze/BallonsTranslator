@@ -11,6 +11,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from ballontranslator.utils import shared
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -27,14 +28,22 @@ class _ContextEditorCard(QFrame):
 
         self.title_label = QLabel(title, self)
         self.title_label.setObjectName('LLMContextEditorTitle')
+        title_font = self.title_label.font()
+        if shared.ON_MACOS:
+            title_font.setPointSize(13)
+        else:
+            title_font.setPointSizeF(10)
+        self.title_label.setFont(title_font)
         self.detail_label = QLabel(self)
         self.detail_label.setObjectName('LLMContextEditorDetail')
+        self.detail_label.setFont(title_font)
 
         header = QFrame(self)
         header.setObjectName('LLMContextEditorHeader')
         header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        header.setFixedHeight(26)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(10, 7, 10, 7)
+        header_layout.setContentsMargins(10, 0, 10, 0)
         header_layout.setSpacing(8)
         header_layout.addWidget(self.title_label)
         header_layout.addStretch()
@@ -107,7 +116,7 @@ class LLMContextEditor(QWidget):
         self.editor_splitter.setStretchFactor(1, 1)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.editor_splitter)
 
         self.summary_editor.textChanged.connect(self._on_summary_changed)

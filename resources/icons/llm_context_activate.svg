@@ -1,8 +1,7 @@
 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect x="2" y="2.5" width="20" height="8" rx="2" fill="#697187" fill-opacity="0.3"/>
-<rect x="5" y="5.2" width="9" height="1.4" rx="0.7" fill="#697187"/>
-<rect x="5" y="7.5" width="14" height="1.4" rx="0.7" fill="#697187"/>
-<rect x="2" y="13.5" width="20" height="8" rx="2" fill="#697187" fill-opacity="0.3"/>
-<rect x="5" y="16.2" width="14" height="1.4" rx="0.7" fill="#697187"/>
-<rect x="5" y="18.5" width="9" height="1.4" rx="0.7" fill="#697187"/>
+<path fill-rule="evenodd" clip-rule="evenodd" d="M4 1.5H20C21.3807 1.5 22.5 2.61929 22.5 4V20C22.5 21.3807 21.3807 22.5 20 22.5H4C2.61929 22.5 1.5 21.3807 1.5 20V4C1.5 2.61929 2.61929 1.5 4 1.5ZM4 3C3.44772 3 3 3.44772 3 4V20C3 20.5523 3.44772 21 4 21H20C20.5523 21 21 20.5523 21 20V4C21 3.44772 20.5523 3 20 3H4Z" fill="#697187"/>
+<rect x="6.5" y="3" width="1.5" height="18" fill="#697187"/>
+<rect x="10.5" y="6.5" width="7.5" height="1.5" rx="0.75" fill="#697187"/>
+<rect x="10.5" y="11.25" width="6" height="1.5" rx="0.75" fill="#697187"/>
+<rect x="10.5" y="16" width="8" height="1.5" rx="0.75" fill="#697187"/>
 </svg>
