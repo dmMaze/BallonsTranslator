@@ -15,6 +15,7 @@ from ballontranslator.utils.llm_profiles import (
     default_profile,
     profile_by_id,
     load_profiles,
+    new_cli_profile,
     profile_to_dict,
     profile_to_export_dict,
     profiles_from_json,
@@ -24,6 +25,39 @@ from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_cli_profile_round_trip_preserves_transport_settings(self):
+        profile = new_cli_profile('antigravity')
+        profile.cli_executable = '/opt/tools/agy'
+        profile.support_vision = True
+        profile.support_image = True
+
+        loaded = load_profiles([profile_to_dict(profile)])[0]
+
+        self.assertEqual(loaded.transport, 'cli')
+        self.assertEqual(loaded.cli_backend, 'antigravity')
+        self.assertEqual(loaded.cli_executable, '/opt/tools/agy')
+        self.assertEqual(loaded.model, 'default')
+        self.assertFalse(loaded.support_vision)
+        self.assertFalse(loaded.support_image)
+
+    def test_cli_profiles_include_curated_model_options(self):
+        expected = {
+            'codex': 'gpt-5.6-sol',
+            'claude': 'sonnet',
+            'antigravity': 'gemini-3.7-flash-medium',
+            'grok': 'grok-4.6',
+        }
+
+        for backend, model in expected.items():
+            with self.subTest(backend=backend):
+                profile = new_cli_profile(backend)
+                profile.model_options = ['default', 'custom-model']
+                options = load_profiles([profile])[0].model_options
+                self.assertEqual(options[0], 'default')
+                self.assertIn(model, options)
+                self.assertIn('custom-model', options)
+                self.assertEqual(len(options), len(set(options)))
+
     def test_load_profiles_merges_builtin_option_lists_and_selections(self):
         profile = default_profile('OpenAI')
         profile.model = 'saved-text-model'

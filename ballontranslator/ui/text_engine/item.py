@@ -17,7 +17,7 @@ from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
 from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QFontMetrics, QPen,
-                       QTextBlockFormat)
+                       QFocusEvent, QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
@@ -48,6 +48,7 @@ from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
 from .effects.renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
+from .rendering.indexing import _utf16_length
 from .annotations import (
     AnnotationProperty,
     LIGATURE_COMMON,
@@ -218,6 +219,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.input_method_from = -1
         self.input_method_removed = 0
         self.input_method_text = ''
+        self._preedit_cursor_position: Optional[int] = None
         self.block_change_signal = False
         self._vertical_navigation_y: Optional[float] = None
 
@@ -236,17 +238,26 @@ class TextBlkItem(QGraphicsTextItem):
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
         self._vertical_navigation_y = None
+        was_composing = self.pre_editing
+        continues_composing = bool(e.preeditString())
+        commit_text = e.commitString()
+        commits_text = bool(commit_text) or e.replacementLength() > 0
+        self._preedit_cursor_position = self._input_method_cursor_position(e)
+        if continues_composing or commits_text:
+            self._ensure_empty_input_foreground()
         if not self.pre_editing:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
             self.input_method_removed = (
                 cursor.selectionEnd() - cursor.selectionStart()
             )
-        if e.preeditString() == '':
+        if commits_text:
+            # contentsChanged is synchronous; expose this committed portion
+            # even when the same IME event starts the next preedit.
             self.pre_editing = False
-            self.input_method_text = e.commitString()
+            self.input_method_text = commit_text
         else:
-            self.pre_editing = True
+            self.pre_editing = continues_composing
         replacement_length = e.replacementLength()
         replacement_start = None
         replacement_end = None
@@ -265,7 +276,7 @@ class TextBlkItem(QGraphicsTextItem):
             )
             self.input_method_from = replacement_start
             self.input_method_removed = replacement_end - replacement_start
-        if e.commitString():
+        if commit_text:
             cursor = self.textCursor()
             cursor.beginEditBlock()
             prepare_cursor = QTextCursor(cursor)
@@ -274,7 +285,7 @@ class TextBlkItem(QGraphicsTextItem):
                 prepare_cursor.setPosition(
                     replacement_end, QTextCursor.MoveMode.KeepAnchor
                 )
-            prepare_ruby_insertion(prepare_cursor, e.commitString())
+            prepare_ruby_insertion(prepare_cursor, commit_text)
             if replacement_length == 0:
                 cursor = prepare_cursor
             super().setTextCursor(cursor)
@@ -284,10 +295,27 @@ class TextBlkItem(QGraphicsTextItem):
                 cursor.endEditBlock()
         else:
             super().inputMethodEvent(e)
+        self.pre_editing = continues_composing
         if (
-            e.preeditString() == ''
-            and not e.commitString()
-            and replacement_length == 0
+            isinstance(self.layout, VerticalTextDocumentLayout)
+            and (was_composing or continues_composing)
+        ):
+            self.layout.set_preedit_formats(
+                self._input_method_formats(e)
+            )
+            if continues_composing or not commits_text:
+                # Preedit changes QTextLayout without changing QTextDocument.
+                self.layout.reLayout()
+        if continues_composing and commits_text:
+            cursor = self.textCursor()
+            self.input_method_from = cursor.selectionStart()
+            self.input_method_removed = (
+                cursor.selectionEnd() - cursor.selectionStart()
+            )
+        if (
+            not continues_composing
+            and not commits_text
+            and self.input_method_from != -1
         ):
             self.input_method_from = -1
             self.input_method_removed = 0
@@ -297,6 +325,73 @@ class TextBlkItem(QGraphicsTextItem):
         # not change. The next paint is cached until another IME event.
         self.geometry_controller.invalidate_surface_cache()
         self._update_nonlinear_editing_ui()
+        self.updateMicroFocus()
+
+    @staticmethod
+    def _input_method_cursor_position(
+        event: QInputMethodEvent,
+    ) -> Optional[int]:
+        preedit_text = event.preeditString()
+        if not preedit_text:
+            return None
+        cursor_type = (
+            QInputMethodEvent.AttributeType.Cursor
+            if hasattr(QInputMethodEvent, 'AttributeType')
+            else QInputMethodEvent.Cursor
+        )
+        for attribute in event.attributes():
+            if attribute.type == cursor_type:
+                return max(
+                    0,
+                    min(attribute.start, _utf16_length(preedit_text)),
+                )
+        return _utf16_length(preedit_text)
+
+    @staticmethod
+    def _input_method_formats(
+        event: QInputMethodEvent,
+    ) -> List[Tuple[int, int, QTextCharFormat]]:
+        preedit_length = _utf16_length(event.preeditString())
+        if preedit_length == 0:
+            return []
+        format_type = (
+            QInputMethodEvent.AttributeType.TextFormat
+            if hasattr(QInputMethodEvent, 'AttributeType')
+            else QInputMethodEvent.TextFormat
+        )
+        formats = []
+        for attribute in event.attributes():
+            if attribute.type != format_type or attribute.length <= 0:
+                continue
+            start = max(0, min(attribute.start, preedit_length))
+            end = max(start, min(
+                attribute.start + attribute.length,
+                preedit_length,
+            ))
+            if end == start:
+                continue
+            try:
+                char_format = QTextCharFormat(attribute.value)
+            except (TypeError, ValueError):
+                continue
+            formats.append((start, end - start, char_format))
+        return formats
+
+    def _ensure_empty_input_foreground(self) -> None:
+        if not self.document().isEmpty():
+            return
+        cursor = self.textCursor()
+        if cursor.charFormat().foreground().style() != Qt.BrushStyle.NoBrush:
+            return
+
+        # A document-wide deletion can discard the insertion brush. Without
+        # an explicit color, a dark system palette paints IME text white.
+        char_format = QTextCharFormat()
+        char_format.setForeground(
+            QColor(*self.fontformat.foreground_color())
+        )
+        cursor.mergeCharFormat(char_format)
+        self.setTextCursor(cursor)
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         self._vertical_navigation_y = None
@@ -387,7 +482,13 @@ class TextBlkItem(QGraphicsTextItem):
         
     def on_content_changed(self):
         self.geometry_controller.invalidate_surface_cache()
-        if (self.hasFocus() or self.is_formatting) and not self.pre_editing and not self.block_change_signal:   
+        if self.document().isEmpty():
+            self._ensure_empty_input_foreground()
+        if (
+            self.hasFocus()
+            or self.is_formatting
+            or self.input_method_from != -1
+        ) and not self.pre_editing and not self.block_change_signal:
             # self.content_changed.emit(self)
             if not self.in_redo_undo:
                 undo_steps = self.document().availableUndoSteps()
@@ -728,9 +829,10 @@ class TextBlkItem(QGraphicsTextItem):
             query == Qt.InputMethodQuery.ImCursorRectangle
             and self.layout is not None
         ):
-            cursor_rect = self.layout.source_cursor_rect(
-                self.textCursor().position()
-            )
+            cursor_position = self.textCursor().position()
+            if self._preedit_cursor_position is not None:
+                cursor_position = -(self._preedit_cursor_position + 2)
+            cursor_rect = self.layout.source_cursor_rect(cursor_position)
             if cursor_rect is not None:
                 value = cursor_rect
         mapper = self.geometry_controller.visual_mapper
@@ -1208,9 +1310,32 @@ class TextBlkItem(QGraphicsTextItem):
         self._sync_order_badge()
         self.update()
 
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        # Flush before Qt tears down the preedit layout for the old item.
+        self.commit_active_input_method()
+        super().focusOutEvent(event)
+
+    def commit_active_input_method(self) -> None:
+        if not self.pre_editing:
+            return
+        block = self.textCursor().block()
+        preedit_text = block.layout().preeditAreaText()
+        input_method = QApplication.inputMethod()
+        input_method.commit()
+        if self.pre_editing and preedit_text:
+            # macOS can leave a QGraphicsTextItem's marked text active when
+            # its scene edit is ended without changing the view focus.
+            event = QInputMethodEvent('', [])
+            event.setCommitString(preedit_text)
+            self.inputMethodEvent(event)
+            input_method.reset()
+
 
     def startEdit(self, pos: QPointF = None) -> None:
         self.pre_editing = False
+        self._preedit_cursor_position = None
+        if isinstance(self.layout, VerticalTextDocumentLayout):
+            self.layout.set_preedit_formats([])
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.refresh_cache_policy()
         self._sync_order_badge()
@@ -1223,6 +1348,10 @@ class TextBlkItem(QGraphicsTextItem):
             self.setTextCursor(cursor)
 
     def endEdit(self, keep_focus=True) -> None:
+        if self.pre_editing and self.hasFocus():
+            # Deliver the final commit while document, pair, and undo signals
+            # still observe an active text editor.
+            self.commit_active_input_method()
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
         cursor.clearSelection()

@@ -16,6 +16,54 @@ LLM_OCR_KEY = "LLMOCR"
 LLM_INPAINT_KEY = "LLMInpaint"
 OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
 
+LLM_TRANSPORT_API = "api"
+LLM_TRANSPORT_CLI = "cli"
+CLI_BACKENDS = {
+    "codex": {
+        "name": "Codex CLI",
+        "command": "codex",
+        "model_options": [
+            "default",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.3-codex-spark",
+        ],
+        "thinking_levels": ["None", "low", "medium", "high", "xhigh"],
+    },
+    "claude": {
+        "name": "Claude CLI",
+        "command": "claude",
+        "model_options": ["default", "sonnet", "opus", "fable"],
+        "thinking_levels": ["None", "low", "medium", "high", "xhigh", "max"],
+    },
+    "antigravity": {
+        "name": "Antigravity CLI",
+        "command": "agy",
+        "model_options": [
+            "default",
+            "gemini-3.7-flash-high",
+            "gemini-3.7-flash-medium",
+            "gemini-3.7-flash-low",
+            "gemini-3.1-pro-high",
+            "gemini-3.1-pro-low",
+            "claude-sonnet-4-6",
+            "claude-opus-4-6-thinking",
+            "gpt-oss-120b-medium",
+        ],
+        "thinking_levels": ["None", "low", "medium", "high"],
+    },
+    "grok": {
+        "name": "Grok CLI",
+        "command": "grok",
+        "model_options": ["default", "grok-4.6"],
+        "thinking_levels": ["None", "low", "medium", "high"],
+    },
+}
+
 THINKING_LEVEL_OPTIONS = ["None", "minimal", "low", "medium", "high", "xhigh"]
 VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 PROVIDER_ALIASES = {
@@ -167,6 +215,9 @@ class LLMProfile(Config):
     profile_type = "llm"
     name: str = ""
     built_in: bool = False
+    transport: str = LLM_TRANSPORT_API
+    cli_backend: str = ""
+    cli_executable: str = ""
     base_url: str = ""
     api_key: Any = ""
     require_api_key: bool = True
@@ -245,10 +296,23 @@ def openai_chat_completion_args(profile: LLMProfile, model: str) -> Dict[str, An
 
 def profile_from_config(profile: Any) -> LLMProfile:
     if isinstance(profile, LLMProfile):
-        return copy.deepcopy(profile)
-    if isinstance(profile, Mapping):
-        return LLMProfile(**copy.deepcopy(dict(profile)))
-    raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
+        loaded = copy.deepcopy(profile)
+    elif isinstance(profile, Mapping):
+        loaded = LLMProfile(**copy.deepcopy(dict(profile)))
+    else:
+        raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
+    if str(loaded.transport or '').lower() == LLM_TRANSPORT_CLI:
+        backend = CLI_BACKENDS.get(str(loaded.cli_backend or '').lower())
+        loaded.require_api_key = False
+        if backend:
+            loaded.model_options = _merge_profile_options(
+                backend['model_options'], loaded.model_options, loaded.model,
+            )
+        # CLI transport is text-only until each binary has a stable image I/O
+        # contract; reject hand-edited config attempts at the profile boundary.
+        loaded.support_vision = False
+        loaded.support_image = False
+    return loaded
 
 
 def profile_to_dict(profile: Any) -> Dict:
@@ -348,6 +412,39 @@ def default_profile(provider: str) -> LLMProfile:
 
 def default_profiles() -> List[LLMProfile]:
     return [default_profile(provider) for provider in PROVIDER_DEFAULTS]
+
+
+def new_cli_profile(backend: str) -> LLMProfile:
+    """Create one text-only profile backed by an installed agent CLI.
+
+    Example:
+        >>> new_cli_profile('codex').name
+        'Codex CLI'
+    """
+
+    info = CLI_BACKENDS.get(str(backend or '').strip().lower())
+    if info is None:
+        raise ValueError(f'Unsupported LLM CLI backend: {backend}')
+    return LLMProfile(
+        name=info['name'],
+        built_in=False,
+        transport=LLM_TRANSPORT_CLI,
+        cli_backend=str(backend).strip().lower(),
+        require_api_key=False,
+        model='default',
+        model_options=list(info['model_options']),
+        support_text=True,
+        support_vision=False,
+        support_image=False,
+        thinking_level_options=list(info['thinking_levels']),
+    )
+
+
+def is_cli_profile(profile: Any) -> bool:
+    return (
+        str(_profile_value(profile, 'transport', LLM_TRANSPORT_API)).lower()
+        == LLM_TRANSPORT_CLI
+    )
 
 
 def canonical_provider(provider: str) -> str:

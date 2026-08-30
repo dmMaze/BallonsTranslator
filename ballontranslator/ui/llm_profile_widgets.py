@@ -43,11 +43,14 @@ from .module_parse_widgets import ParamWidget, SecretParamWidget
 from ballontranslator.utils.shared import size2width
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
+    CLI_BACKENDS,
     LLM_INPAINT_KEY,
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
     LLMProfile,
     copy_profile,
+    is_cli_profile,
+    new_cli_profile,
     profile_by_id,
     profile_to_export_dict,
     profiles_from_json,
@@ -58,6 +61,7 @@ from ballontranslator.utils.llm_profiles import (
 
 
 PROFILE_COMMON_PARAM_DEFS = [
+    ('cli_executable', 'line_editor'),
     ('require_api_key', 'checkbox'),
     ('base_url', 'line_editor'),
     ('max_tokens', 'line_editor'),
@@ -383,6 +387,7 @@ class ProfileCardWidget(QGroupBox):
         self._previous_image_model_text = ''
         self._action_buttons_visible = False
         self.profile_param_display_names = {
+            'cli_executable': self.tr('CLI Executable'),
             'base_url': self.tr('Base URL'),
             'image_base_url': self.tr('Image Base URL'),
             'require_api_key': self.tr('Require API Key'),
@@ -402,6 +407,9 @@ class ProfileCardWidget(QGroupBox):
             'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
+            'cli_executable': self.tr(
+                'Optional absolute CLI path. Leave empty to search PATH and common install locations.'
+            ),
             'base_url': self.tr('OpenAI-compatible API base URL.'),
             'image_base_url': self.tr('OpenAI-compatible image API base URL used only by LLMInpaint.'),
             'require_api_key': self.tr('Require API key before running this LLM task.'),
@@ -1343,6 +1351,8 @@ class ProfileCardWidget(QGroupBox):
             self.profile_summary_changed.emit()
 
     def toggleVisionSupport(self):
+        if is_cli_profile(self.profile):
+            return
         self.profile.support_vision = not bool(self.profile.support_vision)
         if self.profile.support_vision and not self.profile.vision_model:
             self.profile.vision_model = self.profile.model
@@ -1374,6 +1384,8 @@ class ProfileCardWidget(QGroupBox):
         self.profile_summary_changed.emit()
 
     def toggleImageSupport(self):
+        if is_cli_profile(self.profile):
+            return
         self.profile.support_image = not bool(self.profile.support_image)
         if self.profile.support_image and not self.profile.image_model:
             options = [str(option) for option in self.profile.image_model_options if str(option)]
@@ -1440,11 +1452,12 @@ class ProfileCardWidget(QGroupBox):
         self._setModalityLabelState(self.image_model_label, active, tooltip)
 
     def refreshConditionalVisibility(self):
+        cli_profile = is_cli_profile(self.profile)
         require_key = bool(self.profile.require_api_key)
         support_text = bool(self.profile.support_text)
         support_vision = bool(self.profile.support_vision)
         support_image = bool(self.profile.support_image)
-        self.api_summary_widget.setVisible(require_key)
+        self.api_summary_widget.setVisible(require_key and not cli_profile)
         self.model_summary_widget.setVisible(True)
         self.vision_model_summary_widget.setVisible(True)
         self.image_model_summary_widget.setVisible(True)
@@ -1452,10 +1465,24 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.setVisible(support_vision)
         self.image_model_combo.setVisible(support_image)
         self.setActionButtonsVisible(self._action_buttons_visible)
-        self.details.setParamVisible('low_vram_mode', not require_key)
+        for param_key in (
+            'require_api_key',
+            'base_url',
+            'max_tokens',
+            'temperature',
+            'top_p',
+            'frequency_penalty',
+            'presence_penalty',
+            'low_vram_mode',
+            'json_schema_response_format',
+        ):
+            self.details.setParamVisible(param_key, not cli_profile)
+        self.details.setParamVisible('cli_executable', cli_profile)
         self.details.setSectionVisible('text', support_text)
         self.details.setSectionVisible('vision', support_vision)
         self.details.setSectionVisible('image', support_image)
+        self.vision_badge.setEnabled(not cli_profile)
+        self.image_badge.setEnabled(not cli_profile)
         self.refreshKeyStatus()
         self._sync_summary_grid()
         self._sync_minimum_width_with_content()
@@ -1514,6 +1541,11 @@ class LLMProfilesWidget(QWidget):
         new_menu = QMenu(self.new_btn)
         new_empty_action = new_menu.addAction(self.tr('New Empty Profile'))
         import_action = new_menu.addAction(self.tr('Import from Clipboard'))
+        new_menu.addSection(self.tr('CLI Profiles'))
+        for backend, info in CLI_BACKENDS.items():
+            action = new_menu.addAction(info['name'])
+            action.setData(backend)
+            action.triggered.connect(self.newCLIProfile)
         new_empty_action.triggered.connect(self.newProfile)
         import_action.triggered.connect(self.importProfiles)
         self.new_btn.setMenu(new_menu)
@@ -1616,6 +1648,8 @@ class LLMProfilesWidget(QWidget):
             profile.image_model,
             profile.base_url,
             profile.image_base_url,
+            profile.cli_backend,
+            profile.cli_executable,
             profile.id,
         )).lower()
         row.setVisible(not query or query in haystack)
@@ -1653,6 +1687,21 @@ class LLMProfilesWidget(QWidget):
         row = self.addProfileRow(profile)
         self.applyFilterToRow(row)
         self.focusProfileName(profile.id, deferred=True)
+        self.profile_ui_updated.emit()
+
+    def newCLIProfile(self):
+        action = self.sender()
+        backend = str(action.data() or '') if isinstance(action, QAction) else ''
+        if backend not in CLI_BACKENDS:
+            return
+        self.filter_edit.clear()
+        profile = new_cli_profile(backend)
+        profile.id = self._new_custom_profile_id()
+        pcfg.module.llm_profiles.append(profile)
+        row = self.addProfileRow(profile)
+        self.applyFilterToRow(row)
+        row.expand()
+        self.ensureRowVisible(row)
         self.profile_ui_updated.emit()
 
     def copyProfileAsJson(self, profile_id: str):
