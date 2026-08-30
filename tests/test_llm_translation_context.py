@@ -201,7 +201,6 @@ class LLMTranslationContextTest(unittest.TestCase):
             project,
             '001.png',
             self.profile,
-            ('source-1',),
         )
 
         text_messages, _ = self.translator._assemble_request(
@@ -300,7 +299,6 @@ class LLMTranslationContextTest(unittest.TestCase):
             project,
             '001.png',
             '简体中文',
-            profile=self.profile,
             summary_enabled=True,
         )
         self.assertEqual(snapshot.summary, record['text'])
@@ -309,10 +307,48 @@ class LLMTranslationContextTest(unittest.TestCase):
             project,
             '001.png',
             '简体中文',
-            profile=self.profile,
             summary_enabled=True,
         )
-        self.assertEqual(stale_snapshot.summary, '')
+        self.assertEqual(stale_snapshot.summary, record['text'])
+
+    def test_text_only_summary_uses_translation_request_and_text_model(self):
+        project = self._project(1)
+        project.pages['001.png'][0].translation = ''
+        pcfg.module.llm_translate_summary = True
+        response = json.dumps({
+            'translations': {'1': 'translated'},
+            'page_summary': 'Two speakers argue about a missing key.',
+        })
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value=response,
+        ) as request:
+            self.translator.translate_textblk_lst(
+                project.pages['001.png'],
+                project=project,
+                page_key='001.png',
+                full_page=True,
+            )
+
+        request_kwargs = request.call_args.kwargs
+        self.assertTrue(request_kwargs['summary_enabled'])
+        self.assertNotIn('vision_enabled', request_kwargs)
+        project.mark_translation_finished('001.png', '简体中文')
+        self.translator.on_page_translation_finished(project, '001.png')
+        record = project.get_llm_visual_summary('001.png')
+        self.assertEqual(record['model'], self.profile.model)
+        self.assertEqual(record['image_sha256'], '')
 
     def test_missing_summary_keeps_valid_translations(self):
         parsed = self.translator._parse_translation_response(
@@ -323,7 +359,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertEqual(parsed.translations, ('translated',))
         self.assertEqual(parsed.page_summary, '')
 
-    def test_missing_summary_clears_old_summary_only_after_finalization(self):
+    def test_missing_summary_preserves_user_owned_summary(self):
         project = self._project(1)
         source_signature = self.translator._source_signature(('source-1',))
         old_record = {
@@ -339,12 +375,74 @@ class LLMTranslationContextTest(unittest.TestCase):
             'vision_model': 'vision',
         }
         project.set_llm_visual_summary('001.png', old_record)
-        self.translator._pending_visual_summaries['001.png'] = {
-            **old_record,
-            'text': '',
-        }
+        pcfg.module.llm_translate_summary = True
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value='{"translations":{"1":"translated"}}',
+        ):
+            self.translator.translate(
+                ['source-1'],
+                project=project,
+                page_key='001.png',
+                commit_history_window=True,
+            )
 
         self.assertIsNotNone(project.get_llm_visual_summary('001.png'))
+        self.translator.on_page_translation_finished(project, '001.png')
+
+        self.assertEqual(
+            project.get_llm_visual_summary('001.png')['text'],
+            'Old summary.',
+        )
+
+    def test_user_clear_during_translation_is_not_replaced_by_summary(self):
+        pcfg.module.llm_translate_summary = True
+        project = self._project(1)
+        project.set_llm_visual_summary_text('001.png', 'User summary.')
+        response = json.dumps({
+            'translations': {'1': 'translated'},
+            'page_summary': 'Generated summary.',
+        })
+
+        def complete_request(
+            *_args: object,
+            **_kwargs: object,
+        ) -> str:
+            project.clear_llm_visual_summary('001.png')
+            return response
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            side_effect=complete_request,
+        ):
+            self.translator.translate(
+                ['source-1'],
+                project=project,
+                page_key='001.png',
+                commit_history_window=True,
+            )
+
         self.translator.on_page_translation_finished(project, '001.png')
 
         self.assertIsNone(project.get_llm_visual_summary('001.png'))
@@ -453,6 +551,7 @@ class LLMTranslationContextTest(unittest.TestCase):
                 ),
                 ('token_budget', 10),
                 ('memory_enabled', True),
+                ('memory_signature', ''),
             ),
         )
 
@@ -531,10 +630,6 @@ class LLMTranslationContextTest(unittest.TestCase):
         retired = (
             HistoryPage('002.png', ('s',), ('t',), 'new summary'),
         )
-        retained = (
-            RenderedHistoryPage(retired[0], (), 2),
-        )
-
         with mock.patch.object(
             self.translator,
             'request_chat_completion',
@@ -546,7 +641,6 @@ class LLMTranslationContextTest(unittest.TestCase):
                 profile=self.profile,
                 model=self.profile.vision_model,
                 history_budget=1000,
-                retained_history=retained,
             )
 
         self.assertIs(checkpoint, previous)
@@ -562,7 +656,6 @@ class LLMTranslationContextTest(unittest.TestCase):
                 profile=self.profile,
                 model=self.profile.vision_model,
                 history_budget=1000,
-                retained_history=(),
             )
 
     def test_memory_compaction_sends_only_not_yet_covered_summaries(self):
@@ -590,7 +683,6 @@ class LLMTranslationContextTest(unittest.TestCase):
                 profile=self.profile,
                 model=self.profile.vision_model,
                 history_budget=1000,
-                retained_history=(),
             )
 
         user_payload = json.loads(
@@ -603,6 +695,131 @@ class LLMTranslationContextTest(unittest.TestCase):
         self.assertEqual(
             checkpoint.covered_page_keys,
             ('001.png', '002.png'),
+        )
+        self.assertTrue(checkpoint.text.startswith(
+            'Coverage: page summaries ["001.png","002.png"].\n\n'
+        ))
+        self.assertEqual(
+            request.call_args.args[1]['model'],
+            self.profile.model,
+        )
+
+    def test_persisted_memory_applies_without_vision_summary_or_history(self):
+        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
+        pcfg.module.llm_translate_memory = True
+        project = self._project(2)
+        project.set_llm_compact_memory({
+            'version': 1,
+            'text': (
+                'Coverage: page summaries ["002.png"].\n\n'
+                'The masked hero is named Kuro.'
+            ),
+            'covered_pages': ['002.png'],
+        })
+
+        contexts = tuple(
+            self.translator._snapshot_request_context(
+                project,
+                page_key,
+                self.profile,
+                model=self.profile.model,
+            )
+            for page_key in ('001.png', '002.png')
+        )
+
+        self.assertEqual(contexts[0].memory.text, contexts[1].memory.text)
+        messages, _ = self.translator._assemble_request(
+            ['current'],
+            self.profile,
+            request_context=contexts[0],
+        )
+        self.assertEqual(
+            [message['role'] for message in messages],
+            ['system', 'system', 'user'],
+        )
+        self.assertIn('The masked hero is named Kuro.', messages[1]['content'])
+
+    def test_compacted_memory_commits_at_page_finalization(self):
+        project = self._project(1)
+        checkpoint = MemoryCheckpoint(
+            'Coverage: page summaries ["001.png"].\n\nShared fact.',
+            ('001.png',),
+            4,
+        )
+        self.translator._pending_memory_checkpoints['001.png'] = (
+            '',
+            checkpoint,
+        )
+
+        self.translator.on_page_translation_finished(project, '001.png')
+
+        self.assertEqual(
+            project.get_llm_compact_memory(),
+            {
+                'version': 1,
+                'text': checkpoint.text,
+                'covered_pages': ['001.png'],
+            },
+        )
+
+    def test_user_edit_wins_over_in_flight_compaction(self):
+        pcfg.module.llm_translate_memory = True
+        project = self._project(1)
+        project.set_llm_compact_memory({
+            'version': 1,
+            'text': 'Coverage: page summaries [].\n\nOriginal.',
+            'covered_pages': [],
+        })
+        generated = MemoryCheckpoint(
+            'Coverage: page summaries ["001.png"].\n\nGenerated.',
+            ('001.png',),
+            4,
+        )
+        request_context = RequestContext(
+            (),
+            request_page_key='001.png',
+            memory=generated,
+        )
+
+        def complete_translation(
+            *_args: object,
+            **_kwargs: object,
+        ) -> list[str]:
+            project.set_llm_compact_memory_text(
+                'Coverage: page summaries [].\n\nOriginal.  '
+            )
+            return ['translated']
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_snapshot_request_context',
+            return_value=request_context,
+        ), mock.patch.object(
+            self.translator,
+            '_translate',
+            side_effect=complete_translation,
+        ):
+            self.translator.translate(
+                ['source-1'],
+                project=project,
+                page_key='001.png',
+                commit_history_window=True,
+            )
+
+        self.translator.on_page_translation_finished(project, '001.png')
+
+        self.assertEqual(
+            project.get_llm_compact_memory()['text'],
+            'Coverage: page summaries [].\n\nOriginal.  ',
         )
 
     def test_memory_tokens_reduce_available_recent_history_budget(self):

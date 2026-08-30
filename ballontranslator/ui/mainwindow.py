@@ -55,6 +55,7 @@ from .update_dialog import UpdateReleaseDialog
 from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
+from .llm_context_editor import LLMContextEditor
 from .text_engine.editing.commands import GlobalRepalceAllCommand
 from .text_engine.transforms.grid import start_grid_numba_warmup
 from .text_engine.effects.paint import (
@@ -132,6 +133,7 @@ class MainWindow(mainwindow_cls):
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
         self._render_global_format = None
+        self._llm_context_dirty = False
 
         self.setupThread()
         self.setupUi()
@@ -229,6 +231,9 @@ class MainWindow(mainwindow_cls):
         self.leftBar.imgTransChecked.connect(self.setupImgTransUI)
         self.leftBar.configChecked.connect(self.setupConfigUI)
         self.leftBar.globalSearchChecker.clicked.connect(self.on_set_gsearch_widget)
+        self.leftBar.llmContextChecker.clicked.connect(
+            self.on_llm_context_visibility_changed
+        )
         self.leftBar.open_dir.connect(self.OpenProj)
         self.leftBar.open_json_proj.connect(self.openJsonProj)
         self.leftBar.save_proj.connect(self.manual_save)
@@ -255,6 +260,15 @@ class MainWindow(mainwindow_cls):
         self.imsave_thread.img_writed.connect(self.global_search_widget.on_img_writed)
         self.global_search_widget.search_tree.result_item_clicked.connect(self.on_search_result_item_clicked)
         self.leftStackWidget.addWidget(self.global_search_widget)
+
+        self.llmContextEditor = LLMContextEditor(
+            self.imgtrans_proj,
+            self,
+        )
+        self.llmContextEditor.project_changed.connect(
+            self.on_llm_context_project_changed
+        )
+        self.llmContextEditor.hide()
         
         self.centralStackWidget = QStackedWidget(self)
         
@@ -324,6 +338,7 @@ class MainWindow(mainwindow_cls):
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
         self.comicTransSplitter.addWidget(self.leftStackWidget)
+        self.comicTransSplitter.addWidget(self.llmContextEditor)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
 
@@ -340,8 +355,9 @@ class MainWindow(mainwindow_cls):
 
         self.mainvlayout = mainVBoxLayout
         self.comicTransSplitter.setStretchFactor(0, 1)
-        self.comicTransSplitter.setStretchFactor(1, 10)
-        self.comicTransSplitter.setStretchFactor(2, 1)
+        self.comicTransSplitter.setStretchFactor(1, 2)
+        self.comicTransSplitter.setStretchFactor(2, 10)
+        self.comicTransSplitter.setStretchFactor(3, 1)
         self.imgtrans_progress_msgbox = ImgtransProgressMessageBox(self)
     def on_finish_settranslator(self):
         module_manager = self.module_manager
@@ -576,6 +592,21 @@ class MainWindow(mainwindow_cls):
         self.centralStackWidget.setCurrentIndex(0)
         self.configPanel.showConfigDialog()
 
+    def on_llm_context_visibility_changed(self, visible: bool) -> None:
+        """Toggle the project context pane without changing its data."""
+        if visible:
+            self.llmContextEditor.set_project(self.imgtrans_proj)
+            self.llmContextEditor.show()
+        else:
+            self.llmContextEditor.hide()
+
+    def on_llm_context_project_changed(self) -> None:
+        """Join editor changes to the window's normal project-save flow."""
+        if self._llm_context_dirty:
+            return
+        self._llm_context_dirty = True
+        self.canvas.setProjSaveState(True)
+
     def check_for_updates(self, manual: bool = True, show_release_info: bool = False):
         if self.update_thread.isBusy():
             LOGGER.info('Ignored update check request because an update check or update is already running.')
@@ -714,6 +745,7 @@ class MainWindow(mainwindow_cls):
             self.canvas.clear_undostack(update_saved_step=True)
             self.titleBar.setTitleContent(osp.basename(directory))
             self.updatePageList()
+            self._llm_context_dirty = False
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
@@ -759,6 +791,7 @@ class MainWindow(mainwindow_cls):
             self.leftBar.updateRecentProjList(self.imgtrans_proj.proj_path)
             self.updatePageList()
             self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
+            self._llm_context_dirty = False
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
@@ -777,6 +810,7 @@ class MainWindow(mainwindow_cls):
             self.pageList.addItem(lstitem)
             if imgname == self.imgtrans_proj.current_img:
                 self.pageList.setCurrentItem(lstitem)
+        self.llmContextEditor.set_project(self.imgtrans_proj)
 
     def pageLabelStateChanged(self):
         setup = self.leftBar.showPageListLabel.isChecked()
@@ -839,8 +873,28 @@ class MainWindow(mainwindow_cls):
 
     def conditional_save(self, keep_exist_as_backup=False):
         if self.canvas.projstate_unsaved and not self.opening_dir:
-            update_scene_text = save_proj = self.canvas.text_change_unsaved()
-            save_rst_only = not self.canvas.draw_change_unsaved()
+            update_scene_text = self.canvas.text_change_unsaved()
+            draw_changed = self.canvas.draw_change_unsaved()
+            if (
+                self._llm_context_dirty
+                and not update_scene_text
+                and not draw_changed
+            ):
+                try:
+                    self.imgtrans_proj.save(
+                        keep_exist_as_backup=keep_exist_as_backup
+                    )
+                except Exception as error:
+                    LOGGER.error(
+                        'Failed to save LLM context edits: %s',
+                        error,
+                    )
+                    return
+                self._llm_context_dirty = False
+                self.canvas.setProjSaveState(False)
+                return
+            save_proj = update_scene_text or self._llm_context_dirty
+            save_rst_only = not draw_changed
             if not save_rst_only:
                 save_proj = True
             
@@ -860,6 +914,7 @@ class MainWindow(mainwindow_cls):
                 SceneTextReplacementReason.PAGE_CHANGE
             )
             self.imgtrans_proj.set_current_img(item.text())
+            self.llmContextEditor.set_page(item.text())
             self.canvas.clear_undostack(update_saved_step=True)
             self.canvas.updateCanvas()
             self.st_manager.populateSceneTextitems()
@@ -1523,6 +1578,7 @@ class MainWindow(mainwindow_cls):
         if save_proj:
             try:
                 self.imgtrans_proj.save(keep_exist_as_backup=keep_exist_as_backup)
+                self._llm_context_dirty = False
                 if not save_rst_only:
                     mask_path = self.imgtrans_proj.get_mask_path()
                     mask_array = self.imgtrans_proj.mask_array
@@ -1927,8 +1983,11 @@ class MainWindow(mainwindow_cls):
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False
 
+        self.llmContextEditor.refresh()
+
         # save proj file on page trans finished
         self.imgtrans_proj.save()
+        self._llm_context_dirty = False
 
         self.saveCurrentPage(False, False)
 

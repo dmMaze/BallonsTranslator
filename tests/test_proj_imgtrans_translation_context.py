@@ -135,13 +135,11 @@ class LLMContextConfigTest(unittest.TestCase):
         self.assertTrue(loaded.module.llm_translate_summary)
         self.assertTrue(loaded.module.llm_translate_memory)
 
-    def test_llm_feature_dependencies_discard_invalid_combinations(self):
-        self.assertFalse(_module_config(
+    def test_llm_feature_switches_are_independent(self):
+        self.assertTrue(_module_config(
             llm_translate_summary=True,
         ).llm_translate_summary)
-        self.assertFalse(_module_config(
-            llm_translate_vision=True,
-            llm_translate_summary=True,
+        self.assertTrue(_module_config(
             llm_translate_memory=True,
         ).llm_translate_memory)
 
@@ -289,6 +287,68 @@ class ProjectTranslationTargetTest(unittest.TestCase):
             'llm_visual_summary',
             project._image_info['001.png'],
         )
+
+    def test_user_context_roundtrips_without_provenance_requirements(self):
+        project = self._project('001.png')
+        project.directory = '/unused'
+        project.set_llm_visual_summary_text(
+            '001.png',
+            'User-edited page context.\nSecond line.',
+        )
+        project.set_llm_compact_memory({
+            'version': 1,
+            'text': 'Coverage: page summaries ["001.png"].\n\nMemory body.',
+            'covered_pages': ['001.png'],
+        })
+        raw = project.to_dict()
+
+        loaded = ProjImgTrans()
+        loaded.directory = '/unused'
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+            return_value=['001.png'],
+        ), patch.object(loaded, 'set_current_img'):
+            loaded.load_from_dict(raw)
+
+        self.assertEqual(
+            loaded.get_llm_visual_summary('001.png')['text'],
+            'User-edited page context.\nSecond line.',
+        )
+        self.assertEqual(
+            loaded.get_llm_compact_memory(),
+            {
+                'version': 1,
+                'text': (
+                    'Coverage: page summaries ["001.png"].\n\nMemory body.'
+                ),
+                'covered_pages': ['001.png'],
+            },
+        )
+
+    def test_malformed_compact_memory_does_not_block_project_loading(self):
+        project = ProjImgTrans()
+        project.directory = '/unused'
+        raw = {
+            'pages': {'001.png': []},
+            'image_info': {
+                '001.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+            },
+            'llm_compact_memory': {
+                'version': 1,
+                'text': ['not text'],
+                'covered_pages': '001.png',
+            },
+        }
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+            return_value=['001.png'],
+        ), patch.object(project, 'set_current_img'):
+            project.load_from_dict(raw)
+
+        self.assertIn('001.png', project.pages)
+        self.assertIsNone(project.get_llm_compact_memory())
+        self.assertNotIn('llm_compact_memory', project.to_dict())
 
     def test_import_updates_completion_per_page(self):
         imported_pages = [

@@ -712,7 +712,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertTrue(dialog.glossary_mode_combobox.isEnabled())
         dialog.close()
 
-    def test_llm_visual_context_controls_enforce_supported_progression(self):
+    def test_llm_context_controls_are_independent(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_translate_vision = False
         pcfg.module.llm_translate_summary = False
@@ -722,27 +722,26 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
 
         self.assertFalse(dialog.llm_features_row.isHidden())
-        self.assertFalse(dialog.llm_summary_checkbox.isEnabled())
-        self.assertFalse(dialog.llm_memory_checkbox.isEnabled())
-
-        dialog.llm_vision_checkbox.setChecked(True)
         self.assertTrue(dialog.llm_summary_checkbox.isEnabled())
+        self.assertTrue(dialog.llm_memory_checkbox.isEnabled())
+
         dialog.llm_summary_checkbox.setChecked(True)
-        self.assertFalse(dialog.llm_memory_checkbox.isEnabled())
+        dialog.llm_memory_checkbox.setChecked(True)
+        self.assertTrue(pcfg.module.llm_translate_summary)
+        self.assertTrue(pcfg.module.llm_translate_memory)
 
         history_index = dialog.llm_context_combobox.findData(
             LLMTranslateContext.HISTORY
         )
         dialog.llm_context_combobox.setCurrentIndex(history_index)
         self.assertTrue(dialog.llm_memory_checkbox.isEnabled())
-        dialog.llm_memory_checkbox.setChecked(True)
-        self.assertTrue(pcfg.module.llm_translate_memory)
 
+        dialog.llm_vision_checkbox.setChecked(True)
         dialog.llm_vision_checkbox.setChecked(False)
-        self.assertFalse(dialog.llm_summary_checkbox.isChecked())
-        self.assertFalse(dialog.llm_memory_checkbox.isChecked())
-        self.assertFalse(pcfg.module.llm_translate_summary)
-        self.assertFalse(pcfg.module.llm_translate_memory)
+        self.assertTrue(dialog.llm_summary_checkbox.isChecked())
+        self.assertTrue(dialog.llm_memory_checkbox.isChecked())
+        self.assertTrue(pcfg.module.llm_translate_summary)
+        self.assertTrue(pcfg.module.llm_translate_memory)
         dialog.close()
 
     def test_copy_source_glossary_error_preserves_clipboard(self):
@@ -1482,6 +1481,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
+            llmContextEditor=SimpleNamespace(refresh=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=True,
@@ -1575,6 +1575,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
+            llmContextEditor=SimpleNamespace(refresh=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=False,
@@ -1825,6 +1826,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
+            llmContextEditor=SimpleNamespace(refresh=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=False,
@@ -1917,6 +1919,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
+            llmContextEditor=SimpleNamespace(refresh=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=False,

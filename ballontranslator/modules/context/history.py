@@ -96,19 +96,15 @@ class HistoryWindowKey:
 
 @dataclass(frozen=True)
 class MemoryCheckpoint:
-    """Compacted visual memory and the summary pages it represents.
+    """Project memory plus descriptive page-summary coverage.
 
-    >>> MemoryCheckpoint('memory', ('001.png',), 4).last_page_key
-    '001.png'
+    >>> MemoryCheckpoint('memory', ('001.png',), 4).covered_page_keys
+    ('001.png',)
     """
 
     text: str
     covered_page_keys: Tuple[str, ...]
     token_count: int
-
-    @property
-    def last_page_key(self) -> str:
-        return self.covered_page_keys[-1] if self.covered_page_keys else ''
 
 
 @dataclass(frozen=True)

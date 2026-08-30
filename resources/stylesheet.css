@@ -322,6 +322,7 @@ QCheckBox#TexteditChecker::indicator,
 QCheckBox#TextblockChecker::indicator,
 QCheckBox#ShowPageListChecker::indicator,
 QCheckBox#GlobalSearchChecker::indicator,
+QCheckBox#LLMContextChecker::indicator,
 QCheckBox#ImgTransChecker::indicator,
 QCheckBox#ConfigChecker::indicator,
 DrawToolCheckBox::indicator,
@@ -1898,6 +1899,71 @@ QCheckBox#GlobalSearchChecker::indicator:hover
 QCheckBox#GlobalSearchChecker::indicator:checked
 {
     image: url(resources/icons/search_activate.svg);
+}
+
+QCheckBox#LLMContextChecker::indicator{
+    height: 28px;
+    width: 28px;
+    image: url(resources/icons/llm_context.svg);
+}
+
+QCheckBox#LLMContextChecker::indicator:hover,
+QCheckBox#LLMContextChecker::indicator:checked
+{
+    image: url(resources/icons/llm_context_activate.svg);
+}
+
+QWidget#LLMContextEditor {
+    background-color: @widgetBackgroundColor;
+    border-left: 1px solid @borderColor;
+    border-right: 1px solid @borderColor;
+}
+
+QFrame#LLMContextEditorCard {
+    background-color: @transtexteditBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 8px;
+}
+
+QFrame#LLMContextEditorHeader {
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+
+QLabel#LLMContextEditorTitle {
+    background-color: transparent;
+    color: @titleBarColor;
+    font-weight: 600;
+}
+
+QLabel#LLMContextEditorDetail {
+    background-color: transparent;
+    color: @qwidgetForegroundColor;
+}
+
+QPlainTextEdit#LLMContextTextEdit {
+    background-color: @transtexteditBackgroundColor;
+    border: none;
+    border-top: 1px solid @borderColor;
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
+    padding: 8px;
+}
+
+QPlainTextEdit#LLMContextTextEdit:focus {
+    border-top: 1px solid rgb(30, 147, 229);
+}
+
+QSplitter#LLMContextVerticalSplitter::handle {
+    height: 8px;
+    background-color: @widgetBackgroundColor;
+}
+
+QSplitter#LLMContextVerticalSplitter::handle:hover,
+QSplitter#LLMContextVerticalSplitter::handle:pressed {
+    background-color: rgb(30, 147, 229);
 }
 
 

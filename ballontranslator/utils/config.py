@@ -211,21 +211,6 @@ class ModuleConfig(Config):
             if not isinstance(getattr(self, feature), bool):
                 LOGGER.warning('Invalid %s value; disabling it.', feature)
                 setattr(self, feature, False)
-        if self.llm_translate_summary and not self.llm_translate_vision:
-            LOGGER.warning(
-                'LLM translation summary requires vision; disabling summary.'
-            )
-            self.llm_translate_summary = False
-        if self.llm_translate_memory and not (
-            self.llm_translate_vision
-            and self.llm_translate_summary
-            and self.llm_translate_context == LLMTranslateContext.HISTORY
-        ):
-            LOGGER.warning(
-                'LLM translation memory requires vision, summary, and history; '
-                'disabling memory.'
-            )
-            self.llm_translate_memory = False
         if not self.llm_profiles:
             self.llm_profiles = default_profiles()
         else:
