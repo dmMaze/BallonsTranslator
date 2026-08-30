@@ -266,6 +266,14 @@ def assemble_translation_request(
     )
     current_content = prompt
     if image_part is not None:
+        # Vision guidance belongs to the volatile suffix, not the cacheable prefix.
+        prompt = (
+            f'{prompt}\n\n'
+            'Use the attached page image to infer the natural comic reading '
+            'order; do not assume the numbered input order is correct. '
+            'Interpret and translate the dialogue in that inferred order, but '
+            'keep every translation mapped to its original input ID.'
+        )
         current_content = [
             {'type': 'text', 'text': prompt},
             image_part,
@@ -343,7 +351,6 @@ def parse_translation_response(
         summary_value = data.get('page_summary', '')
         if isinstance(summary_value, str):
             page_summary = ' '.join(summary_value.split()).strip()
-            page_summary = page_summary[:LLM_VISUAL_SUMMARY_MAX_CHARS]
     elif isinstance(data, dict) and all(str(key).isdigit() for key in data):
         items = data
     elif isinstance(data, list):

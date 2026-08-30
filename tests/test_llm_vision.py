@@ -1,5 +1,4 @@
 import base64
-import hashlib
 import unittest
 from unittest import mock
 
@@ -52,7 +51,7 @@ class LLMVisionEncodingTest(unittest.TestCase):
                 ),
             )
 
-    def test_encoded_value_owns_detail_digest_and_data_url(self):
+    def test_encoded_value_owns_detail_and_data_url(self):
         encoded_bytes = b'jpeg bytes'
         encoded = np.frombuffer(encoded_bytes, dtype=np.uint8)
         with mock.patch(
@@ -68,10 +67,6 @@ class LLMVisionEncodingTest(unittest.TestCase):
             result.data_url,
             'data:image/jpeg;base64,'
             + base64.b64encode(encoded_bytes).decode('ascii'),
-        )
-        self.assertEqual(
-            result.image_sha256,
-            hashlib.sha256(encoded_bytes).hexdigest(),
         )
         self.assertEqual(result.image_part()['image_url']['detail'], 'HIGH')
 

@@ -68,6 +68,35 @@ class LLMBaseURLRequiredError(Exception):
         super().__init__(f'{url_label.capitalize()} is required for LLM profile "{self.profile_name}".')
 
 
+class LLMOutputLimitError(Exception):
+    """Raised when a chat completion explicitly stops at its output limit.
+
+    >>> error = LLMOutputLimitError('profile-1', 'Profile 1', 8192, 'low')
+    >>> 'Current Max Tokens: 8192' in str(error)
+    True
+    """
+
+    def __init__(
+        self,
+        profile_id: str,
+        profile_name: str,
+        max_tokens: int,
+        thinking_level: str,
+    ) -> None:
+        self.profile_id = profile_id
+        self.profile_name = profile_name or profile_id
+        self.max_tokens = int(max_tokens)
+        self.thinking_level = thinking_level
+        super().__init__(
+            f'The LLM response for profile "{self.profile_name}" was '
+            f'truncated because the provider reached an output token limit. '
+            f'Current Max Tokens: {self.max_tokens}. '
+            f'Lower or disable its reasoning effort '
+            f'(Thinking Level: {self.thinking_level}), or increase Max Tokens, '
+            f'then retry.'
+        )
+
+
 class LLMRequestStopped(Exception):
     """Raised when an in-flight LLM request loop is stopped cooperatively.
 

@@ -3,7 +3,12 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
+from ballontranslator.modules.exceptions import (
+    LLMApiKeyRequiredError,
+    LLMModelRequiredError,
+    LLMOutputLimitError,
+    LLMRequestStopped,
+)
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.context.token_usage import format_token_usage
 from ballontranslator.modules.translators.llm_translation_contract import (
@@ -154,13 +159,11 @@ class LLMTranslatorTest(unittest.TestCase):
             translator._translate(
                 ['hello'],
                 prompt_spec=self._prompt_spec(profile),
-                source_language='Japanese',
-                target_language='Simplified Chinese',
             )
 
-    def test_thinking_level_only_passed_when_not_none(self):
+    def test_shared_reasoning_control_is_applied(self):
         profile = default_profile('OpenAI')
-        profile.thinking_level = 'None'
+        profile.thinking_level = 'Auto'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertNotIn('temperature', args)
         self.assertNotIn('reasoning_effort', args)
@@ -170,7 +173,7 @@ class LLMTranslatorTest(unittest.TestCase):
         self.assertNotIn('max_tokens', args)
         self.assertEqual(args['max_completion_tokens'], 8192)
 
-        profile.thinking_level = 'none'
+        profile.thinking_level = 'None'
         args = self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         self.assertNotIn('reasoning_effort', args)
 
@@ -289,8 +292,6 @@ class LLMTranslatorTest(unittest.TestCase):
                 ['a', 'b', 'c'],
                 profile=profile,
                 prompt_spec=self._prompt_spec(profile),
-                source_language='Japanese',
-                target_language='Simplified Chinese',
             )
 
         self.assertEqual(result, ['甲', '乙', '丙'])
@@ -315,6 +316,44 @@ class LLMTranslatorTest(unittest.TestCase):
         self.assertEqual(self.translator.get_param_value('retry timeout'), 3.0)
         self.assertEqual(self.translator.get_param_value('max requests per minute'), 7)
         self.assertEqual(self.translator.get_param_value('proxy'), 'http://127.0.0.1:7890')
+
+    def test_run_description_captures_effective_context_settings(self):
+        profile = default_profile('OpenAI')
+        profile.id = 'diagnostic-profile'
+        profile.name = 'Diagnostic Profile'
+        profile.vision_model = 'vision-model'
+        profile.max_tokens = 1234
+        profile.thinking_level = 'low'
+
+        with (
+            mock.patch.object(pcfg.module, 'llm_profiles', [profile]),
+            mock.patch.object(
+                pcfg.module, 'translator_llm_id', profile.id
+            ),
+            mock.patch.object(
+                pcfg.module, 'llm_translate_context', 'history'
+            ),
+            mock.patch.object(
+                pcfg.module, 'llm_prior_context_token_budget', 2048
+            ),
+            mock.patch.object(pcfg.module, 'llm_translate_vision', True),
+            mock.patch.object(
+                pcfg.module,
+                'llm_translate_summary_memory',
+                True,
+            ),
+        ):
+            description = self.translator.translation_run_description()
+
+        self.assertIn("profile_id='diagnostic-profile'", description)
+        self.assertIn("model='vision-model'", description)
+        self.assertIn("context='history', history_budget=2048", description)
+        self.assertIn('vision=True, summary_memory=True', description)
+        self.assertIn(
+            "max_output_tokens=1234, thinking_setting='low'",
+            description,
+        )
+        self.assertIn("response_format='json_object'", description)
 
     def test_authentication_error_becomes_required_key_error(self):
         translator = FakeTranslator(FakeAuthError('bad key'))
@@ -373,6 +412,68 @@ class LLMTranslatorTest(unittest.TestCase):
                     )
                 self.assertNotIsInstance(caught.exception, ContextLengthError)
 
+    def test_explicit_output_limit_uses_ordinary_retries(self):
+        profile = default_profile('OpenAI')
+        profile.max_tokens = 1234
+        profile.thinking_level = 'low'
+        self.translator.set_param_value('retry attempts', 2)
+        self.translator.set_param_value('retry timeout', 0)
+        truncated = SimpleNamespace(
+            content='{\n  "translations": {\n    "1":',
+            usage=None,
+            finish_reason='length',
+        )
+        complete = SimpleNamespace(
+            content='{"1":"target"}',
+            usage=None,
+            finish_reason='stop',
+        )
+
+        with mock.patch.object(
+            self.translator,
+            'request_chat_completion',
+            side_effect=(truncated, complete),
+        ) as request:
+            result = self.translator._translate(
+                ['source'],
+                profile=profile,
+                prompt_spec=self._prompt_spec(profile),
+                page_key='003-0.png',
+            )
+
+        self.assertEqual(result, ['target'])
+        self.assertEqual(request.call_count, 2)
+
+    def test_explicit_output_limit_is_actionable_after_retries(self):
+        profile = default_profile('OpenAI')
+        profile.max_tokens = 1234
+        profile.thinking_level = 'low'
+        self.translator.set_param_value('retry attempts', 2)
+        self.translator.set_param_value('retry timeout', 0)
+        completion = SimpleNamespace(
+            content='{\n  "translations": {\n    "1":',
+            usage=None,
+            finish_reason='length',
+        )
+
+        with mock.patch.object(
+            self.translator,
+            'request_chat_completion',
+            return_value=completion,
+        ) as request:
+            with self.assertRaisesRegex(
+                LLMOutputLimitError,
+                r'Thinking Level: low.*increase Max Tokens',
+            ):
+                self.translator._translate(
+                    ['source'],
+                    profile=profile,
+                    prompt_spec=self._prompt_spec(profile),
+                    page_key='003-0.png',
+                )
+
+        self.assertEqual(request.call_count, 2)
+
     def test_token_usage_supports_openai_and_deepseek_cache_fields(self):
         openai_usage = SimpleNamespace(
             prompt_tokens=100,
@@ -383,6 +484,7 @@ class LLMTranslatorTest(unittest.TestCase):
         deepseek_usage = {
             'prompt_tokens': 100,
             'completion_tokens': 20,
+            'completion_tokens_details': {'reasoning_tokens': 18},
             'total_tokens': 120,
             'prompt_cache_hit_tokens': 70,
             'prompt_cache_miss_tokens': 30,
@@ -391,7 +493,7 @@ class LLMTranslatorTest(unittest.TestCase):
         self.translator.logger = SimpleNamespace(debug=messages.append)
 
         self.translator._log_token_usage(
-            SimpleNamespace(usage=openai_usage),
+            SimpleNamespace(usage=openai_usage, finish_reason='length'),
             page_key='001\npage.png',
             attempt=3,
         )
@@ -399,12 +501,24 @@ class LLMTranslatorTest(unittest.TestCase):
             messages,
             [
                 'LLM token usage: page=001 page.png, attempt=3, '
-                'prompt=100, completion=20, total=120, cache_hit=80'
+                'prompt=100, completion=20, total=120, cache_hit=80, '
+                'finish_reason=length'
             ],
         )
         self.assertEqual(
             format_token_usage(deepseek_usage),
-            'prompt=100, completion=20, total=120, cache_hit=70, cache_miss=30',
+            'prompt=100, completion=20, reasoning=18, total=120, '
+            'cache_hit=70, cache_miss=30',
+        )
+
+        messages.clear()
+        self.translator._log_token_usage(
+            SimpleNamespace(finish_reason='length'),
+            page_key='002.png',
+        )
+        self.assertEqual(
+            messages,
+            ['LLM token usage: page=002.png, finish_reason=length'],
         )
 
     def test_token_usage_omits_missing_or_invalid_fields(self):

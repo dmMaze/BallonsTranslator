@@ -29,6 +29,7 @@ from ballontranslator.utils.llm_profiles import (
     LLM_INPAINT_KEY,
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
+    THINKING_AUTO,
     profile_by_id,
 )
 
@@ -506,10 +507,12 @@ class ModuleSelectionWidget(Widget):
         if self._is_text_modality():
             model_options = [str(option) for option in profile.model_options if str(option)]
             model = str(profile.model or '').strip()
-            thinking_level = str(profile.thinking_level or 'None').strip()
+            thinking_level = str(
+                profile.thinking_level or THINKING_AUTO
+            ).strip()
             if model_options and model:
                 name = _simplify_llm_model_name(model)
-                if thinking_level and thinking_level != 'None':
+                if thinking_level and thinking_level != THINKING_AUTO:
                     name = self.tr('{model} {thinking_level}').format(model=name, thinking_level=thinking_level)
                 return name
             return profile.name or self.llm_key

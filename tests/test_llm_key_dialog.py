@@ -11,6 +11,7 @@ from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
+    LLMOutputLimitError,
     ModuleRunError,
 )
 from ballontranslator.ui import module_manager
@@ -115,6 +116,19 @@ class FailingTranslator(SuccessfulTranslator):
     ):
         self.calls.append((blk_list, project, page_key, full_page))
         raise RuntimeError('translation failed')
+
+
+class OutputLimitedTranslator(SuccessfulTranslator):
+    def translate_textblk_lst(
+        self,
+        blk_list,
+        *,
+        project=None,
+        page_key=None,
+        full_page=False,
+    ):
+        self.calls.append((blk_list, project, page_key, full_page))
+        raise LLMOutputLimitError('profile-1', 'Profile 1', 8192, 'low')
 
 
 class FailingDetector:
@@ -399,6 +413,27 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                     self.assertNotIn('translation_target', info)
                     self.assertIn('Page: page-1', show_error.call_args.args[1])
 
+    def test_output_limit_dialog_stops_parallel_translation(self):
+        translator = OutputLimitedTranslator()
+        thread = module_manager.TranslateThread()
+        thread.translator = translator
+        thread.pipeline_stop_event = threading.Event()
+        project = ProjImgTrans()
+        project.pages = {
+            'page-1': [TextBlock(text=['source'], translation='old')],
+        }
+        project._image_info = {'page-1': {'finish_code': 0}}
+
+        with mock.patch(
+            'ballontranslator.ui.module_manager.create_error_dialog',
+        ) as show_error:
+            success = thread._translate_page(project, 'page-1')
+
+        self.assertFalse(success)
+        self.assertTrue(thread.pipeline_stop_event.is_set())
+        self.assertIsInstance(show_error.call_args.args[0], LLMOutputLimitError)
+        self.assertIn('increase Max Tokens', str(show_error.call_args.args[0]))
+
     def test_imgtrans_full_page_forwards_context_and_marks_only_success(self):
         for translator_type, expected_success in (
             (SuccessfulTranslator, True),
@@ -453,6 +488,9 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             for mode in ('parallel', 'direct', 'low-vram'):
                 with self.subTest(mode=mode):
                     translator = SuccessfulTranslator()
+                    translator.translation_run_description = mock.Mock(
+                        return_value='LLM translation run: test',
+                    )
                     translator.computational_intensive = mode == 'direct'
                     translator.low_vram_mode = mode == 'low-vram'
                     translate_thread = FakeTranslateThread(translator)
@@ -480,8 +518,13 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                         return_value=True,
                     ) as full_page, mock.patch(
                         'ballontranslator.ui.module_manager.unload_modules',
-                    ):
+                    ), mock.patch(
+                        'ballontranslator.ui.module_manager.LOGGER.info',
+                    ) as log_info:
                         thread._imgtrans_pipeline()
+
+                    translator.translation_run_description.assert_called_once_with()
+                    log_info.assert_any_call('LLM translation run: test')
 
                     if mode == 'parallel':
                         self.assertEqual(

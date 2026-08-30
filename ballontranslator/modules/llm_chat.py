@@ -13,6 +13,9 @@ from .exceptions import LLMApiKeyRequiredError, LLMRequestStopped
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
     PROVIDER_DEFAULTS,
+    THINKING_AUTO,
+    THINKING_DISABLED,
+    normalize_thinking_level,
     resolve_api_key,
 )
 
@@ -23,10 +26,41 @@ OPENAI_MAX_TOKENS_MODELS = frozenset({
     "gpt-4o",
     "gpt-4o-mini",
 })
+_CHAT_COMPLETIONS_SUFFIX = '/chat/completions'
 
 
 def _normalized_base_url(url: str) -> str:
     return str(url or '').strip().rstrip('/')
+
+
+def _openai_sdk_base_url(url: str) -> str:
+    """Return the API base expected by the OpenAI SDK chat resource.
+
+    Provider documentation often presents the complete HTTP endpoint, while
+    ``client.chat.completions.create`` adds that endpoint path itself.
+
+    >>> _openai_sdk_base_url('https://example.test/v1/chat/completions/')
+    'https://example.test/v1'
+    >>> _openai_sdk_base_url('https://example.test/v1')
+    'https://example.test/v1'
+    """
+    base_url = str(url or '').strip()
+    endpoint_url = base_url.rstrip('/')
+    if endpoint_url.endswith(_CHAT_COMPLETIONS_SUFFIX):
+        parent_url = endpoint_url[:-len(_CHAT_COMPLETIONS_SUFFIX)]
+        if parent_url:
+            return parent_url
+    return base_url
+
+
+def _uses_provider_base_url(base_url: str, provider: str) -> bool:
+    provider_url = _normalized_base_url(
+        PROVIDER_DEFAULTS[provider]['base_url']
+    ).lower()
+    base_url = _normalized_base_url(base_url).lower()
+    return base_url == provider_url or base_url.startswith(
+        f'{provider_url}/'
+    )
 
 
 def openai_chat_completion_args(
@@ -47,7 +81,7 @@ def openai_chat_completion_args(
     0.1
     """
 
-    base_url = _normalized_base_url(profile.base_url)
+    base_url = _normalized_base_url(_openai_sdk_base_url(profile.base_url))
     openai_base_url = _normalized_base_url(
         PROVIDER_DEFAULTS['OpenAI']['base_url']
     )
@@ -70,6 +104,19 @@ def openai_chat_completion_args(
         else 'max_tokens'
     )
     args[token_limit_key] = int(profile.max_tokens)
+
+    thinking_level = normalize_thinking_level(profile.thinking_level)
+    if thinking_level == THINKING_AUTO:
+        return args
+    if thinking_level != THINKING_DISABLED:
+        args['reasoning_effort'] = thinking_level
+        return args
+    if _uses_provider_base_url(base_url, 'DeepSeek'):
+        args['extra_body'] = {'thinking': {'type': 'disabled'}}
+    elif _uses_provider_base_url(base_url, 'OpenRouter'):
+        args['extra_body'] = {'reasoning': {'effort': 'none'}}
+    else:
+        args['reasoning_effort'] = 'none'
     return args
 
 
@@ -103,6 +150,7 @@ def openai_json_response_format(
 class LLMChatResult:
     content: str
     usage: Any = None
+    finish_reason: str = ''
 
 
 class LLMChatRequestError(RuntimeError):
@@ -195,11 +243,19 @@ class LLMChatRequester:
 
     def _initialize_client(self, profile: LLMProfile) -> Any:
         api_key = self._client_api_key_for_profile(profile)
-        base_url = profile.base_url or None
+        configured_base_url = str(profile.base_url or '').strip()
+        base_url = _openai_sdk_base_url(configured_base_url) or None
         proxy = str(self.get_param_value('proxy') or '')
         cache_key = (api_key, base_url, proxy)
         if self.client is not None and self.client_cache_key == cache_key:
             return self.client
+
+        if configured_base_url and base_url != configured_base_url:
+            self.logger.warning(
+                f'LLM profile "{profile.name or profile.id}" Base URL ends '
+                f'with {_CHAT_COMPLETIONS_SUFFIX}; using its parent URL as '
+                'the OpenAI-compatible API base.'
+            )
 
         openai = self._openai_module()
         self.client = openai.OpenAI(
@@ -248,6 +304,14 @@ class LLMChatRequester:
                 return str(text)
         return ''
 
+    @staticmethod
+    def _completion_finish_reason(completion: Any) -> str:
+        for choice in getattr(completion, 'choices', ()):
+            finish_reason = getattr(choice, 'finish_reason', None)
+            if finish_reason is not None:
+                return str(finish_reason)
+        return ''
+
     def request_chat_completion(
         self,
         profile: LLMProfile,
@@ -269,4 +333,5 @@ class LLMChatRequester:
         return LLMChatResult(
             content=self._completion_content(completion),
             usage=getattr(completion, 'usage', None),
+            finish_reason=self._completion_finish_reason(completion),
         )

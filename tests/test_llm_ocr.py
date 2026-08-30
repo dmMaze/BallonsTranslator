@@ -120,6 +120,17 @@ class LLMOCRTest(unittest.TestCase):
         self.assertIn('data:image/jpeg;base64,', image_part['image_url']['url'])
         self.assertEqual(image_part['image_url']['detail'], 'auto')
 
+    def test_request_args_apply_shared_reasoning_control(self):
+        profile = self.ocr.profile
+        profile.thinking_level = 'Disabled'
+
+        args = self.ocr._api_args(
+            profile,
+            [{'role': 'user', 'content': 'x'}],
+        )
+
+        self.assertEqual(args['reasoning_effort'], 'none')
+
     def test_page_request_uses_strict_schema_or_json_object(self):
         profile = self.ocr.profile
         messages = [{'role': 'user', 'content': 'x'}]
@@ -384,17 +395,6 @@ class LLMOCRTest(unittest.TestCase):
         self.assertEqual(imencode.call_count, 3)
         self.assertEqual(len(ocr.completions.calls), 2)
         self.assertNotIn('response_format', ocr.completions.calls[0])
-
-    def test_removed_run_settings_are_not_module_parameters(self):
-        for key in (
-            'page_level_ocr',
-            'censorship',
-            'sort_by_llm',
-            'font_scale',
-            'box_color',
-            'custom_prompt',
-        ):
-            self.assertNotIn(key, LLMOCR.params)
 
     def test_authentication_error_becomes_required_key_error(self):
         ocr = FakeOCR(FakeAuthError('bad key'))

@@ -45,15 +45,13 @@ class LLMContextConfigTest(unittest.TestCase):
                 loaded.module.llm_glossary_path,
                 loaded.module.llm_glossary_mode,
                 loaded.module.llm_translate_vision,
-                loaded.module.llm_translate_summary,
-                loaded.module.llm_translate_memory,
+                loaded.module.llm_translate_summary_memory,
             ),
             (
                 LLMTranslateContext.PAGE,
                 4096,
                 '',
                 LLMGlossaryMode.Matching,
-                False,
                 False,
                 False,
             ),
@@ -69,8 +67,11 @@ class LLMContextConfigTest(unittest.TestCase):
             ),
             ('llm_glossary_path', (None, False, 1, [], {}), ''),
             ('llm_translate_vision', (None, 0, 1, 'yes', [], {}), False),
-            ('llm_translate_summary', (None, 0, 1, 'yes', [], {}), False),
-            ('llm_translate_memory', (None, 0, 1, 'yes', [], {}), False),
+            (
+                'llm_translate_summary_memory',
+                (None, 0, 1, 'yes', [], {}),
+                False,
+            ),
         )
         for field, values, expected in invalid_cases:
             for value in values:
@@ -87,8 +88,7 @@ class LLMContextConfigTest(unittest.TestCase):
             llm_glossary_path='glossaries/terms.tsv',
             llm_glossary_mode=LLMGlossaryMode.All,
             llm_translate_vision=True,
-            llm_translate_summary=True,
-            llm_translate_memory=True,
+            llm_translate_summary_memory=True,
         ))
         raw = json.loads(json_dump_program_config(cfg))
 
@@ -101,8 +101,7 @@ class LLMContextConfigTest(unittest.TestCase):
                     'llm_glossary_path',
                     'llm_glossary_mode',
                     'llm_translate_vision',
-                    'llm_translate_summary',
-                    'llm_translate_memory',
+                    'llm_translate_summary_memory',
                 )
             },
             {
@@ -111,8 +110,7 @@ class LLMContextConfigTest(unittest.TestCase):
                 'llm_glossary_path': 'glossaries/terms.tsv',
                 'llm_glossary_mode': LLMGlossaryMode.All,
                 'llm_translate_vision': True,
-                'llm_translate_summary': True,
-                'llm_translate_memory': True,
+                'llm_translate_summary_memory': True,
             },
         )
 
@@ -132,17 +130,7 @@ class LLMContextConfigTest(unittest.TestCase):
         )
         self.assertEqual(loaded.module.llm_glossary_mode, LLMGlossaryMode.All)
         self.assertTrue(loaded.module.llm_translate_vision)
-        self.assertTrue(loaded.module.llm_translate_summary)
-        self.assertTrue(loaded.module.llm_translate_memory)
-
-    def test_llm_feature_switches_are_independent(self):
-        self.assertTrue(_module_config(
-            llm_translate_summary=True,
-        ).llm_translate_summary)
-        self.assertTrue(_module_config(
-            llm_translate_memory=True,
-        ).llm_translate_memory)
-
+        self.assertTrue(loaded.module.llm_translate_summary_memory)
 
 class ProjectLoadIdentityTest(unittest.TestCase):
 

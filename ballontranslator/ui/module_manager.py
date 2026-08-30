@@ -20,6 +20,7 @@ from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
+    LLMOutputLimitError,
     LLMRequestStopped,
     ModuleRunError,
 )
@@ -623,6 +624,17 @@ class TranslateThread(ModuleThread):
             _show_llm_base_url_required_dialog(e)
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
+        except LLMOutputLimitError as e:
+            success = False
+            _create_page_error_dialog(
+                e,
+                self.tr('Translation Failed.'),
+                f'LLMOutputLimit:{e.profile_id}',
+                page_key,
+                self.tr('Page'),
+            )
+            if self.pipeline_stop_event is not None:
+                self.pipeline_stop_event.set()
         except LLMRequestStopped:
             success = False
             LOGGER.info('Translation stopped by user.')
@@ -851,6 +863,15 @@ class ImgtransThread(QThread):
         except LLMBaseURLRequiredError as e:
             _show_llm_base_url_required_dialog(e)
             self.requestStop()
+        except LLMOutputLimitError as e:
+            _create_page_error_dialog(
+                e,
+                self.tr('Translation Failed.'),
+                f'LLMOutputLimit:{e.profile_id}',
+                page_key,
+                self.tr('Page'),
+            )
+            self.requestStop()
         except LLMRequestStopped:
             LOGGER.info('Translation stopped by user.')
         except Exception as e:
@@ -1031,6 +1052,20 @@ class ImgtransThread(QThread):
             for i in range(num_pages):
                 self.process_idx_to_page_idx[i] = i
             LOGGER.info(f'Processing all {num_pages} pages')
+        if cfg_module.enable_translate and self.translator is not None:
+            describe_run = getattr(
+                self.translator,
+                'translation_run_description',
+                None,
+            )
+            if callable(describe_run):
+                try:
+                    LOGGER.info(describe_run())
+                except Exception as error:
+                    # Diagnostics must never make an otherwise valid run fail.
+                    LOGGER.debug(
+                        f'Unable to describe translation run settings: {error}'
+                    )
         self.textdetect_thread.num_process_pages = self.num_pages
         self.ocr_thread.num_process_pages = self.num_pages
         self.inpaint_thread.num_process_pages = self.num_pages

@@ -149,6 +149,8 @@ class LLMTranslationContractTest(unittest.TestCase):
             '"page_summary":"Old page summary."}',
         )
         self.assertIn('Current clue.', prompt)
+        self.assertIn('infer the natural comic reading order', prompt)
+        self.assertIn('mapped to its original input ID', prompt)
         self.assertIsInstance(messages[-1]['content'], list)
         self.assertEqual(messages[-1]['content'][0], {'type': 'text', 'text': prompt})
         self.assertIs(messages[-1]['content'][1], image_part)
@@ -222,7 +224,7 @@ class LLMTranslationContractTest(unittest.TestCase):
         self.assertEqual(numeric.translations, ('heart', 'spirit'))
         self.assertEqual(legacy.translations, ('heart', 'spirit'))
 
-    def test_parser_normalizes_and_truncates_optional_summary(self):
+    def test_parser_normalizes_without_truncating_optional_summary(self):
         summary = '  scene\n\tmemory  ' + ('x' * LLM_VISUAL_SUMMARY_MAX_CHARS)
 
         parsed = parse_translation_response(
@@ -237,8 +239,10 @@ class LLMTranslationContractTest(unittest.TestCase):
             1,
         )
 
-        self.assertEqual(len(parsed.page_summary), LLM_VISUAL_SUMMARY_MAX_CHARS)
-        self.assertTrue(parsed.page_summary.startswith('scene memory '))
+        self.assertEqual(
+            parsed.page_summary,
+            'scene memory ' + ('x' * LLM_VISUAL_SUMMARY_MAX_CHARS),
+        )
         self.assertEqual(non_string.page_summary, '')
 
     def test_parser_preserves_fenced_and_prose_object_compatibility(self):

@@ -3,6 +3,8 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
+import httpx
+
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
     LLMRequestStopped,
@@ -83,6 +85,61 @@ class LLMChatRequesterTest(unittest.TestCase):
             },
         )
 
+        self.profile.base_url = (
+            'https://api.openai.com/v1/chat/completions'
+        )
+        self.assertEqual(
+            openai_chat_completion_args(self.profile, 'gpt-5.5'),
+            {'top_p': 1.0, 'max_completion_tokens': 8192},
+        )
+
+    def test_reasoning_control_maps_provider_specific_disable_requests(self):
+        self.profile.thinking_level = 'None'
+        automatic = openai_chat_completion_args(
+            self.profile,
+            'gpt-5.5',
+        )
+        self.assertNotIn('reasoning_effort', automatic)
+        self.assertNotIn('extra_body', automatic)
+
+        self.profile.thinking_level = 'Disabled'
+        native_openai = openai_chat_completion_args(
+            self.profile,
+            'gpt-5.5',
+        )
+        self.assertEqual(native_openai['reasoning_effort'], 'none')
+
+        self.profile.base_url = (
+            'https://api.deepseek.com/v1/chat/completions'
+        )
+        deepseek = openai_chat_completion_args(
+            self.profile,
+            'deepseek-v4-flash-vision-exp',
+        )
+        self.assertEqual(
+            deepseek['extra_body'],
+            {'thinking': {'type': 'disabled'}},
+        )
+        self.assertNotIn('reasoning_effort', deepseek)
+
+        self.profile.base_url = 'https://openrouter.ai/api/v1'
+        openrouter = openai_chat_completion_args(
+            self.profile,
+            'deepseek/deepseek-v4-flash-vision-exp',
+        )
+        self.assertEqual(
+            openrouter['extra_body'],
+            {'reasoning': {'effort': 'none'}},
+        )
+
+        self.profile.thinking_level = 'low'
+        explicit = openai_chat_completion_args(
+            self.profile,
+            'deepseek/deepseek-v4-flash-vision-exp',
+        )
+        self.assertEqual(explicit['reasoning_effort'], 'low')
+        self.assertNotIn('extra_body', explicit)
+
     def test_json_response_format_preserves_strict_and_compatible_shapes(self):
         schema = {'type': 'object', 'properties': {}}
         self.profile.json_schema_response_format = True
@@ -113,7 +170,10 @@ class LLMChatRequesterTest(unittest.TestCase):
     def test_request_returns_normalized_content_and_usage(self):
         usage = SimpleNamespace(total_tokens=3)
         completion = SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content='hello'))],
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(content='hello'),
+                finish_reason='length',
+            )],
             usage=usage,
         )
         completions = SimpleNamespace(create=mock.Mock(return_value=completion))
@@ -137,6 +197,7 @@ class LLMChatRequesterTest(unittest.TestCase):
         completions.create.assert_called_once_with(**api_args)
         self.assertEqual(result.content, 'hello')
         self.assertIs(result.usage, usage)
+        self.assertEqual(result.finish_reason, 'length')
 
     def test_request_normalizes_authentication_and_status_errors(self):
         def client_for(error: Exception):
@@ -200,6 +261,44 @@ class LLMChatRequesterTest(unittest.TestCase):
             api_key='sk-demo',
             base_url='https://api.openai.com/v1',
             http_client=http_client,
+        )
+
+    def test_full_chat_endpoint_is_requested_once(self):
+        requested_urls = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            requested_urls.append(str(request.url))
+            return httpx.Response(200, json={
+                'id': 'chatcmpl-test',
+                'object': 'chat.completion',
+                'created': 0,
+                'model': 'test-model',
+                'choices': [{
+                    'index': 0,
+                    'message': {'role': 'assistant', 'content': 'ok'},
+                    'finish_reason': 'stop',
+                }],
+            })
+
+        self.profile.base_url = (
+            'https://openrouter.ai/api/v1/chat/completions/'
+        )
+        with (
+            httpx.Client(transport=httpx.MockTransport(respond)) as http_client,
+            mock.patch.object(
+                self.requester, '_http_client', return_value=http_client
+            ),
+            mock.patch.object(self.requester, '_respect_delay'),
+        ):
+            result = self.requester.request_chat_completion(
+                self.profile,
+                {'model': 'test-model', 'messages': []},
+            )
+
+        self.assertEqual(result.content, 'ok')
+        self.assertEqual(
+            requested_urls,
+            ['https://openrouter.ai/api/v1/chat/completions'],
         )
 
     def test_wait_remains_stop_aware(self):

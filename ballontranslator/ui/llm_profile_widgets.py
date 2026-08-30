@@ -408,7 +408,10 @@ class ProfileCardWidget(QGroupBox):
             'vision_model': self.tr('Model used by LLMOCR for image OCR.'),
             'image_model': self.tr('Model used by LLMInpaint for image cleanup.'),
             'vision_detail_level': self.tr('Image detail level sent to vision-capable providers.'),
-            'thinking_level': self.tr('Reasoning effort sent only when it is not None.'),
+            'thinking_level': self.tr(
+                'Auto uses the provider default. Disabled requests no '
+                'reasoning; explicit levels set the reasoning effort.'
+            ),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
             'vision_prompt': self.tr('Instructions sent to the vision model for OCR.'),
             'image_prompt': self.tr('Instructions sent to the image model for cleanup.'),

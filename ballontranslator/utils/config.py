@@ -14,7 +14,6 @@ from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import (
-    LLM_OCR_KEY,
     LLMProfile,
     default_profiles,
     load_profiles,
@@ -82,58 +81,6 @@ class OCRTextPostprocess:
     Valid = (NONE, CAPITALIZE, UPPERCASE)
 
 
-_LEGACY_LLM_OCR_RUN_SETTINGS = {
-    'page_level_ocr': 'ocr_llm_page_level',
-    'censorship': 'ocr_llm_mask_non_text',
-    'sort_by_llm': 'ocr_llm_sort_reading_order',
-}
-_REMOVED_LLM_OCR_PARAMS = (
-    *tuple(_LEGACY_LLM_OCR_RUN_SETTINGS),
-    'font_scale',
-    'box_color',
-    'custom_prompt',
-)
-
-
-def migrate_llm_ocr_run_settings(module_cfg: Dict) -> Dict:
-    """Move PR-era page OCR module parameters into RUN settings.
-
-    Explicit current settings take precedence over legacy module parameters.
-
-    >>> raw = {'ocr_params': {'LLMOCR': {'page_level_ocr': True}}}
-    >>> migrate_llm_ocr_run_settings(raw)['ocr_llm_page_level']
-    True
-    >>> raw['ocr_params']['LLMOCR']
-    {}
-    """
-
-    if not isinstance(module_cfg, dict):
-        return module_cfg
-    ocr_params = module_cfg.get('ocr_params')
-    if not isinstance(ocr_params, dict):
-        return module_cfg
-    llm_ocr_params = ocr_params.get(LLM_OCR_KEY)
-    if not isinstance(llm_ocr_params, dict):
-        return module_cfg
-
-    for legacy_key, setting_name in _LEGACY_LLM_OCR_RUN_SETTINGS.items():
-        if setting_name in module_cfg or legacy_key not in llm_ocr_params:
-            continue
-        value = llm_ocr_params[legacy_key]
-        if isinstance(value, dict) and 'value' in value:
-            value = value['value']
-        if type(value) is bool:
-            module_cfg[setting_name] = value
-        else:
-            LOGGER.warning(
-                f'Discard invalid LLMOCR {legacy_key} config: expected a boolean.'
-            )
-
-    for key in _REMOVED_LLM_OCR_PARAMS:
-        llm_ocr_params.pop(key, None)
-    return module_cfg
-
-
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
@@ -168,8 +115,7 @@ class ModuleConfig(Config):
     llm_glossary_path: str = ''
     llm_glossary_mode: str = LLMGlossaryMode.Matching
     llm_translate_vision: bool = False
-    llm_translate_summary: bool = False
-    llm_translate_memory: bool = False
+    llm_translate_summary_memory: bool = False
 
     check_need_inpaint: bool = True
     empty_runcache: bool = False
@@ -278,8 +224,7 @@ class ModuleConfig(Config):
             self.llm_prior_context_token_budget = 4096
         for feature in (
             'llm_translate_vision',
-            'llm_translate_summary',
-            'llm_translate_memory',
+            'llm_translate_summary_memory',
         ):
             if not isinstance(getattr(self, feature), bool):
                 LOGGER.warning('Invalid %s value; disabling it.', feature)
@@ -492,9 +437,7 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
-            # Consume legacy keys before module-param patching drops unknown keys.
             migrate_module_llm_profiles(module_cfg)
-            migrate_llm_ocr_run_settings(module_cfg)
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:

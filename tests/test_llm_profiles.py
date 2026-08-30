@@ -10,6 +10,8 @@ from ballontranslator.utils.llm_profiles import (
     DEFAULT_TRANSLATION_PROMPT,
     LLMProfile,
     PROVIDER_DEFAULTS,
+    THINKING_AUTO,
+    THINKING_DISABLED,
     VISION_DETAIL_LEVEL_OPTIONS,
     copy_profile,
     default_profile,
@@ -87,6 +89,21 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(first.base_url, 'https://saved.example/v1')
         self.assertEqual(first.image_base_url, 'https://saved.example/image-edit')
         self.assertEqual(first.api_key, 'saved-key')
+
+    def test_load_profiles_migrates_legacy_none_thinking_to_auto(self):
+        profile = default_profile('OpenAI')
+        profile.thinking_level = 'None'
+        profile.thinking_level_options = ['None', 'low', 'high']
+
+        first = load_profiles([profile])[0]
+        second = load_profiles([first])[0]
+
+        self.assertEqual(first.thinking_level, THINKING_AUTO)
+        self.assertEqual(
+            first.thinking_level_options,
+            [THINKING_AUTO, THINKING_DISABLED, 'low', 'high'],
+        )
+        self.assertEqual(profile_to_dict(first), profile_to_dict(second))
 
     def test_load_profiles_leaves_custom_profiles_unchanged(self):
         custom = LLMProfile(
@@ -243,8 +260,10 @@ class LLMProfileMigrationTest(unittest.TestCase):
             self.assertIn(model, profile.vision_model_options)
         self.assertIn('gpt-4.1', profile.model_options)
         self.assertIn('gpt-4.1-mini', profile.model_options)
-        self.assertIn('None', profile.thinking_level_options)
-        self.assertNotIn('none', profile.thinking_level_options)
+        self.assertEqual(profile.thinking_level, THINKING_AUTO)
+        self.assertIn(THINKING_AUTO, profile.thinking_level_options)
+        self.assertIn(THINKING_DISABLED, profile.thinking_level_options)
+        self.assertNotIn('None', profile.thinking_level_options)
         self.assertEqual(profile.prompt, DEFAULT_TRANSLATION_PROMPT)
         self.assertEqual(profile.vision_prompt, DEFAULT_OCR_PROMPT)
         self.assertEqual(profile.image_prompt, DEFAULT_INPAINT_PROMPT)
@@ -409,55 +428,6 @@ class SecretStoreTest(unittest.TestCase):
             PROVIDER_DEFAULTS['OpenAI']['vision_model_options'],
         )
         self.assertEqual(selected.vision_detail_level, 'high')
-
-    def test_program_config_migrates_llm_ocr_run_settings(self):
-        raw = {
-            'module': {
-                'ocr_params': {
-                    'LLMOCR': {
-                        'delay': 0.5,
-                        'page_level_ocr': True,
-                        'censorship': {'value': False},
-                        'sort_by_llm': False,
-                        'font_scale': 1.8,
-                        'box_color': '255, 0, 0',
-                        'custom_prompt': 'legacy prompt',
-                    },
-                },
-            },
-        }
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
-            json.dump(raw, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
-
-        self.assertTrue(loaded.module.ocr_llm_page_level)
-        self.assertFalse(loaded.module.ocr_llm_mask_non_text)
-        self.assertFalse(loaded.module.ocr_llm_sort_reading_order)
-        self.assertEqual(
-            loaded.module.ocr_params['LLMOCR'],
-            {'delay': 0.5},
-        )
-
-    def test_current_llm_ocr_run_setting_wins_over_legacy_value(self):
-        raw = {
-            'module': {
-                'ocr_llm_page_level': False,
-                'ocr_params': {
-                    'LLMOCR': {'page_level_ocr': True},
-                },
-            },
-        }
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
-            json.dump(raw, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
-
-        self.assertFalse(loaded.module.ocr_llm_page_level)
-        self.assertNotIn(
-            'page_level_ocr',
-            loaded.module.ocr_params['LLMOCR'],
-        )
 
     def test_llm_ocr_page_mode_defaults_off_and_invalid_values_reset(self):
         self.assertFalse(ModuleConfig().ocr_llm_page_level)

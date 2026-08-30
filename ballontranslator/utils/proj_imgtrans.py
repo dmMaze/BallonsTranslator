@@ -787,7 +787,7 @@ class ProjImgTrans:
         self._image_info[page_key]['llm_visual_summary'] = copy.deepcopy(record)
 
     def set_llm_visual_summary_text(self, page_key: str, text: str) -> None:
-        """Replace user-owned summary text while retaining optional provenance.
+        """Replace user-owned summary text.
 
         >>> project = ProjImgTrans()
         >>> project._image_info['001.png'] = {}

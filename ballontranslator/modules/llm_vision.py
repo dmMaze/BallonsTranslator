@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-import hashlib
 from typing import Any, Dict, Optional
 
 import cv2
@@ -15,13 +14,12 @@ import numpy as np
 class EncodedChatImage:
     """One immutable JPEG image part for a chat request.
 
-    >>> EncodedChatImage('data:image/jpeg;base64,AA==', 'auto', 'a' * 64).detail
+    >>> EncodedChatImage('data:image/jpeg;base64,AA==', 'auto').detail
     'auto'
     """
 
     data_url: str
     detail: str
-    image_sha256: str
 
     def image_part(self) -> Dict[str, Any]:
         image_url = {'url': self.data_url}
@@ -60,12 +58,10 @@ def encode_chat_image(
     if not success:
         raise RuntimeError(failure_message)
 
-    image_bytes = buffer.tobytes()
     return EncodedChatImage(
         data_url=(
             'data:image/jpeg;base64,'
-            + base64.b64encode(image_bytes).decode('ascii')
+            + base64.b64encode(buffer.tobytes()).decode('ascii')
         ),
         detail=str(detail or 'None'),
-        image_sha256=hashlib.sha256(image_bytes).hexdigest(),
     )
