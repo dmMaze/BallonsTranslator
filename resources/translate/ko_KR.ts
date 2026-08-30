@@ -44,7 +44,7 @@
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3053"/>
         <source> px</source>
-        <translation>px</translation>
+        <translation> px</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3077"/>
@@ -494,7 +494,7 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1012"/>
         <source>Font Family</source>
-        <translation>글꼴 모음</translation>
+        <translation>글꼴 집합</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1019"/>
@@ -806,7 +806,7 @@
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="646"/>
         <source>Choose Stroke Color</source>
-        <translation>- 획 색상 선택</translation>
+        <translation>획 색상 선택</translation>
     </message>
 </context>
 <context>
@@ -1005,7 +1005,7 @@
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="687"/>
         <source>Font Family</source>
-        <translation>글꼴 모음</translation>
+        <translation>글꼴 집합</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="693"/>
@@ -1512,7 +1512,7 @@
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2658"/>
         <source>Lettered</source>
-        <translation>식질됨</translation>
+        <translation>번역됨</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2659"/>
@@ -1640,7 +1640,7 @@
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/image_generation.py" line="210"/>
         <source>Unable to render the Lettered image context.</source>
-        <translation>식자된 이미지 컨텍스트를 렌더링할 수 없습니다.</translation>
+        <translation>번역된 이미지 컨텍스트를 렌더링할 수 없습니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/image_generation.py" line="220"/>
@@ -2096,12 +2096,12 @@
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="720"/>
         <source>Failed to load project </source>
-        <translation>프로젝트 불러오기 실패</translation>
+        <translation>프로젝트를 불러오지 못했습니다: </translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindow.py" line="765"/>
         <source>Failed to load project from</source>
-        <translation>다음 프로젝트에서 불러오기를 실패했습니다: </translation>
+        <translation>다음 프로젝트를 불러오지 못했습니다: </translation>
     </message>
     <message>
         <source>Restart to apply changes?&#xa0;
@@ -3312,7 +3312,7 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="617"/>
         <source>Force apply the dictionary regardless of whether the terms appear in the original text
  DO NOT CHECK THIS IF YOU ARE NOT SURE WHAT IT MEANS</source>
-        <translation>원문에 용어가 존재하는지 여부와 관계없이 강제로 사전을 적용합니다.\n (의미를 확실히 알지 못하는 경우 체크하지 마세요)</translation>
+        <translation>원문에 용어가 존재하는지 여부와 관계없이 강제로 사전을 적용합니다.&lt;br&gt;(의미를 확실히 알지 못하는 경우 체크하지 마세요)</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="620"/>
@@ -3760,8 +3760,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="406"/>
         <source>OpenAI-compatible image API base URL used only by LLMInpaint.</source>
-        <translation>LLMInpaint 전용 OpenAI 호환 이미지 API 기본 URL입니다.
-</translation>
+        <translation>LLMInpaint 전용 OpenAI 호환 이미지 API 기본 URL입니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="407"/>
@@ -4212,8 +4211,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="765"/>
         <source>Remove empty textblocks</source>
-        <translation>빈 텍스트 블록 제거
-</translation>
+        <translation>빈 텍스트 블록 제거</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="774"/>
@@ -4867,7 +4865,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="113"/>
         <source>Amount</source>
-        <translation>정도 (양)</translation>
+        <translation>강도</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="116"/>
@@ -5365,7 +5363,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="231"/>
         <source>Amount</source>
-        <translation>정도 (양)</translation>
+        <translation>강도</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="245"/>
@@ -5707,7 +5705,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="491"/>
         <source>Loading model</source>
-        <translation>모델 로드 중</translation>
+        <translation>모델 불러오는 중</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="561"/>
@@ -5888,7 +5886,8 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/spellcheck.py" line="492"/>
         <source>Failed to install &apos;pyspellchecker&apos;:
 </source>
-        <translation>&apos;pyspellchecker&apos; 설치 실패:</translation>
+        <translation>&apos;pyspellchecker&apos; 설치 실패:
+</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="547"/>
