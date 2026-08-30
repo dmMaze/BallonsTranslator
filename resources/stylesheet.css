@@ -1916,16 +1916,20 @@ QCheckBox#LLMContextChecker::indicator:checked
 QWidget#LLMContextEditor {
     background-color: @emptyContentBackgroundColor;
     border: none;
+    border-radius: 5px;
 }
 
 QFrame#LLMContextEditorCard {
     background-color: @emptyContentBackgroundColor;
-    border: none;
+    border: 1px solid @borderColor;
+    border-radius: 5px;
 }
 
 QFrame#LLMContextEditorHeader {
     background-color: @emptyContentBackgroundColor;
     border: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
 }
 
 QLabel#LLMContextEditorTitle {
@@ -1943,6 +1947,8 @@ QPlainTextEdit#LLMContextTextEdit {
     background-color: @emptyContentBackgroundColor;
     border: none;
     border-top: 1px solid @borderColor;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
     padding: 8px;
 }
 
@@ -1958,6 +1964,11 @@ QSplitter#LLMContextVerticalSplitter::handle {
 QSplitter#LLMContextVerticalSplitter::handle:hover,
 QSplitter#LLMContextVerticalSplitter::handle:pressed {
     background-color: rgb(30, 147, 229);
+}
+
+QListWidget#PageListArea,
+CustomGV {
+    border-radius: 5px;
 }
 
 
