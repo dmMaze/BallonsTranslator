@@ -112,6 +112,67 @@ Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mod
 vertical_force_aligncentel_pattern = re.compile('[' + Dingbats_vertical_aligncenter + Miscellaneous_Symbols_Pattern + r'⁁⁂⁇⁈⁉⁊⁋⁎※⁑⁒⁕⁖⁘⁙⁛⁜‼‽]')
 
 
+def _compose_layout_text(
+    text: str,
+    preedit_position: int,
+    preedit_text: str,
+    *,
+    utf16: bool,
+) -> Tuple[str, int, int]:
+    """Return QTextLayout's transient text including active IME input.
+
+    >>> _compose_layout_text('기존', 1, '가', utf16=False)
+    ('기가존', 1, 1)
+    """
+    text_length = _utf16_length(text) if utf16 else len(text)
+    if not preedit_text or preedit_position < 0:
+        return text, -1, 0
+    position = min(preedit_position, text_length)
+    preedit_length = (
+        _utf16_length(preedit_text) if utf16 else len(preedit_text)
+    )
+    if utf16:
+        before = _utf16_slice(text, 0, position)
+        after = _utf16_slice(text, position, text_length - position)
+    else:
+        before = text[:position]
+        after = text[position:]
+    return before + preedit_text + after, position, preedit_length
+
+
+def _layout_to_document_index(
+    index: int,
+    preedit_position: int,
+    preedit_length: int,
+    document_length: int,
+) -> int:
+    """Map a transient layout index to the committed document.
+
+    >>> [_layout_to_document_index(i, 1, 1, 2) for i in range(3)]
+    [0, 1, 1]
+    """
+    if preedit_length <= 0 or index < preedit_position:
+        return index
+    if index < preedit_position + preedit_length:
+        return min(preedit_position, max(document_length - 1, 0))
+    return index - preedit_length
+
+
+def _document_to_layout_index(
+    index: int,
+    preedit_position: int,
+    preedit_length: int,
+) -> int:
+    """Shift a committed boundary past transient IME text.
+
+    >>> [_document_to_layout_index(i, 1, 1) for i in range(3)]
+    [0, 2, 3]
+    """
+    if preedit_length > 0 and index >= preedit_position:
+        return index + preedit_length
+    return index
+
+
 @lru_cache(maxsize=512)
 def _is_non_fullwidth_roman(char: str) -> bool:
     """Return whether a glyph follows the item-wide Roman orientation.
@@ -322,6 +383,18 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
         self._selection_geometry_cache = {}
+        self._preedit_formats: List[
+            Tuple[int, int, QTextCharFormat]
+        ] = []
+
+    def set_preedit_formats(
+        self,
+        formats: List[Tuple[int, int, QTextCharFormat]],
+    ) -> None:
+        self._preedit_formats = [
+            (start, length, QTextCharFormat(char_format))
+            for start, length, char_format in formats
+        ]
 
     def needs_vertical_rotation(self, char: str) -> bool:
         rotation_chars = (
@@ -618,6 +691,19 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_text_len = (
                 _utf16_length(blk_text) if utf16_indexing else len(blk_text)
             )
+            layout_text, preedit_position, preedit_length = (
+                _compose_layout_text(
+                    blk_text,
+                    layout.preeditAreaPosition(),
+                    layout.preeditAreaText(),
+                    utf16=utf16_indexing,
+                )
+            )
+            layout_text_len = (
+                _utf16_length(layout_text)
+                if utf16_indexing
+                else len(layout_text)
+            )
 
             line_spaces_lst = self.line_spaces_lst[blk_no]
             char_records = self.per_char_records[blk_no]
@@ -633,16 +719,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     # The run-level transform performs all cell alignment.
                     continue
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
-                char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
+                char_idx = min(
+                    line_pos + num_lspaces,
+                    layout_text_len - 1,
+                )
                 if char_idx < 0:
                     continue
 
                 char = (
-                    _utf16_char_at(blk_text, char_idx)
+                    _utf16_char_at(layout_text, char_idx)
                     if utf16_indexing
-                    else blk_text[char_idx]
+                    else layout_text[char_idx]
                 )
-                cfmt = self.get_char_fontfmt(blk_no, char_idx)
+                document_index = _layout_to_document_index(
+                    char_idx,
+                    preedit_position,
+                    preedit_length,
+                    blk_text_len,
+                )
+                cfmt = self.get_char_fontfmt(blk_no, document_index)
+                if cfmt is None:
+                    cfmt = CharFontFormat(block.charFormat())
 
                 line_width = -1
                 if char_idx in char_records:
@@ -671,9 +768,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 if self.needs_vertical_rotation(char):
                     char = (
-                        _utf16_char_at(blk_text, char_idx)
+                        _utf16_char_at(layout_text, char_idx)
                         if utf16_indexing
-                        else blk_text[char_idx]
+                        else layout_text[char_idx]
                     )
                     if char.isalpha():
                         xoff = 0
@@ -1615,6 +1712,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_text_len = (
                 _utf16_length(blk_text) if utf16_indexing else len(blk_text)
             )
+            layout_text, preedit_start, preedit_length = (
+                _compose_layout_text(
+                    blk_text,
+                    layout.preeditAreaPosition(),
+                    layout.preeditAreaText(),
+                    utf16=utf16_indexing,
+                )
+            )
+            layout_text_len = (
+                _utf16_length(layout_text)
+                if utf16_indexing
+                else len(layout_text)
+            )
+            preedit_end = preedit_start + preedit_length
             line_spaces_lst = self.line_spaces_lst[blk_no]
             uniform_block_drawn = (
                 custom_rendering
@@ -1634,8 +1745,23 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 line = layout.lineAt(ii)
                 if line.textLength() == 0:
                     continue
+                line_start = line.textStart()
+                line_end = line_start + line.textLength()
+                if (
+                    preedit_length > 0
+                    and line_start < preedit_end
+                    and line_end > preedit_start
+                ):
+                    # The transient glyph and underline exist only in the
+                    # QTextLayout, outside committed annotation/effect state.
+                    xoff, yoff = self._draw_offset[blk_no][ii]
+                    line.draw(painter, QPointF(xoff, yoff))
+                    continue
                 num_rspaces, num_lspaces, _, line_pos  = line_spaces_lst[ii]
-                char_idx = min(line_pos + num_lspaces, blk_text_len - 1)
+                char_idx = min(
+                    line_pos + num_lspaces,
+                    layout_text_len - 1,
+                )
                 if char_idx < 0:
                     if custom_rendering:
                         if not uniform_block_drawn:
@@ -1920,6 +2046,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         doc = self.document()
         compact_punctuation = pcfg.compact_vertical_punctuation_spacing
 
+        tl = block.layout()
+        preedit_text = tl.preeditAreaText()
+        preedit_position = tl.preeditAreaPosition()
         block.clearLayout()
         clear_horizontal_ruby_layout(block)
         doc_margin = self._effect_padding
@@ -1930,19 +2059,75 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block_no = block.blockNumber()
         blk_text = block.text()
         custom_rendering = self.render_delegate is not None
-        text_combine_ranges = text_combine_upright_ranges(block)
-        self.text_combine_ranges.append(text_combine_ranges)
+        document_text_combine_ranges = text_combine_upright_ranges(block)
         self._prepare_tate_chu_yoko_layout_formats(
-            block, text_combine_ranges
+            block, document_text_combine_ranges
         )
+        if preedit_text and self._preedit_formats:
+            tl = block.layout()
+            formats = tl.formats()
+            for start, length, char_format in self._preedit_formats:
+                entry = QTextLayout.FormatRange()
+                entry.start = preedit_position + start
+                entry.length = length
+                entry.format = QTextCharFormat(char_format)
+                formats.append(entry)
+            tl.setFormats(formats)
         ruby_metrics = vertical_ruby_metrics(
             block,
             self.needs_vertical_rotation,
             self.letter_spacing,
         )
         self._ruby_metrics.append(ruby_metrics)
+        utf16_indexing = (
+            custom_rendering
+            or bool(document_text_combine_ranges)
+            or _utf16_length(blk_text) != len(blk_text)
+            or _utf16_length(preedit_text) != len(preedit_text)
+        )
+        blk_text_len = (
+            _utf16_length(blk_text) if utf16_indexing else len(blk_text)
+        )
+        layout_text, preedit_position, preedit_length = _compose_layout_text(
+            blk_text,
+            preedit_position,
+            preedit_text,
+            utf16=utf16_indexing,
+        )
+        layout_text_len = (
+            _utf16_length(layout_text)
+            if utf16_indexing
+            else len(layout_text)
+        )
+
+        def to_layout(index: int) -> int:
+            return _document_to_layout_index(
+                index,
+                preedit_position,
+                preedit_length,
+            )
+
+        def char_format(index: int) -> CharFontFormat:
+            document_index = _layout_to_document_index(
+                index,
+                preedit_position,
+                preedit_length,
+                blk_text_len,
+            )
+            value = self.get_char_fontfmt(block_no, document_index)
+            return value or CharFontFormat(block.charFormat())
+
+        text_combine_ranges = [
+            (
+                to_layout(start),
+                to_layout(start + length) - to_layout(start),
+                group_id,
+            )
+            for start, length, group_id in document_text_combine_ranges
+        ]
+        self.text_combine_ranges.append(text_combine_ranges)
         ruby_starts = {
-            metric.unit.start - block.position(): metric
+            to_layout(metric.unit.start - block.position()): metric
             for metric in ruby_metrics
         }
         inline_unit_boundaries = None
@@ -1951,27 +2136,22 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         for metric in ruby_metrics:
             if metric.extra <= 1e-6:
                 continue
-            unit_start = metric.unit.start - block.position()
-            unit_end = metric.unit.end - block.position()
+            document_unit_start = metric.unit.start - block.position()
+            unit_start = to_layout(document_unit_start)
+            unit_end = to_layout(metric.unit.end - block.position())
             half_gap = metric.base_gap / 2
             ruby_base_leading[unit_start] = half_gap
             ruby_base_trailing[unit_end] = half_gap
             for boundary in metric.base_opportunity_ends:
-                local_boundary = unit_start + boundary
+                local_boundary = to_layout(
+                    document_unit_start + boundary
+                )
                 ruby_base_leading[local_boundary] = half_gap
                 ruby_base_trailing[local_boundary] = half_gap
         text_combine_lengths = {
             start: length for start, length, _group_id in text_combine_ranges
         }
-        utf16_indexing = (
-            custom_rendering
-            or bool(text_combine_ranges)
-            or _utf16_length(blk_text) != len(blk_text)
-        )
-        blk_text_len = (
-            _utf16_length(blk_text) if utf16_indexing else len(blk_text)
-        )
-        if blk_text_len != 0:
+        if layout_text_len != 0:
             block_width = self.block_ideal_width[block_no]
         else:
             block_width = CharFontFormat(block.charFormat()).tbr.width()
@@ -2014,13 +2194,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             is_text_combine = text_combine_length is not None
             if is_text_combine:
                 combined_text = _utf16_slice(
-                    blk_text, char_idx, text_combine_length
+                    layout_text, char_idx, text_combine_length
                 )
                 line.setNumColumns(max(1, _grapheme_count(combined_text)))
             else:
                 line.setNumColumns(1)
                 punctuation_run = _inseparable_punctuation_run(
-                    blk_text, char_idx
+                    layout_text, char_idx
                 )
                 if punctuation_run is not None:
                     if inline_unit_boundaries is None:
@@ -2029,8 +2209,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             boundaries.update((start, start + length))
                         for metric in ruby_metrics:
                             boundaries.update((
-                                metric.unit.start - block.position(),
-                                metric.unit.end - block.position(),
+                                to_layout(
+                                    metric.unit.start - block.position()
+                                ),
+                                to_layout(
+                                    metric.unit.end - block.position()
+                                ),
                             ))
                         inline_unit_boundaries = tuple(sorted(boundaries))
                     run_start, punctuation_columns = punctuation_run
@@ -2062,19 +2246,23 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
-            end_char = char_idx + text_len >= blk_text_len
+            end_char = char_idx + text_len >= layout_text_len
             if active_ruby_metric is None:
                 active_ruby_metric = ruby_starts.get(char_idx)
             ruby_metric = active_ruby_metric
             ruby_unit_start = (
                 -1
                 if ruby_metric is None
-                else ruby_metric.unit.start - block.position()
+                else to_layout(
+                    ruby_metric.unit.start - block.position()
+                )
             )
             ruby_unit_end = (
                 -1
                 if ruby_metric is None
-                else ruby_metric.unit.end - block.position()
+                else to_layout(
+                    ruby_metric.unit.end - block.position()
+                )
             )
             ruby_leading = ruby_base_leading.get(char_idx, 0.0)
             ruby_trailing = ruby_base_trailing.get(
@@ -2099,7 +2287,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             is_first_lbracket = False
             # _lbracket_shift = 0
 
-            if char_idx + text_len > blk_text_len:
+            if char_idx + text_len > layout_text_len:
                 ypos = ypos_list[-1] if len(ypos_list) > 0 else 0
                 blk_line_spaces.append([0, 0, [ypos], char_idx])
                 line.setPosition(QPointF(x_offset - block_width, ypos))
@@ -2108,14 +2296,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             num_rspaces, num_lspaces = 0, 0
             if utf16_indexing:
                 text = _utf16_slice(
-                    blk_text, char_idx, text_len
+                    layout_text, char_idx, text_len
                 ).replace('\n', '')
                 num_rspaces = _utf16_length(text[len(text.rstrip()):])
                 num_lspaces = _utf16_length(
                     text[:len(text) - len(text.lstrip())]
                 )
             else:
-                text = blk_text[char_idx: char_idx + text_len].replace('\n', '')
+                text = layout_text[
+                    char_idx: char_idx + text_len
+                ].replace('\n', '')
                 num_rspaces = text_len - len(text.rstrip())
                 num_lspaces = text_len - len(text.lstrip())
 
@@ -2135,12 +2325,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             text_combine_line_metrics = None
             line_base_width = block_width
 
-            if char_idx < blk_text_len:
-                cfmt = self.get_char_fontfmt(block_no, char_idx)
+            if char_idx < layout_text_len:
+                cfmt = char_format(char_idx)
                 line_base_width = cfmt.tbr.width()
                 if inseparable_run_range is not None:
                     line_base_width = max(
-                        self.get_char_fontfmt(block_no, position).tbr.width()
+                        char_format(position).tbr.width()
                         for position in range(*inseparable_run_range)
                     )
                 space_shift = 0
@@ -2154,9 +2344,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 tbr_h = cfmt.tbr.height() + spacing_advance
                 source_char = (
-                    _utf16_char_at(blk_text, char_idx)
+                    _utf16_char_at(layout_text, char_idx)
                     if utf16_indexing
-                    else blk_text[char_idx]
+                    else layout_text[char_idx]
                 )
                 char = (
                     source_char
@@ -2252,8 +2442,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             full_advance - compact_advance,
                             0.0,
                         )
-            elif char_idx - num_lspaces < blk_text_len:
-                cfmt = self.get_char_fontfmt(block_no, char_idx - num_lspaces)
+            elif char_idx - num_lspaces < layout_text_len:
+                cfmt = char_format(char_idx - num_lspaces)
                 line_base_width = cfmt.tbr.width()
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
                 space_w = cfmt.space_width
@@ -2292,7 +2482,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
                 line_bottom = char_yoffset_lst[-1] + ruby_trailing
             else:
-                cfmt = self.get_char_fontfmt(block_no, char_idx)
+                cfmt = char_format(char_idx)
                 if cfmt is not None:
                     if text_combine_line_metrics is None:
                         right_margin, left_margin = emphasis_margins(

@@ -19,6 +19,7 @@ from qtpy.QtGui import (
     QInputMethodEvent,
     QKeyEvent,
     QPainter,
+    QPalette,
     QTextCharFormat,
     QTextCursor,
 )
@@ -1656,6 +1657,345 @@ class TextTransformUndoTest(TextTransformTestBase):
 
         self.assertEqual(edit.toPlainText(), 'aZX')
         self.assertEqual(propagated, [(1, 0, 'Z', False)])
+
+    def test_hangul_mixed_commit_and_preedit_stay_synchronized(self):
+        for edit_on_canvas in (False, True):
+            with self.subTest(edit_on_canvas=edit_on_canvas):
+                item, pair = self._make_pair(0, '앞', False)
+
+                if edit_on_canvas:
+                    scene = QGraphicsScene()
+                    scene.addItem(item)
+                    view = QGraphicsView(scene)
+                    view.show()
+                    item.startEdit()
+                    source = item
+                    target = pair.e_trans
+                else:
+                    pair.show()
+                    source = pair.e_trans
+                    target = item
+                    source.setFocus()
+
+                self.app.processEvents()
+                cursor = source.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                source.setTextCursor(cursor)
+                propagated = []
+
+                def on_propagate(
+                    position, removed, added_text, joint_previous
+                ):
+                    propagated.append((
+                        position,
+                        removed,
+                        added_text,
+                        joint_previous,
+                    ))
+                    propagate_user_edit(
+                        target,
+                        position,
+                        removed,
+                        added_text,
+                        joint_previous,
+                    )
+
+                source.propagate_user_edited.connect(on_propagate)
+
+                def send_input_method_event(preedit_text, commit_text=''):
+                    event = QInputMethodEvent(preedit_text, [])
+                    if commit_text:
+                        event.setCommitString(commit_text)
+                    if edit_on_canvas:
+                        source.inputMethodEvent(event)
+                    else:
+                        QApplication.sendEvent(source, event)
+                    self.app.processEvents()
+
+                try:
+                    send_input_method_event('가')
+                    send_input_method_event('나', '가')
+                    self.assertTrue(source.pre_editing)
+                    self.assertEqual(source.toPlainText(), '앞가')
+                    self.assertEqual(target.toPlainText(), '앞가')
+                    send_input_method_event('', '나')
+                finally:
+                    source.propagate_user_edited.disconnect(on_propagate)
+
+                self.assertEqual(source.toPlainText(), '앞가나')
+                self.assertEqual(target.toPlainText(), '앞가나')
+                self.assertEqual(
+                    propagated,
+                    [(1, 0, '가', False), (2, 0, '나', False)],
+                )
+
+                if edit_on_canvas:
+                    item.endEdit()
+                    view.close()
+                    scene.removeItem(item)
+                else:
+                    pair.hide()
+
+    def test_canvas_end_edit_falls_back_when_platform_commit_is_noop(self):
+        item, pair = self._make_pair(0, '문장 ', False)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        view.show()
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        self.app.processEvents()
+        propagated = []
+
+        def on_propagate(position, removed, added_text, joint_previous):
+            propagated.append((
+                position,
+                removed,
+                added_text,
+                joint_previous,
+            ))
+            propagate_user_edit(
+                pair.e_trans,
+                position,
+                removed,
+                added_text,
+                joint_previous,
+            )
+
+        item.propagate_user_edited.connect(on_propagate)
+        try:
+            item.inputMethodEvent(QInputMethodEvent('마지막', []))
+            with patch(
+                'ballontranslator.ui.text_engine.item.QApplication'
+            ) as application:
+                item.endEdit()
+                application.inputMethod.return_value.commit.assert_called_once_with()
+                application.inputMethod.return_value.reset.assert_called_once_with()
+        finally:
+            item.propagate_user_edited.disconnect(on_propagate)
+            if item.isEditing():
+                item.endEdit()
+            view.close()
+            scene.removeItem(item)
+
+        self.assertFalse(item.pre_editing)
+        self.assertEqual(item.toPlainText(), '문장 마지막')
+        self.assertEqual(pair.e_trans.toPlainText(), '문장 마지막')
+        self.assertEqual(propagated, [(3, 0, '마지막', False)])
+        self.assertEqual(
+            item.document().firstBlock().layout().preeditAreaText(),
+            '',
+        )
+
+    def test_vertical_cjk_preedit_cursor_query_and_commit(self):
+        cases = (
+            ('Japanese', 'かな', 1, '仮名', 'つぎ', 1, '次'),
+            ('Chinese', 'nihao', 3, '你好', 'ma', 1, '吗'),
+        )
+        for (
+            language,
+            preedit_text,
+            preedit_cursor,
+            commit_text,
+            next_preedit,
+            next_cursor,
+            final_commit,
+        ) in cases:
+            with self.subTest(language=language):
+                item, pair = self._make_pair(0, '前', True)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                view = QGraphicsView(scene)
+                view.show()
+                item.startEdit()
+                cursor = item.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                item.setTextCursor(cursor)
+                propagated = []
+
+                def on_propagate(
+                    position, removed, added_text, joint_previous
+                ):
+                    propagated.append((
+                        position,
+                        removed,
+                        added_text,
+                        joint_previous,
+                    ))
+                    propagate_user_edit(
+                        pair.e_trans,
+                        position,
+                        removed,
+                        added_text,
+                        joint_previous,
+                    )
+
+                item.propagate_user_edited.connect(on_propagate)
+
+                def send_event(preedit, cursor_position, commit=''):
+                    cursor_attribute = QInputMethodEvent.Attribute(
+                        QInputMethodEvent.AttributeType.Cursor,
+                        cursor_position,
+                        1,
+                        None,
+                    )
+                    underline = QTextCharFormat()
+                    underline.setFontUnderline(True)
+                    format_attribute = QInputMethodEvent.Attribute(
+                        QInputMethodEvent.AttributeType.TextFormat,
+                        0,
+                        len(preedit),
+                        underline,
+                    )
+                    event = QInputMethodEvent(
+                        preedit,
+                        [cursor_attribute, format_attribute],
+                    )
+                    if commit:
+                        event.setCommitString(commit)
+                    item.inputMethodEvent(event)
+                    self.app.processEvents()
+
+                try:
+                    send_event(preedit_text, preedit_cursor)
+                    self._render_scene(scene)
+                    expected = item.layout.source_cursor_rect(
+                        -(preedit_cursor + 2)
+                    )
+                    actual = QRectF(item.inputMethodQuery(
+                        Qt.InputMethodQuery.ImCursorRectangle
+                    ))
+                    committed_cursor = item.layout.source_cursor_rect(
+                        item.textCursor().position()
+                    )
+                    preedit_formats = (
+                        item.document().firstBlock().layout().formats()
+                    )
+                    layout = item.document().firstBlock().layout()
+                    positions = [
+                        layout.lineAt(index).position()
+                        for index in range(layout.lineCount())
+                    ]
+                    self.assertEqual(actual, expected)
+                    self.assertNotEqual(actual, committed_cursor)
+                    self.assertEqual(
+                        item.layout.deferred_cursor_position,
+                        -(preedit_cursor + 2),
+                    )
+                    self.assertTrue(any(
+                        entry.format.fontUnderline()
+                        for entry in preedit_formats
+                    ), preedit_formats)
+                    self.assertTrue(all(
+                        math.isclose(
+                            position.x(),
+                            positions[0].x(),
+                            abs_tol=0.1,
+                        )
+                        for position in positions[1:]
+                    ), positions)
+                    self.assertTrue(all(
+                        first.y() < second.y()
+                        for first, second in zip(positions, positions[1:])
+                    ), positions)
+
+                    send_event(next_preedit, next_cursor, commit_text)
+                    self.assertEqual(item.toPlainText(), '前' + commit_text)
+                    self.assertEqual(
+                        pair.e_trans.toPlainText(),
+                        '前' + commit_text,
+                    )
+                    expected = item.layout.source_cursor_rect(
+                        -(next_cursor + 2)
+                    )
+                    actual = QRectF(item.inputMethodQuery(
+                        Qt.InputMethodQuery.ImCursorRectangle
+                    ))
+                    self.assertEqual(actual, expected)
+
+                    final = QInputMethodEvent('', [])
+                    final.setCommitString(final_commit)
+                    item.inputMethodEvent(final)
+                finally:
+                    item.propagate_user_edited.disconnect(on_propagate)
+                    if item.isEditing():
+                        item.endEdit()
+                    view.close()
+                    scene.removeItem(item)
+
+                expected_text = '前' + commit_text + final_commit
+                self.assertEqual(item.toPlainText(), expected_text)
+                self.assertEqual(pair.e_trans.toPlainText(), expected_text)
+                self.assertEqual(
+                    propagated,
+                    [
+                        (1, 0, commit_text, False),
+                        (1 + len(commit_text), 0, final_commit, False),
+                    ],
+                )
+
+    def test_empty_canvas_hangul_keeps_explicit_foreground(self):
+        item, _pair = self._make_pair(0, '기존', False)
+        scene = QGraphicsScene()
+        scene.setBackgroundBrush(QColor('white'))
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        view.show()
+        original_palette = self.app.palette()
+        dark_palette = QPalette(original_palette)
+        dark_palette.setColor(QPalette.ColorRole.Text, QColor('white'))
+        self.app.setPalette(dark_palette)
+
+        def dark_pixel_count():
+            image = QImage(
+                900,
+                600,
+                QImage.Format.Format_ARGB32_Premultiplied,
+            )
+            image.fill(QColor('white'))
+            painter = QPainter(image)
+            previous = item.layout.defer_cursor_paint
+            item.layout.defer_cursor_paint = True
+            try:
+                scene.render(
+                    painter,
+                    QRectF(0, 0, 900, 600),
+                    QRectF(-50, -50, 900, 600),
+                )
+            finally:
+                item.layout.defer_cursor_paint = previous
+                painter.end()
+            pixels = np.frombuffer(
+                image.bits().asstring(image.sizeInBytes()),
+                dtype=np.uint8,
+            ).reshape(image.height(), image.width(), 4)
+            return int(np.count_nonzero(np.all(
+                pixels[..., :3] < 50,
+                axis=2,
+            )))
+
+        try:
+            item.startEdit()
+            self.app.processEvents()
+            cursor = item.textCursor()
+            cursor.select(QTextCursor.SelectionType.Document)
+            cursor.removeSelectedText()
+            item.setTextCursor(cursor)
+            item.inputMethodEvent(QInputMethodEvent('가', []))
+            self.app.processEvents()
+
+            self.assertNotEqual(
+                item.textCursor().charFormat().foreground().style(),
+                Qt.BrushStyle.NoBrush,
+            )
+            self.assertGreater(dark_pixel_count(), 50)
+        finally:
+            self.app.setPalette(original_palette)
+            item.endEdit()
+            view.close()
+            scene.removeItem(item)
 
     def test_capitalize_selected_items_is_one_synced_undo_command(self):
         original = 'hELLO WORLD. next ONE!'

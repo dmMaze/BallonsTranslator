@@ -413,7 +413,9 @@ class SourceTextEdit(QTextEdit):
             if not self.highlighting:
                 self.text_changed.emit()
                 
-        if self.hasFocus() and not self.pre_editing and not self.highlighting and not self.in_acts:
+        if (
+            self.hasFocus() or self.input_method_from != -1
+        ) and not self.pre_editing and not self.highlighting and not self.in_acts:
             self.handle_content_change()
 
     def handle_content_change(self):
@@ -503,6 +505,9 @@ class SourceTextEdit(QTextEdit):
         return super().wheelEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
+        continues_composing = bool(e.preeditString())
+        commit_text = e.commitString()
+        commits_text = bool(commit_text) or e.replacementLength() > 0
         if not self.pre_editing:
             cursor = self.textCursor()
             self.input_method_from = cursor.selectionStart()
@@ -525,16 +530,25 @@ class SourceTextEdit(QTextEdit):
             )
             self.input_method_from = replacement_start
             self.input_method_removed = replacement_end - replacement_start
-        if e.preeditString() == '':
+        if commits_text:
+            # contentsChanged is synchronous; expose this committed portion
+            # even when the same IME event starts the next preedit.
             self.pre_editing = False
-            self.input_method_text = e.commitString()
+            self.input_method_text = commit_text
         else:
-            self.pre_editing = True
+            self.pre_editing = continues_composing
         super().inputMethodEvent(e)
+        self.pre_editing = continues_composing
+        if continues_composing and commits_text:
+            cursor = self.textCursor()
+            self.input_method_from = cursor.selectionStart()
+            self.input_method_removed = (
+                cursor.selectionEnd() - cursor.selectionStart()
+            )
         if (
-            e.preeditString() == ''
-            and not e.commitString()
-            and e.replacementLength() == 0
+            not continues_composing
+            and not commits_text
+            and self.input_method_from != -1
         ):
             self.input_method_from = -1
             self.input_method_removed = 0
