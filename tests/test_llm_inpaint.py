@@ -239,6 +239,17 @@ class LLMInpaintTest(unittest.TestCase):
 
         self.assertEqual(caught.exception.target, 'image_model')
 
+    def test_profile_rejects_a_non_image_capability(self):
+        profile = default_profile('DeepSeek')
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.inpaint_llm_id = profile.id
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            'does not have image cleanup enabled',
+        ):
+            _ = self.inpainter.profile
+
     def test_blank_image_base_url_requires_url(self):
         profile = self.inpainter.profile
         profile.image_base_url = ''

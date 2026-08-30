@@ -11,6 +11,7 @@ from ballontranslator.modules.llm_chat import (
     LLMChatRequester,
     LLMChatRequestError,
     openai_chat_completion_args,
+    openai_json_response_format,
 )
 from ballontranslator.utils.llm_profiles import default_profile
 
@@ -81,6 +82,33 @@ class LLMChatRequesterTest(unittest.TestCase):
                 'max_tokens': 8192,
             },
         )
+
+    def test_json_response_format_preserves_strict_and_compatible_shapes(self):
+        schema = {'type': 'object', 'properties': {}}
+        self.profile.json_schema_response_format = True
+
+        strict = openai_json_response_format(
+            self.profile,
+            'demo_response',
+            schema,
+        )
+        self.profile.json_schema_response_format = False
+        compatible = openai_json_response_format(
+            self.profile,
+            'demo_response',
+            schema,
+        )
+
+        self.assertEqual(strict, {
+            'type': 'json_schema',
+            'json_schema': {
+                'name': 'demo_response',
+                'strict': True,
+                'schema': schema,
+            },
+        })
+        self.assertIs(strict['json_schema']['schema'], schema)
+        self.assertEqual(compatible, {'type': 'json_object'})
 
     def test_request_returns_normalized_content_and_usage(self):
         usage = SimpleNamespace(total_tokens=3)

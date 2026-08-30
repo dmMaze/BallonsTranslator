@@ -23,7 +23,8 @@ preserve behavior that spans several files.
 | --- | --- |
 | Translation prompt, message, schema, history-rendering, and response contract | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
 | Runtime request, retry, context-snapshot, compaction, and persistence orchestration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
-| Chat client lifecycle, throttling, provider argument quirks, status normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
+| Chat client lifecycle, throttling, provider/JSON-envelope quirks, status normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
+| Shared RGB/RGBA JPEG chat-image encoding | [`llm_vision.py`](../../ballontranslator/modules/llm_vision.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
 | Bilingual history selection, rebuild, and whole-page eviction | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
 | Immutable request context, saved-summary fitting, compact-memory rendering, and overflow recovery | [`context/translation_context.py`](../../ballontranslator/modules/context/translation_context.py) |

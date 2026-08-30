@@ -19,11 +19,39 @@ from ballontranslator.utils.llm_profiles import (
     profile_to_export_dict,
     profiles_from_json,
     restore_builtin_profiles,
+    runtime_profile,
 )
 from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_runtime_profile_selects_falls_back_and_returns_a_copy(self):
+        first = default_profile('OpenAI')
+        second = default_profile('Ollama')
+        first.support_text = False
+
+        selected = runtime_profile([first, second], second.id)
+        fallback = runtime_profile([first, second], 'missing')
+        selected.name = 'Runtime edit'
+        selected.model_options.append('runtime-only')
+
+        self.assertEqual(selected.id, second.id)
+        self.assertEqual(fallback.id, first.id)
+        self.assertFalse(fallback.support_text)
+        self.assertNotEqual(second.name, 'Runtime edit')
+        self.assertNotIn('runtime-only', second.model_options)
+
+    def test_runtime_profile_rejects_an_empty_list(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            '^No LLM profile is configured\\.$',
+        ):
+            runtime_profile([], 'missing')
+
+    def test_runtime_profile_propagates_malformed_selected_entry(self):
+        with self.assertRaisesRegex(TypeError, 'Unsupported LLM profile config'):
+            runtime_profile([object()], 'missing')
+
     def test_load_profiles_merges_builtin_option_lists_and_selections(self):
         profile = default_profile('OpenAI')
         profile.model = 'saved-text-model'

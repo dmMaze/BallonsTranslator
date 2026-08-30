@@ -4,7 +4,17 @@ import copy
 import hashlib
 import json
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional, Tuple, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from ballontranslator.utils.secret_store import SecretStore
 from ballontranslator.utils.structures import Config, field, nested_dataclass
@@ -331,11 +341,31 @@ def _builtin_profile_id(profile: Any) -> str:
     return ""
 
 
-def profile_by_id(profiles: List[Any], profile_id: str) -> Optional[Any]:
+def profile_by_id(
+    profiles: Sequence[Any],
+    profile_id: str,
+) -> Optional[Any]:
     for profile in profiles:
         if _profile_value(profile, "id") == profile_id:
             return profile
     return None
+
+
+def runtime_profile(
+    profiles: Sequence[Any],
+    selected_profile_id: str,
+) -> LLMProfile:
+    """Copy the selected runtime profile, falling back to the first entry.
+
+    >>> runtime_profile([LLMProfile(id='first')], 'missing').id
+    'first'
+    """
+    selected = profile_by_id(profiles, selected_profile_id)
+    if selected is None and profiles:
+        selected = profiles[0]
+    if selected is None:
+        raise RuntimeError('No LLM profile is configured.')
+    return profile_from_config(selected)
 
 
 def _merge_profile_options(default_options: Any, saved_options: Any, selected: Any) -> List[str]:

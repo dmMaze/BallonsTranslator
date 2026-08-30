@@ -15,8 +15,7 @@ from ballontranslator.modules.exceptions import (
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
-    profile_by_id,
-    profile_from_config,
+    runtime_profile,
 )
 
 
@@ -96,14 +95,9 @@ class LLMInpaint(LLMImageRequester, InpainterBase):
 
     @property
     def profile(self) -> LLMProfile:
-        profile = profile_by_id(
+        profile = runtime_profile(
             pcfg.module.llm_profiles, pcfg.module.inpaint_llm_id
         )
-        if profile is None and pcfg.module.llm_profiles:
-            profile = pcfg.module.llm_profiles[0]
-        if profile is None:
-            raise RuntimeError('No LLM profile is configured.')
-        profile = profile_from_config(profile)
         if not profile.support_image:
             raise RuntimeError(
                 f'LLM profile "{profile.name}" does not have image cleanup enabled.'

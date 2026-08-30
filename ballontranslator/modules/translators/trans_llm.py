@@ -1,5 +1,4 @@
-import base64
-from dataclasses import dataclass, replace
+from dataclasses import replace
 import hashlib
 import json
 import traceback
@@ -52,7 +51,9 @@ from ..llm_chat import (
     LLMChatRequester,
     LLMChatRequestError,
     openai_chat_completion_args,
+    openai_json_response_format,
 )
+from ..llm_vision import EncodedChatImage, encode_chat_image
 from .base import BaseTranslator, register_translator
 from .llm_translation_contract import (
     InvalidNumTranslations,
@@ -74,8 +75,7 @@ from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
-    profile_by_id,
-    profile_from_config,
+    runtime_profile,
 )
 from ballontranslator.utils.proj_imgtrans import (
     LLM_COMPACT_MEMORY_VERSION,
@@ -86,25 +86,6 @@ from ballontranslator.utils.proj_imgtrans import (
 
 MAX_PAGE_LONG_SIDE = 1536
 PAGE_IMAGE_JPEG_QUALITY = 85
-
-
-@dataclass(frozen=True)
-class VisionRequestContext:
-    """One immutable current-page image for a translation request.
-
-    >>> VisionRequestContext('data:x', 'auto', 'a' * 64).detail
-    'auto'
-    """
-
-    data_url: str
-    detail: str
-    image_sha256: str
-
-    def image_part(self) -> Dict:
-        image_url = {'url': self.data_url}
-        if self.detail.lower() != 'none':
-            image_url['detail'] = self.detail
-        return {'type': 'image_url', 'image_url': image_url}
 
 
 @register_translator("LLMTranslator")
@@ -185,13 +166,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
 
     @property
     def profile(self) -> LLMProfile:
-        # probably not a good idea to get it here
-        profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.translator_llm_id)
-        if profile is None and pcfg.module.llm_profiles:
-            profile = pcfg.module.llm_profiles[0]
-        if profile is None:
-            raise RuntimeError('No LLM profile is configured.')
-        profile = profile_from_config(profile)
+        profile = runtime_profile(
+            pcfg.module.llm_profiles,
+            pcfg.module.translator_llm_id,
+        )
         if not profile.support_text:
             raise RuntimeError(f'LLM profile "{profile.name}" does not have text translation enabled.')
         self._text_model(profile)
@@ -290,51 +268,22 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         return cv2.resize(image, size, interpolation=cv2.INTER_AREA)
 
-    def _normalized_page_image(
-        self,
-        project: ProjImgTrans,
-        page_key: str,
-    ) -> Tuple[bytes, str]:
-        image = project.read_img(page_key)
-        if image is None or not isinstance(image, np.ndarray) or image.size == 0:
-            raise RuntimeError(f'Unable to read page image: {page_key}')
-        image = self._scaled_page_image(image)
-        # Project images use Pillow's RGB/RGBA channel order; OpenCV encoders
-        # expect BGR/BGRA and would otherwise send color-swapped page context.
-        if image.ndim == 3 and image.shape[-1] == 3:
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        elif image.ndim == 3 and image.shape[-1] == 4:
-            image = cv2.cvtColor(image, cv2.COLOR_RGBA2BGRA)
-        success, buffer = cv2.imencode(
-            '.jpg',
-            image,
-            [int(cv2.IMWRITE_JPEG_QUALITY), PAGE_IMAGE_JPEG_QUALITY],
-        )
-        if not success:
-            raise RuntimeError(f'Failed to encode page image: {page_key}')
-        image_bytes = buffer.tobytes()
-        digest = hashlib.sha256(image_bytes).hexdigest()
-        return image_bytes, digest
-
     def _vision_request_context(
         self,
         project: ProjImgTrans,
         page_key: str,
         profile: LLMProfile,
-    ) -> VisionRequestContext:
+    ) -> EncodedChatImage:
         """Read, normalize, and freeze one page image before retries."""
         self._vision_model(profile)
-        image_bytes, image_sha256 = self._normalized_page_image(
-            project,
-            page_key,
-        )
-        return VisionRequestContext(
-            data_url=(
-                'data:image/jpeg;base64,'
-                + base64.b64encode(image_bytes).decode('ascii')
-            ),
+        image = project.read_img(page_key)
+        if image is None or not isinstance(image, np.ndarray) or image.size == 0:
+            raise RuntimeError(f'Unable to read page image: {page_key}')
+        return encode_chat_image(
+            self._scaled_page_image(image),
             detail=str(profile.vision_detail_level or 'None'),
-            image_sha256=image_sha256,
+            jpeg_quality=PAGE_IMAGE_JPEG_QUALITY,
+            failure_message=f'Failed to encode page image: {page_key}',
         )
 
     def translate(
@@ -914,20 +863,16 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     int(api_args[limit_key]),
                     target_tokens,
                 )
-        if profile.json_schema_response_format:
-            api_args['response_format'] = {
-                'type': 'json_schema',
-                'json_schema': {
-                    'name': 'translation_memory',
-                    'strict': True,
-                    'schema': {
-                        'type': 'object',
-                        'properties': {'memory': {'type': 'string'}},
-                        'required': ['memory'],
-                        'additionalProperties': False,
-                    },
-                },
-            }
+        api_args['response_format'] = openai_json_response_format(
+            profile,
+            'translation_memory',
+            {
+                'type': 'object',
+                'properties': {'memory': {'type': 'string'}},
+                'required': ['memory'],
+                'additionalProperties': False,
+            },
+        )
         if self.stop_event is not None and self.stop_event.is_set():
             raise LLMRequestStopped()
         try:
@@ -1073,20 +1018,18 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             "messages": messages,
         }
         api_args.update(openai_chat_completion_args(profile, model))
-        if profile.json_schema_response_format:
-            api_args["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "translation_response",
-                    "strict": True,
-                    "schema": translation_json_schema(
-                        expected_translations,
-                        summary_enabled=summary_enabled,
-                    ),
-                },
-            }
-        else:
-            api_args["response_format"] = {"type": "json_object"}
+        api_args["response_format"] = openai_json_response_format(
+            profile,
+            'translation_response',
+            (
+                translation_json_schema(
+                    expected_translations,
+                    summary_enabled=summary_enabled,
+                )
+                if profile.json_schema_response_format
+                else {}
+            ),
+        )
 
         for penalty, api_key in (
             (profile.frequency_penalty, 'frequency_penalty'),
@@ -1164,7 +1107,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         request_context: Optional[RequestContext] = None,
         page_key: Optional[str] = None,
         commit_history_window: bool = True,
-        vision_request: Optional[VisionRequestContext] = None,
+        vision_request: Optional[EncodedChatImage] = None,
         summary_slot_empty: bool = True,
     ) -> List[str]:
         """Translate with ordinary retries and optional-context recovery.

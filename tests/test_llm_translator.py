@@ -232,6 +232,26 @@ class LLMTranslatorTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'at least 1'):
             translation_json_schema(0)
 
+    def test_compatible_response_format_skips_unused_strict_schema(self):
+        profile = default_profile('OpenAI')
+        profile.json_schema_response_format = False
+
+        args = self.translator._api_args(
+            profile,
+            [{'role': 'user', 'content': 'x'}],
+            expected_translations=0,
+        )
+
+        self.assertEqual(args['response_format'], {'type': 'json_object'})
+
+        profile.json_schema_response_format = True
+        with self.assertRaisesRegex(ValueError, 'at least 1'):
+            self.translator._api_args(
+                profile,
+                [{'role': 'user', 'content': 'x'}],
+                expected_translations=0,
+            )
+
     def test_dynamic_schema_stays_out_of_cacheable_message_prefix(self):
         profile = default_profile('LM Studio')
         messages = [{'role': 'system', 'content': 'stable prefix'}]

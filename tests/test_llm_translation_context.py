@@ -5,6 +5,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
+import cv2
 import numpy as np
 
 from ballontranslator.modules.context.errors import ContextLengthError
@@ -31,6 +32,7 @@ from ballontranslator.modules.context.translation_context import (
     recover_context_length,
 )
 from ballontranslator.modules.exceptions import LLMRequestStopped
+from ballontranslator.modules.llm_vision import EncodedChatImage
 from ballontranslator.modules.translators.base import BaseTranslator
 from ballontranslator.modules.translators.llm_translation_contract import (
     TranslationPromptSpec,
@@ -40,10 +42,7 @@ from ballontranslator.modules.translators.llm_translation_contract import (
     render_history_page,
     translation_system_prompt,
 )
-from ballontranslator.modules.translators.trans_llm import (
-    LLMTranslator,
-    VisionRequestContext,
-)
+from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.ui.module_manager import TranslateThread
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
@@ -358,7 +357,7 @@ class LLMTranslationContextTest(unittest.TestCase):
         pcfg.module.llm_translate_vision = True
         pcfg.module.llm_translate_summary = False
         pcfg.module.llm_translate_memory = True
-        vision = VisionRequestContext(
+        vision = EncodedChatImage(
             'data:image/jpeg;base64,AA==',
             'auto',
             'a' * 64,
@@ -423,13 +422,52 @@ class LLMTranslationContextTest(unittest.TestCase):
         encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
 
         with mock.patch(
-            'ballontranslator.modules.translators.trans_llm.cv2.imencode',
+            'ballontranslator.modules.llm_vision.cv2.imencode',
             return_value=(True, encoded),
         ) as imencode:
-            self.translator._normalized_page_image(project, '001.png')
+            self.translator._vision_request_context(
+                project,
+                '001.png',
+                self.profile,
+            )
 
         encoded_image = imencode.call_args.args[1]
         self.assertEqual(encoded_image[0, 0].tolist(), [30, 20, 10])
+        self.assertEqual(
+            imencode.call_args.args[2],
+            [int(cv2.IMWRITE_JPEG_QUALITY), 85],
+        )
+
+    def test_vision_scales_long_side_before_explicit_quality_encoding(self):
+        project = self._project(1)
+        source = np.zeros((2000, 1000, 3), dtype=np.uint8)
+        resized = np.zeros((1536, 768, 3), dtype=np.uint8)
+        project.read_img = mock.Mock(return_value=source)
+        encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
+
+        with mock.patch(
+            'ballontranslator.modules.translators.trans_llm.cv2.resize',
+            return_value=resized,
+        ) as resize, mock.patch(
+            'ballontranslator.modules.llm_vision.cv2.imencode',
+            return_value=(True, encoded),
+        ) as imencode:
+            self.translator._vision_request_context(
+                project,
+                '001.png',
+                self.profile,
+            )
+
+        resize.assert_called_once_with(
+            source,
+            (768, 1536),
+            interpolation=cv2.INTER_AREA,
+        )
+        self.assertEqual(imencode.call_args.args[1].shape, (1536, 768, 3))
+        self.assertEqual(
+            imencode.call_args.args[2],
+            [int(cv2.IMWRITE_JPEG_QUALITY), 85],
+        )
 
     def test_summary_uses_same_request_and_persists_after_page_finalization(self):
         project = self._project(1)
@@ -1196,6 +1234,47 @@ class LLMTranslationContextTest(unittest.TestCase):
                 history_budget=1000,
                 memory_token_limit=1000,
             )
+
+    def test_memory_compaction_uses_its_own_response_format_name(self):
+        completion = SimpleNamespace(
+            content='{"memory":"merged memory"}',
+            usage=None,
+        )
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                self.profile.json_schema_response_format = strict
+                with mock.patch.object(
+                    self.translator,
+                    'request_chat_completion',
+                    return_value=completion,
+                ) as request, mock.patch(
+                    'ballontranslator.modules.translators.trans_llm.messages_token_count',
+                    return_value=1,
+                ):
+                    self.translator._compact_memory(
+                        previous=None,
+                        summaries=(PageSummary('001.png', 'summary'),),
+                        profile=self.profile,
+                        model=self.profile.model,
+                        target_tokens=100,
+                    )
+
+                response_format = request.call_args.args[1]['response_format']
+                if strict:
+                    self.assertEqual(response_format['type'], 'json_schema')
+                    self.assertEqual(
+                        response_format['json_schema']['name'],
+                        'translation_memory',
+                    )
+                    self.assertEqual(
+                        response_format['json_schema']['schema']['required'],
+                        ['memory'],
+                    )
+                else:
+                    self.assertEqual(
+                        response_format,
+                        {'type': 'json_object'},
+                    )
 
     def test_memory_compaction_sends_only_not_yet_covered_summaries(self):
         previous = MemoryCheckpoint('old memory', ('001.png',), 1)

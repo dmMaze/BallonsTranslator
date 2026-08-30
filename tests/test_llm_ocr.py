@@ -132,6 +132,10 @@ class LLMOCRTest(unittest.TestCase):
 
         response_format = strict_args['response_format']
         self.assertEqual(response_format['type'], 'json_schema')
+        self.assertEqual(
+            response_format['json_schema']['name'],
+            'page_ocr_response',
+        )
         self.assertTrue(response_format['json_schema']['strict'])
         self.assertEqual(response_format['json_schema']['schema'], schema)
         self.assertNotIn('uniqueItems', schema['properties']['order'])
@@ -169,16 +173,20 @@ class LLMOCRTest(unittest.TestCase):
         encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
 
         with mock.patch(
-            'ballontranslator.modules.ocr.ocr_llm.cv2.imencode',
+            'ballontranslator.modules.llm_vision.cv2.imencode',
             return_value=(True, encoded),
         ) as imencode:
+            image = np.zeros((1537, 2, 3), dtype=np.uint8)
+            image[0, 0] = [10, 20, 30]
             self.ocr._image_content_part(
-                np.array([[[10, 20, 30]]], dtype=np.uint8),
+                image,
                 self.ocr.profile,
             )
 
         encoded_image = imencode.call_args.args[1]
+        self.assertEqual(encoded_image.shape, (1537, 2, 3))
         self.assertEqual(encoded_image[0, 0].tolist(), [30, 20, 10])
+        self.assertEqual(len(imencode.call_args.args), 2)
 
     def test_blank_vision_model_requires_model(self):
         profile = self.ocr.profile
@@ -206,6 +214,14 @@ class LLMOCRTest(unittest.TestCase):
             _ = self.ocr.profile
         with self.assertRaises(LLMModelRequiredError):
             self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
+
+    def test_profile_rejects_a_non_vision_capability(self):
+        profile = default_profile('DeepSeek')
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.ocr_llm_id = profile.id
+
+        with self.assertRaisesRegex(RuntimeError, 'does not have vision enabled'):
+            _ = self.ocr.profile
 
     def test_ocr_img_returns_raw_normalized_text(self):
         result = self.ocr.ocr_img(np.zeros((2, 2, 3), dtype=np.uint8))
@@ -343,6 +359,31 @@ class LLMOCRTest(unittest.TestCase):
         self.assertEqual(len(ocr.completions.calls), 3)
         self.assertIn('response_format', ocr.completions.calls[0])
         self.assertNotIn('response_format', ocr.completions.calls[1])
+
+    def test_full_page_encoding_failure_falls_back_to_crop_ocr(self):
+        ocr = FakeOCR(contents=['crop one', 'crop two'])
+        blocks = [
+            TextBlock(xyxy=[0, 0, 4, 4]),
+            TextBlock(xyxy=[4, 0, 8, 4]),
+        ]
+        pcfg.module.ocr_llm_page_level = True
+        encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
+
+        with mock.patch(
+            'ballontranslator.modules.llm_vision.cv2.imencode',
+            side_effect=((False, None), (True, encoded), (True, encoded)),
+        ) as imencode:
+            result = ocr.run_ocr(
+                np.zeros((8, 8, 3), dtype=np.uint8),
+                blocks,
+                full_page=True,
+            )
+
+        self.assertIs(result, blocks)
+        self.assertEqual([block.text for block in blocks], ['crop one', 'crop two'])
+        self.assertEqual(imencode.call_count, 3)
+        self.assertEqual(len(ocr.completions.calls), 2)
+        self.assertNotIn('response_format', ocr.completions.calls[0])
 
     def test_removed_run_settings_are_not_module_parameters(self):
         for key in (

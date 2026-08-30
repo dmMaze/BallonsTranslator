@@ -73,6 +73,32 @@ def openai_chat_completion_args(
     return args
 
 
+def openai_json_response_format(
+    profile: LLMProfile,
+    name: str,
+    schema: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Build the profile-compatible JSON response format.
+
+    >>> profile = LLMProfile.from_provider('LM Studio')
+    >>> openai_json_response_format(profile, 'demo', {'type': 'object'})['type']
+    'json_schema'
+    >>> profile.json_schema_response_format = False
+    >>> openai_json_response_format(profile, 'demo', {})
+    {'type': 'json_object'}
+    """
+    if not profile.json_schema_response_format:
+        return {'type': 'json_object'}
+    return {
+        'type': 'json_schema',
+        'json_schema': {
+            'name': name,
+            'strict': True,
+            'schema': schema,
+        },
+    }
+
+
 @dataclass(frozen=True)
 class LLMChatResult:
     content: str

@@ -1,19 +1,22 @@
-import base64
 import json
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
 
-from ..llm_chat import LLMChatRequester, openai_chat_completion_args
+from ..llm_chat import (
+    LLMChatRequester,
+    openai_chat_completion_args,
+    openai_json_response_format,
+)
+from ..llm_vision import encode_chat_image
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
     DEFAULT_OCR_PROMPT,
     LLMProfile,
-    profile_by_id,
-    profile_from_config,
+    runtime_profile,
 )
 from ballontranslator.utils.textblock import TextBlock
 
@@ -118,12 +121,10 @@ class LLMOCR(LLMChatRequester, OCRBase):
 
     @property
     def profile(self) -> LLMProfile:
-        profile = profile_by_id(pcfg.module.llm_profiles, pcfg.module.ocr_llm_id)
-        if profile is None and pcfg.module.llm_profiles:
-            profile = pcfg.module.llm_profiles[0]
-        if profile is None:
-            raise RuntimeError('No LLM profile is configured.')
-        profile = profile_from_config(profile)
+        profile = runtime_profile(
+            pcfg.module.llm_profiles,
+            pcfg.module.ocr_llm_id,
+        )
         if not profile.support_vision:
             raise RuntimeError(f'LLM profile "{profile.name}" does not have vision enabled.')
         self._vision_model(profile)
@@ -142,24 +143,11 @@ class LLMOCR(LLMChatRequester, OCRBase):
         return ' '.join(str(text or '').replace('\r', '\n').split()).strip()
 
     def _image_content_part(self, img: np.ndarray, profile: LLMProfile) -> Dict:
-        # Project images use RGB/RGBA; OpenCV encoders expect BGR/BGRA.
-        encoded_img = img
-        if img.ndim == 3 and img.shape[-1] == 3:
-            encoded_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        elif img.ndim == 3 and img.shape[-1] == 4:
-            encoded_img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA)
-        success, buffer = cv2.imencode(".jpg", encoded_img)
-        if not success:
-            raise RuntimeError('Failed to encode OCR image.')
-        img_base64 = base64.b64encode(buffer).decode("utf-8")
-        image_content_part = {
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{img_base64}"},
-        }
-        detail_level = str(profile.vision_detail_level or 'None')
-        if detail_level.lower() != 'none':
-            image_content_part["image_url"]["detail"] = detail_level
-        return image_content_part
+        return encode_chat_image(
+            img,
+            detail=str(profile.vision_detail_level or 'None'),
+            failure_message='Failed to encode OCR image.',
+        ).image_part()
 
     def _messages(
         self,
@@ -299,17 +287,11 @@ class LLMOCR(LLMChatRequester, OCRBase):
         }
         api_args.update(openai_chat_completion_args(profile, model))
         if response_schema is not None:
-            if profile.json_schema_response_format:
-                api_args["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "page_ocr_response",
-                        "strict": True,
-                        "schema": response_schema,
-                    },
-                }
-            else:
-                api_args["response_format"] = {"type": "json_object"}
+            api_args["response_format"] = openai_json_response_format(
+                profile,
+                'page_ocr_response',
+                response_schema,
+            )
         return api_args
 
     def _request_ocr(
