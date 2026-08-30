@@ -1,5 +1,5 @@
 from functools import cached_property, lru_cache
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from qtpy.QtCore import QPointF, QRectF, Signal, QSizeF
 from qtpy.QtGui import (
@@ -64,11 +64,11 @@ def paint_context_without_selection_ranges(
     delegated.clip = QRectF(context.clip)
     delegated.cursorPosition = context.cursorPosition
     delegated.palette = context.palette
-    delegated.selections = []
+    selections = []
     block_length = max(0, block.length() - 1)
     for selection in context.selections:
         if not selection.cursor.hasSelection():
-            delegated.selections.append(selection)
+            selections.append(selection)
             continue
         local_start = max(
             0, selection.cursor.selectionStart() - block.position()
@@ -88,7 +88,9 @@ def paint_context_without_selection_ranges(
                 QTextCursor.MoveMode.KeepAnchor,
             )
             copied.format = selection.format
-            delegated.selections.append(copied)
+            selections.append(copied)
+    # PaintContext list access may return a copy; publish the completed list.
+    delegated.selections = selections
     return delegated
 
 def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
@@ -191,6 +193,12 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.render_failure_handler = None
         self.defer_cursor_paint = False
         self.deferred_cursor_position = -1
+        # Installed only for one native paint call while effects capture Qt's
+        # authoritative selection/IME context; the renderer clears it in
+        # finally before returning to the event loop.
+        self.paint_context_observer: Optional[
+            Callable[[QAbstractTextDocumentLayout.PaintContext], None]
+        ] = None
         self.publishing_size_enlargement = False
         # QWidgetTextControl routes its mouse and drag hit tests through this
         # layout.  Nonlinear visual effects can therefore restore source
@@ -227,6 +235,14 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self._is_painting_stroke = False
         self._draw_offset = []
         self.text_padding = 0
+
+    def _observe_paint_context(
+        self,
+        context: QAbstractTextDocumentLayout.PaintContext,
+    ) -> None:
+        observer = self.paint_context_observer
+        if observer is not None:
+            observer(context)
 
     def source_cursor_rect(self, cursor_position: int):
         """Return a layout-owned caret rectangle, or defer to Qt.

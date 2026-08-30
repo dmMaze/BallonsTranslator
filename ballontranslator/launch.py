@@ -74,9 +74,6 @@ os.environ['NUMBA_CACHE_DIR'] = osp.join(shared.cache_dir, 'numba')
 
 PATH_ROOT = Path(shared.PROGRAM_PATH)
 PATH_FONTS = str(PATH_ROOT / 'fonts')
-PATH_FONT_REGISTRY_OVERRIDES = (
-    PATH_ROOT / 'config' / 'font_registry_overrides.json'
-)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--proj-dir", default='', type=str, help='Open project directory on startup')
@@ -338,15 +335,19 @@ def main():
                 QFontDatabase.addApplicationFont(str(Path(fp).resolve()))
         system_families = sorted(font_database.families(), key=str.casefold)
 
-    from ballontranslator.utils.font_registry import build_font_registry
+    from ballontranslator.utils.font_registry import (
+        build_font_registry,
+        ensure_font_registry_overrides,
+    )
+    font_registry_path = ensure_font_registry_overrides(APP_DIR)
     shared.FONT_REGISTRY = build_font_registry(
         font_database,
         font_paths,
         system_families,
         locale=lang,
         font_registry_path=(
-            str(PATH_FONT_REGISTRY_OVERRIDES)
-            if PATH_FONT_REGISTRY_OVERRIDES.exists()
+            str(font_registry_path)
+            if font_registry_path is not None
             else None
         ),
     )

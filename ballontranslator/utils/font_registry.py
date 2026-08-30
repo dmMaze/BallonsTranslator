@@ -759,6 +759,36 @@ def _json_groups(raw: Any, section: str) -> List[Dict[str, Any]]:
     return groups if isinstance(groups, list) else []
 
 
+def ensure_font_registry_overrides(program_path: str) -> Optional[Path]:
+    """Create the editable font registry overrides on first use.
+
+    >>> ensure_font_registry_overrides('/path/that/does/not/exist') is None
+    True
+    """
+
+    root = Path(program_path)
+    target_path = root / 'config' / 'font_registry_overrides.json'
+    if target_path.exists():
+        return target_path
+
+    default_path = root / 'resources' / 'font_registry_overrides.json'
+    try:
+        default_content = default_path.read_text(encoding='utf8')
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with target_path.open('x', encoding='utf8') as target_file:
+            target_file.write(default_content)
+    except FileExistsError:
+        # Concurrent startup already created the user-owned file.
+        return target_path
+    except OSError as exc:
+        LOGGER.warning(
+            'Failed to create font registry overrides from defaults: %s',
+            exc,
+        )
+        return None
+    return target_path
+
+
 def _load_json_groups(
     path: Optional[str], section: str
 ) -> List[Dict[str, Any]]:

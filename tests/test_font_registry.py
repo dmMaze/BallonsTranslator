@@ -10,6 +10,7 @@ from ballontranslator.utils.font_registry import (
     _system_entry,
     build_font_registry,
     collect_custom_faces,
+    ensure_font_registry_overrides,
     load_custom_group_table,
     load_system_alias_table,
     qt_family_weights,
@@ -193,6 +194,23 @@ def test_invalid_optional_registry_is_ignored(tmp_path: Path) -> None:
 
     assert load_custom_group_table(str(registry_path)) == {}
     assert load_system_alias_table(str(registry_path)) == {}
+
+
+def test_font_registry_overrides_are_created_once_from_defaults(
+    tmp_path: Path,
+) -> None:
+    default_path = tmp_path / 'resources' / 'font_registry_overrides.json'
+    default_path.parent.mkdir()
+    default_path.write_text('{"system_aliases": []}', encoding='utf8')
+
+    override_path = ensure_font_registry_overrides(str(tmp_path))
+
+    assert override_path == tmp_path / 'config' / 'font_registry_overrides.json'
+    assert override_path.read_text(encoding='utf8') == '{"system_aliases": []}'
+
+    override_path.write_text('{"custom_groups": []}', encoding='utf8')
+    assert ensure_font_registry_overrides(str(tmp_path)) == override_path
+    assert override_path.read_text(encoding='utf8') == '{"custom_groups": []}'
 
 
 def test_invalid_registry_fields_discard_only_the_bad_portion(

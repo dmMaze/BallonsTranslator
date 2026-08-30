@@ -437,8 +437,8 @@ class RunPipelineDialog(QDialog):
         self.continue_button.setObjectName('RunPipelineSecondaryButton')
         self.continue_button.setDefault(True)
         self.continue_button.clicked.connect(self._finish_continue)
-        button_row.addWidget(self.continue_button)
         button_row.addWidget(self.run_button)
+        button_row.addWidget(self.continue_button)
 
         self.render_button = QPushButton(self.tr('Render'), surface)
         self.render_button.setObjectName('RunPipelinePrimaryButton')
@@ -1106,6 +1106,60 @@ class RunPipelineDialog(QDialog):
         translation_grid.addWidget(glossary_row, 2, 0)
         translation_grid.addWidget(mode_row, 2, 1)
 
+        llm_features_row = QWidget(section)
+        self.llm_features_row = llm_features_row
+        llm_features_row.setObjectName('RunPipelineGeneralSettingRow')
+        llm_features_layout = QHBoxLayout(llm_features_row)
+        llm_features_layout.setContentsMargins(0, 0, 0, 0)
+        llm_features_layout.setSpacing(8)
+        llm_features_label = QLabel(
+            self.tr('LLM context'),
+            llm_features_row,
+        )
+        llm_features_label.setObjectName('RunPipelineSettingLabel')
+        llm_features_layout.addWidget(llm_features_label)
+        llm_features_layout.addStretch()
+        self.llm_vision_checkbox = QCheckBox(
+            self.tr('Vision'),
+            llm_features_row,
+        )
+        self.llm_vision_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_vision_checkbox.setChecked(pcfg.module.llm_translate_vision)
+        self.llm_summary_checkbox = QCheckBox(
+            self.tr('Summary'),
+            llm_features_row,
+        )
+        self.llm_summary_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_summary_checkbox.setChecked(pcfg.module.llm_translate_summary)
+        self.llm_memory_checkbox = QCheckBox(
+            self.tr('Memory'),
+            llm_features_row,
+        )
+        self.llm_memory_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_memory_checkbox.setChecked(pcfg.module.llm_translate_memory)
+        for checkbox in (
+            self.llm_vision_checkbox,
+            self.llm_summary_checkbox,
+            self.llm_memory_checkbox,
+        ):
+            llm_features_layout.addWidget(checkbox)
+        self.llm_vision_checkbox.setToolTip(self.tr(
+            'Attach the current page image to the translation request.'
+        ))
+        self.llm_summary_checkbox.setToolTip(self.tr(
+            'Return and save a page summary in the same translation request.'
+        ))
+        self.llm_memory_checkbox.setToolTip(self.tr(
+            'Use compact project memory and update it at history boundaries.'
+        ))
+        translation_grid.addWidget(llm_features_row, 3, 0, 1, 2)
+
         self.context_row.setVisible(not self._llm_settings_visible)
 
         self.source_combobox.currentTextChanged.connect(
@@ -1130,6 +1184,16 @@ class RunPipelineDialog(QDialog):
         self.glossary_mode_combobox.currentIndexChanged.connect(
             self._on_glossary_mode_changed
         )
+        self.llm_vision_checkbox.toggled.connect(
+            self._on_llm_vision_toggled
+        )
+        self.llm_summary_checkbox.toggled.connect(
+            self._on_llm_summary_toggled
+        )
+        self.llm_memory_checkbox.toggled.connect(
+            self._on_llm_memory_toggled
+        )
+        self.llm_features_row.setVisible(self._llm_settings_visible)
 
     def setTranslatorMetadata(self, metadata: dict) -> None:
         self.translator_metadata = metadata or {}
@@ -1162,6 +1226,7 @@ class RunPipelineDialog(QDialog):
         )
         self.glossary_row.setVisible(self._llm_settings_visible)
         self.glossary_mode_row.setVisible(self._llm_settings_visible)
+        self.llm_features_row.setVisible(self._llm_settings_visible)
         self._fit_to_current_workflow()
 
     def _on_translate_source_changed(self, source: str):
@@ -1183,6 +1248,14 @@ class RunPipelineDialog(QDialog):
             self._llm_settings_visible
             and context == LLMTranslateContext.HISTORY
         )
+    def _on_llm_vision_toggled(self, checked: bool) -> None:
+        pcfg.module.llm_translate_vision = checked
+
+    def _on_llm_summary_toggled(self, checked: bool) -> None:
+        pcfg.module.llm_translate_summary = checked
+
+    def _on_llm_memory_toggled(self, checked: bool) -> None:
+        pcfg.module.llm_translate_memory = checked
 
     def _on_prior_context_token_budget_changed(self, budget: int):
         pcfg.module.llm_prior_context_token_budget = budget

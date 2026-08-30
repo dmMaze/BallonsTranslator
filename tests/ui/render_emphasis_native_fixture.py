@@ -22,6 +22,15 @@ from ballontranslator.ui.text_engine.annotations import (
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.fontformat import TextTransformStack
+from ballontranslator.utils.text_effects import (
+    TextFillEffect,
+    GradientStop,
+    LinearGradientPaint,
+    ShadowEffect,
+    SolidPaint,
+    StrokeEffect,
+    TextEffectStack,
+)
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -51,14 +60,24 @@ def _item(
     block.vertical = vertical
     block.fontformat.font_family = 'DejaVu Sans'
     block.fontformat.font_size = 48
-    block.fontformat.stroke_width = 0.18
-    block.fontformat.srgb = [34, 38, 48]
-    block.fontformat.shadow_strength = 0.75
-    block.fontformat.shadow_radius = 0.08
-    block.fontformat.shadow_offset = [0.07, 0.07]
-    block.fontformat.gradient_enabled = True
-    block.fontformat.gradient_start_color = gradient[0]
-    block.fontformat.gradient_end_color = gradient[1]
+    block.fontformat.text_effects = TextEffectStack(
+        effects=(
+            ShadowEffect(
+                opacity=0.75,
+                angle=45.0,
+                distance=0.099,
+                blur=0.08,
+            ),
+            StrokeEffect(
+                width=0.18,
+                paint=SolidPaint((34, 38, 48)),
+            ),
+            TextFillEffect(paint=LinearGradientPaint(stops=(
+                GradientStop(0.0, tuple(gradient[0])),
+                GradientStop(1.0, tuple(gradient[1])),
+            ))),
+        ),
+    )
     block.fontformat.text_transform = TextTransformStack((), 11.0)
     item = TextBlkItem(block, 0)
     cursor = QTextCursor(item.document())

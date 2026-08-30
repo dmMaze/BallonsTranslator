@@ -5,7 +5,7 @@ from html import escape, unescape
 import re
 from typing import Callable, Iterable, Sequence
 
-from qtpy.QtGui import QFont, QTextCursor, QTextDocument
+from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextDocument
 
 from ballontranslator.utils import shared
 from ballontranslator.utils.font_registry import normalize_key
@@ -190,6 +190,7 @@ def normalize_document_font_families(document: QTextDocument) -> int:
         replacements += 1
 
     cursor = QTextCursor(document)
+    replacements_to_apply: list[tuple[int, int, QTextCharFormat]] = []
     block = document.firstBlock()
     while block.isValid():
         iterator = block.begin()
@@ -202,15 +203,22 @@ def normalize_document_font_families(document: QTextDocument) -> int:
                 char_format.setFont(
                     qfont_with_family(char_format.font(), family)
                 )
-                cursor.setPosition(fragment.position())
-                cursor.setPosition(
-                    fragment.position() + fragment.length(),
-                    QTextCursor.MoveMode.KeepAnchor,
-                )
-                cursor.setCharFormat(char_format)
-                replacements += 1
+                replacements_to_apply.append((
+                    fragment.position(),
+                    fragment.length(),
+                    char_format,
+                ))
             iterator += 1
         block = block.next()
+    # QTextCursor formatting can invalidate a live fragment iterator.
+    for position, length, char_format in replacements_to_apply:
+        cursor.setPosition(position)
+        cursor.setPosition(
+            position + length,
+            QTextCursor.MoveMode.KeepAnchor,
+        )
+        cursor.setCharFormat(char_format)
+    replacements += len(replacements_to_apply)
     return replacements
 
 

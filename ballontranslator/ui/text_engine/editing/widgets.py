@@ -1,18 +1,21 @@
-import re
 import threading
 import traceback
 from typing import List
 
 from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
 from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QTextCursor, QMouseEvent, QDrag, QPixmap
+from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QKeySequence, QTextCursor, QMouseEvent, QDrag, QPixmap
 import numpy as np
 
 from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
 from .context_menu import create_text_edit_context_menu
 from ballontranslator.utils.config import pcfg
-from ...spellcheck import SpellCheckManager, SpellCheckHighlighter
+from ...spellcheck import (
+    SpellCheckHighlighter,
+    SpellCheckManager,
+    iter_spellcheck_words,
+)
 
 
 STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
@@ -198,6 +201,8 @@ class FloatingSuggestionLabel(QWidget):
 
 
 class SourceTextEdit(QTextEdit):
+    is_source_text_edit = True
+
     hover_enter = Signal(int)
     hover_leave = Signal(int)
     focus_in = Signal(int)
@@ -231,6 +236,8 @@ class SourceTextEdit(QTextEdit):
         self.text_content_changed = False
         self.highlighting = False
         self.paste_flag = False
+        self.paste_from: int = 0
+        self.paste_removed: int = 0
 
         self.in_acts = False
 
@@ -264,48 +271,73 @@ class SourceTextEdit(QTextEdit):
         
         self.handle_content_change()
 
-    def on_selection_changed(self):
+    def _spellcheck_is_enabled(self) -> bool:
+        return (
+            getattr(pcfg, 'spellcheck_enabled', True)
+            and (
+                not self.is_source_text_edit
+                or getattr(pcfg, 'spellcheck_on_source_enabled', False)
+            )
+        )
+
+    def _dismiss_suggestions(self) -> None:
+        if self.suggestion_popup is not None:
+            self.suggestion_popup.hide()
+        self.current_suggestion_word = None
+
+    def on_selection_changed(self) -> None:
         try:
-            manager = SpellCheckManager.get_instance()
-            if not manager.is_available():
-                return
-            if not getattr(pcfg, 'spellcheck_enabled', True):
+            # Do not scan selections or touch the optional dependency while the
+            # relevant spellcheck path is disabled.
+            if not self._spellcheck_is_enabled():
+                self._dismiss_suggestions()
                 return
 
             cursor = self.textCursor()
             if not cursor.hasSelection():
-                if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-                    self.suggestion_popup.hide()
-                self.current_suggestion_word = None
+                self._dismiss_suggestions()
                 return
 
-            selected_text = cursor.selectedText().strip()
-            # Only suggest for a single word
-            pattern = r'^[^\W\d_]+$'
-            if len(selected_text) > 1 and re.match(pattern, selected_text):
-                if not manager.is_correct(selected_text):
-                    self.current_suggestion_word = selected_text
-                    
-                    # Fetch suggestions in background thread to avoid freezing the UI thread
-                    def fetch_bg(c, w):
-                        try:
-                            sugs = manager.get_suggestions(w)
-                            self.suggestions_ready.emit(c, w, sugs)
-                        except Exception:
-                            pass
-                            
-                    t = threading.Thread(target=fetch_bg, args=(cursor, selected_text), daemon=True)
-                    t.start()
-                    return
+            selected_text = cursor.selectedText()
+            word = next(iter_spellcheck_words(selected_text), None)
+            if word is None or word[2] != selected_text:
+                self._dismiss_suggestions()
+                return
 
-            if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-                self.suggestion_popup.hide()
-            self.current_suggestion_word = None
-        except Exception as e:
+            manager = SpellCheckManager.get_instance()
+            if not manager.is_available() or manager.is_correct(selected_text):
+                self._dismiss_suggestions()
+                return
+
+            self.current_suggestion_word = selected_text
+
+            # Fetch suggestions in background to keep the UI thread responsive.
+            def fetch_bg(c, w):
+                try:
+                    sugs = manager.get_suggestions(w)
+                    self.suggestions_ready.emit(c, w, sugs)
+                except Exception:
+                    pass
+
+            thread = threading.Thread(
+                target=fetch_bg,
+                args=(cursor, selected_text),
+                daemon=True,
+            )
+            thread.start()
+        except Exception:
             traceback.print_exc()
 
-    def show_suggestions_popup(self, cursor, word, suggestions):
+    def show_suggestions_popup(
+        self,
+        cursor: QTextCursor,
+        word: str,
+        suggestions: List[str],
+    ) -> None:
         try:
+            if not self._spellcheck_is_enabled():
+                self._dismiss_suggestions()
+                return
             if getattr(self, 'current_suggestion_word', None) != word:
                 return
                 
@@ -333,7 +365,7 @@ class SourceTextEdit(QTextEdit):
             
             self.suggestion_popup.move(global_pos)
             self.suggestion_popup.show()
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
     def contextMenuEvent(self, event):
@@ -341,6 +373,7 @@ class SourceTextEdit(QTextEdit):
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         acts = menu.actions()
 
+        self._capture_paste_selection()
         self.in_acts = True
         rst = menu.exec_(event.globalPos())
 
@@ -356,6 +389,11 @@ class SourceTextEdit(QTextEdit):
 
     def updateUndoSteps(self):
         self.old_undo_steps = self.document().availableUndoSteps()
+
+    def _capture_paste_selection(self) -> None:
+        cursor = self.textCursor()
+        self.paste_from = cursor.selectionStart()
+        self.paste_removed = cursor.selectionEnd() - self.paste_from
 
     def on_content_changing(self, from_: int, removed: int, added: int):
         if not self.pre_editing:
@@ -387,6 +425,9 @@ class SourceTextEdit(QTextEdit):
             
             if self.paste_flag:
                 self.paste_flag = False
+                # Qt can report a whole-block replacement when pasting at 0.
+                change_from = self.paste_from
+                removed = self.paste_removed
                 cursor = self.textCursor()
                 cursor.setPosition(change_from)
                 cursor.setPosition(self.textCursor().position(), QTextCursor.MoveMode.KeepAnchor)
@@ -454,13 +495,11 @@ class SourceTextEdit(QTextEdit):
     def focusOutEvent(self, event: QFocusEvent) -> None:
         self.setHoverEffect(False)
         self.focus_out.emit(self.idx)
-        if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-            self.suggestion_popup.hide()
+        self._dismiss_suggestions()
         return super().focusOutEvent(event)
 
     def wheelEvent(self, event) -> None:
-        if hasattr(self, 'suggestion_popup') and self.suggestion_popup:
-            self.suggestion_popup.hide()
+        self._dismiss_suggestions()
         return super().wheelEvent(event)
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
@@ -502,6 +541,13 @@ class SourceTextEdit(QTextEdit):
             self.input_method_text = ''
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
+        if e.matches(QKeySequence.StandardKey.Paste):
+            self._capture_paste_selection()
+            self.paste_flag = True
+            try:
+                return super().keyPressEvent(e)
+            finally:
+                self.paste_flag = False
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -511,9 +557,6 @@ class SourceTextEdit(QTextEdit):
                 e.accept()
                 self.redo_signal.emit()
                 return
-            elif e.key() == Qt.Key.Key_V:
-                self.paste_flag = True
-                return super().keyPressEvent(e)
         elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -544,6 +587,8 @@ class SourceTextEdit(QTextEdit):
 
         
 class TransTextEdit(SourceTextEdit):
+    is_source_text_edit = False
+
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         cursor = self.textCursor()
         menu, quick_insert_actions = create_text_edit_context_menu(
@@ -571,6 +616,7 @@ class TransTextEdit(SourceTextEdit):
             elif operation == 'copy':
                 self.copy()
             elif operation == 'paste':
+                self._capture_paste_selection()
                 self.paste_flag = True
                 self.paste()
                 changed = True

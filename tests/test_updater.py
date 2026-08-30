@@ -20,20 +20,16 @@ def _write_update_dirs(root: Path, marker: str) -> None:
     (root / 'ballontranslator' / '__init__.py').write_text(f'{marker} app', encoding='utf8')
     (root / 'resources').mkdir()
     (root / 'resources' / 'themes.json').write_text(f'{{"{marker}": true}}', encoding='utf8')
-    builtin_dir = root / 'config' / 'llm_profile_builtin'
-    builtin_dir.mkdir(parents=True)
-    (root / 'config' / 'font_registry_overrides.json').write_text(
-        f'{marker} font overrides', encoding='utf8'
+    (root / 'resources' / 'font_registry_overrides.json').write_text(
+        f'{marker} default font overrides', encoding='utf8'
     )
-    (builtin_dir / 'deepseek.yaml').write_text(f'{marker} profile', encoding='utf8')
-    (builtin_dir / 'nested').mkdir()
-    (builtin_dir / 'nested' / 'extra.yaml').write_text(f'{marker} nested profile', encoding='utf8')
 
 
 class UpdaterTests(unittest.TestCase):
 
     def test_managed_payload_includes_builtin_profiles_and_launchers(self):
         self.assertIn('config/llm_profile_builtin', updater.SOURCE_UPDATE_DIRS)
+        self.assertIn('scripts', updater.SOURCE_UPDATE_DIRS)
         self.assertNotIn('custom_modules', updater.SOURCE_UPDATE_DIRS)
         self.assertIn('launch_win.bat', updater.SOURCE_UPDATE_FILES)
         self.assertIn('launch.sh', updater.SOURCE_UPDATE_FILES)
@@ -237,6 +233,10 @@ class UpdaterTests(unittest.TestCase):
             root = Path(tmpdir)
             cache_dir = root / '.btrans_cache'
             _write_update_dirs(root, 'old')
+            (root / 'config').mkdir()
+            (root / 'config' / 'font_registry_overrides.json').write_text(
+                'user font overrides', encoding='utf8'
+            )
             (root / 'custom_modules').mkdir()
             (root / 'custom_modules' / 'trans_user.py').write_text('user module', encoding='utf8')
             (root / 'config' / 'textstyles').mkdir()
@@ -245,7 +245,7 @@ class UpdaterTests(unittest.TestCase):
 
             release_root = root / 'release' / 'BallonsTranslator-1.5.1'
             _write_update_dirs(release_root, 'new')
-            (release_root / 'config' / 'textstyles').mkdir()
+            (release_root / 'config' / 'textstyles').mkdir(parents=True)
             (release_root / 'config' / 'textstyles' / 'user.json').write_text('release textstyle', encoding='utf8')
             _write_update_root_files(release_root, 'new')
             zip_path = cache_dir / 'BallonsTranslator_1.5.1_source.zip'
@@ -265,17 +265,18 @@ class UpdaterTests(unittest.TestCase):
                 'user module',
             )
             self.assertEqual((root / 'resources' / 'themes.json').read_text(encoding='utf8'), '{"new": true}')
-            self.assertEqual((root / 'config' / 'llm_profile_builtin' / 'deepseek.yaml').read_text(encoding='utf8'), 'new profile')
             self.assertEqual(
-                (root / 'config' / 'llm_profile_builtin' / 'nested' / 'extra.yaml').read_text(encoding='utf8'),
-                'new nested profile',
+                (root / 'resources' / 'font_registry_overrides.json').read_text(
+                    encoding='utf8'
+                ),
+                'new default font overrides',
             )
             self.assertEqual((root / 'config' / 'textstyles' / 'user.json').read_text(encoding='utf8'), 'local textstyle')
             self.assertEqual(
                 (root / 'config' / 'font_registry_overrides.json').read_text(
                     encoding='utf8'
                 ),
-                'old font overrides',
+                'user font overrides',
             )
             for filename in updater.SOURCE_UPDATE_FILES:
                 self.assertEqual((root / filename).read_text(encoding='utf8'), f'new {filename}')
@@ -287,13 +288,13 @@ class UpdaterTests(unittest.TestCase):
             root = Path(tmpdir)
             cache_dir = root / '.btrans_cache'
             _write_update_dirs(root, 'old')
-            (root / 'config' / 'textstyles').mkdir()
+            (root / 'config' / 'textstyles').mkdir(parents=True)
             (root / 'config' / 'textstyles' / 'user.json').write_text('local textstyle', encoding='utf8')
             _write_update_root_files(root, 'old')
 
             release_root = root / 'release' / 'BallonsTranslator-1.5.1'
             _write_update_dirs(release_root, 'new')
-            shutil.rmtree(release_root / 'config' / 'llm_profile_builtin')
+            shutil.rmtree(release_root / 'resources')
             _write_update_root_files(release_root, 'new')
             zip_path = cache_dir / 'BallonsTranslator_1.5.1_source.zip'
             cache_dir.mkdir()
@@ -306,11 +307,10 @@ class UpdaterTests(unittest.TestCase):
                 cache_dir=str(cache_dir),
             ).install_source_zip(zip_path)
 
-            self.assertFalse((root / 'config' / 'llm_profile_builtin').exists())
+            self.assertFalse((root / 'resources').exists())
             self.assertTrue((root / 'config').is_dir())
             self.assertEqual((root / 'config' / 'textstyles' / 'user.json').read_text(encoding='utf8'), 'local textstyle')
             self.assertEqual((root / 'ballontranslator' / '__init__.py').read_text(encoding='utf8'), 'new app')
-            self.assertEqual((root / 'resources' / 'themes.json').read_text(encoding='utf8'), '{"new": true}')
 
     def test_install_source_zip_ignores_cleanup_failure(self):
         class CleanupFailingUpdater(updater.BallonsTranslatorUpdater):
@@ -339,7 +339,6 @@ class UpdaterTests(unittest.TestCase):
 
             self.assertEqual((root / 'ballontranslator' / '__init__.py').read_text(encoding='utf8'), 'new app')
             self.assertEqual((root / 'resources' / 'themes.json').read_text(encoding='utf8'), '{"new": true}')
-            self.assertEqual((root / 'config' / 'llm_profile_builtin' / 'deepseek.yaml').read_text(encoding='utf8'), 'new profile')
 
 
 if __name__ == '__main__':

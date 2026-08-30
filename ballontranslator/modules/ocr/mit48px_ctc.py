@@ -7,6 +7,7 @@ import torch.nn.functional as F
 import numpy as np
 import math
 import einops
+from collections import defaultdict
 
 from typing import List, Tuple, Optional
 
@@ -419,6 +420,10 @@ class OCR48pxCTC:
 
         perm = range(len(regions))
         chunck_idx = 0
+        color_totals = defaultdict(
+            lambda: [np.zeros(3, dtype=np.float32),
+                     np.zeros(3, dtype=np.float32)]
+        )
         for indices in chunks(perm, chunk_size) :
             N = len(indices)
             widths = [regions[i].shape[1] for i in indices]
@@ -437,7 +442,8 @@ class OCR48pxCTC:
             for i, single_line in enumerate(texts) :
                 if not single_line :
                     continue
-                textblk = textblk_lst[textblk_lst_indices[i+chunck_idx]]
+                block_index = textblk_lst_indices[i+chunck_idx]
+                textblk = textblk_lst[block_index]
                 cur_texts = []
                 total_fr = AvgMeter()
                 total_fg = AvgMeter()
@@ -463,11 +469,16 @@ class OCR48pxCTC:
                 if prob < 0.3 :
                     continue
                 textblk.text.append(''.join(cur_texts))
-                textblk.update_font_colors(
-                    [int(total_fr()), int(total_fg()), int(total_fb())],
-                    [int(total_br()), int(total_bg()), int(total_bb())]
-                )
+                color_totals[block_index][0] += np.array([
+                    int(total_fr()), int(total_fg()), int(total_fb())
+                ])
+                color_totals[block_index][1] += np.array([
+                    int(total_br()), int(total_bg()), int(total_bb())
+                ])
             chunck_idx += N
+
+        for block_index, (fg_total, bg_total) in color_totals.items():
+            textblk_lst[block_index].update_font_colors(fg_total, bg_total)
 
         
 
