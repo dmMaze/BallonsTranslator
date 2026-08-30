@@ -22,16 +22,44 @@ CLI_BACKENDS = {
     "codex": {
         "name": "Codex CLI",
         "command": "codex",
+        "model_options": [
+            "default",
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+            "gpt-5.3-codex-spark",
+        ],
         "thinking_levels": ["None", "low", "medium", "high", "xhigh"],
     },
     "claude": {
         "name": "Claude CLI",
         "command": "claude",
+        "model_options": ["default", "sonnet", "opus", "fable"],
         "thinking_levels": ["None", "low", "medium", "high", "xhigh", "max"],
     },
     "antigravity": {
         "name": "Antigravity CLI",
         "command": "agy",
+        "model_options": [
+            "default",
+            "gemini-3.7-flash-high",
+            "gemini-3.7-flash-medium",
+            "gemini-3.7-flash-low",
+            "gemini-3.1-pro-high",
+            "gemini-3.1-pro-low",
+            "claude-sonnet-4-6",
+            "claude-opus-4-6-thinking",
+            "gpt-oss-120b-medium",
+        ],
+        "thinking_levels": ["None", "low", "medium", "high"],
+    },
+    "grok": {
+        "name": "Grok CLI",
+        "command": "grok",
+        "model_options": ["default", "grok-4.6"],
         "thinking_levels": ["None", "low", "medium", "high"],
     },
 }
@@ -274,9 +302,14 @@ def profile_from_config(profile: Any) -> LLMProfile:
     else:
         raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
     if str(loaded.transport or '').lower() == LLM_TRANSPORT_CLI:
+        backend = CLI_BACKENDS.get(str(loaded.cli_backend or '').lower())
+        loaded.require_api_key = False
+        if backend:
+            loaded.model_options = _merge_profile_options(
+                backend['model_options'], loaded.model_options, loaded.model,
+            )
         # CLI transport is text-only until each binary has a stable image I/O
         # contract; reject hand-edited config attempts at the profile boundary.
-        loaded.require_api_key = False
         loaded.support_vision = False
         loaded.support_image = False
     return loaded
@@ -399,7 +432,7 @@ def new_cli_profile(backend: str) -> LLMProfile:
         cli_backend=str(backend).strip().lower(),
         require_api_key=False,
         model='default',
-        model_options=['default'],
+        model_options=list(info['model_options']),
         support_text=True,
         support_vision=False,
         support_image=False,

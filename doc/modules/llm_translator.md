@@ -18,7 +18,7 @@ preserve behavior that spans several files.
 | Concern | Owner |
 | --- | --- |
 | Prompt assembly, provider request, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
-| Codex, Claude, and Antigravity subprocess transport | [`llm_cli.py`](../../ballontranslator/modules/llm_cli.py) |
+| Codex, Claude, Antigravity, and Grok subprocess transport | [`llm_cli.py`](../../ballontranslator/modules/llm_cli.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
 | History selection, rebuild, eviction, and overflow recovery | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
 | Glossary parsing and matching | [`context/glossary.py`](../../ballontranslator/modules/context/glossary.py) |
@@ -61,7 +61,7 @@ postprocessing behavior.
 ## CLI profiles
 
 Use **New -> CLI Profiles** in the LLM profile panel to create a Codex,
-Claude, or Antigravity text profile. CLI profiles reuse the normal
+Claude, Antigravity, or Grok text profile. CLI profiles reuse the normal
 translation prompt, glossary, history, retries, and exact-ID response parser.
 They do not enable OCR or image generation.
 

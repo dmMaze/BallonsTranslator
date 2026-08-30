@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 
 from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.llm_cli import (
@@ -23,7 +24,7 @@ from ballontranslator.utils.llm_profiles import new_cli_profile
 
 class LLMCLITest(unittest.TestCase):
     def test_cli_profiles_are_text_only(self):
-        for backend in ('codex', 'claude', 'antigravity'):
+        for backend in ('codex', 'claude', 'antigravity', 'grok'):
             with self.subTest(backend=backend):
                 profile = new_cli_profile(backend)
                 self.assertEqual(profile.transport, 'cli')
@@ -33,7 +34,7 @@ class LLMCLITest(unittest.TestCase):
                 self.assertFalse(profile.support_image)
                 self.assertFalse(profile.require_api_key)
 
-    def test_prompt_data_stays_on_stdin(self):
+    def test_prompt_data_stays_off_argv(self):
         source = 'private source text'
         prompt = render_cli_prompt([
             {'role': 'system', 'content': 'Return JSON.'},
@@ -46,7 +47,7 @@ class LLMCLITest(unittest.TestCase):
             'additionalProperties': False,
         }
         with tempfile.TemporaryDirectory() as workdir:
-            for backend in ('codex', 'claude', 'antigravity'):
+            for backend in ('codex', 'claude', 'antigravity', 'grok'):
                 with self.subTest(backend=backend):
                     profile = new_cli_profile(backend)
                     profile.cli_executable = sys.executable
@@ -54,7 +55,14 @@ class LLMCLITest(unittest.TestCase):
                         profile, prompt, schema, workdir
                     )
                     self.assertNotIn(source, ' '.join(invocation.argv))
-                    self.assertIn(source, invocation.stdin)
+                    if backend == 'grok':
+                        prompt_path = invocation.argv[
+                            invocation.argv.index('--prompt-file') + 1
+                        ]
+                        self.assertIn(source, Path(prompt_path).read_text())
+                        self.assertEqual(invocation.stdin, '')
+                    else:
+                        self.assertIn(source, invocation.stdin)
 
     def test_provider_outputs_are_normalized(self):
         expected = '{"1":"번역"}'
@@ -75,6 +83,10 @@ class LLMCLITest(unittest.TestCase):
                     },
                 }),
             )),
+            'grok': json.dumps({
+                'structuredOutput': {'1': '번역'},
+                'stopReason': 'end_turn',
+            }),
         }
         for backend, stdout in cases.items():
             with self.subTest(backend=backend):
@@ -82,6 +94,36 @@ class LLMCLITest(unittest.TestCase):
                     json.loads(parse_cli_output(backend, stdout)),
                     {'1': '번역'},
                 )
+
+    def test_grok_authentication_error_is_non_retryable(self):
+        with self.assertRaises(LLMCLINonRetryableError):
+            parse_cli_output('grok', json.dumps({
+                'type': 'error',
+                'message': 'Not signed in. Run `grok login`.',
+            }))
+
+    def test_grok_invocation_is_isolated_and_toolless(self):
+        profile = new_cli_profile('grok')
+        profile.cli_executable = sys.executable
+        with tempfile.TemporaryDirectory() as workdir:
+            invocation = build_cli_invocation(
+                profile, 'translate', {'type': 'object'}, workdir
+            )
+
+        self.assertIn('--verbatim', invocation.argv)
+        self.assertEqual(
+            invocation.argv[invocation.argv.index('--sandbox') + 1],
+            'off',
+        )
+        self.assertEqual(
+            invocation.argv[invocation.argv.index('--tools') + 1],
+            '',
+        )
+        self.assertEqual(
+            invocation.argv[invocation.argv.index('--deny') + 1],
+            'MCPTool(*)',
+        )
+        self.assertIn('--no-memory', invocation.argv)
 
     def test_subprocess_uses_stdin_and_can_be_stopped_before_start(self):
         invocation = CLIInvocation(

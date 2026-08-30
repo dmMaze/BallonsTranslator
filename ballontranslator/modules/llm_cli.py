@@ -102,6 +102,7 @@ def resolve_cli_executable(profile: LLMProfile) -> str:
         return resolved
     for directory in (
         Path.home() / '.local' / 'bin',
+        Path.home() / '.grok' / 'bin',
         Path('/opt/homebrew/bin'),
         Path('/usr/local/bin'),
     ):
@@ -154,6 +155,7 @@ def _model_args(profile: LLMProfile, backend: str) -> List[str]:
         'codex': ['--model', model],
         'claude': ['--model', model],
         'antigravity': ['--model', model],
+        'grok': ['--model', model],
     }[backend]
 
 
@@ -163,7 +165,7 @@ def _effort_args(profile: LLMProfile, backend: str) -> List[str]:
         return []
     if backend == 'codex':
         return ['--config', f'model_reasoning_effort="{effort}"']
-    if backend in {'claude', 'antigravity'}:
+    if backend in {'claude', 'antigravity', 'grok'}:
         return ['--effort', effort]
     return []
 
@@ -239,6 +241,46 @@ def build_cli_invocation(
             {'event': 'user', 'message': {'content': prompt}},
             ensure_ascii=False,
         ) + '\n'
+    elif backend == 'grok':
+        # Keep Grok from importing global Claude plugins or project rules; its
+        # macOS sandbox can refuse startup on a symlinked Docker socket.
+        grok_home = Path(workdir) / '.grok'
+        grok_home.mkdir(mode=0o700)
+        auth_source = Path.home() / '.grok' / 'auth.json'
+        if auth_source.is_file():
+            auth_target = grok_home / 'auth.json'
+            shutil.copyfile(auth_source, auth_target)
+            auth_target.chmod(0o600)
+        prompt_path = Path(workdir) / 'prompt.txt'
+        prompt_path.write_text(prompt, encoding='utf8')
+        argv = [
+            executable,
+            '--prompt-file',
+            str(prompt_path),
+            '--output-format',
+            'json',
+            '--json-schema',
+            json.dumps(schema, ensure_ascii=False, separators=(',', ':')),
+            '--cwd',
+            workdir,
+            '--permission-mode',
+            'dontAsk',
+            '--sandbox',
+            'off',
+            '--tools',
+            '',
+            '--deny',
+            'MCPTool(*)',
+            '--disable-web-search',
+            '--no-subagents',
+            '--no-memory',
+            '--max-turns',
+            '1',
+            '--verbatim',
+            *model_args,
+            *effort_args,
+        ]
+        stdin = ''
     else:
         raise LLMCLIError(f'Unsupported CLI backend: {backend}')
     return CLIInvocation(tuple(argv), stdin, backend)
@@ -288,10 +330,16 @@ def _run_invocation(
 ) -> str:
     if stop_event is not None and stop_event.is_set():
         raise LLMRequestStopped()
+    environment = _cli_environment()
+    if invocation.backend == 'grok':
+        environment.update({
+            'HOME': workdir,
+            'GROK_HOME': str(Path(workdir) / '.grok'),
+        })
     process = subprocess.Popen(
         list(invocation.argv),
         cwd=workdir,
-        env=_cli_environment(),
+        env=environment,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -332,6 +380,7 @@ def _run_invocation(
                 'error authenticating',
                 'ineligibletiererror',
                 'not authenticated',
+                'not signed in',
                 'not logged in',
                 'no longer supported',
                 'please log in',
@@ -381,6 +430,24 @@ def parse_cli_output(backend: str, stdout: str) -> str:
         return _json_value(
             data.get('structured_output', data.get('result'))
         )
+    if backend == 'grok':
+        if data.get('type') == 'error':
+            message = str(data.get('message') or 'Grok CLI failed.')
+            error_type = (
+                LLMCLINonRetryableError
+                if 'not signed in' in message.lower()
+                else LLMCLIError
+            )
+            raise error_type(message)
+        structured_error = data.get(
+            'structuredOutputError', data.get('structured_output_error')
+        )
+        if structured_error:
+            raise LLMCLIError(str(structured_error))
+        return _json_value(data.get(
+            'structuredOutput',
+            data.get('structured_output', data.get('text')),
+        ))
     raise LLMCLIError(f'Unsupported CLI backend: {backend}')
 
 
