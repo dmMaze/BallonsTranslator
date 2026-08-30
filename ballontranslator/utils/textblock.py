@@ -1,4 +1,4 @@
-from typing import List, Tuple, Callable
+from typing import Callable, List, Mapping, Optional, Set, Tuple
 import numpy as np
 from shapely.geometry import Polygon
 import math
@@ -15,10 +15,19 @@ from .fontformat import (
     LineSpacingType,
     TextAlignment,
     coerce_font_weight,
+    normalize_fontformat_effect_payload,
+    warn_ignored_legacy_effects,
 )
 from .logger import logger as LOGGER
 from .textblock_mask import canny_flood
 from .textlines_merge import sort_pnts, Quadrilateral, merge_bboxes_text_region
+from .text_effects import (
+    SolidPaint,
+    coerce_text_effect_stack,
+    primary_stroke,
+    with_primary_stroke,
+)
+from .text_alpha_mask import TextAlphaMask, load_text_alpha_mask
 
 
 LANG_LIST = ['eng', 'ja', 'unknown']
@@ -28,6 +37,72 @@ LANGCLS2IDX = {'eng': 0, 'ja': 1, 'unknown': 2}
 # https://medium.com/the-artificial-impostor/detecting-chinese-characters-in-unicode-strings-4ac839ba313a
 CJKPATTERN = re.compile(r'[\uac00-\ud7a3\u3040-\u30ff\u4e00-\u9FFF]')
 TEXT_LAYOUT_VERSION = 1
+
+_FLAT_EFFECT_FIELDS = {
+    'text_effects': 'text_effects',
+    'opacity': 'opacity',
+    'default_stroke_width': 'stroke_width',
+    'stroke_width': 'stroke_width',
+    'bg_colors': 'srgb',
+    'srgb': 'srgb',
+    'shadow_radius': 'shadow_radius',
+    'shadow_strength': 'shadow_strength',
+    'shadow_color': 'shadow_color',
+    'shadow_offset': 'shadow_offset',
+    'gradient_enabled': 'gradient_enabled',
+    'gradient_start_color': 'gradient_start_color',
+    'gradient_end_color': 'gradient_end_color',
+    'gradient_angle': 'gradient_angle',
+    'gradient_size': 'gradient_size',
+}
+
+_DEPRECATED_BLOCK_FORMAT_FIELDS = {
+    'vertical': None,
+    'line_spacing': None,
+    'letter_spacing': None,
+    'underline': None,
+    'italic': None,
+    'font_size': 'size',
+    'font_family': None,
+    '_alignment': 'alignment',
+    'fg_colors': 'frgb',
+}
+
+
+def normalize_textblock_effect_payload(
+    payload: Mapping[str, object],
+) -> Tuple[dict, Set[str]]:
+    """Fold deprecated flat effect fields into nested FontFormat data.
+
+    >>> normalized, _ = normalize_textblock_effect_payload({
+    ...     'opacity': 0.5,
+    ...     'default_stroke_width': 0.2,
+    ...     'bg_colors': [1, 2, 3],
+    ... })
+    >>> effects = normalized['fontformat']['text_effects']
+    >>> coerce_text_effect_stack(effects).overall_opacity
+    0.5
+    """
+    normalized = dict(payload)
+    raw_fontformat = normalized.get('fontformat', {})
+    if isinstance(raw_fontformat, FontFormat):
+        fontformat_payload = raw_fontformat.to_serializable_dict()
+    elif isinstance(raw_fontformat, Mapping):
+        fontformat_payload = dict(raw_fontformat)
+    else:
+        LOGGER.warning(
+            'Ignoring invalid nested FontFormat payload %r.', raw_fontformat
+        )
+        fontformat_payload = {}
+
+    for source, target in _FLAT_EFFECT_FIELDS.items():
+        if source in normalized:
+            fontformat_payload[target] = normalized.pop(source)
+    fontformat_payload, notices = normalize_fontformat_effect_payload(
+        fontformat_payload
+    )
+    normalized['fontformat'] = fontformat_payload
+    return normalized, notices
 
 
 @nested_dataclass
@@ -54,6 +129,7 @@ class TextBlock:
     region_inpaint_dict: Dict = None
 
     fontformat: FontFormat = field(default_factory=lambda: FontFormat())
+    text_alpha_mask: Optional[TextAlphaMask] = None
 
     # 字体识别相关属性
     _detected_font_name: str = ""  # 识别出的字体名称
@@ -188,6 +264,13 @@ class TextBlock:
 
     @bg_colors.setter
     def bg_colors(self, value: np.ndarray):
+        if isinstance(value, np.ndarray):
+            # OCR accumulates float arrays; SolidPaint remains strict and the
+            # existing display boundary already rounds detected channels.
+            value = [
+                min(max(int(round(float(channel))), 0), 255)
+                for channel in value
+            ]
         self.fontformat.srgb = value
 
     @property
@@ -198,7 +281,8 @@ class TextBlock:
     def alignment(self, value: int):
         self.fontformat.alignment = value
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
+        self.text_alpha_mask = load_text_alpha_mask(self.text_alpha_mask)
         if self.xyxy is not None:
             self.xyxy = [int(num) for num in self.xyxy]
         if self.distance is not None:
@@ -215,17 +299,60 @@ class TextBlock:
                     self.fg_colors /= nlines
                     self.bg_colors /= nlines
 
-            deprecated_blk_fmt_keys = {'vertical': None, 'line_spacing': None, 'letter_spacing': None, 'underline': None, 'italic': None,
-                'opacity': None, 'shadow_radius': None, 'shadow_strength': None, 'shadow_color': None, 'shadow_offset': None,
-                 'font_size': 'size', 'font_family': None, '_alignment': 'alignment', 'default_stroke_width': 'stroke_width',
-                 'fg_colors': 'frgb', 'bg_colors': 'srgb'
+            flat_effect_payload = {
+                source: da[source]
+                for source in _FLAT_EFFECT_FIELDS
+                if source in da
             }
+            if flat_effect_payload:
+                effect_payload = {
+                    'opacity': self.fontformat.opacity,
+                    'stroke_width': self.fontformat.stroke_width,
+                    'srgb': self.fontformat.srgb,
+                }
+                if self.fontformat._text_effects_payload_present:
+                    effect_payload['text_effects'] = (
+                        self.fontformat.text_effects.to_serializable_dict()
+                    )
+                for source, target in _FLAT_EFFECT_FIELDS.items():
+                    if source in flat_effect_payload:
+                        effect_payload[target] = flat_effect_payload[source]
+                normalized, notices = normalize_fontformat_effect_payload(
+                    effect_payload
+                )
+                self.fontformat.text_effects = coerce_text_effect_stack(
+                    normalized['text_effects']
+                )
+                effects_were_present = (
+                    self.fontformat._text_effects_payload_present
+                    or 'text_effects' in flat_effect_payload
+                )
+                detected_paint = flat_effect_payload.get(
+                    'bg_colors', flat_effect_payload.get('srgb')
+                )
+                if (
+                    not effects_were_present
+                    and detected_paint is not None
+                    and primary_stroke(self.fontformat.text_effects) is None
+                ):
+                    if isinstance(detected_paint, np.ndarray):
+                        detected_paint = [
+                            int(round(float(channel)))
+                            for channel in detected_paint
+                        ]
+                    self.fontformat.text_effects = with_primary_stroke(
+                        self.fontformat.text_effects,
+                        width=0.0,
+                        paint=SolidPaint(detected_paint),
+                    )
+                warn_ignored_legacy_effects(notices, 'TextBlock')
+
             for src_k, v in da.items():
-                if src_k in deprecated_blk_fmt_keys:
-                    if deprecated_blk_fmt_keys[src_k] is None:
+                if src_k in _DEPRECATED_BLOCK_FORMAT_FIELDS:
+                    if _DEPRECATED_BLOCK_FORMAT_FIELDS[src_k] is None:
                         tgt_k = src_k
                     else:
-                        tgt_k = deprecated_blk_fmt_keys[src_k]
+                        tgt_k = _DEPRECATED_BLOCK_FORMAT_FIELDS[src_k]
                     setattr(self.fontformat, tgt_k, v)
             if 'font_weight' in da:
                 self.fontformat.font_weight = coerce_font_weight(
@@ -526,19 +653,32 @@ class TextBlock:
         if bg_colors is not None:
             self.bg_colors = bg_colors
 
-    def update_font_colors(self, fg_colors: np.ndarray, bg_colors: np.ndarray):
+    def update_font_colors(
+        self,
+        fg_color_total: np.ndarray,
+        bg_color_total: np.ndarray,
+    ) -> None:
+        """Commit complete OCR color totals, rounding Stroke paint once.
+
+        >>> block = TextBlock(lines=[[[0, 0], [1, 0], [1, 1], [0, 1]]])
+        >>> block.update_font_colors(np.array([1, 2, 3]), np.array([4, 5, 6]))
+        >>> block.bg_colors
+        [4, 5, 6]
+        """
         nlines = len(self)
         if nlines > 0:
-            if not isinstance(fg_colors, np.ndarray):
-                fg_colors = np.array(fg_colors, dtype=np.float32)
-            if not isinstance(bg_colors, np.ndarray):
-                bg_colors = np.array(bg_colors, dtype=np.float32)
-            if not isinstance(self.fg_colors, np.ndarray):
-                self.fg_colors = np.array(self.fg_colors, dtype=np.float32)
-            if not isinstance(self.bg_colors, np.ndarray):
-                self.bg_colors = np.array(self.bg_colors, dtype=np.float32)
-            self.fg_colors += fg_colors / nlines
-            self.bg_colors += bg_colors / nlines
+            if not isinstance(fg_color_total, np.ndarray):
+                fg_color_total = np.array(
+                    fg_color_total, dtype=np.float32
+                )
+            if not isinstance(bg_color_total, np.ndarray):
+                bg_color_total = np.array(
+                    bg_color_total, dtype=np.float32
+                )
+            current_fg = np.array(self.fg_colors, dtype=np.float32)
+            current_bg = np.array(self.bg_colors, dtype=np.float32)
+            self.fg_colors = current_fg + fg_color_total / nlines
+            self.bg_colors = current_bg + bg_color_total / nlines
 
     def get_font_colors(self, bgr=False):
 
@@ -571,10 +711,14 @@ class TextBlock:
             self.alignment = TextAlignment.Center
 
     def recalulate_stroke_width(self, color_diff_tol = 15, stroke_width: float = 0.2):
+        stack = self.fontformat.text_effects
         if color_difference(*self.get_font_colors()) < color_diff_tol:
-            self.stroke_width = 0.
+            width = 0.0
         else:
-            self.stroke_width = stroke_width
+            width = stroke_width
+        self.fontformat.text_effects = with_primary_stroke(
+            stack, width=width
+        )
 
     def adjust_pos(self, dx: int, dy: int):
         self.xyxy[0] += dx
@@ -978,7 +1122,15 @@ def mit_merge_textlines(textlines: List[Quadrilateral], width: int, height: int,
             angle = 0
         lines = [txtln.pts for txtln in txtlns]
         texts = [txtln.text for txtln in txtlns]
-        ffmt = FontFormat(font_size=font_size, frgb=fg_color, srgb=bg_color)
+        ffmt = FontFormat(font_size=font_size, frgb=fg_color)
+        # Detection introduces Stroke paint before OCR decides its width.
+        ffmt.text_effects = with_primary_stroke(
+            ffmt.text_effects,
+            width=0.0,
+            paint=SolidPaint(
+                tuple(int(round(float(channel))) for channel in bg_color)
+            ),
+        )
 
         nv = 0
         for txtln in txtlns:

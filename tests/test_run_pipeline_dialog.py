@@ -64,6 +64,16 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+from ballontranslator.utils.text_effects import (
+    GlowEffect,
+    GradientStop,
+    HollowEffect,
+    LinearGradientPaint,
+    ShadowEffect,
+    SolidPaint,
+    StrokeEffect,
+    TextEffectStack,
+)
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS
 from ballontranslator.modules.translators import base as translator_base
@@ -1377,18 +1387,54 @@ class RunPipelineDialogTests(unittest.TestCase):
         global_format = FontFormat(
             font_family='Render Font',
             font_size=47,
-            stroke_width=0.18,
             frgb=[1, 2, 3],
-            srgb=[4, 5, 6],
             alignment=2,
             vertical=True,
-            opacity=0.75,
+            text_effects=TextEffectStack(
+                0.75,
+                (
+                    ShadowEffect(
+                        shadow_type='drop',
+                        angle=26.565,
+                        distance=0.224,
+                    ),
+                    GlowEffect(size=0.2, spread=0.05),
+                    StrokeEffect(
+                        width=0.18,
+                        paint=LinearGradientPaint(stops=(
+                            GradientStop(0.0, (4, 5, 6), 1.0),
+                            GradientStop(1.0, (40, 50, 60), 0.0),
+                        )),
+                    ),
+                    StrokeEffect(width=0.9),
+                    HollowEffect(),
+                    GlowEffect(glow_type='inner', size=0.1),
+                    ShadowEffect(
+                        shadow_type='inner',
+                        blur=0.4,
+                    ),
+                ),
+            ),
             shadow_radius=3,
             shadow_strength=0.4,
             shadow_color=[7, 8, 9],
             shadow_offset=[2, 1],
         )
         blocks = [TextBlock(), TextBlock()]
+        extra_strokes = []
+        for block in blocks:
+            extra = StrokeEffect(
+                width=0.7,
+                paint=SolidPaint((70, 80, 90)),
+            )
+            extra_strokes.append(extra)
+            block.fontformat.text_effects = TextEffectStack(
+                0.4,
+                (
+                    StrokeEffect(width=0.05),
+                    extra,
+                ),
+            )
         project = SimpleNamespace(
             num_pages=1,
             get_blklist_byidx=lambda _: blocks,
@@ -1435,7 +1481,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             for name, value in old_flags.items():
                 setattr(pcfg, name, value)
 
-        for block in blocks:
+        for block, extra in zip(blocks, extra_strokes):
             self.assertEqual(block.font_size, 47)
             self.assertEqual(block.stroke_width, 0.18)
             self.assertEqual(block.fontformat.frgb, [1, 2, 3])
@@ -1444,10 +1490,99 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertTrue(block.vertical)
             self.assertEqual(block.font_family, 'Render Font')
             self.assertEqual(block.fontformat.opacity, 0.75)
-            self.assertEqual(block.fontformat.shadow_radius, 3)
-            self.assertEqual(block.fontformat.shadow_strength, 0.4)
-            self.assertEqual(block.fontformat.shadow_color, [7, 8, 9])
-            self.assertEqual(block.fontformat.shadow_offset, [2, 1])
+            effects = block.fontformat.text_effects.effects
+            self.assertIs(effects[-1], extra)
+            self.assertEqual(effects[-2].paint, SolidPaint((4, 5, 6)))
+            self.assertEqual(
+                effects,
+                (
+                    global_format.text_effects.effects[0],
+                    global_format.text_effects.effects[1],
+                    global_format.text_effects.effects[4],
+                    global_format.text_effects.effects[5],
+                    global_format.text_effects.effects[6],
+                    effects[-2],
+                    extra,
+                ),
+            )
+            self.assertEqual(block.fontformat.shadow_radius, 0.0)
+            self.assertEqual(block.fontformat.shadow_strength, 1.0)
+            self.assertEqual(block.fontformat.shadow_color, [0, 0, 0])
+            self.assertEqual(block.fontformat.shadow_offset, [0.0, 0.0])
+
+    def test_width_only_run_preserves_gradient_and_inserts_primary_stroke(self):
+        global_format = FontFormat(text_effects=TextEffectStack(effects=(
+            StrokeEffect(width=0.42),
+        )))
+        gradient = LinearGradientPaint(stops=(
+            GradientStop(0.0, (4, 5, 6), 1.0),
+            GradientStop(1.0, (40, 50, 60), 0.0),
+        ))
+        existing = TextBlock()
+        existing.fontformat.text_effects = TextEffectStack(effects=(
+            StrokeEffect(
+                width=0.1,
+                paint=gradient,
+                position='outside',
+            ),
+        ))
+        missing = TextBlock()
+        blocks = [existing, missing]
+        project = SimpleNamespace(
+            num_pages=1,
+            get_blklist_byidx=lambda _: blocks,
+            set_current_img_byidx=lambda _: None,
+            save=lambda: None,
+        )
+        owner = SimpleNamespace(
+            imgtrans_proj=project,
+            backup_blkstyles=[],
+            _run_imgtrans_wo_textstyle_update=False,
+            _render_only=False,
+            _render_global_format=global_format,
+            postprocess_translations=lambda _: None,
+            textPanel=SimpleNamespace(
+                formatpanel=SimpleNamespace(global_format=global_format)
+            ),
+            st_manager=SimpleNamespace(
+                auto_textlayout_flag=False,
+                updateSceneTextitems=lambda: None,
+                textblk_item_list=[],
+            ),
+            pageList=SimpleNamespace(
+                currentIndex=lambda: SimpleNamespace(row=lambda: 0)
+            ),
+            canvas=SimpleNamespace(updateCanvas=lambda: None),
+            saveCurrentPage=lambda *args: None,
+        )
+
+        with patch.multiple(
+            pcfg,
+            let_alignment_flag=0,
+            let_writing_mode_flag=0,
+            let_fntsize_flag=0,
+            let_fntstroke_flag=1,
+            let_fntcolor_flag=0,
+            let_fnt_scolor_flag=0,
+            let_fnteffect_flag=0,
+            let_family_flag=0,
+        ), patch.multiple(
+            pcfg.module,
+            enable_detect=False,
+            enable_ocr=False,
+            enable_translate=False,
+            enable_inpaint=False,
+        ):
+            MainWindow.on_pagtrans_finished(owner, 0)
+
+        existing_stroke = existing.fontformat.text_effects[0]
+        self.assertEqual(existing_stroke.width, 0.42)
+        self.assertEqual(existing_stroke.paint, gradient)
+        self.assertEqual(existing_stroke.position, 'outside')
+        inserted = missing.fontformat.text_effects[0]
+        self.assertEqual(inserted.width, 0.42)
+        self.assertEqual(inserted.paint, SolidPaint())
+        self.assertEqual(inserted.position, 'outside')
 
     def test_pipeline_auto_tate_chu_yoko_preserves_plain_text_format(self):
         settings = AutoTateChuYokoConfig(

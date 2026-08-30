@@ -9,7 +9,6 @@ from qtpy.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QComboBox,
     QLineEdit,
     QSizePolicy,
     QToolButton,
@@ -20,6 +19,7 @@ from qtpy.QtWidgets import (
 from ballontranslator.utils.fontformat import TEXT_TRANSFORM_PRECISION
 
 from ...custom_widget import SmallSizeControlLabel
+from ...custom_widget.combobox import BottomBorderComboBox
 from ...icon_rendering import render_svg_pixmap
 from ...misc import themed_icon_path
 
@@ -241,7 +241,7 @@ class CommittedTransformControl(QWidget):
             else _TransformValueEdit(self)
         )
         self.editor.setObjectName('TextTransformParamEditor')
-        self.editor.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.editor.setFixedSize(80 if self.decimals == 0 else 56, 22)
         self.editor.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed
@@ -505,7 +505,9 @@ class CommittedTransformChoiceControl(QWidget):
         self.label = QLabel(title, self)
         self.label.setObjectName('TextTransformParamLabel')
         self.label.setWordWrap(True)
-        self.combobox = QComboBox(self)
+        self.combobox = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
         self.combobox.setObjectName('TextTransformParamEditor')
         for value, label in self.choices:
             self.combobox.addItem(label(), value)

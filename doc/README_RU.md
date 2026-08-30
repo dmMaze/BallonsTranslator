@@ -14,6 +14,12 @@
   <a href="/README.md">简体中文</a> | <a href="/README_EN.md">English</a> | Русский | <a href="/doc/README_JA.md">日本語</a> | <a href="/doc/README_ES.md">Español</a> | <a href="/doc/README_FR.md">Français</a> | <a href="/doc/README_PT-BR.md">pt-BR</a> | <a href="/doc/README_KO.md">한국어</a> | <a href="/doc/README_ID.md">Indonesia</a> | <a href="/doc/README_VI.md">Tiếng Việt</a>
 </p>
 
+<p align="center">
+  <a href="https://t.me/BallonTranslatorforum"><img src="https://img.shields.io/badge/Telegram-%D0%A7%D0%B0%D1%82%20%D0%B8%20%D0%A4%D0%BE%D1%80%D1%83%D0%BC-26A5E4?style=flat-square&logo=telegram&logoColor=white" style="vertical-align: middle;" alt="Telegram Forum"/></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="vertical-align: middle;"><b>QQ Группа:</b> <code>719881337</code></span>
+</p>
+
 # Особенности
 > [!IMPORTANT]
 > **Если вы публично делитесь переведенным результатом, и опытный переводчик-человек не участвовал в тщательном переводе или проверке, пожалуйста, отметьте его как машинный перевод в заметном месте. Если на нормальном русском. Если вы не способны сделать минимальную проверку качества, перед публикацией, или вы не умеете в тайп, то укажите в описании к загражуемой манге, что это "машинный" перевод. Большинство русских сервисов тупо забанит вам аккаунт после попытки залива "машинного" перевода. Уделите хоть каплю внимания редактуре.**
@@ -29,9 +35,9 @@
   - Адаптирован для изображений с экстремальным соотношением сторон, таких как веб-комиксы
   
 * Редактирование текста  
-  - Поддерживает богатое форматирование текста и [пресеты стилей текста](https://github.com/dmMaze/BallonsTranslator/pull/311), переведенные тексты можно редактировать интерактивно.
-  - [Трансформации текста](https://github.com/dmMaze/BallonsTranslator/pull/1238), поиск и замена
-  - Поддерживает экспорт/импорт в/из документов Word
+  - Поддерживает WYSIWYG-редактирование форматированного текста и [пресеты стилей текста](https://github.com/dmMaze/BallonsTranslator/pull/311)
+  - Поддерживает широкий набор [текстовых эффектов](https://github.com/dmMaze/BallonsTranslator/pull/1296) и [трансформаций текста](https://github.com/dmMaze/BallonsTranslator/pull/1238)
+  - Поддерживает поиск и замену по всему тексту, исходному тексту или переводам, а также импорт/экспорт документов Word
 
 * <details>
   <summary><i>Контекстный LLM-перевод и глоссарии</i></summary>

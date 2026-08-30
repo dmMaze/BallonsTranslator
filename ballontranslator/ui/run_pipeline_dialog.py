@@ -437,8 +437,8 @@ class RunPipelineDialog(QDialog):
         self.continue_button.setObjectName('RunPipelineSecondaryButton')
         self.continue_button.setDefault(True)
         self.continue_button.clicked.connect(self._finish_continue)
-        button_row.addWidget(self.continue_button)
         button_row.addWidget(self.run_button)
+        button_row.addWidget(self.continue_button)
 
         self.render_button = QPushButton(self.tr('Render'), surface)
         self.render_button.setObjectName('RunPipelinePrimaryButton')

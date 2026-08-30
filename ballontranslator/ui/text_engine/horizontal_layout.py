@@ -168,6 +168,19 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if not spaces:
             return suffix_start, []
 
+        alignment = block.layout().textOption().alignment()
+        line_end = line_start + line.textLength()
+        next_character = _utf16_slice(text, line_end, 1)
+        # Keep a single U+0020 soft-wrap separator editable, but do not let
+        # the part of its advance excluded from naturalTextWidth() shift the
+        # line content Qt has already centered.
+        centered_soft_wrap_separator = (
+            suffix_length == 1
+            and bool(next_character)
+            and not next_character.isspace()
+            and bool(alignment & Qt.AlignmentFlag.AlignHCenter)
+        )
+
         # Qt sometimes includes fitting terminal spaces in naturalTextWidth(),
         # but excludes the identical suffix when another word follows. Shift
         # only the width Qt did not already use for paragraph alignment.
@@ -176,13 +189,16 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             max(0.0, line.naturalTextWidth() - base_advance),
         )
         extra_aligned_width = max(0.0, fitted_width - native_space_width)
-        if extra_aligned_width > 1e-6:
+        if (
+            extra_aligned_width > 1e-6
+            and not centered_soft_wrap_separator
+        ):
             position = line.position()
             position.setX(
                 position.x()
                 + self._line_space_alignment_shift(
                     extra_aligned_width,
-                    block.layout().textOption().alignment(),
+                    alignment,
                     block.textDirection() == Qt.LayoutDirection.RightToLeft,
                 )
             )
@@ -1077,6 +1093,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
+        self._observe_paint_context(context)
         self.deferred_cursor_position = context.cursorPosition
         painter.save()
         painter.setPen(context.palette.color(QPalette.ColorRole.Text))

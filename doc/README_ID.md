@@ -26,9 +26,9 @@
   - Mendukung gambar dengan rasio aspek ekstrim seperti webtoon
   
 * Pengeditan teks  
-  - Mendukung format rich text dan style teks, teks yang diterjemahkan dapat diedit secara langsung.
-  - [Transformasi teks](https://github.com/dmMaze/BallonsTranslator/pull/1238), pencarian & penggantian kata
-  - Mendukung ekspor/impor ke/dari dokumen word
+  - Mendukung pengeditan rich text WYSIWYG dan [preset gaya teks](https://github.com/dmMaze/BallonsTranslator/pull/311)
+  - Mendukung beragam [efek teks](https://github.com/dmMaze/BallonsTranslator/pull/1296) dan [transformasi teks](https://github.com/dmMaze/BallonsTranslator/pull/1238)
+  - Mendukung pencarian dan penggantian di seluruh teks, teks sumber, atau terjemahan, serta impor/ekspor dokumen Word
 
 * <details>
   <summary><i>Terjemahan LLM yang peka terhadap konteks dan glosarium</i></summary>

@@ -8,10 +8,12 @@ from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QBrush,
+    QFont,
     QPainter,
     QTextBlock,
     QTextCharFormat,
     QTextDocument,
+    QTextLayout,
     QTextLine,
     QTextOption,
     QTransform,
@@ -20,7 +22,11 @@ from qtpy.QtGui import (
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
-from .annotations import text_combine_upright_ranges
+from .annotations import (
+    FONT_FEATURES_AVAILABLE,
+    letter_spacing_value,
+    text_combine_upright_ranges,
+)
 from .cache import KeyedLruCache
 from .layout import (
     CharFontFormat,
@@ -92,6 +98,10 @@ LINE_INK_BOUNDS_CACHE_MAX_ENTRIES = 2048
 _LINE_INK_BOUNDS_CACHE: KeyedLruCache[tuple, QRectF] = KeyedLruCache(
     LINE_INK_BOUNDS_CACHE_MAX_ENTRIES
 )
+# Layout-only format IDs share the private rendering range and are never saved.
+TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1243
+_TATE_CHU_YOKO_WIDTH_FEATURES = {2: 'hwid', 3: 'twid', 4: 'qwid'}
+_TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE = 'halt'
 
 PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’', '〟', '″'}
 PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘', '‶'}
@@ -117,6 +127,22 @@ def _is_non_fullwidth_roman(char: str) -> bool:
         return False
     name = unicodedata.name(char, '')
     return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
+
+
+def _needs_tate_chu_yoko_spacing_fallback(text: str) -> bool:
+    """Return whether Qt 5 can narrow fullwidth punctuation safely.
+
+    >>> _needs_tate_chu_yoko_spacing_fallback('！？')
+    True
+    >>> _needs_tate_chu_yoko_spacing_fallback('漢字')
+    False
+    """
+    return len(text) > 1 and all(
+        unicodedata.category(char).startswith('P')
+        and unicodedata.east_asian_width(char) in {'F', 'W'}
+        and unicodedata.normalize('NFKC', char) != char
+        for char in text
+    )
 
 
 def _inseparable_punctuation_run(
@@ -949,13 +975,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         copied.clip = QRectF(context.clip)
         copied.cursorPosition = context.cursorPosition
         copied.palette = context.palette
-        copied.selections = []
+        selections = []
         for selection in context.selections:
             foreground_selection = QAbstractTextDocumentLayout.Selection()
             foreground_selection.cursor = selection.cursor
             foreground_selection.format = QTextCharFormat(selection.format)
             foreground_selection.format.clearBackground()
-            copied.selections.append(foreground_selection)
+            selections.append(foreground_selection)
+        # Qt exposes PaintContext.selections as a copied list on some
+        # bindings, so mutating the getter silently loses every selection.
+        copied.selections = selections
         return copied
 
     def _vertical_selection_backgrounds(
@@ -1562,6 +1591,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
         doc = self.document()
+        self._observe_paint_context(context)
         self.deferred_cursor_position = context.cursorPosition
         painter.save()
         block = doc.firstBlock()
@@ -1617,31 +1647,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     continue
 
                 xoff, yoff = self._draw_offset[blk_no][ii]
-
-                if custom_rendering:
-                    if not uniform_block_drawn:
-                        render_delegate.draw_vertical_line(
-                            painter, block, ii, context
-                        )
-                    placement = self.vertical_line_placement(block, ii)
-                    if placement is not None:
-                        placed_line, offset, orientation = placement
-                        draw_emphasis_marks(
-                            painter,
-                            block,
-                            placed_line,
-                            context,
-                            vertical=True,
-                            offset=offset,
-                            orientation=orientation,
-                            side_offsets=ruby_side_margins(
-                                block,
-                                placed_line,
-                                self._ruby_metrics[block.blockNumber()],
-                                vertical=True,
-                            ),
-                        )
-                    continue
                 intersects = has_selection and self._line_has_selection(
                     block, line, context
                 )
@@ -1668,6 +1673,35 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     line_context = self._selection_foreground_context(
                         line_context
                     )
+
+                if custom_rendering:
+                    if not uniform_block_drawn:
+                        render_delegate.draw_vertical_line(
+                            painter,
+                            block,
+                            ii,
+                            line_context,
+                            background_overlays=selection_backgrounds,
+                        )
+                    placement = self.vertical_line_placement(block, ii)
+                    if placement is not None:
+                        placed_line, offset, orientation = placement
+                        draw_emphasis_marks(
+                            painter,
+                            block,
+                            placed_line,
+                            context,
+                            vertical=True,
+                            offset=offset,
+                            orientation=orientation,
+                            side_offsets=ruby_side_margins(
+                                block,
+                                placed_line,
+                                self._ruby_metrics[block.blockNumber()],
+                                vertical=True,
+                            ),
+                        )
+                    continue
                 placement = self.vertical_line_placement(block, ii)
                 if self.is_tate_chu_yoko_line(block, ii):
                     if placement is not None:
@@ -1815,7 +1849,74 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     def hitTest(self, point: QPointF, accuracy: Qt.HitTestAccuracy) -> int:
         return self._source_hit_test(self.map_input_point(point))
 
-    def layoutBlock(self, block: QTextBlock):
+    def _prepare_tate_chu_yoko_layout_formats(
+        self,
+        block: QTextBlock,
+        ranges: Tuple[Tuple[int, int, str], ...],
+    ) -> None:
+        """Apply transient W3C tate-chu-yoko shaping to one block.
+
+        >>> callable(VerticalTextDocumentLayout._prepare_tate_chu_yoko_layout_formats)
+        True
+        """
+        layout = block.layout()
+        previous = list(layout.formats())
+        formats = [
+            entry
+            for entry in previous
+            if not bool(entry.format.property(
+                TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY
+            ))
+        ]
+        for start, length, _group_id in ranges:
+            end = start + length
+            text = _utf16_slice(block.text(), start, length)
+            grapheme_count = _grapheme_count(text)
+            feature_name = _TATE_CHU_YOKO_WIDTH_FEATURES.get(grapheme_count)
+            spacing = (
+                0.5
+                if not FONT_FEATURES_AVAILABLE
+                and _needs_tate_chu_yoko_spacing_fallback(text)
+                else 1.0
+            )
+            source_ranges = self.fragment_format_ranges(
+                block.blockNumber(), start, end
+            ) or ((start, end, block.charFormat()),)
+            for range_start, range_end, source_format in source_ranges:
+                char_format = QTextCharFormat()
+                if abs(letter_spacing_value(
+                    source_format, self.letter_spacing
+                ) - spacing) > 1e-9:
+                    char_format.setFontLetterSpacingType(
+                        QFont.SpacingType.PercentageSpacing
+                    )
+                    char_format.setFontLetterSpacing(spacing * 100.0)
+                if FONT_FEATURES_AVAILABLE and grapheme_count > 1:
+                    features = dict(source_format.fontFeatures())
+                    width_features = (
+                        *_TATE_CHU_YOKO_WIDTH_FEATURES.values(),
+                        _TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE,
+                    )
+                    for width_feature in width_features:
+                        features.pop(QFont.Tag.fromString(width_feature), None)
+                    if feature_name is not None:
+                        features[QFont.Tag.fromString(feature_name)] = 1
+                    features[QFont.Tag.fromString(
+                        _TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE
+                    )] = 1
+                    char_format.setFontFeatures(features)
+                char_format.setProperty(
+                    TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY, True
+                )
+                entry = QTextLayout.FormatRange()
+                entry.start = range_start
+                entry.length = range_end - range_start
+                entry.format = char_format
+                formats.append(entry)
+        if ranges or len(formats) != len(previous):
+            layout.setFormats(formats)
+
+    def layoutBlock(self, block: QTextBlock) -> None:
         doc = self.document()
         compact_punctuation = pcfg.compact_vertical_punctuation_spacing
 
@@ -1831,6 +1932,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
         self.text_combine_ranges.append(text_combine_ranges)
+        self._prepare_tate_chu_yoko_layout_formats(
+            block, text_combine_ranges
+        )
         ruby_metrics = vertical_ruby_metrics(
             block,
             self.needs_vertical_rotation,
@@ -2077,24 +2181,20 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     ).left()
 
                 if is_text_combine:
-                    # A grouped run has no separate container format. Its
-                    # leading fragment supplies the normal cell while natural
-                    # horizontal flow and every fragment style are retained.
+                    # Standard Roman mode keeps the shaped horizontal width;
+                    # alternate mode retains the CSS-like one-em fit.
                     right_margin, left_margin = emphasis_margins(
                         block, line, vertical=True
                     )
-                    natural_bounds = tate_chu_yoko_natural_bounds(line)
-                    text_combine_width = max(
-                        cfmt.tbr.width(),
-                        natural_bounds.width(),
-                    )
-                    text_combine_height = max(
-                        cfmt.tbr.height(), natural_bounds.height()
-                    )
-                    spacing_advance = (
-                        text_combine_height * (cfmt.letter_spacing - 1)
-                    )
-                    tbr_h = text_combine_height + spacing_advance
+                    text_combine_width = cfmt.tbr.width()
+                    if self.fontformat.standard_vertical_roman_alignment:
+                        text_combine_width = max(
+                            text_combine_width,
+                            tate_chu_yoko_natural_bounds(line).width(),
+                        )
+                    text_combine_height = cfmt.tbr.height()
+                    spacing_advance = 0.0
+                    tbr_h = text_combine_height
                     text_combine_line_metrics = (
                         cfmt.tbr.width(),
                         right_margin,

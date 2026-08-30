@@ -8,7 +8,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Inpaint using the selected image-capable LLM profile.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Inpaint using the selected image-capable LLM profile.'),
     },
     ('inpainter', 'LLMInpaint', 'delay', 'description'): {
-        "source": 'Delay between LLM image cleanup requests in seconds.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Delay between LLM image cleanup requests in seconds.'),
+        "source": 'Delay between LLM image requests in seconds.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Delay between LLM image requests in seconds.'),
     },
     ('inpainter', 'LLMInpaint', 'delay', 'display_name'): {
         "source": 'Delay', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Delay'),
@@ -20,7 +20,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Inpaint By Block', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Inpaint By Block'),
     },
     ('inpainter', 'LLMInpaint', 'max requests per minute', 'description'): {
-        "source": 'Global request limit for LLM image cleanup.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Global request limit for LLM image cleanup.'),
+        "source": 'Global request limit for LLM image requests.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Global request limit for LLM image requests.'),
     },
     ('inpainter', 'LLMInpaint', 'max requests per minute', 'display_name'): {
         "source": 'Max Requests Per Minute', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Requests Per Minute'),
@@ -32,13 +32,13 @@ MODULE_PARAM_CATALOG = {
         "source": 'Max Resolution', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Resolution'),
     },
     ('inpainter', 'LLMInpaint', 'proxy', 'description'): {
-        "source": 'Proxy address used for the OpenAI-compatible client.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy address used for the OpenAI-compatible client.'),
+        "source": 'Proxy address used for the image request.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy address used for the image request.'),
     },
     ('inpainter', 'LLMInpaint', 'proxy', 'display_name'): {
         "source": 'Proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy'),
     },
     ('inpainter', 'LLMInpaint', 'request timeout', 'description'): {
-        "source": 'HTTP timeout for image cleanup requests in seconds. Set to 0 to disable.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'HTTP timeout for image cleanup requests in seconds. Set to 0 to disable.'),
+        "source": 'HTTP timeout for image requests in seconds. Set to 0 to disable.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'HTTP timeout for image requests in seconds. Set to 0 to disable.'),
     },
     ('inpainter', 'LLMInpaint', 'request timeout', 'display_name'): {
         "source": 'Request Timeout', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Request Timeout'),
@@ -210,6 +210,18 @@ MODULE_PARAM_CATALOG = {
     },
     ('ocr', 'google_vision', 'proxy', 'display_name'): {
         "source": 'proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'proxy'),
+    },
+    ('ocr', 'hayai_ocr_v2', '', 'description'): {
+        "source": 'Hayai OCR v2 crop recognition model.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Hayai OCR v2 crop recognition model.'),
+    },
+    ('ocr', 'hayai_ocr_v2', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
+    },
+    ('ocr', 'hayai_ocr_v2', 'max_num_patches', 'description'): {
+        "source": 'Maximum image patches. Use 256 for standard lines, or 384/512 for dense panels.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Maximum image patches. Use 256 for standard lines, or 384/512 for dense panels.'),
+    },
+    ('ocr', 'hayai_ocr_v2', 'max_num_patches', 'display_name'): {
+        "source": 'Max Num Patches', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Num Patches'),
     },
     ('ocr', 'manga_ocr', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),

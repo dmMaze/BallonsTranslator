@@ -67,11 +67,14 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
-Tate-chu-yoko is a horizontal Qt run occupying one vertical cell. A
-single-character run centers its visible ink instead of any unused font
-advance. Multi-character natural width may overflow for painting and
-interaction, but it must not widen the column or move neighboring columns.
-Whitespace and enabled font features remain part of that run.
+Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Its
+layout ignores authored letter spacing and uses the font's half-width
+punctuation plus matching half-, third-, or quarter-width feature when
+available. Standard Roman mode keeps that shaped run's natural horizontal
+width; the alternate mode horizontally scales any remaining excess to one em.
+The resulting visible ink is centered without changing the stored text. Glyph
+ink may overhang the column, but that overhang affects only painting and
+interaction bounds, never neighboring columns.
 
 Ruby/furigana is attached layout content, not a detached overlay. Group Ruby is
 indivisible; mono Ruby may wrap only between base/reading pairs. Each unit uses
@@ -89,10 +92,11 @@ neither may move whitespace into a second text model or drop it from cursor and
 hit geometry. Vertical whitespace contributes flow advance, not the ink bounds
 used to center the neighboring glyph in its column.
 
-Character spacing is a trailing advance for the affected glyph or joined run.
-On a squeezed single-column vertical item, increasing it may grow the logical
-height to preserve that column; multi-column items keep normal fixed-area
-reflow, and automatic growth never silently shrinks the box.
+Character spacing is a trailing advance for the affected glyph or joined run;
+W3C tate-chu-yoko composition ignores it. On a squeezed single-column vertical
+item, increasing it may grow the logical height to preserve that column;
+multi-column items keep normal fixed-area reflow, and automatic growth never
+silently shrinks the box.
 
 Line spacing is owned by the destination row or column. The first visual row or
 column stays anchored without leading spacing; each later one uses its

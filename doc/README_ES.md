@@ -29,9 +29,9 @@
   - Adaptado para imágenes con una relación de aspecto extrema, como los webtoons.
   
 * **Edición de texto:**
-  - Admite formato de texto y [preajustes de estilo de texto](https://github.com/dmMaze/BallonsTranslator/pull/311). Los textos traducidos pueden editarse interactivamente.
-  - [Transformaciones de texto](https://github.com/dmMaze/BallonsTranslator/pull/1238), búsqueda y reemplazo.
-  - Exportación/importación a/desde documentos Word.
+  - Admite edición WYSIWYG de texto enriquecido y [preajustes de estilo de texto](https://github.com/dmMaze/BallonsTranslator/pull/311).
+  - Admite un amplio conjunto de [efectos de texto](https://github.com/dmMaze/BallonsTranslator/pull/1296) y [transformaciones de texto](https://github.com/dmMaze/BallonsTranslator/pull/1238).
+  - Admite búsqueda y reemplazo en todo el texto, el texto original o las traducciones, así como importación/exportación de documentos Word.
 
 * <details>
   <summary><i>Traducción con LLM sensible al contexto y glosarios</i></summary>

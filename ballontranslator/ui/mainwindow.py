@@ -14,6 +14,13 @@ from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, Q
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_processing import is_cjk
 from ballontranslator.utils.textblock import TextBlock, TextAlignment
+from ballontranslator.utils.text_effects import (
+    SolidPaint,
+    effect_paint_fallback_color,
+    primary_stroke,
+    with_non_stroke_effects,
+    with_primary_stroke,
+)
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
@@ -50,6 +57,9 @@ from .custom_widget import Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .text_engine.editing.commands import GlobalRepalceAllCommand
 from .text_engine.transforms.grid import start_grid_numba_warmup
+from .text_engine.effects.paint import (
+    start_effect_paint_numba_warmup,
+)
 from .text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
@@ -159,7 +169,8 @@ class MainWindow(mainwindow_cls):
                     show_release_info=show_release_info,
                 ),
             )
-        # The callback cannot run until construction returns to the event loop.
+        # The callbacks cannot run until construction returns to the event loop.
+        QTimer.singleShot(0, start_effect_paint_numba_warmup)
         QTimer.singleShot(0, start_grid_numba_warmup)
 
     def setupThread(self):
@@ -784,6 +795,7 @@ class MainWindow(mainwindow_cls):
         # Pending numeric edits are not dirty until they commit. Resolve them
         # before the close-time dirty check and final config snapshot.
         self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
+        self.st_manager.formatpanel.stop_text_effect_generation_for_shutdown()
         if self.auto_tate_chu_yoko_thread.isRunning():
             self.auto_tate_chu_yoko_thread.request_stop()
             self.auto_tate_chu_yoko_thread.wait()
@@ -874,6 +886,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.exporttstyle_trigger.connect(self.export_tstyles)
         self.titleBar.darkmode_trigger.connect(self.on_darkmode_triggered)
         self.titleBar.merge_tool_trigger.connect(self.on_open_merge_tool)
+        self.titleBar.ps_bridge_trigger.connect(self.on_open_photoshop_bridge)
         self.titleBar.path_reorder_trigger.connect(self.on_path_reorder)
         self.canvas.path_reorder_mode_changed.connect(
             self.titleBar.path_reorder_action.setChecked
@@ -1104,6 +1117,114 @@ class MainWindow(mainwindow_cls):
         else:
             self.merge_dialog.show()
 
+    def on_open_photoshop_bridge(self):
+        """Open Photoshop Bridge & Tools dialog"""
+        if not hasattr(self, 'ps_bridge_dialog') or self.ps_bridge_dialog is None:
+            from .ps_bridge_dialog import PhotoshopBridgeDialog
+            self.ps_bridge_dialog = PhotoshopBridgeDialog(self, project=self.imgtrans_proj)
+        
+        self.ps_bridge_dialog.refresh_status()
+        if self.ps_bridge_dialog.isVisible():
+            self.ps_bridge_dialog.raise_()
+            self.ps_bridge_dialog.activateWindow()
+        else:
+            self.ps_bridge_dialog.show()
+
+    def prepare_photoshop_bridge_context(self) -> dict:
+        """Save current app state before Photoshop reads the project snapshot."""
+        from .ps_bridge_dialog import project_state_matches_disk
+
+        project = self.imgtrans_proj
+        if not project.proj_path:
+            raise RuntimeError(self.tr("No project is open."))
+        self.saveCurrentPage(
+            update_scene_text=True,
+            save_proj=True,
+            restore_interface=True,
+            save_rst_only=False,
+            keep_exist_as_backup=True,
+        )
+        if not project_state_matches_disk(project):
+            raise RuntimeError(
+                self.tr("The project could not be saved before opening Photoshop.")
+            )
+        return {
+            "project_path": project.proj_path,
+            "active_page": project.current_img or "",
+        }
+
+    def apply_photoshop_bridge_updates(self, payload: dict) -> int:
+        """Validate and persist Photoshop changes through project ownership."""
+        from .ps_bridge_dialog import (
+            project_state_matches_disk,
+            validate_photoshop_bridge_updates,
+        )
+
+        if self.canvas.projstate_unsaved:
+            raise RuntimeError(
+                self.tr(
+                    "BallonsTranslator has unsaved changes. Save them, then check "
+                    "for the Photoshop update again."
+                )
+            )
+        if not project_state_matches_disk(self.imgtrans_proj):
+            raise RuntimeError(
+                self.tr(
+                    "The project file changed outside BallonsTranslator. Reload it "
+                    "before applying Photoshop changes."
+                )
+            )
+
+        page_name, updates = validate_photoshop_bridge_updates(
+            self.imgtrans_proj,
+            payload,
+        )
+        changed = []
+        for block, translation, font_size in updates:
+            if (
+                block.translation != translation
+                or (font_size is not None and block.font_size != font_size)
+            ):
+                changed.append((block, translation, font_size))
+        if not changed:
+            return 0
+
+        old_values = [
+            (block, block.translation, block.rich_text, block.font_size)
+            for block, _, _ in changed
+        ]
+        for block, translation, font_size in changed:
+            if block.translation != translation:
+                block.translation = translation
+                # Rich HTML contains its own text and would otherwise hide the
+                # plain translation received from Photoshop.
+                block.rich_text = ""
+            if font_size is not None:
+                block.font_size = font_size
+
+        current_page_updated = page_name == self.imgtrans_proj.current_img
+        try:
+            if current_page_updated:
+                self.st_manager.updateSceneTextitems()
+            self.imgtrans_proj.save(keep_exist_as_backup=True)
+        except Exception as error:
+            for block, translation, rich_text, font_size in old_values:
+                block.translation = translation
+                block.rich_text = rich_text
+                block.font_size = font_size
+            if current_page_updated:
+                self.st_manager.updateSceneTextitems()
+            raise RuntimeError(
+                self.tr("Failed to save Photoshop changes: {error}").format(
+                    error=error
+                )
+            ) from error
+
+        if current_page_updated:
+            self.canvas.setProjSaveState(False)
+            self.canvas.update_saved_undostep()
+        return len(changed)
+
     def on_path_reorder(self, checked: bool) -> None:
         if not checked:
             self.canvas.cancel_path_reorder()
@@ -1308,7 +1429,9 @@ class MainWindow(mainwindow_cls):
         cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         edit.setTextCursor(cursor)
 
-    def shortcutEscape(self):
+    def shortcutEscape(self) -> None:
+        if self.canvas.alpha_mask_edit_session.handle_escape():
+            return
         if self.canvas.path_reorder_active:
             self.canvas.cancel_path_reorder()
             return
@@ -1709,13 +1832,33 @@ class MainWindow(mainwindow_cls):
                     elif blk._detected_font_size > 0 and not enable_detect:
                         blk.font_size = blk._detected_font_size
                     if override_fnt_stroke:
-                        blk.stroke_width = gf.stroke_width
+                        global_stroke = primary_stroke(gf.text_effects)
+                        width = (
+                            global_stroke.width
+                            if global_stroke is not None
+                            else 0.0
+                        )
+                        blk.fontformat.text_effects = with_primary_stroke(
+                            blk.fontformat.text_effects,
+                            width=width,
+                        )
                     elif enable_ocr:
                         blk.recalulate_stroke_width()
                     if override_fnt_color:
                         blk.set_font_colors(fg_colors=gf.frgb)
                     if override_fnt_scolor:
-                        blk.set_font_colors(bg_colors=gf.srgb)
+                        global_stroke = primary_stroke(gf.text_effects)
+                        paint = (
+                            SolidPaint(effect_paint_fallback_color(
+                                global_stroke.paint
+                            ))
+                            if global_stroke is not None
+                            else SolidPaint()
+                        )
+                        blk.fontformat.text_effects = with_primary_stroke(
+                            blk.fontformat.text_effects,
+                            paint=paint,
+                        )
                     if override_writing_mode:
                         blk.vertical = gf.vertical
                     if override_alignment:
@@ -1726,11 +1869,10 @@ class MainWindow(mainwindow_cls):
                         elif not blk.src_is_vertical:
                             blk.recalulate_alignment()
                     if override_effect:
-                        blk.opacity = gf.opacity
-                        blk.shadow_color = gf.shadow_color
-                        blk.shadow_radius = gf.shadow_radius
-                        blk.shadow_strength = gf.shadow_strength
-                        blk.shadow_offset = gf.shadow_offset
+                        blk.fontformat.text_effects = with_non_stroke_effects(
+                            blk.fontformat.text_effects,
+                            gf.text_effects,
+                        )
                     if override_font_family or blk.font_family is None:
                         blk.font_family = gf.font_family
                         if blk.rich_text:
@@ -1744,7 +1886,12 @@ class MainWindow(mainwindow_cls):
                     blk.fontformat.standard_vertical_roman_alignment = (
                         gf.standard_vertical_roman_alignment
                     )
-                    sw = blk.stroke_width
+                    primary = primary_stroke(blk.fontformat.text_effects)
+                    sw = (
+                        primary.width
+                        if primary is not None and not primary.is_neutral()
+                        else 0.0
+                    )
                     if sw > 0 and enable_ocr and enable_detect and not override_fnt_size:
                         blk.font_size = blk.font_size / (1 + sw)
 
@@ -1988,10 +2135,12 @@ class MainWindow(mainwindow_cls):
             render_only=render_only,
         )
 
-    def on_transpanel_changed(self):
+    def on_transpanel_changed(self) -> None:
         self.canvas.editor_index = self.rightComicTransStackPanel.currentIndex()
         if not self.canvas.textEditMode() and self.canvas.search_widget.isVisible():
             self.canvas.search_widget.hide()
+        if not self.canvas.textEditMode():
+            self.canvas.alpha_mask_edit_session.deactivate()
         self.canvas.updateLayers()
 
     def import_tstyles(self):

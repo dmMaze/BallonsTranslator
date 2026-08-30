@@ -51,7 +51,8 @@ class PairWidgetInteractionTest(unittest.TestCase):
         formatpanel = SimpleNamespace(
             set_textblk_item=lambda *args, **kwargs: self.panel_updates.append(
                 (args, kwargs)
-            )
+            ),
+            cancel_text_transform_edits_for_scene_change=lambda: None,
         )
         self.manager = _ManagerHarness()
         self.manager.app = self.app
@@ -61,8 +62,11 @@ class PairWidgetInteractionTest(unittest.TestCase):
         self.manager.pairwidget_list = self.pairs
         self.manager.txtblkShapeControl = self.canvas.txtblkShapeControl
         self.manager.formatpanel = formatpanel
+        self.manager._text_move_snapshot = {}
+        self.manager.hovering_transwidget = None
         for name in (
             "_update_selection_panels",
+            "clearSceneTextitems",
             "editingTextItem",
             "is_editting",
             "on_incanvas_selection_changed",
@@ -116,6 +120,9 @@ class PairWidgetInteractionTest(unittest.TestCase):
             [pair.idx for pair in self.edit_list.checked_list], [1, 2, 3]
         )
         self.assertIs(self.edit_list.sel_anchor_widget, self.pairs[1])
+        self.assertIs(
+            self.panel_updates[-1][1]['primary_item'], self.items[1]
+        )
 
         rearrangements = []
         self.edit_list.rearrange_blks.connect(rearrangements.append)
@@ -143,6 +150,22 @@ class PairWidgetInteractionTest(unittest.TestCase):
         self.assertEqual(
             [pair.idx for pair in self.edit_list.checked_list], [1]
         )
+
+    def test_canvas_primary_anchor_self_heals_and_clears_with_scene(self) -> None:
+        self.canvas.set_primary_selected_text_item(self.items[1])
+        self.assertIs(
+            self.canvas.primary_selected_text_item([self.items[0]]),
+            self.items[0],
+        )
+        self.assertIs(
+            self.canvas._primary_selected_text_item, self.items[0]
+        )
+
+        self.canvas.set_primary_selected_text_item(self.items[2])
+        self.manager.clearSceneTextitems()
+
+        self.assertIsNone(self.canvas._primary_selected_text_item)
+        self.assertIsNone(self.canvas.primary_selected_text_item([]))
 
 
 if __name__ == "__main__":

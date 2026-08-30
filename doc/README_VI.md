@@ -26,9 +26,9 @@
   - Thích nghi với hình ảnh có tỷ lệ khung hình cực cao như Webtoons (?? hem hỉu lém, nhưng mà nói chung sài được với cả webtoons)
   
 * Chỉnh sửa văn bản
-  - Hỗ trợ RTF (rich text formatting) zà [TSP (text style presets)](https://github.com/dmMaze/BallonsTranslator/pull/311), có thể chỉnh sửa lại các văn bản đã được dịch đó lun nè.
-  - [Biến đổi văn bản](https://github.com/dmMaze/BallonsTranslator/pull/1238), tìm kiếm & thay thế
-  - Hỗ trợ cả import từ dạng word hoặc export ra dạng đó nữa
+  - Hỗ trợ chỉnh sửa rich text WYSIWYG zà [preset kiểu văn bản](https://github.com/dmMaze/BallonsTranslator/pull/311)
+  - Hỗ trợ nhiều [hiệu ứng văn bản](https://github.com/dmMaze/BallonsTranslator/pull/1296) zà [biến đổi văn bản](https://github.com/dmMaze/BallonsTranslator/pull/1238)
+  - Hỗ trợ tìm kiếm & thay thế toàn bộ văn bản/văn bản gốc/bản dịch, cùng với import/export tài liệu Word
 
 * <details>
   <summary><i>Dịch bằng LLM có nhận biết ngữ cảnh và bảng thuật ngữ</i></summary>

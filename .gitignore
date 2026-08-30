@@ -8,7 +8,7 @@ data/testpacks/eng_dontupload
 data/testpacks/testpacks
 data/*.png
 data/testpacks
-config/textstyles
+config/
 release
 libs
 .btrans_cache
@@ -25,7 +25,6 @@ test_dir
 tmp
 logs
 ballontrans_pylibs_win
-config/config.json
 localtmp*
 
 .vscode
@@ -65,7 +64,6 @@ download_models.bat
 Ultralytics/settings.json
 
 # Spellcheck dictionaries
-config/custom_dictionary.txt
 data/dictionaries/
 
 custom_modules/*

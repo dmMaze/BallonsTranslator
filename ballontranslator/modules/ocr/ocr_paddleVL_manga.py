@@ -74,6 +74,14 @@ class PaddleOCRVLManga(OCRBase):
         self.processor = None
 
     def ocr_img(self, img: np.ndarray, **kwargs) -> str:
+        # Scale down if excessively large to prevent CUDA OOM on ultra-high-res crops
+        rh, rw = img.shape[:2]
+        max_dim = max(rh, rw)
+        if max_dim > 1024:
+            scale = 1024.0 / max_dim
+            import cv2
+            img = cv2.resize(img, (int(round(rw * scale)), int(round(rh * scale))), interpolation=cv2.INTER_AREA)
+
         # Prepare the prompt
         messages = [
             {
@@ -107,6 +115,7 @@ class PaddleOCRVLManga(OCRBase):
         input_length = inputs["input_ids"].shape[1]
         generated_tokens = generated[:, input_length:]
         answer = self.processor.batch_decode(generated_tokens, skip_special_tokens=True)[0]
+            
         return answer.split('\n')
 
     def _load_model(self):

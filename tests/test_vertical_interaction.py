@@ -1,5 +1,6 @@
 import os
 import unittest
+from itertools import product
 from typing import List
 from unittest.mock import Mock, patch
 
@@ -19,6 +20,7 @@ from qtpy.QtGui import (
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.utils.fontformat import TextTransformStack
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -303,12 +305,21 @@ class VerticalInteractionTest(unittest.TestCase):
         self.assertEqual(layout.lineForTextPosition(4).textStart(), 4)
 
     def test_selection_uses_vertical_glyph_and_space_cells(self):
-        for text, start, end, line_number, selected_cell in (
-            ('——', 0, 1, 0, 0),
-            ('木   水', 2, 3, 0, 2),
+        for glyph_slant_angle, selection_case in product(
+            (0.0, 15.0),
+            (
+                ('——', 0, 1, 0, 0),
+                ('木   水', 2, 3, 0, 2),
+            ),
         ):
-            with self.subTest(text=text):
+            text, start, end, line_number, selected_cell = selection_case
+            with self.subTest(
+                text=text, glyph_slant_angle=glyph_slant_angle
+            ):
                 item = self._make_item(text)
+                item.set_text_transform(TextTransformStack(
+                    glyph_slant_angle=glyph_slant_angle
+                ))
                 block = item.document().firstBlock()
                 line = block.layout().lineAt(line_number)
                 cells = item.layout._vertical_line_cells(

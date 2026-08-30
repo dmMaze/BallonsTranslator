@@ -3,31 +3,35 @@
 Start here before changing text layout, editing, effects, geometry, or export.
 The code and tests are authoritative; this guide records ownership and the
 cross-file contracts that are easy to break. Continue with
-[Text layout](text_layout.md) for writing-mode behavior and with
-[Composable text transforms](text_transforms.md) for Projective, Bend, Sine
-Wave, Grid, and Glyph Slant.
+[Text layout](text_layout.md) for writing-mode behavior,
+[Text effects](text_effects.md) for the effect stack, masks, and raster
+lifecycle, and [Composable text transforms](text_transforms.md) for
+Projective, Bend, Sine Wave, Grid, and Glyph Slant.
 
 ## Architecture and ownership
 
 ```text
 Project JSON
-  -> TextBlock + FontFormat                 persistent state
+  -> TextBlock + FontFormat.text_effects    persistent state
+               + TextBlock.text_alpha_mask
   -> TextBlkItem + QTextDocument            live text and editing
   -> horizontal / vertical document layout shaping and placement
-  -> TextEffectRenderer                     fill, stroke, shadow, gradient
+  -> TextEffectRenderer                     generated/filter stack + foreground paints
   -> TextItemGeometryController             bounds and visual mapping
   -> QGraphicsScene                         interaction, view, export
 ```
 
 | Concern | Owner | Main files |
 | --- | --- | --- |
-| Block content, logical rectangle, angle, metadata | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py) |
-| Persistent typography and transforms | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py) |
+| Block content, logical rectangle, angle, metadata, alpha mask | `TextBlock` | [`utils/textblock.py`](../../ballontranslator/utils/textblock.py), [`utils/text_alpha_mask.py`](../../ballontranslator/utils/text_alpha_mask.py) |
+| Persistent typography, transforms, and immutable effect stack | `FontFormat` | [`utils/fontformat.py`](../../ballontranslator/utils/fontformat.py), [`utils/text_effects.py`](../../ballontranslator/utils/text_effects.py) |
 | Live Qt integration | `TextBlkItem` and `QTextDocument` | [`ui/text_engine/item.py`](../../ballontranslator/ui/text_engine/item.py) |
 | Rich-text import/export and annotations | `annotations.py` | [`ui/text_engine/annotations.py`](../../ballontranslator/ui/text_engine/annotations.py) |
 | Shaping and placement | `SceneTextLayout` and its writing-mode subclasses | [`ui/text_engine/layout.py`](../../ballontranslator/ui/text_engine/layout.py), [`ui/text_engine/horizontal_layout.py`](../../ballontranslator/ui/text_engine/horizontal_layout.py), [`ui/text_engine/vertical_layout.py`](../../ballontranslator/ui/text_engine/vertical_layout.py) |
-| Fill, effects, raster bounds | `TextEffectRenderer` and rendering helpers | [`ui/text_engine/effect_renderer.py`](../../ballontranslator/ui/text_engine/effect_renderer.py), [`ui/text_engine/rendering/`](../../ballontranslator/ui/text_engine/rendering/) |
+| Foreground paint, effects, raster bounds | `TextEffectRenderer` and effect helpers | [`ui/text_engine/effects/`](../../ballontranslator/ui/text_engine/effects/) |
+| Reusable content-addressed raster assets | `ProjImgTrans` | [`utils/proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
 | Bounds, transforms, and input mapping | `TextItemGeometryController` | [`ui/text_engine/geometry.py`](../../ballontranslator/ui/text_engine/geometry.py), [`ui/text_engine/transforms/`](../../ballontranslator/ui/text_engine/transforms/) |
+| Alpha-mask brush input, preview, and undo | Canvas-owned `TextAlphaMaskEditSession` | [`ui/text_engine/effects/alpha_mask_edit_session.py`](../../ballontranslator/ui/text_engine/effects/alpha_mask_edit_session.py), [`ui/text_engine/editing/commands.py`](../../ballontranslator/ui/text_engine/editing/commands.py) |
 | Paired editors and undo integration | `SceneTextManager` | [`ui/text_engine/editing/`](../../ballontranslator/ui/text_engine/editing/) |
 | Formatting UI | Formatting panels and commands | [`ui/text_engine/formatting/`](../../ballontranslator/ui/text_engine/formatting/) |
 
@@ -38,7 +42,9 @@ owner instead of adding a parallel path.
 ## State boundaries
 
 - **Persistent state:** `TextBlock` and `FontFormat`; only this belongs in
-  project JSON.
+  project JSON. Project-only Image effects live in each concrete item's
+  `FontFormat.text_effects`; the immutable alpha-mask history is block-owned.
+  Global formatting and presets strip project raster values.
 - **Live editing state:** `QTextDocument`, cursor, selection, IME state, and
   paired-editor synchronization.
 - **Derived state:** layout records, padding, visual mappings, previews,
@@ -129,12 +135,33 @@ Never write a source or visual bounding box back into the model. Layout-owned
 placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
-`TextEffectRenderer` owns stroke, shadow, gradient, and their derived padding.
-Paint-only state must not change document content or create undo steps. Keep
-Qt's text control authoritative for shaping, cursor, selection, IME, and normal
-hit testing, adapting coordinates at the layout/geometry boundary when needed.
-Interactive rendering may use bounded fallbacks, but export must report an
-incomplete render instead of silently omitting text.
+`FontFormat.text_effects` owns one immutable effect stack;
+`TextBlock.text_alpha_mask` separately owns the item-specific Eraser. The effect
+renderer builds the structural Gradient/Texture foreground, walks movable
+Image/generated/Filter cards in panel application order around one canonical
+glyph source, then applies Eraser and overall Opacity before handing one padded
+surface to the geometry owner. Effects compose inside the item surface, never
+against the page backdrop.
+
+Project-only Texture and Image values share immutable `RasterAssetRef` data and
+the `ProjImgTrans` import, validation, resolution, and bounded decode cache.
+Passive loading preserves valid-but-missing references; interactive rendering
+warns and bypasses them, while strict export fails rather than silently omitting
+output. Global formatting and reusable presets strip project-only raster values
+because they have no project asset registry.
+
+Effect padding expands source paint bounds only. Ordinary hit testing stays on
+the logical box plus layout-owned ink overhang. Qt remains authoritative for
+shaping and editing feedback; selection and the deferred caret paint after
+effects. Image is suppressed during native editing in both writing modes, while
+ordinary Filters remain active.
+
+Committed, preview, and export raster namespaces are separate, bounded derived
+state. Requested-quality previews may promote on commit; Faster Preview uses a
+non-promotable 0.5x scratch surface. Reshape omits effects during pointer motion
+and rebuilds once settled. See [Text effects](text_effects.md) for ordering,
+sources, persistence, preview/undo, mask editing, assets, caches, and extension
+rules; see [Text filters](text_filters.md) for plug-in and tile contracts.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render
@@ -167,16 +194,39 @@ Refresh from the first owner whose input changed:
 | --- | --- |
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
-| Stroke, shadow, gradient | Effect renderer |
+| Typed effect stack, paint, Image, or Overall Opacity | Effect renderer |
+| Filter-only parameter preview | Effect renderer below-filter prefix and retained canonical/Stroke coverage |
+| TextBlock alpha-mask replacement | Effect renderer mask generation |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |
 | Item/page lifetime | Every item-owned cache |
 
 Keep refreshers idempotent, rebuild derived layout state as one settled
-generation, and keep caches bounded and releasable. The neutral path should
-stay native and cheap; allocate specialized renderers only while their feature
-is active. Batch previews and transient formatting so they refresh once when
-settled.
+generation, and keep caches bounded and releasable. The neutral path stays
+native and cheap. Batch previews and transient formatting so they refresh once
+when settled. Optional acceleration must preserve the working fallback's
+coordinates, rounding, and output, and must not compile on the Qt thread.
+
+Dynamic Text Effect and Text Transform cards keep their natural height inside
+`PanelArea.scrollContent`. Their panels may advertise a capped, content-driven
+preferred height, but must not raise their minimum height with that content;
+the containing window's current allocation takes precedence and overflow
+scrolls. Mark newly inserted cards visible before measuring them, then use the
+shared scroll-content height synchronizer so a constrained viewport neither
+flattens cards nor enlarges the main window. Leave horizontal sizing to the
+resizable scroll area so cards follow the viewport when a splitter moves.
+
+Formatting ownership includes ordinary child controls and the parent chain of
+their top-level Qt popups, such as nested `QMenu` and combo-box dropdowns.
+Transient canvas-selection signals while those widgets are active must retain
+the current text item and its card-local drafts; an actual target change still
+settles pending edits and projects the new item's persisted state.
+
+Multi-item Text Effect projection uses one explicit primary selection anchor
+without reordering Transform targets. Matching is derived from committed stacks,
+never persisted as a merged stack or Mixed values; preview and commit still
+replace complete per-item stacks through one canvas undo command. See
+[Text effects](text_effects.md) for the occurrence-matching contract.
 
 ## Change workflow
 
