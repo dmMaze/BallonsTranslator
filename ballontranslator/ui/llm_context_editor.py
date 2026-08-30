@@ -36,6 +36,7 @@ class _ContextEditorCard(QFrame):
         self.title_label.setFont(title_font)
         self.detail_label = QLabel(self)
         self.detail_label.setObjectName('LLMContextEditorDetail')
+        self.detail_label.setFont(title_font)
 
         header = QFrame(self)
         header.setObjectName('LLMContextEditorHeader')
