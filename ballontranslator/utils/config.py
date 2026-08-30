@@ -13,7 +13,15 @@ from .fontformat import (
 from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
-from .llm_profiles import default_profiles, load_profiles, migrate_module_llm_profiles, profile_by_id, profile_to_dict, LLMProfile
+from .llm_profiles import (
+    LLM_OCR_KEY,
+    LLMProfile,
+    default_profiles,
+    load_profiles,
+    migrate_module_llm_profiles,
+    profile_by_id,
+    profile_to_dict,
+)
 from .secret_store import SecretStore
 from .text_effects import without_project_raster_effects
 
@@ -74,6 +82,58 @@ class OCRTextPostprocess:
     Valid = (NONE, CAPITALIZE, UPPERCASE)
 
 
+_LEGACY_LLM_OCR_RUN_SETTINGS = {
+    'page_level_ocr': 'ocr_llm_page_level',
+    'censorship': 'ocr_llm_mask_non_text',
+    'sort_by_llm': 'ocr_llm_sort_reading_order',
+}
+_REMOVED_LLM_OCR_PARAMS = (
+    *tuple(_LEGACY_LLM_OCR_RUN_SETTINGS),
+    'font_scale',
+    'box_color',
+    'custom_prompt',
+)
+
+
+def migrate_llm_ocr_run_settings(module_cfg: Dict) -> Dict:
+    """Move PR-era page OCR module parameters into RUN settings.
+
+    Explicit current settings take precedence over legacy module parameters.
+
+    >>> raw = {'ocr_params': {'LLMOCR': {'page_level_ocr': True}}}
+    >>> migrate_llm_ocr_run_settings(raw)['ocr_llm_page_level']
+    True
+    >>> raw['ocr_params']['LLMOCR']
+    {}
+    """
+
+    if not isinstance(module_cfg, dict):
+        return module_cfg
+    ocr_params = module_cfg.get('ocr_params')
+    if not isinstance(ocr_params, dict):
+        return module_cfg
+    llm_ocr_params = ocr_params.get(LLM_OCR_KEY)
+    if not isinstance(llm_ocr_params, dict):
+        return module_cfg
+
+    for legacy_key, setting_name in _LEGACY_LLM_OCR_RUN_SETTINGS.items():
+        if setting_name in module_cfg or legacy_key not in llm_ocr_params:
+            continue
+        value = llm_ocr_params[legacy_key]
+        if isinstance(value, dict) and 'value' in value:
+            value = value['value']
+        if type(value) is bool:
+            module_cfg[setting_name] = value
+        else:
+            LOGGER.warning(
+                f'Discard invalid LLMOCR {legacy_key} config: expected a boolean.'
+            )
+
+    for key in _REMOVED_LLM_OCR_PARAMS:
+        llm_ocr_params.pop(key, None)
+    return module_cfg
+
+
 @nested_dataclass
 class ModuleConfig(Config):
     textdetector: str = 'ctd'
@@ -89,6 +149,9 @@ class ModuleConfig(Config):
     # 是否在 OCR 后进行字体检测（默认不启用）
     ocr_font_detect: bool = False
     ocr_text_postprocess: str = OCRTextPostprocess.NONE
+    ocr_llm_page_level: bool = False
+    ocr_llm_mask_non_text: bool = True
+    ocr_llm_sort_reading_order: bool = True
     textdetector_params: Dict = field(default_factory=lambda: dict())
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
@@ -187,6 +250,16 @@ class ModuleConfig(Config):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
     def __post_init__(self):
+        for setting_name, default in (
+            ('ocr_llm_page_level', False),
+            ('ocr_llm_mask_non_text', True),
+            ('ocr_llm_sort_reading_order', True),
+        ):
+            if type(getattr(self, setting_name)) is not bool:
+                LOGGER.warning(
+                    f'Discard invalid module.{setting_name} config: expected a boolean.'
+                )
+                setattr(self, setting_name, default)
         if self.ocr_text_postprocess not in OCRTextPostprocess.Valid:
             self.ocr_text_postprocess = OCRTextPostprocess.NONE
         if self.translate_context not in TranslateContext.Valid:
@@ -419,8 +492,9 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
-            # LLM translator keys must be consumed before module-param patching drops unknown keys.
+            # Consume legacy keys before module-param patching drops unknown keys.
             migrate_module_llm_profiles(module_cfg)
+            migrate_llm_ocr_run_settings(module_cfg)
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:

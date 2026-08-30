@@ -58,7 +58,7 @@ from ballontranslator.utils.config import (
     save_config,
     TranslateContext,
 )
-from ballontranslator.utils.llm_profiles import LLM_TRANSLATOR_KEY
+from ballontranslator.utils.llm_profiles import LLM_OCR_KEY, LLM_TRANSLATOR_KEY
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.modules import (
     GET_VALID_INPAINTERS,
@@ -777,6 +777,45 @@ class RunPipelineDialog(QDialog):
             'ocr_font_detect',
         )
 
+        self.llm_ocr_settings = QWidget(section)
+        self.llm_ocr_settings.setObjectName('RunPipelineLLMOCRSettings')
+        llm_ocr_layout = QVBoxLayout(self.llm_ocr_settings)
+        llm_ocr_layout.setContentsMargins(0, 0, 0, 0)
+        llm_ocr_layout.setSpacing(6)
+        self.llm_ocr_page_level = self._add_checkbox_setting(
+            self.llm_ocr_settings,
+            llm_ocr_layout,
+            'RunPipelineLLMOCRPageLevel',
+            self.tr('Page-level LLM OCR'),
+            pcfg.module.ocr_llm_page_level,
+            pcfg.module,
+            'ocr_llm_page_level',
+        )
+        self.llm_ocr_mask_non_text = self._add_checkbox_setting(
+            self.llm_ocr_settings,
+            llm_ocr_layout,
+            'RunPipelineLLMOCRMaskNonText',
+            self.tr('Mask non-text areas'),
+            pcfg.module.ocr_llm_mask_non_text,
+            pcfg.module,
+            'ocr_llm_mask_non_text',
+        )
+        self.llm_ocr_reading_order = self._add_checkbox_setting(
+            self.llm_ocr_settings,
+            llm_ocr_layout,
+            'RunPipelineLLMOCRReadingOrder',
+            self.tr('Use LLM reading order'),
+            pcfg.module.ocr_llm_sort_reading_order,
+            pcfg.module,
+            'ocr_llm_sort_reading_order',
+        )
+        self.llm_ocr_page_level.toggled.connect(
+            self._sync_llm_ocr_option_state
+        )
+        layout.addWidget(self.llm_ocr_settings)
+        self._sync_llm_ocr_option_state()
+        self.llm_ocr_settings.setVisible(pcfg.module.ocr == LLM_OCR_KEY)
+
         postprocess_options_row = QWidget(section)
         postprocess_options_row.setObjectName('RunPipelineGeneralSettingRow')
         postprocess_options_row.setAttribute(
@@ -834,6 +873,15 @@ class RunPipelineDialog(QDialog):
             pcfg.module.ocr_text_postprocess = button.property(
                 'textPostprocessMode'
             )
+
+    def _sync_llm_ocr_option_state(self, _checked: bool = False) -> None:
+        page_level = self.llm_ocr_page_level.isChecked()
+        self.llm_ocr_mask_non_text.setEnabled(page_level)
+        self.llm_ocr_reading_order.setEnabled(page_level)
+
+    def _set_llm_ocr_settings_visible(self, module_name: str) -> None:
+        self.llm_ocr_settings.setVisible(module_name == LLM_OCR_KEY)
+        self._fit_to_current_workflow()
 
     def _build_inpainting_settings(self, section: QWidget, layout: QVBoxLayout):
         self.skip_simple_cases = self._add_checkbox_setting(
@@ -1337,6 +1385,8 @@ class RunPipelineDialog(QDialog):
         )
 
     def setModuleSelection(self, module_type: str, module_name: str) -> None:
+        if module_type == 'ocr':
+            self._set_llm_ocr_settings_visible(module_name)
         for activator in self.module_activators:
             if activator.module_type == module_type:
                 activator.setModule(module_name)

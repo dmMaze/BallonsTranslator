@@ -382,6 +382,68 @@ class SecretStoreTest(unittest.TestCase):
         )
         self.assertEqual(selected.vision_detail_level, 'high')
 
+    def test_program_config_migrates_llm_ocr_run_settings(self):
+        raw = {
+            'module': {
+                'ocr_params': {
+                    'LLMOCR': {
+                        'delay': 0.5,
+                        'page_level_ocr': True,
+                        'censorship': {'value': False},
+                        'sort_by_llm': False,
+                        'font_scale': 1.8,
+                        'box_color': '255, 0, 0',
+                        'custom_prompt': 'legacy prompt',
+                    },
+                },
+            },
+        }
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            json.dump(raw, temp)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        self.assertTrue(loaded.module.ocr_llm_page_level)
+        self.assertFalse(loaded.module.ocr_llm_mask_non_text)
+        self.assertFalse(loaded.module.ocr_llm_sort_reading_order)
+        self.assertEqual(
+            loaded.module.ocr_params['LLMOCR'],
+            {'delay': 0.5},
+        )
+
+    def test_current_llm_ocr_run_setting_wins_over_legacy_value(self):
+        raw = {
+            'module': {
+                'ocr_llm_page_level': False,
+                'ocr_params': {
+                    'LLMOCR': {'page_level_ocr': True},
+                },
+            },
+        }
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            json.dump(raw, temp)
+            temp.flush()
+            loaded = ProgramConfig.load(temp.name)
+
+        self.assertFalse(loaded.module.ocr_llm_page_level)
+        self.assertNotIn(
+            'page_level_ocr',
+            loaded.module.ocr_params['LLMOCR'],
+        )
+
+    def test_llm_ocr_page_mode_defaults_off_and_invalid_values_reset(self):
+        self.assertFalse(ModuleConfig().ocr_llm_page_level)
+
+        config = ModuleConfig(
+            ocr_llm_page_level='yes',
+            ocr_llm_mask_non_text=1,
+            ocr_llm_sort_reading_order=None,
+        )
+
+        self.assertFalse(config.ocr_llm_page_level)
+        self.assertTrue(config.ocr_llm_mask_non_text)
+        self.assertTrue(config.ocr_llm_sort_reading_order)
+
     def test_saved_config_roundtrips_inpaint_llm_profile_selection(self):
         profile = default_profile('OpenRouter')
         profile.api_key = 'sk-demo'
