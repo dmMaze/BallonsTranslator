@@ -109,6 +109,10 @@ class LeftBar(Widget):
         self.globalSearchChecker.setObjectName('GlobalSearchChecker')
         self.globalSearchChecker.setToolTip(self.tr('Global Search (Ctrl+G)'))
 
+        self.llmContextChecker = QCheckBox()
+        self.llmContextChecker.setObjectName('LLMContextChecker')
+        self.llmContextChecker.setToolTip(self.tr('LLM Context Editor'))
+
         self.imgTransChecker = StateChecker('imgtrans')
         self.imgTransChecker.setObjectName('ImgTransChecker')
         self.imgTransChecker.checked.connect(self.stateCheckerChanged)
@@ -183,6 +187,7 @@ class LeftBar(Widget):
         vlayout.addWidget(self.openBtn)
         vlayout.addWidget(self.showPageListLabel)
         vlayout.addWidget(self.globalSearchChecker)
+        vlayout.addWidget(self.llmContextChecker)
         vlayout.addWidget(self.imgTransChecker)
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
@@ -415,14 +420,19 @@ class TitleBar(Widget):
         self.prevpage_trigger = prevPageAction.triggered
         self.nextpage_trigger = nextPageAction.triggered
 
-        # 工具菜单
+        # Tools Menu
         self.toolsToolBtn = TitleBarToolBtn(self)
         self.toolsToolBtn.setText(self.tr('Tools'))
         
-        # 区域合并工具
+        # Merge Tool
         mergeToolAction = QAction('区域合并工具', self)
         mergeToolAction.setShortcut(QKeySequence('Ctrl+Shift+M'))
         self.merge_tool_trigger = mergeToolAction.triggered
+
+        # Photoshop Bridge Tool
+        psBridgeAction = QAction(self.tr('Photoshop Bridge'), self)
+        psBridgeAction.setShortcut(QKeySequence('Ctrl+Shift+P'))
+        self.ps_bridge_trigger = psBridgeAction.triggered
 
         self.path_reorder_action = QAction(self.tr('Path Reorder'), self)
         self.path_reorder_action.setCheckable(True)
@@ -433,6 +443,7 @@ class TitleBar(Widget):
         
         toolsMenu = QMenu(self.toolsToolBtn)
         toolsMenu.addAction(mergeToolAction)
+        toolsMenu.addAction(psBridgeAction)
         toolsMenu.addAction(self.path_reorder_action)
         toolsMenu.addSeparator()
         toolsMenu.addAction(fontExclusionAction)

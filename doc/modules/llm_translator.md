@@ -9,6 +9,10 @@ preserve behavior that spans several files.
 - One request sends the current non-empty text blocks as a numbered JSON batch.
 - `page` means no prior-page examples. It does not force a whole-page caller.
 - `+history` adds completed earlier pages as chronological user/assistant pairs.
+- `Vision` attaches only the current page image. `Summary` extends the same
+  translation response with reusable page memory, with or without Vision.
+- `Memory` applies editable project-wide context to every request. When history
+  is active, summarized pages retired at a budget boundary can update it.
 - `ProjImgTrans` is authoritative. The in-memory history window is a disposable
   optimization for sequential requests and provider prefix caching.
 - Glossary selection is independent of history and works in either mode.
@@ -17,14 +21,16 @@ preserve behavior that spans several files.
 
 | Concern | Owner |
 | --- | --- |
-| Prompt assembly, provider request, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| Prompt assembly, translation request shape, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| Chat client lifecycle, throttling, provider argument quirks, status normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
 | History selection, rebuild, eviction, and overflow recovery | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
 | Glossary parsing and matching | [`context/glossary.py`](../../ballontranslator/modules/context/glossary.py) |
 | Token estimates and provider usage fields | [`context/token_usage.py`](../../ballontranslator/modules/context/token_usage.py) |
 | Context settings and LLM profiles | [`config.py`](../../ballontranslator/utils/config.py), [`llm_profiles.py`](../../ballontranslator/utils/llm_profiles.py) |
 | Full-page and selected-block worker boundaries | [`module_manager.py`](../../ballontranslator/ui/module_manager.py) |
-| Page order, completion, target metadata, and load identity | [`proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
+| Page order, completion, target metadata, saved summaries/memory, and load identity | [`proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
+| User-owned summary/memory editing and main-window save integration | [`llm_context_editor.py`](../../ballontranslator/ui/llm_context_editor.py), [`mainwindow.py`](../../ballontranslator/ui/mainwindow.py) |
 
 ## Request flow
 
@@ -37,25 +43,37 @@ worker
      -> decide commit_history_window
      -> LLMTranslator.translate(...)
         -> resolve profile and freeze RequestContext
-        -> assemble messages and call chat.completions.create(...)
-        -> parse JSON and validate the exact ID set
+        -> freeze the current image when Vision is enabled
+        -> assemble messages and translation-specific API arguments
+        -> LLMChatRequester calls chat.completions.create(...)
+        -> parse translations and the optional page summary
         -> commit reusable window state after a valid parse
      -> finalize results and assign TextBlock.translation
   -> mark the page translated when the caller's completion rule passes
+  -> persist matching pending summary and compact-memory updates
 ```
 
 `LLMTranslator.concate_text` is `False`: every non-empty source becomes one
 one-based JSON item. The canonical response is:
 
 ```json
-{"translations":[{"id":1,"translation":"..."}]}
+{"1":"..."}
 ```
 
-The parser tolerates the compatibility shapes implemented in
+The parser also tolerates the compatibility shapes implemented in
 `_parse_response()`, but always requires exactly IDs `1..N`. Full-page results
 then run normalization, result substitutions, and optional uppercase before
 the page can become history. Selected-block translation retains its narrower
 postprocessing behavior.
+
+With Summary enabled, the same text or multimodal response instead uses:
+
+```json
+{"translations":{"1":"..."},"page_summary":"..."}
+```
+
+A missing or malformed summary does not discard a complete translation map and
+does not erase existing user-owned summary text.
 
 ## Prompt layout and context modes
 
@@ -64,8 +82,9 @@ The message order is deliberately stable:
 ```text
 system: translation contract + profile instructions
 system: complete glossary                         # All mode only
+system: compacted older-page memory               # Memory only
 user / assistant: completed history page pairs   # +history only
-user: current JSON + matching glossary            # Matching suffix only
+user: current JSON + matching glossary + image    # image is Vision only
 ```
 
 The system contract fixes target language, IDs, item count, and JSON shape;
@@ -101,13 +120,48 @@ strings, use the current pre-translation source substitutions, and use the
 fully finalized translations stored in the project.
 
 Calls without both `project` and `page_key` still translate, but cannot read or
-advance reusable project history.
+advance reusable project history or attach an image. Project memory can operate
+without history whenever a project is supplied.
+
+## Vision, summaries, and memory
+
+Vision uses the selected profile's vision model. The encoded, bounded JPEG is
+the last part of the current user message, so stable instructions, full
+glossary, compacted memory, and recent history remain ahead of the volatile
+page suffix. Retries reuse the frozen data URL and never replay older images.
+
+Summary asks the already-selected text or vision translation request for concise
+English narrative memory alongside translations, then fills an empty
+`llm_visual_summary` record in that page's existing `image_info`. Provenance is
+diagnostic only. A saved summary remains usable across source, image, language,
+profile, model, and page-order changes until the user edits or clears it.
+
+The translator keeps a generated summary pending until the worker has
+postprocessed and assigned translations and marked the page complete. Partial
+selections and failed pages therefore do not add one. Generated results never
+replace an existing summary, including one the user clears while a request is
+running; the context editor is the direct editing boundary.
+
+Compact memory is an optional project-level record. When Memory is enabled, its
+text is frozen into every request before recent history, irrespective of Vision,
+Summary, history mode, model, language, current page, or recorded coverage.
+Coverage metadata only prevents redundant automatic compaction; generated text
+also starts with an explicit `Coverage:` line.
+
+Automatic compaction runs when history selection leaves summarized older pages
+outside the recent suffix, either at ordinary eviction or while rebuilding a
+window. One text-model request merges the previous memory with newly retired
+page summaries. Failure or an oversized result keeps the previous record and
+ordinary whole-page eviction. A successful result is staged until page
+finalization, then stored in the project unless the user edited memory while the
+request was running.
 
 ## Runtime history window
 
-`RequestContext` freezes history and glossary for one request. Ordinary retries
-reuse the same messages. `_history_window` records only the most recent
-successful sequential state; it does not persist project data.
+`RequestContext` freezes history, glossary, and optional compacted memory for
+one request. Ordinary retries reuse the same messages. `_history_window`
+records only the most recent successful sequential state; it does not persist
+project data.
 
 The window can grow only when the same project load and prompt-shaping settings
 are active, retained snapshots still match, and the requested page immediately
@@ -115,9 +169,9 @@ follows the last successful request page. Otherwise history is rebuilt from a
 recent eligible project suffix.
 
 The key covers project load identity, source language, model, rendered system
-prompt, and history budget. The system prompt already captures target language
-and profile instructions. Glossary settings are excluded because stored
-history pairs are glossary-free.
+prompt, history budget, memory enablement, and a digest of the editable memory.
+The system prompt already captures target language and profile instructions.
+Glossary settings are excluded because stored history pairs are glossary-free.
 
 Diagnostics name the transition: `empty`/`rebuild` selects a recent eligible
 suffix, `grow` appends the previous page, `reuse` keeps the prefix when that
@@ -161,8 +215,11 @@ filling the budget. Removing an oldest page changes an early prefix; bulk
 eviction pays that cache break once and leaves room for several append-only
 requests.
 
-The history budget counts rendered history pairs only. System instructions,
-the current batch, glossary, and output are outside it. Known models use
+The history budget counts rendered history pairs and compacted memory. Memory
+is not silently dropped when its user-owned text exceeds that budget; recent
+history simply receives no remaining space. Other
+system instructions, the current batch, glossary, image, and output are outside
+it. Known models use
 `tiktoken`; unknown models use the deterministic fallback estimator. Pages are
 indivisible. On a recognized provider overflow, recovery removes oldest whole
 pages without consuming the ordinary retry budget and never truncates the
@@ -212,6 +269,8 @@ than silently translating without it.
   history remains, the error is re-raised.
 - `_history_window` is cleared on unload and is safe to rebuild from the
   project after restart.
+- Compaction or a user edit changes the early prefix once; later requests reuse
+  that memory block until the next memory epoch.
 - `ProjImgTrans.load_identity` invalidates a window even when the same path is
   reopened.
 - The synchronous provider call cannot be interrupted in flight; the stop event
@@ -231,15 +290,18 @@ Before changing this subsystem, preserve these contracts:
 - history contains immutable whole-page pairs, not `TextBlock` references;
 - partial selections do not advance history;
 - retries use one frozen request snapshot;
+- saved page summaries and project memory are user-owned optional data;
 - stable prompt content precedes volatile content;
 - current input and glossary are not sacrificed to history recovery;
 - page completion happens after result finalization;
 - the translation queue remains sequential when `+history` is active.
 
 Focused executable specifications are
+[`test_llm_chat.py`](../../tests/test_llm_chat.py),
 [`test_llm_translator.py`](../../tests/test_llm_translator.py),
 [`test_llm_translation_context.py`](../../tests/test_llm_translation_context.py),
 [`test_proj_imgtrans_translation_context.py`](../../tests/test_proj_imgtrans_translation_context.py),
+[`test_llm_context_editor.py`](../../tests/test_llm_context_editor.py),
 and [`test_run_pipeline_dialog.py`](../../tests/test_run_pipeline_dialog.py).
 
 ```bash

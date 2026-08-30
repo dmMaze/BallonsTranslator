@@ -307,13 +307,18 @@ class LLMTranslatorTest(unittest.TestCase):
             "This model's maximum context length is 4096 tokens, but the "
             'request used 5000 tokens.'
         )
-        translator = FakeTranslator(FakeStatusError(provider_message))
+        provider_error = FakeStatusError(provider_message)
+        translator = FakeTranslator(provider_error)
 
-        with self.assertRaisesRegex(ContextLengthError, 'maximum context length'):
+        with self.assertRaisesRegex(
+            ContextLengthError,
+            'maximum context length',
+        ) as caught:
             translator._request_translation(
                 translator.profile,
                 [{'role': 'user', 'content': 'x'}],
             )
+        self.assertIs(caught.exception.__cause__, provider_error)
 
     def test_context_error_code_is_recognized_but_unrelated_errors_are_not(self):
         coded = FakeTranslator(FakeStatusError(

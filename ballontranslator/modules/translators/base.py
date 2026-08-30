@@ -325,6 +325,13 @@ class BaseTranslator(BaseModule):
         for tr, blk in zip(translations, textblk_lst):
             blk.translation = tr
 
+    def on_page_translation_finished(
+        self,
+        project: 'ProjImgTrans',
+        page_key: str,
+    ) -> None:
+        """Commit translator-owned context after page finalization."""
+
     def _prepare_textblock_sources(
         self,
         textblk_lst: List[TextBlock],

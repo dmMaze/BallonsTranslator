@@ -322,6 +322,7 @@ QCheckBox#TexteditChecker::indicator,
 QCheckBox#TextblockChecker::indicator,
 QCheckBox#ShowPageListChecker::indicator,
 QCheckBox#GlobalSearchChecker::indicator,
+QCheckBox#LLMContextChecker::indicator,
 QCheckBox#ImgTransChecker::indicator,
 QCheckBox#ConfigChecker::indicator,
 DrawToolCheckBox::indicator,
@@ -1137,7 +1138,7 @@ QComboBox[bottomBorderSelector="true"]:focus {
 }
 
 QComboBox[bottomBorderSelector="true"]::drop-down {
-    width: 20px;
+    width: 16px;
     border: none;
 }
 
@@ -1900,6 +1901,76 @@ QCheckBox#GlobalSearchChecker::indicator:checked
     image: url(resources/icons/search_activate.svg);
 }
 
+QCheckBox#LLMContextChecker::indicator{
+    height: 28px;
+    width: 28px;
+    image: url(resources/icons/llm_context.svg);
+}
+
+QCheckBox#LLMContextChecker::indicator:hover,
+QCheckBox#LLMContextChecker::indicator:checked
+{
+    image: url(resources/icons/llm_context_activate.svg);
+}
+
+QWidget#LLMContextEditor {
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-radius: 5px;
+}
+
+QFrame#LLMContextEditorCard {
+    background-color: @emptyContentBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 5px;
+}
+
+QFrame#LLMContextEditorHeader {
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+}
+
+QLabel#LLMContextEditorTitle {
+    background-color: transparent;
+    color: @titleBarColor;
+    font-weight: 600;
+}
+
+QLabel#LLMContextEditorDetail {
+    background-color: transparent;
+    color: @qwidgetForegroundColor;
+}
+
+QPlainTextEdit#LLMContextTextEdit {
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-top: 1px solid @borderColor;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    padding: 8px;
+}
+
+QPlainTextEdit#LLMContextTextEdit:focus {
+    border-top: 1px solid rgb(30, 147, 229);
+}
+
+QSplitter#LLMContextVerticalSplitter::handle {
+    height: 8px;
+    background-color: @widgetBackgroundColor;
+}
+
+QSplitter#LLMContextVerticalSplitter::handle:hover,
+QSplitter#LLMContextVerticalSplitter::handle:pressed {
+    background-color: rgb(30, 147, 229);
+}
+
+QListWidget#PageListArea,
+CustomGV {
+    border-radius: 5px;
+}
+
 
 StateChecker#ImgTransChecker::indicator{
     height: 27px;
@@ -2392,7 +2463,9 @@ DeleteStyleButton::hover {
     background-color: #FF605C;
 }
 
-QFrame#TextTransformParameterPanel {
+QFrame#TextTransformParameterPanel,
+QFrame#TextEffectParameterPanel,
+QFrame#TextAlphaMaskCard {
     background-color: @widgetBackgroundColor;
     border: 1px solid @borderColor;
     border-radius: 6px;
@@ -2402,32 +2475,170 @@ QFrame#TextTransformParameterPanel[selected="true"] {
     border: 2px solid rgb(30, 147, 229);
 }
 
+QFrame#TextEffectParameterPanel[matched="true"] {
+    border: 2px solid rgb(248, 64, 147);
+}
+
 QFrame#TextTransformParameterPanel QLabel,
 QFrame#TextTransformParameterPanel QWidget#TextTransformPanelActions,
-QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls {
+QFrame#TextTransformParameterPanel QWidget#TextTransformPanelControls,
+QFrame#TextEffectParameterPanel QLabel,
+QFrame#TextEffectParameterPanel QWidget#TextEffectPanelActions,
+QFrame#TextAlphaMaskCard QWidget#TextEffectPanelActions,
+QFrame#TextAlphaMaskCard QLabel {
     background-color: transparent;
 }
 
-QWidget#TextTransformControl {
+QWidget#TextTransformControl,
+QWidget#TextEffectControl {
     background-color: transparent;
 }
 
-QMenu#TextTransformAddMenu::item {
+QMenu#TextTransformAddMenu::item,
+QMenu#TextEffectAddMenu::item {
     padding-left: 12px;
     font-size: 13px;
 }
 
-QFrame#TextTransformParameterPanel QLabel#TextTransformParameterTitle {
+QFrame#TextTransformParameterPanel QLabel#TextTransformParameterTitle,
+QFrame#TextEffectParameterPanel QLabel#TextEffectParameterTitle,
+QFrame#TextAlphaMaskCard QLabel#TextEffectParameterTitle {
     font-size: 13px;
     font-weight: 600;
 }
 
-QToolButton#AddTextTransformButton {
-    min-width: 52px;
-    max-width: 52px;
+QToolButton#TextEffectPaintButton {
+    min-width: 0px;
+    font-size: 12px;
+    text-align: center;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    background-color: transparent;
+}
+
+QToolButton#TextEffectPaintButton:hover {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QLineEdit#TextEffectRasterAssetField {
     min-height: 24px;
     max-height: 24px;
-    padding: 0px 14px 0px 4px;
+    font-size: 12px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    padding-left: 4px;
+}
+
+QLineEdit#TextEffectRasterAssetField:hover,
+QLineEdit#TextEffectRasterAssetField:focus {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QPushButton#TextEffectRasterFileButton {
+    min-width: 20px;
+    max-width: 20px;
+    min-height: 20px;
+    max-height: 20px;
+    padding: 0px;
+    border: none;
+    background-color: transparent;
+}
+
+QPushButton#TextEffectRasterFileButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
+    border: none;
+}
+
+QLabel#TextEffectGenerateSectionTitle {
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QToolButton#TextEffectGenerationModelSelector,
+QToolButton#TextEffectBlendSelector {
+    min-width: 0px;
+    min-height: 20px;
+    max-height: 20px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    padding-left: 4px;
+    font-size: 12px;
+    text-align: center;
+}
+
+QToolButton#TextEffectGenerationModelSelector:hover,
+QToolButton#TextEffectGenerationModelSelector:focus,
+QToolButton#TextEffectBlendSelector:hover,
+QToolButton#TextEffectBlendSelector:focus,
+QToolButton#TextEffectBlendSelector:open {
+    border: none;
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QToolButton#TextEffectGenerationModelSelector {
+    padding-right: 16px;
+}
+
+QPlainTextEdit#TextEffectGenerationPromptEditor {
+    color: @qwidgetForegroundColor;
+    background-color: @transtexteditBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    padding: 3px;
+    font-size: 12px;
+}
+
+QPlainTextEdit#TextEffectGenerationPromptEditor:focus {
+    border: 1px solid rgb(30, 147, 229);
+}
+
+QToolButton#TextEffectBlendSelector {
+    padding-right: 20px;
+}
+
+QToolButton#TextEffectBlendSelector::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+
+QWidget#InlineLinearGradientEditor {
+    background-color: transparent;
+}
+
+QToolButton#GradientStopColorPicker {
+    border: 1px solid @borderColor;
+    border-radius: 3px;
+}
+
+QToolButton#GradientStopActionButton {
+    margin: 0px;
+    padding: 0px;
+    border: none;
+    border-radius: 3px;
+    background-color: transparent;
+}
+
+QToolButton#GradientStopActionButton:hover {
+    background-color: @borderColor;
+}
+
+QToolButton#AddTextTransformButton,
+QToolButton#AddTextEffectButton,
+QToolButton#TextEffectGenerateButton {
+    min-height: 24px;
+    max-height: 24px;
     color: white;
     font-size: 12px;
     border: 1px solid rgb(30, 147, 229);
@@ -2435,15 +2646,36 @@ QToolButton#AddTextTransformButton {
     background-color: rgb(30, 147, 229);
 }
 
-QToolButton#AddTextTransformButton:hover {
+QToolButton#AddTextTransformButton {
+    min-width: 52px;
+    max-width: 52px;
+    padding: 0px 14px 0px 4px;
+}
+
+QToolButton#AddTextEffectButton {
+    padding: 0px 14px 0px 4px;
+}
+
+QToolButton#AddTextTransformButton:hover,
+QToolButton#AddTextEffectButton:hover,
+QToolButton#TextEffectGenerateButton:hover {
     background-color: #4ba7ee;
 }
 
-QToolButton#AddTextTransformButton:pressed {
+QToolButton#AddTextTransformButton:pressed,
+QToolButton#AddTextEffectButton:pressed,
+QToolButton#TextEffectGenerateButton:pressed {
     background-color: #187fc3;
 }
 
-QToolButton#AddTextTransformButton::menu-indicator {
+QToolButton#TextEffectGenerateButton[running="true"] {
+    color: @qwidgetForegroundColor;
+    border-color: @borderColor;
+    background-color: @borderColor;
+}
+
+QToolButton#AddTextTransformButton::menu-indicator,
+QToolButton#AddTextEffectButton::menu-indicator {
     image: url(resources/icons/chevron-down-white.svg);
     width: 10px;
     height: 10px;
@@ -2452,18 +2684,35 @@ QToolButton#AddTextTransformButton::menu-indicator {
     right: 4px;
 }
 
-QToolButton#TextTransformMoveButton:hover {
+QCheckBox#TextEffectFasterPreviewToggle {
+    background-color: transparent;
+    font-size: 12px;
+}
+
+QToolButton#TextTransformMoveButton:hover,
+QToolButton#TextEffectMoveButton:hover {
     background-color: @borderColor;
 }
 
 QLabel#TextTransformParamLabel,
 QLineEdit#TextTransformParamEditor,
-QComboBox#TextTransformParamEditor {
+QComboBox#TextTransformParamEditor,
+QLabel#TextEffectParamLabel,
+QLineEdit#TextEffectParamEditor,
+QDoubleSpinBox#TextEffectParamEditor,
+QComboBox#TextEffectParamEditor,
+QComboBox#TextAdvancedFormatParamEditor,
+QLineEdit#TextAdvancedFormatParamEditor {
     font-size: 12px;
 }
 
 QLineEdit#TextTransformParamEditor,
-QComboBox#TextTransformParamEditor {
+QComboBox#TextTransformParamEditor,
+QLineEdit#TextEffectParamEditor,
+QDoubleSpinBox#TextEffectParamEditor,
+QComboBox#TextEffectParamEditor,
+QComboBox#TextAdvancedFormatParamEditor,
+QLineEdit#TextAdvancedFormatParamEditor {
     min-height: 20px;
     max-height: 20px;
     height: 20px;
@@ -2474,7 +2723,8 @@ QComboBox#TextTransformParamEditor {
     border-radius: 0px;
 }
 
-QLineEdit#TextTransformParamEditor {
+QLineEdit#TextTransformParamEditor,
+QLineEdit#TextEffectParamEditor {
     min-width: 54px;
     max-width: 54px;
     padding-left: 0px;
@@ -2495,7 +2745,9 @@ QLineEdit#TextTransformParamEditor[glyphSlantEditor="true"] {
 QFrame#TextTransformParameterPanel
 QLineEdit#TextTransformParamEditor[cardEditor="true"],
 QFrame#TextTransformParameterPanel
-QComboBox#TextTransformParamEditor[cardEditor="true"] {
+QComboBox#TextTransformParamEditor[cardEditor="true"],
+QFrame#TextEffectParameterPanel
+QLineEdit#TextEffectParamEditor[cardEditor="true"] {
     min-width: 0px;
     max-width: 1000px;
 }
@@ -2503,12 +2755,24 @@ QComboBox#TextTransformParamEditor[cardEditor="true"] {
 QLineEdit#TextTransformParamEditor:hover,
 QLineEdit#TextTransformParamEditor:focus,
 QComboBox#TextTransformParamEditor:hover,
-QComboBox#TextTransformParamEditor:focus {
+QComboBox#TextTransformParamEditor:focus,
+QLineEdit#TextEffectParamEditor:hover,
+QLineEdit#TextEffectParamEditor:focus,
+QDoubleSpinBox#TextEffectParamEditor:hover,
+QDoubleSpinBox#TextEffectParamEditor:focus,
+QComboBox#TextEffectParamEditor:hover,
+QComboBox#TextEffectParamEditor:focus,
+QComboBox#TextAdvancedFormatParamEditor:hover,
+QComboBox#TextAdvancedFormatParamEditor:focus,
+QLineEdit#TextAdvancedFormatParamEditor:hover,
+QLineEdit#TextAdvancedFormatParamEditor:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
-QComboBox#TextTransformParamEditor::drop-down {
+QComboBox#TextTransformParamEditor::drop-down,
+QComboBox#TextEffectParamEditor::drop-down,
+QComboBox#TextAdvancedFormatParamEditor::drop-down {
     border: none;
     background-color: transparent;
 }
@@ -2520,14 +2784,61 @@ QLabel#TextTransformSectionTitle {
 }
 
 QToolButton#TextTransformMoveButton,
-QToolButton#TextTransformCloseButton {
+QToolButton#TextTransformCloseButton,
+QToolButton#TextEffectMoveButton,
+QToolButton#TextEffectCloseButton,
+QToolButton#TextEffectVisibilityButton,
+QToolButton#TextEffectBrushButton,
+QToolButton#TextEffectHollowButton {
     border: none;
     border-radius: 3px;
     background-color: transparent;
 }
 
-QToolButton#TextTransformCloseButton:hover {
+QToolButton#TextEffectMoveButton,
+QToolButton#TextEffectCloseButton,
+QToolButton#TextEffectVisibilityButton {
+    margin: 0px;
+    padding: 0px;
+}
+
+QToolButton#TextTransformCloseButton:hover,
+QToolButton#TextEffectCloseButton:hover {
     background-color: #FF605C;
+}
+
+QToolButton#TextEffectVisibilityButton:hover {
+    background-color: @borderColor;
+}
+
+QToolButton#TextEffectBrushButton,
+QToolButton#TextEffectHollowButton {
+    border-radius: 6px;
+}
+
+QToolButton#TextEffectBrushButton:checked,
+QToolButton#TextEffectHollowButton:checked {
+    background-color: rgba(30, 147, 229, 18%);
+}
+
+QToolButton#TextEffectHollowButton[mixed="true"] {
+    border: 1px dashed rgb(30, 147, 229);
+    background-color: rgba(30, 147, 229, 9%);
+}
+
+QToolButton#TextEffectBrushButton:enabled:hover,
+QToolButton#TextEffectHollowButton:hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QFrame#TextAlphaMaskCard QToolButton#TextAlphaMaskClearButton {
+    min-height: 22px;
+    color: @qwidgetForegroundColor;
+    font-size: 12px;
+    border: 1px solid @borderColor;
+    border-radius: 4px;
+    background-color: transparent;
+    padding: 0px 8px;
 }
 
 QLabel#TextTransformMixedLabel {
@@ -2540,27 +2851,8 @@ QWidget#TextAdvancedFormatUnit {
     background-color: transparent;
 }
 
-QLabel#fontAngleLabel {
-    min-width: 22px;
-    max-width: 22px;
-    min-height: 22px;
-    max-height: 22px;
-}
-
-QLabel#shadowRadiusLabel {
-    min-width: 22px;
-    max-width: 22px;
-    min-height: 22px;
-    max-height: 22px;
-}
-
-QLabel#GradientColorArrow {
-    background-color: transparent;
-}
-
-QGroupBox#TextGradientGroup::title {
-    subcontrol-position: top left;
-    padding-left: 24px;
+PanelAreaContent#TextAdvancedFormatContent QGroupBox {
+    font-size: 12px;
 }
 
 /* Suggestion Popup (Spell Checker) */

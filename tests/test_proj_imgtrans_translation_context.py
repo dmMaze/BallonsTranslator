@@ -44,8 +44,19 @@ class LLMContextConfigTest(unittest.TestCase):
                 loaded.module.llm_prior_context_token_budget,
                 loaded.module.llm_glossary_path,
                 loaded.module.llm_glossary_mode,
+                loaded.module.llm_translate_vision,
+                loaded.module.llm_translate_summary,
+                loaded.module.llm_translate_memory,
             ),
-            (LLMTranslateContext.PAGE, 4096, '', LLMGlossaryMode.Matching),
+            (
+                LLMTranslateContext.PAGE,
+                4096,
+                '',
+                LLMGlossaryMode.Matching,
+                False,
+                False,
+                False,
+            ),
         )
 
         invalid_cases = (
@@ -57,6 +68,9 @@ class LLMContextConfigTest(unittest.TestCase):
                 LLMTranslateContext.PAGE,
             ),
             ('llm_glossary_path', (None, False, 1, [], {}), ''),
+            ('llm_translate_vision', (None, 0, 1, 'yes', [], {}), False),
+            ('llm_translate_summary', (None, 0, 1, 'yes', [], {}), False),
+            ('llm_translate_memory', (None, 0, 1, 'yes', [], {}), False),
         )
         for field, values, expected in invalid_cases:
             for value in values:
@@ -72,6 +86,9 @@ class LLMContextConfigTest(unittest.TestCase):
             llm_prior_context_token_budget=2048,
             llm_glossary_path='glossaries/terms.tsv',
             llm_glossary_mode=LLMGlossaryMode.All,
+            llm_translate_vision=True,
+            llm_translate_summary=True,
+            llm_translate_memory=True,
         ))
         raw = json.loads(json_dump_program_config(cfg))
 
@@ -83,6 +100,9 @@ class LLMContextConfigTest(unittest.TestCase):
                     'llm_prior_context_token_budget',
                     'llm_glossary_path',
                     'llm_glossary_mode',
+                    'llm_translate_vision',
+                    'llm_translate_summary',
+                    'llm_translate_memory',
                 )
             },
             {
@@ -90,6 +110,9 @@ class LLMContextConfigTest(unittest.TestCase):
                 'llm_prior_context_token_budget': 2048,
                 'llm_glossary_path': 'glossaries/terms.tsv',
                 'llm_glossary_mode': LLMGlossaryMode.All,
+                'llm_translate_vision': True,
+                'llm_translate_summary': True,
+                'llm_translate_memory': True,
             },
         )
 
@@ -108,6 +131,17 @@ class LLMContextConfigTest(unittest.TestCase):
             'glossaries/terms.tsv',
         )
         self.assertEqual(loaded.module.llm_glossary_mode, LLMGlossaryMode.All)
+        self.assertTrue(loaded.module.llm_translate_vision)
+        self.assertTrue(loaded.module.llm_translate_summary)
+        self.assertTrue(loaded.module.llm_translate_memory)
+
+    def test_llm_feature_switches_are_independent(self):
+        self.assertTrue(_module_config(
+            llm_translate_summary=True,
+        ).llm_translate_summary)
+        self.assertTrue(_module_config(
+            llm_translate_memory=True,
+        ).llm_translate_memory)
 
 
 class ProjectLoadIdentityTest(unittest.TestCase):
@@ -224,6 +258,97 @@ class ProjectTranslationTargetTest(unittest.TestCase):
                         loaded_info['translation_target'],
                         expected_target,
                     )
+
+    def test_malformed_visual_summary_does_not_block_project_loading(self):
+        project = ProjImgTrans()
+        project.directory = '/unused'
+        raw = {
+            'pages': {'001.png': []},
+            'image_info': {
+                '001.png': {
+                    'finish_code': RunStatus.FIN_TRANSLATE,
+                    'translation_target': 'English',
+                    'llm_visual_summary': {'version': 999, 'text': 'stale'},
+                },
+            },
+        }
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+            return_value=['001.png'],
+        ), patch.object(project, 'set_current_img'):
+            project.load_from_dict(raw)
+
+        self.assertEqual(
+            project._image_info['001.png']['translation_target'],
+            'English',
+        )
+        self.assertNotIn(
+            'llm_visual_summary',
+            project._image_info['001.png'],
+        )
+
+    def test_user_context_roundtrips_without_provenance_requirements(self):
+        project = self._project('001.png')
+        project.directory = '/unused'
+        project.set_llm_visual_summary_text(
+            '001.png',
+            'User-edited page context.\nSecond line.',
+        )
+        project.set_llm_compact_memory({
+            'version': 1,
+            'text': 'Coverage: page summaries ["001.png"].\n\nMemory body.',
+            'covered_pages': ['001.png'],
+        })
+        raw = project.to_dict()
+
+        loaded = ProjImgTrans()
+        loaded.directory = '/unused'
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+            return_value=['001.png'],
+        ), patch.object(loaded, 'set_current_img'):
+            loaded.load_from_dict(raw)
+
+        self.assertEqual(
+            loaded.get_llm_visual_summary('001.png')['text'],
+            'User-edited page context.\nSecond line.',
+        )
+        self.assertEqual(
+            loaded.get_llm_compact_memory(),
+            {
+                'version': 1,
+                'text': (
+                    'Coverage: page summaries ["001.png"].\n\nMemory body.'
+                ),
+                'covered_pages': ['001.png'],
+            },
+        )
+
+    def test_malformed_compact_memory_does_not_block_project_loading(self):
+        project = ProjImgTrans()
+        project.directory = '/unused'
+        raw = {
+            'pages': {'001.png': []},
+            'image_info': {
+                '001.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+            },
+            'llm_compact_memory': {
+                'version': 1,
+                'text': ['not text'],
+                'covered_pages': '001.png',
+            },
+        }
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.find_all_imgs',
+            return_value=['001.png'],
+        ), patch.object(project, 'set_current_img'):
+            project.load_from_dict(raw)
+
+        self.assertIn('001.png', project.pages)
+        self.assertIsNone(project.get_llm_compact_memory())
+        self.assertNotIn('llm_compact_memory', project.to_dict())
 
     def test_import_updates_completion_per_page(self):
         imported_pages = [

@@ -1,21 +1,18 @@
 import base64
 import json
-import time
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
 
-from ..context.errors import provider_error_message
+from ..llm_chat import LLMChatRequester, openai_chat_completion_args
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
-    openai_chat_completion_args,
     profile_by_id,
     profile_from_config,
-    resolve_api_key,
 )
 from ballontranslator.utils.textblock import TextBlock
 
@@ -74,7 +71,7 @@ PAGE_OCR_SYSTEM_PROMPT = (
 
 
 @register_OCR("LLMOCR")
-class LLMOCR(OCRBase):
+class LLMOCR(LLMChatRequester, OCRBase):
     """Profile-backed OCR using OpenAI-compatible vision chat models.
 
     Example:
@@ -83,7 +80,6 @@ class LLMOCR(OCRBase):
     """
 
     dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
-    dummy_api_key = 'dummy-key'
 
     params: Dict = {
         "max requests per minute": {
@@ -116,14 +112,8 @@ class LLMOCR(OCRBase):
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
-        self.client = None
-        self.client_cache_key = None
         self.token_count = 0
         self.token_count_last = 0
-        self.last_request_time = 0
-        self.request_count_minute = 0
-        self.minute_start_time = time.time()
-        self.stop_event = None
 
     @property
     def profile(self) -> LLMProfile:
@@ -145,94 +135,6 @@ class LLMOCR(OCRBase):
         if not model or not model_options:
             raise LLMModelRequiredError(profile.id, profile.name, target='vision_model')
         return model
-
-    def set_stop_event(self, stop_event):
-        self.stop_event = stop_event
-
-    def _wait(self, seconds: float):
-        if seconds <= 0:
-            return
-        if self.stop_event is not None:
-            if self.stop_event.wait(seconds):
-                raise LLMRequestStopped()
-            return
-        time.sleep(seconds)
-
-    def _openai_module(self):
-        import openai  # type: ignore
-
-        return openai
-
-    def _http_client(self, proxy: str):
-        import httpx  # type: ignore
-
-        if not proxy:
-            return httpx.Client()
-        try:
-            mounts = {
-                "http://": httpx.HTTPTransport(proxy=proxy),
-                "https://": httpx.HTTPTransport(proxy=proxy),
-            }
-            return httpx.Client(mounts=mounts)
-        except Exception as e:
-            self.logger.error(f"Failed to initialize proxy '{proxy}': {e}. Proceeding without proxy.")
-            return httpx.Client()
-
-    def _api_key_for_profile(self, profile: LLMProfile) -> str:
-        api_key = resolve_api_key(profile).strip()
-        if profile.require_api_key and not api_key:
-            raise LLMApiKeyRequiredError(profile.id, profile.name)
-        return api_key
-
-    def _client_api_key_for_profile(self, profile: LLMProfile) -> str:
-        api_key = self._api_key_for_profile(profile)
-        if not api_key:
-            self.logger.debug(
-                f'LLM profile "{profile.name or profile.id}" does not require an API key; '
-                'using a dummy API key for OpenAI-compatible client initialization.'
-            )
-            return self.dummy_api_key
-        return api_key
-
-    def _initialize_client(self, profile: LLMProfile):
-        api_key = self._client_api_key_for_profile(profile)
-        base_url = profile.base_url or None
-        proxy = self.get_param_value('proxy') or ''
-        cache_key = (api_key, base_url, proxy)
-        if self.client is not None and self.client_cache_key == cache_key:
-            return self.client
-
-        openai = self._openai_module()
-        self.client = openai.OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            http_client=self._http_client(proxy),
-        )
-        self.client_cache_key = cache_key
-        return self.client
-
-    def _respect_delay(self):
-        current_time = time.time()
-        rpm = self.get_param_value('max requests per minute')
-        delay = self.get_param_value('delay')
-        if rpm > 0:
-            if current_time - self.minute_start_time >= 60:
-                self.request_count_minute = 0
-                self.minute_start_time = current_time
-            if self.request_count_minute >= rpm:
-                wait_time = 60.1 - (current_time - self.minute_start_time)
-                if wait_time > 0:
-                    self.logger.warning(f"Global RPM limit ({rpm}) reached. Waiting {wait_time:.2f} seconds.")
-                    self._wait(wait_time)
-                self.request_count_minute = 0
-                self.minute_start_time = time.time()
-
-        time_since_last_request = current_time - self.last_request_time
-        if time_since_last_request < delay:
-            self._wait(delay - time_since_last_request)
-
-        self.last_request_time = time.time()
-        self.request_count_minute += 1
 
     @staticmethod
     def _normalized_text(text: str) -> str:
@@ -391,32 +293,16 @@ class LLMOCR(OCRBase):
         messages: List[Dict],
         response_schema: Optional[Dict] = None,
     ) -> str:
-        openai = self._openai_module()
-        client = self._initialize_client(profile)
-        self._respect_delay()
-        try:
-            completion = client.chat.completions.create(
-                **self._api_args(profile, messages, response_schema)
-            )
-        except getattr(openai, 'AuthenticationError') as e:
-            raise LLMApiKeyRequiredError(profile.id, profile.name) from e
-        except getattr(openai, 'APIStatusError') as e:
-            raise RuntimeError(provider_error_message(e)) from e
-
-        if getattr(completion, 'usage', None) is not None:
-            self.token_count += completion.usage.total_tokens
-            self.token_count_last = completion.usage.total_tokens
+        result = self.request_chat_completion(
+            profile,
+            self._api_args(profile, messages, response_schema),
+        )
+        if result.usage is not None:
+            self.token_count += result.usage.total_tokens
+            self.token_count_last = result.usage.total_tokens
         else:
             self.token_count_last = 0
-
-        for choice in completion.choices:
-            message = getattr(choice, 'message', None)
-            content = getattr(message, 'content', None)
-            if content is not None:
-                return str(content)
-            if hasattr(choice, 'text') and choice.text is not None:
-                return str(choice.text)
-        return ''
+        return result.content
 
     def _request_with_retries(
         self,

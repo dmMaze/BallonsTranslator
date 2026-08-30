@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from itertools import count
-from typing import Hashable, Iterator, Optional, Tuple, TYPE_CHECKING
+from typing import Hashable, Iterator, Optional, Sequence, Tuple, TYPE_CHECKING
 
 from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
+    QBrush,
     QPainter,
     QPen,
     QTextBlock,
@@ -217,7 +218,7 @@ class GlyphSlantLayoutRenderer:
         if not native:
             paint_context = QAbstractTextDocumentLayout.PaintContext()
             paint_context.cursorPosition = -1
-            paint_context.selections = []
+            selections = []
             for selection in context.selections:
                 mask_selection = QAbstractTextDocumentLayout.Selection()
                 mask_selection.cursor = selection.cursor
@@ -226,7 +227,8 @@ class GlyphSlantLayoutRenderer:
                 mask_format.setForeground(Qt.GlobalColor.white)
                 mask_format.setTextOutline(QPen(Qt.PenStyle.NoPen))
                 mask_selection.format = mask_format
-                paint_context.selections.append(mask_selection)
+                selections.append(mask_selection)
+            paint_context.selections = selections
 
         block = self.document().firstBlock()
         while block.isValid():
@@ -366,6 +368,7 @@ class GlyphSlantLayoutRenderer:
         block: QTextBlock,
         line_number: int,
         context: QAbstractTextDocumentLayout.PaintContext,
+        background_overlays: Sequence[Tuple[QRectF, QBrush]] = (),
     ) -> bool:
         placement = self._vertical_line_placement(block, line_number)
         if placement is None:
@@ -382,6 +385,7 @@ class GlyphSlantLayoutRenderer:
             self._report_glyph_raster_failure,
             self.geometry_cache,
             (block.blockNumber(), line_number),
+            background_overlays=background_overlays,
         )
         return True
 
@@ -467,6 +471,10 @@ class GlyphSlantLayoutRenderer:
             return False
         self.glyph_slant_angle = angle
         self.clear_caches()
+        # Ruby paint uses this angle without relayout, so refresh its cached
+        # ink bounds in the same state transition as the glyph geometry.
+        if any(self.layout._ruby_metrics):
+            self.layout._refresh_annotation_ink_bounds()
         if C.USE_PYSIDE6:
             self.layout.update.emit()
         else:

@@ -2,12 +2,13 @@ from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QVBoxLayout,
 )
-from qtpy.QtCore import Qt, Signal, QEvent
+from qtpy.QtCore import QCoreApplication, QEvent, Qt, Signal
 from qtpy.QtGui import QFontMetrics, QMouseEvent
 
 from .scrollbar import ScrollBar
@@ -119,6 +120,7 @@ class ExpandLabel(Widget):
 class PanelArea(QScrollArea):
     def __init__(self, panel_name: str, config_name: str, config_expand_name: str, action_name: str = None):
         super().__init__()
+        self._syncing_content_height = False
         self.scrollContent = PanelAreaContent()
         self.scrollContent.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Maximum)
         self.setWidget(self.scrollContent)
@@ -147,6 +149,64 @@ class PanelArea(QScrollArea):
 
     def setContentLayout(self, layout):
         self.scrollContent.setLayout(layout)
+
+    def _sync_scroll_content_height(self, content_layout: QLayout) -> None:
+        """Expose a card layout's full height to the scroll area.
+
+        The content keeps its natural height even when the panel is constrained;
+        the panel's parent remains free to allocate less than its size hint.
+
+        >>> hasattr(PanelArea, '_sync_scroll_content_height')
+        True
+        """
+        if self._syncing_content_height:
+            return
+        self._syncing_content_height = True
+        try:
+            # Overlay scrollbars consume no layout width. The frame remains
+            # reliable while the viewport is still reporting its pre-show size.
+            content_width = max(1, self.width() - 2 * self.frameWidth())
+            self.scrollContent.resize(
+                content_width,
+                max(1, self.scrollContent.height()),
+            )
+            content_layout.invalidate()
+            # Give responsive children their final width before asking the
+            # layout for the height that width requires.
+            content_layout.activate()
+            content_height = (
+                content_layout.heightForWidth(content_width)
+                if content_layout.hasHeightForWidth()
+                else content_layout.sizeHint().height()
+            )
+            self.scrollContent.setMinimumHeight(content_height)
+            self.scrollContent.resize(
+                content_width,
+                max(content_height, self.viewport().height()),
+            )
+            content_layout.activate()
+            settled_height = (
+                content_layout.heightForWidth(content_width)
+                if content_layout.hasHeightForWidth()
+                else content_layout.sizeHint().height()
+            )
+            if settled_height != content_height:
+                self.scrollContent.setMinimumHeight(settled_height)
+                self.scrollContent.resize(
+                    content_width,
+                    max(settled_height, self.viewport().height()),
+                )
+                content_layout.activate()
+            self.scrollContent.updateGeometry()
+            self.updateGeometry()
+            self.view_widget.updateGeometry()
+            # A hidden resizable child does not always refresh QScrollArea's
+            # range after its minimum height changes.
+            QCoreApplication.sendEvent(
+                self, QEvent(QEvent.Type.LayoutRequest)
+            )
+        finally:
+            self._syncing_content_height = False
 
 
 class PanelGroupBox(QGroupBox):

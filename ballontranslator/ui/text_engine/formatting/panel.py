@@ -1,4 +1,5 @@
-from typing import Iterable
+from dataclasses import replace
+from typing import Iterable, Optional
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -12,6 +13,7 @@ from qtpy.QtWidgets import (
     QToolButton,
     QToolTip,
     QVBoxLayout,
+    QWidget,
 )
 from qtpy.QtCore import QSignalBlocker, Signal, Qt
 from qtpy.QtGui import (
@@ -41,7 +43,6 @@ from ...custom_widget import (
     AlignmentChecker,
     CheckableLabel,
     ColorPickerLabel,
-    NestedColorPickerLabel,
     QFontChecker,
     SizeComboBox,
     SizeControlLabel,
@@ -59,7 +60,9 @@ from ..annotations import (
     RubyValidationError,
 )
 from .advanced import TextAdvancedFormatPanel
+from ..effects.panel import TextEffectPanel
 from ..transforms.edit_session import TextTransformEditSession
+from ..effects.edit_session import TextEffectEditSession
 from ..transforms.panel import TextTransformPanel
 from .presets import TextStylePresetPanel
 from .commands import (
@@ -714,18 +717,12 @@ class FontFormatPanel(Widget):
         linesp_hlayout.addWidget(self.lineSpacingBox)
         linesp_hlayout.setSpacing(7)
         
-        self.strokeColorPicker = NestedColorPickerLabel(
-            self, param_name='srgb', inner_param_name='frgb'
-        )
-        self.colorPicker = self.strokeColorPicker.inner
+        self.colorPicker = ColorPickerLabel(self, param_name='frgb')
+        self.colorPicker.setObjectName('FontFormatColorPicker')
         self.colorPicker.setToolTip(self.tr("Change font color"))
         self.colorPicker.changingColor.connect(self.changingColor)
         self.colorPicker.colorChanged.connect(self.onColorLabelChanged)
         self.colorPicker.apply_color.connect(self.on_apply_color)
-        self.strokeColorPicker.setToolTip(self.tr("Change stroke color"))
-        self.strokeColorPicker.changingColor.connect(self.changingColor)
-        self.strokeColorPicker.colorChanged.connect(self.onColorLabelChanged)
-        self.strokeColorPicker.apply_color.connect(self.on_apply_color)
 
         self.alignBtnGroup = AlignmentBtnGroup(self)
         self.alignBtnGroup.param_changed.connect(self.on_param_changed)
@@ -758,22 +755,6 @@ class FontFormatPanel(Widget):
                 'standard_vertical_roman_alignment', checked
             )
         )
-
-        self.strokeWidthBox = SizeComboBox([0, 10], 'stroke_width', self)
-        self.strokeWidthBox.setObjectName("FontFormatSizeBox")
-        self.strokeWidthBox.addItems(["0.1"])
-        self.strokeWidthBox.setToolTip(self.tr("Change stroke width"))
-        self.strokeWidthBox.param_changed.connect(self.on_param_changed)
-
-        self.fontStrokeLabel = SizeControlLabel(self, 0, self.tr("Stroke"))
-        self.fontStrokeLabel.setObjectName("fontStrokeLabel")
-        self.fontStrokeLabel.size_ctrl_changed.connect(self.strokeWidthBox.changeByDelta)
-        self.fontStrokeLabel.btn_released.connect(lambda : self.on_param_changed('stroke_width', self.strokeWidthBox.value()))
-        
-        stroke_hlayout = QHBoxLayout()
-        stroke_hlayout.addWidget(self.fontStrokeLabel)
-        stroke_hlayout.addWidget(self.strokeWidthBox)
-        stroke_hlayout.setSpacing(7)
 
         self.letterSpacingBox = SizeComboBox([0, 10], "letter_spacing", self)
         self.letterSpacingBox.setObjectName("FontFormatSizeBox")
@@ -819,6 +800,14 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.ruby_remove_requested.connect(
             self.on_ruby_remove_requested
         )
+        self.texteffect_panel = TextEffectPanel(
+            self.tr('Text Effect'),
+            config_name='show_text_effect_panel',
+            config_expand_name='expand_teffect_panel',
+        )
+        self.texteffect_panel.color_dialog_active_changed.connect(
+            self._on_effect_color_dialog_active_changed
+        )
         self.texttransform_panel = TextTransformPanel(
             self.tr('Text Transform'),
             config_name='text_transform_panel',
@@ -828,21 +817,14 @@ class FontFormatPanel(Widget):
             self,
             self.texttransform_panel,
         )
-        color_label = self.textadvancedfmt_panel.shadow_group.color_label
-        color_label.changingColor.connect(self.changingColor)
-        color_label.colorChanged.connect(self.onColorLabelChanged)
-        color_label.apply_color.connect(self.on_apply_color)
-
-        color_label = self.textadvancedfmt_panel.gradient_group.start_picker
-        color_label.changingColor.connect(self.changingColor)
-        color_label.colorChanged.connect(self.onColorLabelChanged)
-        color_label.apply_color.connect(self.on_apply_color)
-        
-        color_label = self.textadvancedfmt_panel.gradient_group.end_picker
-        color_label.changingColor.connect(self.changingColor)
-        color_label.colorChanged.connect(self.onColorLabelChanged)
-        color_label.apply_color.connect(self.on_apply_color)
-        
+        self.text_effect_session = TextEffectEditSession(
+            self, self.texteffect_panel
+        )
+        self.alpha_mask_session = getattr(
+            SW.canvas, 'alpha_mask_edit_session', None
+        )
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.bind_controls(self.texteffect_panel)
         self.foldTextBtn = CheckableLabel(self.tr("Unfold"), self.tr("Fold"), False)
         self.sourceBtn = TextCheckerLabel(self.tr("Source"))
         self.transBtn = TextCheckerLabel(self.tr("Translation"))
@@ -854,6 +836,7 @@ class FontFormatPanel(Widget):
         vl0 = QVBoxLayout()
         vl0.addWidget(self.textstyle_panel.view_widget)
         vl0.addWidget(self.textadvancedfmt_panel.view_widget)
+        vl0.addWidget(self.texteffect_panel.view_widget)
         vl0.addWidget(self.texttransform_panel.view_widget)
         vl0.setSpacing(0)
         vl0.setContentsMargins(0, 0, 0, 0)
@@ -882,8 +865,7 @@ class FontFormatPanel(Widget):
         hl2.setContentsMargins(0, 0, 0, 0)
         hl3 = QHBoxLayout()
         hl3.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl3.addWidget(self.strokeColorPicker)
-        hl3.addLayout(stroke_hlayout)
+        hl3.addWidget(self.colorPicker)
         hl3.addLayout(lettersp_hlayout)
         hl3.addLayout(linesp_hlayout)
         hl3.setContentsMargins(3, 0, 3, 0)
@@ -1112,16 +1094,32 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.set_ruby_state(*item.ruby_editor_values())
         self._restore_ruby_edit_focus(item)
 
-    def resolve_text_transform_edits_for_save(self):
+    def resolve_text_transform_edits_for_save(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.resolve_for_save()
         self.text_transform_session.resolve_for_save()
+        self.text_effect_session.resolve_for_save()
 
-    def resolve_text_transform_edits_for_history_change(self):
+    def stop_text_effect_generation_for_shutdown(self) -> None:
+        """Discard an asynchronous Image result before the final save."""
+        self.text_effect_session.stop_image_generation(detach_card=True)
+
+    def resolve_text_transform_edits_for_history_change(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.resolve_for_history_change()
         self.text_transform_session.resolve_for_history_change()
+        self.text_effect_session.resolve_for_history_change()
 
-    def resolve_text_transform_edits_for_page_change(self):
+    def resolve_text_transform_edits_for_page_change(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.resolve_for_page_change()
+        self.text_effect_session.resolve_for_page_change()
         self.text_transform_session.resolve_for_page_change()
 
-    def cancel_text_transform_edits_for_scene_change(self):
+    def cancel_text_transform_edits_for_scene_change(self) -> None:
+        if self.alpha_mask_session is not None:
+            self.alpha_mask_session.cancel_for_scene_change()
+        self.text_effect_session.cancel_for_scene_change()
         self.text_transform_session.cancel_for_scene_change()
 
     def update_text_style_label(self):
@@ -1132,6 +1130,9 @@ class FontFormatPanel(Widget):
 
     def changingColor(self):
         self.focusOnColorDialog = True
+
+    def _on_effect_color_dialog_active_changed(self, active: bool) -> None:
+        self.focusOnColorDialog = bool(active)
 
     def onColorLabelChanged(self, is_valid=True):
         self.focusOnColorDialog = False
@@ -1239,20 +1240,21 @@ class FontFormatPanel(Widget):
         multi_size: bool = False,
         *,
         update_transform_panel: bool = True,
+        update_effect_panel: bool = True,
     ) -> None:
         self.sync_inline_format(
             font_format,
             multi_size,
             preserve_focused_editors=False,
         )
-        self.strokeColorPicker.setPickerColor(font_format.stroke_color())
-        self.strokeWidthBox.setValue(font_format.stroke_width)
         self.verticalChecker.setChecked(font_format.vertical)
         self.romanAlignmentChecker.setChecked(
             font_format.standard_vertical_roman_alignment
         )
         self.alignBtnGroup.setAlignment(font_format.alignment)
         self.textadvancedfmt_panel.set_active_format(font_format)
+        if update_effect_panel:
+            self.texteffect_panel.set_active_format(font_format)
         if update_transform_panel:
             self.texttransform_panel.set_active_format(font_format)
 
@@ -1293,10 +1295,12 @@ class FontFormatPanel(Widget):
         if self.global_mode():
             self.set_globalfmt_title()
 
-    def set_textblk_item(self, textblk_item: TextBlkItem = None, multi_select:bool=False):
-        # A selection transition is a transaction boundary for transform text.
-        # Commit against the old target list before replacing it.
-        self.text_transform_session.finish_pending_edits()
+    def set_textblk_item(
+        self,
+        textblk_item: Optional[TextBlkItem] = None,
+        multi_select: bool = False,
+        primary_item: Optional[TextBlkItem] = None,
+    ) -> None:
         if textblk_item is not None:
             transform_items = [textblk_item]
         elif multi_select:
@@ -1304,12 +1308,29 @@ class FontFormatPanel(Widget):
         else:
             transform_items = []
 
+        effect_items = list(transform_items)
+        if multi_select and effect_items:
+            if primary_item not in transform_items:
+                primary_getter = getattr(
+                    SW.canvas, 'primary_selected_text_item', None
+                )
+                primary_item = (
+                    primary_getter(transform_items)
+                    if callable(primary_getter)
+                    else (transform_items[-1] if transform_items else None)
+                )
+            if primary_item is not None:
+                effect_items = [primary_item] + [
+                    item for item in effect_items if item is not primary_item
+                ]
+
         preserve_local_owner = False
         if textblk_item is None:
             focus_w = self.app.focusWidget()
-            focus_on_fmtoptions = self.focusOnColorDialog or (
-                focus_w is not None
-                and (focus_w is self or self.isAncestorOf(focus_w))
+            focus_on_fmtoptions = (
+                self.focusOnColorDialog
+                or self._owns_widget(focus_w)
+                or self._owns_widget(QApplication.activePopupWidget())
             )
             preserve_local_owner = (
                 not transform_items
@@ -1320,8 +1341,15 @@ class FontFormatPanel(Widget):
                 # Formatting focus can briefly clear the canvas selection; use
                 # the retained local item when comparing effective owners.
                 transform_items = [self.textblk_item]
+                effect_items = list(transform_items)
 
-        self.text_transform_session.replace_targets(transform_items)
+        if not preserve_local_owner:
+            # A real selection transition settles edits against the old target
+            # list. A transient clear from a nested color dialog is not one.
+            self.text_transform_session.finish_pending_edits()
+            self.text_effect_session.finish_pending_edits()
+            self.text_transform_session.replace_targets(transform_items)
+            self.text_effect_session.replace_targets(effect_items)
 
         if textblk_item is None:
             if not preserve_local_owner:
@@ -1350,15 +1378,30 @@ class FontFormatPanel(Widget):
                     self.global_format,
                     multi_select,
                     update_transform_panel=not transform_items,
+                    update_effect_panel=not transform_items,
                 )
                 self.set_globalfmt_title()
-            if transform_items:
+            if transform_items and not preserve_local_owner:
                 self.texttransform_panel.set_transform_items(transform_items)
+                self.texteffect_panel.set_effect_items(effect_items)
             
         else:
             if not self.restoring_textblk:
                 blk_fmt = textblk_item.get_fontformat()
                 self.textblk_item = textblk_item
                 multi_size = not textblk_item.isEditing() and textblk_item.isMultiFontSize()
-                self.set_active_format(blk_fmt, multi_size)
+                # Map effect cards once through their project-item owner so
+                # Text Fill can expose the project-only Texture choice.
+                self.set_active_format(
+                    blk_fmt, multi_size, update_effect_panel=False
+                )
+                self.texteffect_panel.set_effect_items([textblk_item])
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')
+
+    def _owns_widget(self, widget: Optional[QWidget]) -> bool:
+        """Return whether a child or top-level popup belongs to this panel."""
+        while widget is not None:
+            if widget is self:
+                return True
+            widget = widget.parentWidget()
+        return False
