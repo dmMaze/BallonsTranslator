@@ -21,7 +21,8 @@ preserve behavior that spans several files.
 
 | Concern | Owner |
 | --- | --- |
-| Prompt assembly, translation request shape, parsing, runtime history integration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| Translation prompt, message, schema, history-rendering, and response contract | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
+| Runtime request, retry, context-snapshot, compaction, and persistence orchestration | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
 | Chat client lifecycle, throttling, provider argument quirks, status normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
 | Text-block preprocessing, postprocessing, and history-commit decision | [`base.py`](../../ballontranslator/modules/translators/base.py) |
 | Bilingual history selection, rebuild, and whole-page eviction | [`context/history.py`](../../ballontranslator/modules/context/history.py) |
@@ -61,11 +62,11 @@ one-based JSON item. The canonical response is:
 {"1":"..."}
 ```
 
-The parser also tolerates the compatibility shapes implemented in
-`_parse_response()`, but always requires exactly IDs `1..N`. Full-page results
-then run normalization, result substitutions, and optional uppercase before
-the page can become history. Selected-block translation retains its narrower
-postprocessing behavior.
+The parser also tolerates the compatibility shapes implemented by
+`parse_translation_response()`, but always requires exactly IDs `1..N`.
+Full-page results then run normalization, result substitutions, and optional
+uppercase before the page can become history. Selected-block translation
+retains its narrower postprocessing behavior.
 
 With Summary enabled, the same text or multimodal response instead uses:
 

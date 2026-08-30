@@ -6,12 +6,14 @@ from unittest import mock
 from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.context.token_usage import format_token_usage
-from ballontranslator.modules.translators.trans_llm import (
-    InvalidNumTranslations,
-    LLMTranslator,
+from ballontranslator.modules.translators.llm_translation_contract import (
+    TranslationPromptSpec,
+    translation_json_schema,
+    translation_system_prompt,
 )
+from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import copy_profile, default_profile
+from ballontranslator.utils.llm_profiles import default_profile
 
 
 class FakeAuthError(Exception):
@@ -73,32 +75,28 @@ class LLMTranslatorTest(unittest.TestCase):
     def setUp(self):
         self.translator = LLMTranslator('日本語', '简体中文')
 
-    def test_json_response_parser_accepts_legacy_array_schema(self):
-        result = self.translator._parse_response(
-            '{"translations": [{"id": 1, "translation": "心"}, {"id": 2, "translation": "精神"}]}',
-            2,
+    def _prompt_spec(
+        self,
+        profile,
+        *,
+        summary_enabled: bool = False,
+    ) -> TranslationPromptSpec:
+        target_language = self.translator._translated_lang(
+            self.translator.lang_target
         )
-
-        self.assertEqual(result, ['心', '精神'])
-
-    def test_json_response_parser_accepts_fixed_id_object_schema(self):
-        result = self.translator._parse_response(
-            '{"2":"精神","1":"心"}',
-            2,
+        return TranslationPromptSpec(
+            source_language=self.translator._translated_lang(
+                self.translator.lang_source
+            ),
+            target_language=target_language,
+            system_prompt=translation_system_prompt(
+                profile.prompt,
+                target_language,
+                history_enabled=False,
+                summary_enabled=summary_enabled,
+            ),
+            summary_enabled=summary_enabled,
         )
-
-        self.assertEqual(result, ['心', '精神'])
-
-    def test_json_prompt_wraps_profile_prompt_without_formatting_json_braces(self):
-        profile = default_profile('OpenAI')
-        profile.prompt = 'Keep JSON example {"x": 1}.'
-
-        messages, prompt = self.translator._assemble_request(['心'], profile)
-
-        self.assertIn('Translate every source string into Simplified Chinese.', messages[0]['content'])
-        self.assertIn('Additional translation instructions:\nKeep JSON example {"x": 1}.', messages[0]['content'])
-        self.assertIn('{"1":"Translated text"', messages[0]['content'])
-        self.assertIn('"source": "心"', prompt)
 
     def test_missing_required_api_key_raises_profile_error(self):
         profile = default_profile('OpenAI')
@@ -153,7 +151,12 @@ class LLMTranslatorTest(unittest.TestCase):
         translator = FakeTranslator(profile=profile)
 
         with self.assertRaises(LLMModelRequiredError):
-            translator._translate(['hello'])
+            translator._translate(
+                ['hello'],
+                prompt_spec=self._prompt_spec(profile),
+                source_language='Japanese',
+                target_language='Simplified Chinese',
+            )
 
     def test_thinking_level_only_passed_when_not_none(self):
         profile = default_profile('OpenAI')
@@ -227,7 +230,7 @@ class LLMTranslatorTest(unittest.TestCase):
 
     def test_json_schema_rejects_an_empty_translation_request(self):
         with self.assertRaisesRegex(ValueError, 'at least 1'):
-            self.translator._json_schema(0)
+            translation_json_schema(0)
 
     def test_dynamic_schema_stays_out_of_cacheable_message_prefix(self):
         profile = default_profile('LM Studio')
@@ -265,6 +268,9 @@ class LLMTranslatorTest(unittest.TestCase):
             result = self.translator._translate(
                 ['a', 'b', 'c'],
                 profile=profile,
+                prompt_spec=self._prompt_spec(profile),
+                source_language='Japanese',
+                target_language='Simplified Chinese',
             )
 
         self.assertEqual(result, ['甲', '乙', '丙'])
