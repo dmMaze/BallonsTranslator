@@ -494,7 +494,7 @@
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1012"/>
         <source>Font Family</source>
-        <translation>글꼴 집합</translation>
+        <translation>글꼴 패밀리</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="1019"/>
@@ -1005,7 +1005,7 @@
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="687"/>
         <source>Font Family</source>
-        <translation>글꼴 집합</translation>
+        <translation>글꼴 패밀리</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="693"/>
@@ -4865,7 +4865,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="113"/>
         <source>Amount</source>
-        <translation>강도</translation>
+        <translation>양</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="116"/>
@@ -5363,7 +5363,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="231"/>
         <source>Amount</source>
-        <translation>강도</translation>
+        <translation>양</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/transforms/registry.py" line="245"/>
