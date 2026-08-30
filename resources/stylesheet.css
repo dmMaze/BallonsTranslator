@@ -1914,22 +1914,18 @@ QCheckBox#LLMContextChecker::indicator:checked
 }
 
 QWidget#LLMContextEditor {
-    background-color: @widgetBackgroundColor;
-    border-left: 1px solid @borderColor;
-    border-right: 1px solid @borderColor;
+    background-color: @emptyContentBackgroundColor;
+    border: none;
 }
 
 QFrame#LLMContextEditorCard {
-    background-color: @transtexteditBackgroundColor;
-    border: 1px solid @borderColor;
-    border-radius: 8px;
+    background-color: @emptyContentBackgroundColor;
+    border: none;
 }
 
 QFrame#LLMContextEditorHeader {
     background-color: @emptyContentBackgroundColor;
     border: none;
-    border-top-left-radius: 7px;
-    border-top-right-radius: 7px;
 }
 
 QLabel#LLMContextEditorTitle {
@@ -1944,11 +1940,9 @@ QLabel#LLMContextEditorDetail {
 }
 
 QPlainTextEdit#LLMContextTextEdit {
-    background-color: @transtexteditBackgroundColor;
+    background-color: @emptyContentBackgroundColor;
     border: none;
     border-top: 1px solid @borderColor;
-    border-bottom-left-radius: 7px;
-    border-bottom-right-radius: 7px;
     padding: 8px;
 }
 

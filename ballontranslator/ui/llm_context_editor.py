@@ -107,7 +107,7 @@ class LLMContextEditor(QWidget):
         self.editor_splitter.setStretchFactor(1, 1)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.editor_splitter)
 
         self.summary_editor.textChanged.connect(self._on_summary_changed)
