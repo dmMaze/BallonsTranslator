@@ -871,6 +871,19 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.check_update_on_startup_checker, _ = applicationConfigPanel.addCheckBox(self.tr('Check update on startup'))
         self.check_update_on_startup_checker.stateChanged.connect(self.on_check_update_onstartup_changed)
 
+        self.photoshop_shortcuts_checker, _ = applicationConfigPanel.addCheckBox(
+            self.tr('Use Photoshop-style mouse shortcuts')
+        )
+        self.photoshop_shortcuts_checker.setToolTip(
+            self.tr(
+                'Use Alt + right-drag for brush size, Alt + wheel for zoom, '
+                'and Ctrl + wheel for horizontal scrolling.'
+            )
+        )
+        self.photoshop_shortcuts_checker.stateChanged.connect(
+            self.on_photoshop_shortcuts_changed
+        )
+
         self.spellcheck_checker, _ = spellcheckConfigPanel.addCheckBox(self.tr('Enable'))
         self.spellcheck_checker.stateChanged.connect(self.on_spellcheck_changed)
 
@@ -1447,6 +1460,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_check_update_onstartup_changed(self):
         pcfg.check_update_on_startup = self.check_update_on_startup_checker.isChecked()
 
+    def on_photoshop_shortcuts_changed(self) -> None:
+        pcfg.photoshop_shortcuts = self.photoshop_shortcuts_checker.isChecked()
+
     def on_spellcheck_changed(self):
         enabled = self.spellcheck_checker.isChecked()
         if enabled:
@@ -1774,6 +1790,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         if pcfg.open_recent_on_startup:
             self.open_on_startup_checker.setChecked(True)
         self.check_update_on_startup_checker.setChecked(pcfg.check_update_on_startup)
+        self.photoshop_shortcuts_checker.setChecked(pcfg.photoshop_shortcuts)
         
         # Setup repository dictionaries
         active_repos = pcfg.spellcheck_repo_dicts.split(',')

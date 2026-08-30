@@ -95,11 +95,28 @@ class CustomGV(QGraphicsView):
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
         # which is not desired when scaling img
-        if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if event.angleDelta().y() > 0:
+        modifiers = event.modifiers()
+        zoom_modifier = (
+            Qt.KeyboardModifier.AltModifier
+            if pcfg.photoshop_shortcuts
+            else Qt.KeyboardModifier.ControlModifier
+        )
+        if modifiers == zoom_modifier:
+            delta = event.angleDelta().y() or event.angleDelta().x()
+            if delta > 0:
                 self.scale_up_signal.emit()
             else:
                 self.scale_down_signal.emit()
+            event.accept()
+            return
+        if (
+            pcfg.photoshop_shortcuts
+            and modifiers == Qt.KeyboardModifier.ControlModifier
+        ):
+            delta = event.angleDelta().y() or event.angleDelta().x()
+            scrollbar = self.horizontalScrollBar()
+            scrollbar.setValue(scrollbar.value() - delta)
+            event.accept()
             return
         return super().wheelEvent(event)
 
@@ -327,6 +344,7 @@ class Canvas(QGraphicsScene):
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
         self.pan_initial_pos = QPoint(0, 0)
+        self._scale_tool_drag_button = Qt.MouseButton.NoButton
 
         self.saved_textundo_step = 0
         self.saved_drawundo_step = 0
@@ -1053,7 +1071,7 @@ class Canvas(QGraphicsScene):
                     if rect is not None:
                         self.drawingLayer.update(rect)
         
-        elif self.scale_tool_mode:
+        elif self._scale_tool_drag_button != Qt.MouseButton.NoButton:
             self.scale_tool.emit(event.scenePos())
         
         result = super().mouseMoveEvent(event)
@@ -1063,13 +1081,29 @@ class Canvas(QGraphicsScene):
         return result
     
     @property
-    def scale_tool_mode(self):
-        return self.drawMode() and self.gv.isVisible() and QApplication.keyboardModifiers() == Qt.KeyboardModifier.AltModifier
+    def scale_tool_mode(self) -> bool:
+        return (
+            self.drawMode()
+            and self.painting
+            and self.gv.isVisible()
+            and QApplication.keyboardModifiers()
+            == Qt.KeyboardModifier.AltModifier
+        )
+
+    def _is_scale_tool_gesture(self, button: Qt.MouseButton) -> bool:
+        """Return whether an Alt-drag starts brush-size adjustment."""
+        expected_button = (
+            Qt.MouseButton.RightButton
+            if pcfg.photoshop_shortcuts
+            else Qt.MouseButton.LeftButton
+        )
+        return self.scale_tool_mode and button == expected_button
 
     def clearToolStates(self) -> None:
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.end_scale_tool.emit()
+        self._scale_tool_drag_button = Qt.MouseButton.NoButton
 
     def selected_text_items(self, sort: bool = True) -> List[TextBlkItem]:
         sel_textitems = []
@@ -1123,6 +1157,14 @@ class Canvas(QGraphicsScene):
         if self.alpha_mask_edit_session.handle_mouse_press(event):
             event.accept()
             return
+        if (
+            self.imgtrans_proj.img_valid
+            and self._is_scale_tool_gesture(btn)
+        ):
+            self._scale_tool_drag_button = btn
+            self.begin_scale_tool.emit(event.scenePos())
+            event.accept()
+            return
         if self._path_reorder_active:
             if btn == Qt.MouseButton.LeftButton:
                 self._start_path_reorder_stroke(event.scenePos())
@@ -1171,9 +1213,7 @@ class Canvas(QGraphicsScene):
 
             elif btn == Qt.MouseButton.LeftButton:
                 # user is drawing using the pen/inpainting tool
-                if self.scale_tool_mode:
-                    self.begin_scale_tool.emit(event.scenePos())
-                elif self.painting:
+                if self.painting:
                     self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.painting_pen)
 
             elif btn == Qt.MouseButton.RightButton:
@@ -1209,6 +1249,11 @@ class Canvas(QGraphicsScene):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if btn == self._scale_tool_drag_button:
+            self.end_scale_tool.emit()
+            self._scale_tool_drag_button = Qt.MouseButton.NoButton
+            event.accept()
+            return
         if self.alpha_mask_edit_session.handle_mouse_release(event):
             event.accept()
             return
@@ -1243,8 +1288,6 @@ class Canvas(QGraphicsScene):
         if btn == Qt.MouseButton.LeftButton:
             if self.stroke_img_item is not None:
                 self.finish_painting.emit(self.stroke_img_item)
-            elif self.scale_tool_mode:
-                self.end_scale_tool.emit()
         return super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
