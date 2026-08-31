@@ -14,7 +14,7 @@ from qtpy.QtWidgets import (
     QGraphicsSceneMouseEvent,
 )
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
-from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
+from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QFontMetrics, QPen,
                        QFocusEvent, QTextBlockFormat)
@@ -1114,35 +1114,30 @@ class TextBlkItem(QGraphicsTextItem):
             return
         self._vertical_navigation_y = None
 
-        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if e.key() == Qt.Key.Key_Z:
-                e.accept()
-                self.undo_signal.emit()
-                return
-            elif e.key() == Qt.Key.Key_Y:
-                e.accept()
-                self.redo_signal.emit()
-                return
-            elif e.key() == Qt.Key.Key_V:
-                if self.isEditing():
-                    e.accept()
-                    self.pasted.emit(self.idx)
-                    return
-            elif e.key() in (Qt.Key.Key_C, Qt.Key.Key_X):
-                cursor = self.textCursor()
-                if cursor.hasSelection():
-                    self._copy_selected_text()
-                    if e.key() == Qt.Key.Key_X:
-                        cursor.removeSelectedText()
-                        self.setTextCursor(cursor)
-                e.accept()
-                return
-        elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
-            if e.key() == Qt.Key.Key_Z:
-                e.accept()
-                self.redo_signal.emit()
-                return
-        elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if e.matches(QKeySequence.StandardKey.Undo):
+            e.accept()
+            self.undo_signal.emit()
+            return
+        if e.matches(QKeySequence.StandardKey.Redo):
+            e.accept()
+            self.redo_signal.emit()
+            return
+        if e.matches(QKeySequence.StandardKey.Paste) and self.isEditing():
+            e.accept()
+            self.pasted.emit(self.idx)
+            return
+        is_copy = e.matches(QKeySequence.StandardKey.Copy)
+        is_cut = e.matches(QKeySequence.StandardKey.Cut)
+        if is_copy or is_cut:
+            cursor = self.textCursor()
+            if cursor.hasSelection():
+                self._copy_selected_text()
+                if is_cut:
+                    cursor.removeSelectedText()
+                    self.setTextCursor(cursor)
+            e.accept()
+            return
+        if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             e.accept()
             cursor = self.textCursor()
             cursor.beginEditBlock()
