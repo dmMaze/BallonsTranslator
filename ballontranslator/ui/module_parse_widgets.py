@@ -31,7 +31,7 @@ from qtpy.QtWidgets import (
     QLabel,
     QScrollArea,
 )
-from qtpy.QtCore import QTimer, Qt, Signal
+from qtpy.QtCore import QLocale, QTimer, Qt, Signal
 from qtpy.QtGui import QDoubleValidator, QKeySequence
 
 try:
@@ -76,6 +76,11 @@ class ParamLineEditor(QLineEdit):
 
         if force_digital:
             validator = QDoubleValidator()
+            validator.setLocale(QLocale.c())
+            notation = getattr(
+                QDoubleValidator, 'Notation', QDoubleValidator
+            )
+            validator.setNotation(notation.StandardNotation)
             self.setValidator(validator)
 
     def on_text_changed(self):

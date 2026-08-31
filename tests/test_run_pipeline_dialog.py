@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QObject, QEvent, QPoint, Qt
+from qtpy.QtCore import QObject, QEvent, QLocale, QPoint, Qt
 from qtpy.QtGui import QColor, QTextCursor, QTextDocument
 from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import (
@@ -858,6 +858,34 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.app.processEvents()
             gc.collect()
             self.assertIsNone(dialog_ref())
+
+    def test_numeric_module_param_keeps_dot_decimal_notation(self) -> None:
+        previous_locale = QLocale()
+        QLocale.setDefault(QLocale('de_DE'))
+        try:
+            with patch(
+                'ballontranslator.ui.module_parse_widgets.save_config'
+            ):
+                dialog = ModuleParamDialog(
+                    'translator',
+                    'demo',
+                    {'delay': {'type': 'line_editor', 'value': 0.0}},
+                    False,
+                )
+                try:
+                    editor = dialog.param_widget.param_widgets['delay']
+                    dialog.show()
+                    self.app.processEvents()
+                    editor.setFocus()
+                    editor.selectAll()
+                    QTest.keyClicks(editor, '0.3')
+                    QTest.keyClick(editor, Qt.Key.Key_Tab)
+                    self.app.processEvents()
+                    self.assertEqual(editor.text(), '0.3')
+                finally:
+                    dialog.close()
+        finally:
+            QLocale.setDefault(previous_locale)
 
     def test_module_param_dialog_shows_empty_message(self):
         with patch('ballontranslator.ui.module_parse_widgets.save_config'):
