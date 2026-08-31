@@ -166,8 +166,9 @@ Compact memory is an optional project-level record. When Summary & Memory is
 enabled, its text is frozen into every request before recent history,
 irrespective of Vision, history mode, model, language, current page, or recorded
 coverage.
-Coverage metadata only prevents redundant automatic compaction; generated text
-also starts with an explicit `Coverage:` line.
+Coverage metadata only prevents redundant automatic compaction. It remains in
+the project record and is not included in editable memory text or provider
+translation requests.
 
 Automatic compaction is independent of history mode. It starts only when an
 uncovered older summary no longer fits the shared context budget, then compacts
@@ -177,13 +178,16 @@ prefix on every page. It reads saved summaries directly, so translation
 completion controls only bilingual examples and cannot hide an edited summary
 from compaction. One text-model request merges the previous memory with the new
 page summaries and writes the complete body in the active target language;
-inputs in another language remain valid semantic context. Failure or an
-oversized result keeps the previous record and normal context fitting. A
-successful result is staged until page finalization, then stored in the project
-unless the user edited memory while the request was running.
-The accepted checkpoint is capped by the budget left after mandatory summary
-context and selected exact history, so compaction cannot silently displace a
-page whose summary was absent from that compaction input.
+inputs in another language remain valid semantic context. The compaction
+request is not sized by the translation context budget; the
+selected profile's provider limits still apply. After ordinary retries are
+exhausted, failure stops the run and is reported to the user instead of being
+retried independently by every following page. A successful result is accepted
+at its actual size and stored before the triggering translation request unless
+the user edited its memory or source summaries while compaction was running.
+This lets a failed page retry reuse the same compact-memory prefix. When that
+memory is packed into translation context, it is mandatory and may evict oldest
+optional bilingual-history pages.
 
 Page summaries and compact memory remain independently user-owned. Editing a
 summary already named by memory coverage does not silently regenerate,
@@ -202,7 +206,9 @@ follows the last successful request page. Otherwise history is rebuilt from a
 recent eligible project suffix.
 
 The key covers project load identity, source language, model, rendered system
-prompt, history budget, memory enablement, and a digest of the editable memory.
+prompt, history budget, memory enablement, and a digest of provider-visible
+editable memory text; internal coverage metadata does not disturb the prompt
+cache epoch.
 The system prompt already captures target language and profile instructions.
 Glossary settings are excluded because stored history pairs are glossary-free.
 
@@ -303,6 +309,9 @@ than silently translating without it.
   attempt preserves the prior committed window.
 - Context overflow evicts history separately from ordinary retries. When no
   history remains, the error is re-raised.
+- `LLMUserActionRequiredError` subclasses bypass request retries and fallbacks;
+  pipeline boundaries stop the run and route them to the user. Explicit
+  provider output-limit responses use this path.
 - `_history_window` is cleared on unload and is safe to rebuild from the
   project after restart.
 - Compaction or a user edit changes the early prefix once; later requests reuse
@@ -316,7 +325,8 @@ Context logs normally expose aggregate page, action, page-count, token-budget,
 attempt, and provider cache fields. A healthy contiguous run is usually
 `empty/rebuild -> grow ... -> evict -> grow`. Missing cache fields mean “not
 reported.” ID-count failures log the current prompt, so treat those logs as
-potentially containing project and glossary text.
+potentially containing project and glossary text. Output-limit diagnostics also
+log the provider's partial response.
 
 ## Change checklist
 

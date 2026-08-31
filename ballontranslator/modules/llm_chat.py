@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from .context.errors import provider_error_message
-from .exceptions import LLMApiKeyRequiredError, LLMRequestStopped
+from .context.token_usage import format_completion_token_usage
+from .exceptions import (
+    LLMApiKeyRequiredError,
+    LLMOutputLimitError,
+    LLMRequestStopped,
+)
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
     PROVIDER_DEFAULTS,
@@ -330,8 +335,32 @@ class LLMChatRequester:
         except getattr(openai, 'APIStatusError') as error:
             raise LLMChatRequestError(error) from error
 
-        return LLMChatResult(
+        result = LLMChatResult(
             content=self._completion_content(completion),
             usage=getattr(completion, 'usage', None),
             finish_reason=self._completion_finish_reason(completion),
         )
+        if result.finish_reason.strip().lower() == 'length':
+            usage = format_completion_token_usage(result)
+            model = str(api_args.get('model', '')).replace(
+                '\r', ' '
+            ).replace('\n', ' ')
+            details = ', '.join(
+                part for part in (
+                    f'profile_id={profile.id!r}',
+                    f'model={model!r}',
+                    usage,
+                    'finish_reason=length',
+                    f'chars={len(result.content)}',
+                    f'content={result.content!r}',
+                )
+                if part
+            )
+            self.logger.debug(f'LLM output-limited response: {details}')
+            raise LLMOutputLimitError(
+                profile.id,
+                profile.name,
+                profile.max_tokens,
+                str(profile.thinking_level or THINKING_AUTO),
+            )
+        return result

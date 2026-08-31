@@ -35,14 +35,13 @@ from ..context.translation_context import (
     RequestContext,
     fit_page_summaries,
     memory_compaction_messages,
-    memory_coverage_line,
     memory_message_content,
     memory_window_signature,
     page_summary_context_token_count,
     parse_memory_response,
     plan_page_summary_context,
     project_memory_checkpoint,
-    project_memory_signatures,
+    project_memory_signature,
     recover_context_length,
     saved_page_summary_text,
     snapshot_page_summaries,
@@ -67,10 +66,10 @@ from .llm_translation_contract import (
     translation_system_prompt,
 )
 from ballontranslator.modules.exceptions import (
-    LLMApiKeyRequiredError,
+    LLMMemoryCompactionError,
     LLMModelRequiredError,
-    LLMOutputLimitError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.utils.config import (
     LLMTranslateContext,
@@ -169,10 +168,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             str,
             Tuple[str, Dict[str, object]],
         ] = {}
-        self._pending_memory_checkpoints: Dict[
-            str,
-            Tuple[str, MemoryCheckpoint],
-        ] = {}
 
     @property
     def profile(self) -> LLMProfile:
@@ -246,7 +241,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
     def unload_model(self, empty_cache=False):
         self._history_window = None
         getattr(self, '_pending_visual_summaries', {}).clear()
-        getattr(self, '_pending_memory_checkpoints', {}).clear()
         return super().unload_model(empty_cache=empty_cache)
 
     @staticmethod
@@ -340,7 +334,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         summary_slot_empty = False
         if page_key is not None:
             self._pending_visual_summaries.pop(str(page_key), None)
-            self._pending_memory_checkpoints.pop(str(page_key), None)
             image_info = getattr(project, '_image_info', None)
             if (
                 summary_enabled
@@ -350,11 +343,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 summary_slot_empty = (
                     project.get_llm_visual_summary(str(page_key)) is None
                 )
-        memory_record_signature, saved_memory_window_signature = (
-            project_memory_signatures(project)
-            if project is not None and memory_enabled
-            else ('', '')
-        )
         vision_request = None
         if (
             vision_enabled
@@ -394,22 +382,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             vision_request=vision_request,
             summary_slot_empty=summary_slot_empty,
         )
-        if (
-            commit_history_window
-            and project is not None
-            and page_key is not None
-            and request_context is not None
-            and request_context.memory is not None
-        ):
-            generated_signature = memory_window_signature(
-                request_context.memory
-            )
-            if generated_signature != saved_memory_window_signature:
-                self._pending_memory_checkpoints[str(page_key)] = (
-                    memory_record_signature,
-                    request_context.memory,
-                )
-
         if text_trans is None:
             text_trans = [''] * len(text) if is_list else ''
         elif not is_list:
@@ -431,11 +403,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         project: ProjImgTrans,
         page_key: str,
     ) -> None:
-        """Commit generated context only after a finalized full page."""
-        pending_memory = self._pending_memory_checkpoints.pop(
-            str(page_key),
-            None,
-        )
+        """Commit the generated page summary after a finalized full page."""
         pending_summary = self._pending_visual_summaries.pop(
             str(page_key),
             None,
@@ -443,22 +411,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         pages = getattr(project, 'pages', None)
         if not isinstance(pages, dict) or page_key not in pages:
             return
-        if pending_memory is not None:
-            previous_signature, memory = pending_memory
-            current_signature, _ = project_memory_signatures(project)
-            if current_signature != previous_signature:
-                self.logger.warning(
-                    'Compacted LLM memory was not saved because the project '
-                    'memory was edited during translation.'
-                )
-            else:
-                try:
-                    self._persist_memory_checkpoint(project, memory)
-                except Exception as error:
-                    self.logger.warning(
-                        'Unable to save compact LLM memory: %s',
-                        error,
-                    )
         if pending_summary is None:
             return
         source_signature, record = pending_summary
@@ -518,6 +470,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         glossary_mode: str,
         memory_enabled: bool,
         model: Optional[str] = None,
+        allow_compaction: bool = True,
     ) -> Optional[RequestContext]:
         """Freeze user-owned context and eligible page history for one request.
 
@@ -533,6 +486,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         use_history = prompt_spec.history_enabled
         summary_enabled = prompt_spec.summary_enabled
         model = model or self._text_model(profile)
+        memory_record_signature = (
+            project_memory_signature(project)
+            if memory_enabled and project is not None
+            else ''
+        )
         memory = (
             project_memory_checkpoint(project, model)
             if memory_enabled
@@ -714,55 +672,94 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 required_page_key=required_page_key,
             )
 
-        if compaction_summaries:
+        if compaction_summaries and allow_compaction:
             # Retire an older low-water batch only at summary overflow, so the
             # cacheable memory prefix remains stable across several pages.
-            compacting_keys = {
-                summary.page_key for summary in compaction_summaries
-            }
-            retained_summaries = tuple(
-                summary
-                for summary in summary_candidates
-                if summary.page_key not in compacting_keys
-            )
-            retained_summary_tokens = page_summary_context_token_count(
-                retained_summaries,
-                model,
-            )
             previous_memory = memory
-            memory_token_limit = max(
-                0,
-                history_budget
-                - history_token_count
-                - retained_summary_tokens,
-            )
             candidate_memory = self._compact_summary_batch(
                 previous=memory,
                 summaries=compaction_summaries,
                 profile=profile,
                 model=model,
                 target_language=prompt_spec.target_language,
-                history_budget=history_budget,
-                memory_token_limit=memory_token_limit,
             )
-            memory = candidate_memory
             if (
-                memory != previous_memory
-                and memory is not None
-                and window_key is not None
+                candidate_memory != previous_memory
+                and candidate_memory is not None
             ):
-                window_key = replace(
-                    window_key,
-                    settings=tuple(
-                        (
-                            name,
-                            memory_window_signature(memory),
-                        )
-                        if name == 'memory_signature'
-                        else (name, value)
-                        for name, value in window_key.settings
-                    ),
+                current_signature = project_memory_signature(project)
+                inputs_unchanged = project is not None and all(
+                    saved_page_summary_text(project, summary.page_key)
+                    == summary.text
+                    for summary in compaction_summaries
                 )
+                if (
+                    current_signature != memory_record_signature
+                    or not inputs_unchanged
+                ):
+                    self.logger.warning(
+                        'LLM context changed during memory compaction; using '
+                        'the latest project context.'
+                    )
+                    return self._snapshot_request_context(
+                        project,
+                        page_key,
+                        profile,
+                        prompt_spec=prompt_spec,
+                        source_language=source_language,
+                        target_language=target_language,
+                        history_budget=history_budget,
+                        glossary_path=glossary_path,
+                        glossary_mode=glossary_mode,
+                        memory_enabled=memory_enabled,
+                        model=model,
+                        allow_compaction=False,
+                    )
+                self._persist_memory_checkpoint(project, candidate_memory)
+                memory = candidate_memory
+                # The compaction request has its own provider limits. Only its
+                # actual result participates in translation-context packing.
+                history_list = list(history)
+                memory_evicted = 0
+                while history_list and (
+                    history_token_count
+                    + memory.token_count
+                    + current_summary_tokens
+                    > history_budget
+                ):
+                    history_token_count -= history_list.pop(0).token_count
+                    memory_evicted += 1
+                if memory_evicted:
+                    history = tuple(history_list)
+                    diagnostic = replace(
+                        diagnostic,
+                        action=ContextAction.EVICT,
+                        page_count=len(history),
+                        evicted=diagnostic.evicted + memory_evicted,
+                    )
+                    represented_summary_pages = {
+                        page.page_key
+                        for page in history
+                        if page.snapshot.summary
+                    }
+                    summary_candidates = tuple(
+                        summary
+                        for summary in saved_summaries
+                        if summary.page_key not in represented_summary_pages
+                    )
+                if window_key is not None:
+                    window_key = replace(
+                        window_key,
+                        settings=tuple(
+                            (
+                                name,
+                                memory_window_signature(memory),
+                            )
+                            if name == 'memory_signature'
+                            else (name, value)
+                            for name, value in window_key.settings
+                        ),
+                    )
             summary_budget = max(
                 0,
                 history_budget
@@ -870,8 +867,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         profile: LLMProfile,
         model: str,
         target_language: str,
-        target_tokens: int,
-    ) -> Optional[MemoryCheckpoint]:
+    ) -> MemoryCheckpoint:
         covered = list(previous.covered_page_keys if previous else ())
         covered_set = set(covered)
         for page in summaries:
@@ -879,26 +875,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 covered.append(page.page_key)
                 covered_set.add(page.page_key)
         covered_page_keys = tuple(covered)
-        coverage_line = memory_coverage_line(covered_page_keys)
-        fixed_message = [{
-            'role': 'system',
-            'content': memory_message_content(f'{coverage_line}\n\n'),
-        }]
-        body_token_limit = target_tokens - messages_token_count(
-            fixed_message,
-            model,
-        )
-        if body_token_limit <= 0:
-            self.logger.debug(
-                'LLM memory compaction skipped because its fixed context does '
-                'not fit the target (%s tokens).',
-                target_tokens,
-            )
-            return None
         messages = memory_compaction_messages(
             previous,
             summaries,
-            body_token_limit,
             target_language,
         )
         # Compaction is always a text request, independently of Vision.
@@ -913,34 +892,36 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 'additionalProperties': False,
             },
         )
-        if self.stop_event is not None and self.stop_event.is_set():
-            raise LLMRequestStopped()
-        try:
-            result = self.request_chat_completion(profile, api_args)
-            self._log_token_usage(result, page_key='memory-compaction')
-            memory_text = parse_memory_response(result.content)
-        except LLMRequestStopped:
-            raise
-        except Exception as error:
-            self.logger.warning('LLM memory compaction skipped: %s', error)
-            return None
-        memory_text = (
-            f'{coverage_line}\n\n'
-            f'{memory_text}'
-        )
+        attempts = max(1, int(self.get_param_value('retry attempts')))
+        for attempt in range(1, attempts + 1):
+            if self.stop_event is not None and self.stop_event.is_set():
+                raise LLMRequestStopped()
+            try:
+                result = self.request_chat_completion(profile, api_args)
+                self._log_token_usage(result, page_key='memory-compaction')
+                memory_text = parse_memory_response(result.content)
+                break
+            except (LLMUserActionRequiredError, LLMRequestStopped):
+                raise
+            except Exception as error:
+                if attempt >= attempts:
+                    raise LLMMemoryCompactionError(
+                        profile.id,
+                        profile.name,
+                        attempts,
+                        str(error),
+                    ) from error
+                self.logger.warning(
+                    'LLM memory compaction failed due to %s. Attempt: %s',
+                    error,
+                    attempt,
+                )
+                self._wait(self.get_param_value('retry timeout'))
         memory_message = [{
             'role': 'system',
             'content': memory_message_content(memory_text),
         }]
         token_count = messages_token_count(memory_message, model)
-        if token_count > target_tokens:
-            self.logger.warning(
-                'LLM memory compaction exceeded its target (%s/%s tokens); '
-                'keeping the previous checkpoint.',
-                token_count,
-                target_tokens,
-            )
-            return None
         return MemoryCheckpoint(
             text=memory_text,
             covered_page_keys=covered_page_keys,
@@ -955,8 +936,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         profile: LLMProfile,
         model: str,
         target_language: str,
-        history_budget: int,
-        memory_token_limit: int,
     ) -> Optional[MemoryCheckpoint]:
         covered = set(previous.covered_page_keys if previous else ())
         # Summary and memory text are independently user-owned. Coverage avoids
@@ -968,41 +947,13 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         if not candidates:
             return previous
-
-        target_tokens = min(
-            max(64, int(history_budget * 0.20)),
-            max(0, memory_token_limit),
-        )
-        if target_tokens <= 0:
-            return previous
-        input_limit = max(128, history_budget)
-        compaction_model = self._text_model(profile)
-        selected = ()
-        # A project can expose more saved summaries than one bounded request
-        # should carry. Advance the oldest chronological coverage first.
-        for summary in candidates:
-            proposed = selected + (summary,)
-            messages = memory_compaction_messages(
-                previous,
-                proposed,
-                target_tokens,
-                target_language,
-            )
-            if messages_token_count(messages, compaction_model) <= input_limit:
-                selected = proposed
-                continue
-            break
-        if not selected:
-            return previous
-        checkpoint = self._compact_memory(
+        return self._compact_memory(
             previous=previous,
-            summaries=selected,
+            summaries=candidates,
             profile=profile,
             model=model,
             target_language=target_language,
-            target_tokens=target_tokens,
         )
-        return checkpoint if checkpoint is not None else previous
 
     def build_copy_prompt(self, src_list: List[str]) -> str:
         glossary_path = str(pcfg.module.llm_glossary_path or '')
@@ -1120,23 +1071,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             page_key=usage_page_key,
             attempt=usage_attempt,
         )
-        # ``length`` is Chat Completions' explicit output-exhaustion signal;
-        # do not infer this actionable configuration error from parse failures.
-        if str(result.finish_reason or '').strip().lower() == 'length':
-            safe_page_key = str(usage_page_key or '-').replace(
-                '\r', ' '
-            ).replace('\n', ' ')
-            self.logger.debug(
-                'LLM truncated translation response: '
-                f'page={safe_page_key}, attempt={usage_attempt}, '
-                f'chars={len(result.content)}, content={result.content!r}'
-            )
-            raise LLMOutputLimitError(
-                profile.id,
-                profile.name,
-                profile.max_tokens,
-                str(profile.thinking_level or THINKING_AUTO),
-            )
         return result.content
 
     def _translate(
@@ -1259,11 +1193,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     ),
                 )
                 continue
-            except LLMApiKeyRequiredError:
-                raise
-            except LLMModelRequiredError:
-                raise
-            except LLMRequestStopped:
+            except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as e:
                 if isinstance(e, InvalidNumTranslations):

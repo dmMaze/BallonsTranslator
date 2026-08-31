@@ -285,7 +285,7 @@ class ProjectTranslationTargetTest(unittest.TestCase):
         )
         project.set_llm_compact_memory({
             'version': 1,
-            'text': 'Coverage: page summaries ["001.png"].\n\nMemory body.',
+            'text': 'Memory body.',
             'covered_pages': ['001.png'],
         })
         raw = project.to_dict()
@@ -306,9 +306,7 @@ class ProjectTranslationTargetTest(unittest.TestCase):
             loaded.get_llm_compact_memory(),
             {
                 'version': 1,
-                'text': (
-                    'Coverage: page summaries ["001.png"].\n\nMemory body.'
-                ),
+                'text': 'Memory body.',
                 'covered_pages': ['001.png'],
             },
         )

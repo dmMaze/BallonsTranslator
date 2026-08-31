@@ -6,8 +6,8 @@ from unittest import mock
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
     LLMModelRequiredError,
-    LLMOutputLimitError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.context.token_usage import format_token_usage
@@ -412,58 +412,19 @@ class LLMTranslatorTest(unittest.TestCase):
                     )
                 self.assertNotIsInstance(caught.exception, ContextLengthError)
 
-    def test_explicit_output_limit_uses_ordinary_retries(self):
+    def test_user_action_required_bypasses_ordinary_retries(self):
         profile = default_profile('OpenAI')
-        profile.max_tokens = 1234
-        profile.thinking_level = 'low'
-        self.translator.set_param_value('retry attempts', 2)
+        self.translator.set_param_value('retry attempts', 5)
         self.translator.set_param_value('retry timeout', 0)
-        truncated = SimpleNamespace(
-            content='{\n  "translations": {\n    "1":',
-            usage=None,
-            finish_reason='length',
-        )
-        complete = SimpleNamespace(
-            content='{"1":"target"}',
-            usage=None,
-            finish_reason='stop',
-        )
 
         with mock.patch.object(
             self.translator,
-            'request_chat_completion',
-            side_effect=(truncated, complete),
-        ) as request:
-            result = self.translator._translate(
-                ['source'],
-                profile=profile,
-                prompt_spec=self._prompt_spec(profile),
-                page_key='003-0.png',
-            )
-
-        self.assertEqual(result, ['target'])
-        self.assertEqual(request.call_count, 2)
-
-    def test_explicit_output_limit_is_actionable_after_retries(self):
-        profile = default_profile('OpenAI')
-        profile.max_tokens = 1234
-        profile.thinking_level = 'low'
-        self.translator.set_param_value('retry attempts', 2)
-        self.translator.set_param_value('retry timeout', 0)
-        completion = SimpleNamespace(
-            content='{\n  "translations": {\n    "1":',
-            usage=None,
-            finish_reason='length',
-        )
-
-        with mock.patch.object(
-            self.translator,
-            'request_chat_completion',
-            return_value=completion,
+            '_request_translation',
+            side_effect=LLMUserActionRequiredError('update the profile'),
         ) as request:
             with self.assertRaisesRegex(
-                LLMOutputLimitError,
-                r'Thinking Level: low.*increase Max Tokens',
+                LLMUserActionRequiredError,
+                'update the profile',
             ):
                 self.translator._translate(
                     ['source'],
@@ -472,7 +433,7 @@ class LLMTranslatorTest(unittest.TestCase):
                     page_key='003-0.png',
                 )
 
-        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_count, 1)
 
     def test_token_usage_supports_openai_and_deepseek_cache_fields(self):
         openai_usage = SimpleNamespace(

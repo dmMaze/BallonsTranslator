@@ -11,7 +11,11 @@ from ..llm_chat import (
 )
 from ..llm_vision import encode_chat_image
 from .base import OCRBase, register_OCR
-from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
+from ballontranslator.modules.exceptions import (
+    LLMModelRequiredError,
+    LLMRequestStopped,
+    LLMUserActionRequiredError,
+)
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
     DEFAULT_OCR_PROMPT,
@@ -328,7 +332,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
                 if self.token_count_last:
                     self.logger.info(f'Used {self.token_count_last} tokens (Total: {self.token_count})')
                 return result
-            except (LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped):
+            except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as e:
                 retry_attempt += 1
@@ -450,7 +454,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
                 self.logger.info("Page-level OCR: Re-ordered text blocks based on LLM reading order flow.")
                 return [blk_list[int(block_id) - 1] for block_id in order]
             return None
-        except (LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped):
+        except (LLMUserActionRequiredError, LLMRequestStopped):
             raise
         except Exception as e:
             self.logger.error(f"Page-level LLM OCR failed: {e}. Falling back to block-by-block OCR.")

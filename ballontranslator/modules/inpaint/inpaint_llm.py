@@ -7,10 +7,8 @@ from .base import InpainterBase, register_inpainter
 from ..llm_image import LLMImageRequester
 from ..textdetector import TextBlock
 from ballontranslator.modules.exceptions import (
-    LLMApiKeyRequiredError,
-    LLMBaseURLRequiredError,
-    LLMModelRequiredError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
@@ -140,12 +138,7 @@ class LLMInpaint(LLMImageRequester, InpainterBase):
                     )
                 result = result.astype(np.uint8, copy=False)
                 return result * mask_original + img * (1 - mask_original)
-            except (
-                LLMApiKeyRequiredError,
-                LLMModelRequiredError,
-                LLMBaseURLRequiredError,
-                LLMRequestStopped,
-            ):
+            except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as error:
                 retry_attempt += 1

@@ -7,6 +7,7 @@ import httpx
 
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
+    LLMOutputLimitError,
     LLMRequestStopped,
 )
 from ballontranslator.modules.llm_chat import (
@@ -172,7 +173,7 @@ class LLMChatRequesterTest(unittest.TestCase):
         completion = SimpleNamespace(
             choices=[SimpleNamespace(
                 message=SimpleNamespace(content='hello'),
-                finish_reason='length',
+                finish_reason='stop',
             )],
             usage=usage,
         )
@@ -197,7 +198,50 @@ class LLMChatRequesterTest(unittest.TestCase):
         completions.create.assert_called_once_with(**api_args)
         self.assertEqual(result.content, 'hello')
         self.assertIs(result.usage, usage)
-        self.assertEqual(result.finish_reason, 'length')
+        self.assertEqual(result.finish_reason, 'stop')
+
+    def test_request_raises_actionable_output_limit(self):
+        self.profile.max_tokens = 1234
+        self.profile.thinking_level = 'low'
+        usage = SimpleNamespace(
+            prompt_tokens=10,
+            completion_tokens=1234,
+            total_tokens=1244,
+        )
+        completion = SimpleNamespace(
+            choices=[SimpleNamespace(
+                message=SimpleNamespace(content='{"partial":'),
+                finish_reason='length',
+            )],
+            usage=usage,
+        )
+        client = SimpleNamespace(chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                create=mock.Mock(return_value=completion)
+            )
+        ))
+
+        with (
+            mock.patch.object(
+                self.requester, '_openai_module', return_value=FakeOpenAI
+            ),
+            mock.patch.object(
+                self.requester, '_initialize_client', return_value=client
+            ),
+            mock.patch.object(self.requester, '_respect_delay'),
+        ):
+            with self.assertRaisesRegex(
+                LLMOutputLimitError,
+                r'Max Tokens: 1234.*Thinking Level: low',
+            ):
+                self.requester.request_chat_completion(
+                    self.profile,
+                    {'model': 'demo-model', 'messages': []},
+                )
+
+        self.assertEqual(len(self.requester.logs), 1)
+        self.assertIn('completion=1234', self.requester.logs[0])
+        self.assertIn('content=\'{"partial":\'', self.requester.logs[0])
 
     def test_request_normalizes_authentication_and_status_errors(self):
         def client_for(error: Exception):

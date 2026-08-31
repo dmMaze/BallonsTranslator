@@ -821,7 +821,7 @@ class ProjImgTrans:
         user-owned memory text.
 
         >>> ProjImgTrans._valid_llm_compact_memory({
-        ...     'version': 1, 'text': 'Coverage: none.', 'covered_pages': []})
+        ...     'version': 1, 'text': 'Memory.', 'covered_pages': []})
         True
         """
         if not isinstance(record, dict):

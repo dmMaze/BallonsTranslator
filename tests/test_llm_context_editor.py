@@ -44,9 +44,7 @@ class LLMContextEditorTest(unittest.TestCase):
         self.assertEqual(panel.editor_splitter.count(), 2)
 
         panel.summary_editor.setPlainText('Page one.\nUser note.')
-        panel.memory_editor.setPlainText(
-            'Coverage: page summaries ["001.png"].\n\nShared memory.'
-        )
+        panel.memory_editor.setPlainText('Shared memory.')
 
         self.assertEqual(
             project.get_llm_visual_summary('001.png')['text'],
@@ -54,7 +52,7 @@ class LLMContextEditorTest(unittest.TestCase):
         )
         self.assertEqual(
             project.get_llm_compact_memory()['text'],
-            'Coverage: page summaries ["001.png"].\n\nShared memory.',
+            'Shared memory.',
         )
         self.assertGreaterEqual(len(changed), 2)
 

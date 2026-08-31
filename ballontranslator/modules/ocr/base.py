@@ -14,7 +14,10 @@ from ballontranslator.utils.text_processing import (
 OCR = Registry('OCR')
 register_OCR = OCR.register_module
 
-from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped
+from ballontranslator.modules.exceptions import (
+    LLMRequestStopped,
+    LLMUserActionRequiredError,
+)
 from ..base import BaseModule, DEFAULT_DEVICE, DEVICE_SELECTOR, LOGGER
 from ..exceptions import ModuleRunError
 
@@ -94,7 +97,7 @@ class OCRBase(BaseModule):
                 self._detect_fonts(img, blk_list)
 
             return blk_list
-        except (ModuleRunError, LLMApiKeyRequiredError, LLMModelRequiredError, LLMRequestStopped):
+        except (ModuleRunError, LLMUserActionRequiredError, LLMRequestStopped):
             if original_text is not None:
                 for blk, text in original_text:
                     blk.text = text

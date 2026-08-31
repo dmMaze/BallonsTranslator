@@ -14,6 +14,7 @@ from ballontranslator.modules.exceptions import (
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
 from ballontranslator.modules import llm_image
@@ -194,6 +195,30 @@ class LLMImageThrottleTest(unittest.TestCase):
         thread.join(0.5)
         self.assertFalse(thread.is_alive())
         self.assertEqual(stopped, [True])
+
+    def test_user_action_required_bypasses_image_retries(self):
+        requester = LLMImageRequester(
+            image_request_policy=LLMImageRequestPolicy(
+                retry_attempts=3,
+                retry_timeout=0,
+            )
+        )
+        error = LLMUserActionRequiredError('update the profile')
+
+        with patch.object(
+            requester,
+            'request_image',
+            side_effect=error,
+        ) as request:
+            with self.assertRaises(LLMUserActionRequiredError):
+                requester.request_image_with_retries(
+                    default_profile('OpenRouter'),
+                    None,
+                    'prompt',
+                    'model',
+                )
+
+        request.assert_called_once()
 
 
 class LLMInpaintTest(unittest.TestCase):
