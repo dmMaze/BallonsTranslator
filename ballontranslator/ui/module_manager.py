@@ -1196,7 +1196,13 @@ class ImgtransThread(QThread):
                         self.requestStop()
                         break
                     except Exception as e:
-                        create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
+                        _create_page_error_dialog(
+                            e,
+                            self.tr('Inpainting Failed.'),
+                            'InpaintFailed',
+                            imgname,
+                            self.tr('Page'),
+                        )
                     
                 self.inpaint_counter += 1
                 self.imgtrans_proj.update_page_progress(imgname, RunStatus.FIN_INPAINT)
