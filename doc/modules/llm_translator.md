@@ -10,9 +10,10 @@ preserve behavior that spans several files.
 - `page` means no prior-page examples. It does not force a whole-page caller.
 - `+history` adds completed earlier pages as chronological user/assistant pairs.
 - `Vision` attaches only the current page image.
-- `Summary & Memory` adds reusable page summaries to the same translation
-  response and applies editable project-wide memory to every request. Older
-  summaries update memory when they no longer fit the shared context budget.
+- `Summary & Memory` applies saved page summaries and editable project-wide
+  memory to requests. It asks for a page summary when the current page has none,
+  or when `Overwrite Existing Summary` is enabled. Older summaries update memory
+  when they no longer fit the shared context budget.
 - `ProjImgTrans` is authoritative. The in-memory history window is a disposable
   optimization for sequential requests and provider prefix caching.
 - Glossary selection is independent of history and works in either mode.
@@ -69,15 +70,18 @@ Full-page results then run normalization, result substitutions, and optional
 uppercase before the page can become history. Selected-block translation
 retains its narrower postprocessing behavior.
 
-With Summary & Memory enabled, the same text or multimodal response instead
+When the current page needs a summary, the same text or multimodal response
 uses:
 
 ```json
 {"translations":{"1":"..."},"page_summary":"..."}
 ```
 
-A missing or malformed summary does not discard a complete translation map and
-does not erase existing user-owned summary text.
+A saved current-page summary suppresses this output request by default, so the
+ordinary numeric response shape remains in use. `Overwrite Existing Summary`
+requests the wrapped response again. A missing or malformed summary does not
+discard a complete translation map and does not erase existing user-owned
+summary text.
 
 ## Prompt layout and context modes
 
@@ -135,32 +139,40 @@ without history whenever a project is supplied.
 
 ## Vision, summaries, and memory
 
-Vision uses the selected profile's vision model. The encoded, bounded JPEG is
-the last part of the current user message, so stable instructions, full
-glossary, compacted memory, and recent history remain ahead of the volatile
-page suffix. Retries reuse the frozen data URL and never replay older images.
+Vision keeps the selected translation model and attaches an encoded, bounded
+JPEG as the last part of the current user message, so stable instructions,
+full glossary, compacted memory, and recent history remain ahead of the
+volatile page suffix. The selected model must accept image input; Translator
+never silently substitutes the profile's OCR vision model. Retries reuse the
+frozen data URL and never replay older images.
 
 Summary asks the already-selected text or vision translation request for concise
-narrative memory in the active target language alongside translations, then
-fills an empty `llm_visual_summary` record in that page's existing `image_info`.
-A saved summary remains usable across source, image, language, profile, model,
-and page-order changes until the user edits or clears it.
+narrative memory in the active target language alongside translations. It fills
+an empty `llm_visual_summary` record in that page's existing `image_info`. On a
+rerun, the saved current-page summary is read-only context and the response does
+not request another summary by default. `Overwrite Existing Summary` excludes
+that raw current-page summary from the request, asks for a replacement, and
+stores it only when the response contains usable summary text. A saved summary
+otherwise remains usable across source, image, language, profile, model, and
+page-order changes until the user edits or clears it.
 
 Saved summaries have their own immutable request snapshot and do not inherit
 bilingual-history eligibility. With Summary & Memory enabled, current and
 preceding saved summaries that are not already represented by selected history
-are added to the final user message as read-only context. Thus an incomplete
-page cannot become a translation example, but its user-owned summary can still
-guide later translation. The current summary is retained; additional summaries
-are selected newest-first as whole entries within the existing context budget.
-Because this block is in the volatile final message, summary edits do not
-disturb the stable system/memory/history prefix.
+are added to the final user message as read-only context. Overwrite mode omits
+only the raw current-page entry; existing compact memory remains unchanged.
+Thus an incomplete page cannot become a translation example, but its user-owned
+summary can still guide later translation. The current summary is retained when
+included; additional summaries are selected newest-first as whole entries
+within the existing context budget. Because this block is in the volatile final
+message, summary edits do not disturb the stable system/memory/history prefix.
 
 The translator keeps a generated summary pending until the worker has
 postprocessed and assigned translations and marked the page complete. Partial
-selections and failed pages therefore do not add one. Generated results never
-replace an existing summary, including one the user clears while a request is
-running; the context editor is the direct editing boundary.
+selections and failed pages therefore do not add or replace one. The saved
+record is compared with the request-start snapshot before committing, so edits
+or clears made while a request is running always win; the context editor is the
+direct editing boundary.
 
 Compact memory is an optional project-level record. When Summary & Memory is
 enabled, its text is frozen into every request before recent history,
@@ -170,24 +182,27 @@ Coverage metadata only prevents redundant automatic compaction. It remains in
 the project record and is not included in editable memory text or provider
 translation requests.
 
-Automatic compaction is independent of history mode. It starts only when an
-uncovered older summary no longer fits the shared context budget, then compacts
-an oldest batch while retaining a recent raw-summary suffix near the same
-low-water target used by history. This avoids rewriting the cacheable memory
-prefix on every page. It reads saved summaries directly, so translation
+Automatic compaction is independent of history mode. During translation, it
+starts when an uncovered older summary no longer fits the shared context budget,
+then compacts an oldest batch while retaining a recent raw-summary suffix near
+the same low-water target used by history. This avoids rewriting the cacheable
+memory prefix on every page. It reads saved summaries directly, so translation
 completion controls only bilingual examples and cannot hide an edited summary
-from compaction. One text-model request merges the previous memory with the new
-page summaries and writes the complete body in the active target language;
-inputs in another language remain valid semantic context. The compaction
-request is not sized by the translation context budget; the
-selected profile's provider limits still apply. After ordinary retries are
-exhausted, failure stops the run and is reported to the user instead of being
-retried independently by every following page. A successful result is accepted
-at its actual size and stored before the triggering translation request unless
-the user edited its memory or source summaries while compaction was running.
-This lets a failed page retry reuse the same compact-memory prefix. When that
-memory is packed into translation context, it is mandatory and may evict oldest
-optional bilingual-history pages.
+from compaction. After the project's last page finalizes, another compaction
+folds any remaining uncovered summaries into memory even when they still fit
+the context budget. One text-model request merges the previous memory with the
+new page summaries and writes the complete body in the active target language;
+inputs in another language remain valid semantic context. Coverage prevents a
+fully covered memory from being rewritten. The compaction request is not sized
+by the translation context budget; the selected profile's provider limits still
+apply. After ordinary retries are exhausted, failure stops the run and is
+reported to the user instead of being retried independently by every following
+page. A successful result is accepted at its actual size and stored before the
+triggering translation request, or after last-page finalization, unless the user
+edited its memory or source summaries while compaction was running. This lets a
+failed page retry reuse the same compact-memory prefix. When that memory is
+packed into translation context, it is mandatory and may evict oldest optional
+bilingual-history pages.
 
 Page summaries and compact memory remain independently user-owned. Editing a
 summary already named by memory coverage does not silently regenerate,
@@ -324,7 +339,9 @@ than silently translating without it.
 Context logs normally expose aggregate page, action, page-count, token-budget,
 attempt, and provider cache fields. A healthy contiguous run is usually
 `empty/rebuild -> grow ... -> evict -> grow`. Missing cache fields mean “not
-reported.” ID-count failures log the current prompt, so treat those logs as
+reported.” Debug logs also expose automatic page-OCR, image preprocessing, and
+context-recovery decisions. ID-count failures and accepted responses with
+unusable summaries log provider content, so treat logs as
 potentially containing project and glossary text. Output-limit diagnostics also
 log the provider's partial response.
 

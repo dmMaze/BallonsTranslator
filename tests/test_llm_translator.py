@@ -321,6 +321,7 @@ class LLMTranslatorTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.id = 'diagnostic-profile'
         profile.name = 'Diagnostic Profile'
+        profile.model = 'translation-model'
         profile.vision_model = 'vision-model'
         profile.max_tokens = 1234
         profile.thinking_level = 'low'
@@ -342,13 +343,19 @@ class LLMTranslatorTest(unittest.TestCase):
                 'llm_translate_summary_memory',
                 True,
             ),
+            mock.patch.object(
+                pcfg.module,
+                'llm_translate_overwrite_summary',
+                True,
+            ),
         ):
             description = self.translator.translation_run_description()
 
         self.assertIn("profile_id='diagnostic-profile'", description)
-        self.assertIn("model='vision-model'", description)
+        self.assertIn("model='translation-model'", description)
         self.assertIn("context='history', history_budget=2048", description)
         self.assertIn('vision=True, summary_memory=True', description)
+        self.assertIn('overwrite_summary=True', description)
         self.assertIn(
             "max_output_tokens=1234, thinking_setting='low'",
             description,

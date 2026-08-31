@@ -1137,9 +1137,23 @@ class RunPipelineDialog(QDialog):
         self.llm_summary_memory_checkbox.setChecked(
             pcfg.module.llm_translate_summary_memory
         )
+        self.llm_overwrite_summary_checkbox = QCheckBox(
+            self.tr('Overwrite Existing Summary'),
+            llm_features_row,
+        )
+        self.llm_overwrite_summary_checkbox.setObjectName(
+            'RunPipelineLLMFeatureCheckBox'
+        )
+        self.llm_overwrite_summary_checkbox.setChecked(
+            pcfg.module.llm_translate_overwrite_summary
+        )
+        self.llm_overwrite_summary_checkbox.setEnabled(
+            self.llm_summary_memory_checkbox.isChecked()
+        )
         for checkbox in (
             self.llm_vision_checkbox,
             self.llm_summary_memory_checkbox,
+            self.llm_overwrite_summary_checkbox,
         ):
             llm_features_layout.addWidget(checkbox)
         self.llm_vision_checkbox.setToolTip(self.tr(
@@ -1148,6 +1162,10 @@ class RunPipelineDialog(QDialog):
         self.llm_summary_memory_checkbox.setToolTip(self.tr(
             'Generate editable page summaries and compact older summaries '
             'into reusable project memory when the context budget fills.'
+        ))
+        self.llm_overwrite_summary_checkbox.setToolTip(self.tr(
+            'Ignore and replace the current page summary when translating '
+            'it again.'
         ))
         translation_grid.addWidget(llm_features_row, 3, 0, 1, 2)
 
@@ -1180,6 +1198,9 @@ class RunPipelineDialog(QDialog):
         )
         self.llm_summary_memory_checkbox.toggled.connect(
             self._on_llm_summary_memory_toggled
+        )
+        self.llm_overwrite_summary_checkbox.toggled.connect(
+            self._on_llm_overwrite_summary_toggled
         )
         self.llm_features_row.setVisible(self._llm_settings_visible)
 
@@ -1235,6 +1256,10 @@ class RunPipelineDialog(QDialog):
 
     def _on_llm_summary_memory_toggled(self, checked: bool) -> None:
         pcfg.module.llm_translate_summary_memory = checked
+        self.llm_overwrite_summary_checkbox.setEnabled(checked)
+
+    def _on_llm_overwrite_summary_toggled(self, checked: bool) -> None:
+        pcfg.module.llm_translate_overwrite_summary = checked
 
     def _on_prior_context_token_budget_changed(self, budget: int):
         pcfg.module.llm_prior_context_token_budget = budget

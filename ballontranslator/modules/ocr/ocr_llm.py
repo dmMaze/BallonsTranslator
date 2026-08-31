@@ -1,4 +1,5 @@
 import json
+import traceback
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import cv2
@@ -423,6 +424,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             mask_non_text=mask_non_text,
         )
 
+        raw_response: Optional[str] = None
         try:
             profile = self.profile
             expected_count = len(blk_list)
@@ -458,4 +460,18 @@ class LLMOCR(LLMChatRequester, OCRBase):
             raise
         except Exception as e:
             self.logger.error(f"Page-level LLM OCR failed: {e}. Falling back to block-by-block OCR.")
+            safe_error = str(e).replace('\r', ' ').replace('\n', ' ')
+            details = (
+                'Page-level LLM OCR fallback details: '
+                f'blocks={len(blk_list)}, mask_non_text={mask_non_text}, '
+                f'sort_reading_order={sort_reading_order}, '
+                f'error={type(e).__name__}: {safe_error}'
+            )
+            if raw_response is not None:
+                details += (
+                    f', response_chars={len(raw_response)}, '
+                    f'response={raw_response!r}'
+                )
+            self.logger.debug(details)
+            self.logger.debug(traceback.format_exc())
             return super()._ocr_blk_list(img, blk_list, *args, **kwargs)

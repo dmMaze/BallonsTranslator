@@ -32,7 +32,9 @@ class LLMTranslationIntegrationTest(
             self._snapshot_request_context(None, None, self.profile)
         )
 
-    def test_vision_is_a_current_message_suffix_and_uses_vision_model(self):
+    def test_vision_is_a_suffix_and_keeps_selected_translation_model(self):
+        self.profile.model = 'selected-translation-model'
+        self.profile.vision_model = 'ignored-ocr-model'
         project = self._project(1)
         project.read_img = mock.Mock(
             return_value=np.zeros((32, 24, 3), dtype=np.uint8)
@@ -77,9 +79,8 @@ class LLMTranslationIntegrationTest(
             self.translator._api_args(
                 self.profile,
                 vision_messages,
-                vision_enabled=True,
             )['model'],
-            self.profile.vision_model,
+            self.profile.model,
         )
 
     def test_translate_freezes_all_context_settings_before_image_work(self):
@@ -127,7 +128,9 @@ class LLMTranslationIntegrationTest(
         ) as request:
             result = self.translator.translate(
                 ['source'],
-                project=SimpleNamespace(),
+                project=SimpleNamespace(
+                    get_llm_visual_summary=lambda _page_key: None,
+                ),
                 page_key='001.png',
             )
 

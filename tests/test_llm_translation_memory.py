@@ -100,7 +100,7 @@ class LLMTranslationMemoryTest(
                 summary.page_key,
                 summary.text,
             )
-        model = self.translator._vision_model(self.profile)
+        model = self.translator._text_model(self.profile)
         key = HistoryWindowKey(
             load_identity=project.load_identity,
             settings=(
@@ -264,6 +264,114 @@ class LLMTranslationMemoryTest(
             },
         )
 
+    def test_last_page_finalization_compacts_remaining_summaries(self):
+        pcfg.module.llm_translate_summary_memory = True
+        project = self._project(2)
+        project.set_llm_visual_summary_text('001.png', 'Earlier summary.')
+        project.set_llm_compact_memory({
+            'version': 1,
+            'text': 'Existing memory.',
+            'covered_pages': ['001.png'],
+        })
+        response = json.dumps({
+            'translations': {'1': 'translated'},
+            'page_summary': 'Final-page summary.',
+        })
+        merged = MemoryCheckpoint(
+            'Merged memory.',
+            ('001.png', '002.png'),
+            4,
+        )
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value=response,
+        ), mock.patch.object(
+            self.translator,
+            '_compact_summary_batch',
+            return_value=merged,
+        ) as compact:
+            self.translator.on_page_translation_finished(project, '001.png')
+            compact.assert_not_called()
+            self.translator.translate(
+                ['source-2'],
+                project=project,
+                page_key='002.png',
+                commit_history_window=True,
+            )
+            compact.assert_not_called()
+            self._complete(project, '002.png')
+            self.translator.on_page_translation_finished(project, '002.png')
+            compaction_kwargs = compact.call_args.kwargs
+            compact.reset_mock()
+            self.translator.on_page_translation_finished(project, '002.png')
+            compact.assert_not_called()
+
+        self.assertEqual(
+            compaction_kwargs['summaries'],
+            (PageSummary('002.png', 'Final-page summary.'),),
+        )
+        self.assertEqual(
+            compaction_kwargs['previous'].text,
+            'Existing memory.',
+        )
+        self.assertEqual(
+            project.get_llm_compact_memory(),
+            {
+                'version': 1,
+                'text': 'Merged memory.',
+                'covered_pages': ['001.png', '002.png'],
+            },
+        )
+
+    def test_user_edit_wins_over_last_page_compaction(self):
+        pcfg.module.llm_translate_summary_memory = True
+        project = self._project(1)
+        project.set_llm_visual_summary_text('001.png', 'Final summary.')
+        project.set_llm_compact_memory({
+            'version': 1,
+            'text': 'Original memory.',
+            'covered_pages': [],
+        })
+        generated = MemoryCheckpoint('Generated.', ('001.png',), 4)
+
+        def edit_during_compaction(**_kwargs: object) -> MemoryCheckpoint:
+            project.set_llm_compact_memory_text('User edit.')
+            return generated
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            '_compact_summary_batch',
+            side_effect=edit_during_compaction,
+        ) as compact:
+            self._complete(project, '001.png')
+            self.translator.on_page_translation_finished(project, '001.png')
+
+        compact.assert_called_once()
+        self.assertEqual(
+            project.get_llm_compact_memory(),
+            {
+                'version': 1,
+                'text': 'User edit.',
+                'covered_pages': [],
+            },
+        )
+
     def test_memory_discovers_late_summary_during_adjacent_growth(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_translate_summary_memory = True
@@ -355,7 +463,7 @@ class LLMTranslationMemoryTest(
                     previous=previous,
                     summaries=retired,
                     profile=self.profile,
-                    model=self.profile.vision_model,
+                    model=self.profile.model,
                     target_language='Simplified Chinese',
                 )
 
@@ -374,7 +482,7 @@ class LLMTranslationMemoryTest(
                     previous=None,
                     summaries=(PageSummary('001.png', 'summary'),),
                     profile=self.profile,
-                    model=self.profile.vision_model,
+                    model=self.profile.model,
                     target_language='Simplified Chinese',
                 )
 
@@ -389,7 +497,7 @@ class LLMTranslationMemoryTest(
                 previous=None,
                 summaries=(summary,),
                 profile=self.profile,
-                model=self.profile.vision_model,
+                model=self.profile.model,
                 target_language='Simplified Chinese',
             )
 
@@ -448,6 +556,8 @@ class LLMTranslationMemoryTest(
                     )
 
     def test_memory_compaction_sends_only_not_yet_covered_summaries(self):
+        self.profile.model = 'selected-translation-model'
+        self.profile.vision_model = 'ignored-ocr-model'
         previous = MemoryCheckpoint('old memory', ('001.png',), 1)
         summaries = (
             PageSummary('001.png', 'covered summary'),
@@ -470,7 +580,7 @@ class LLMTranslationMemoryTest(
                 previous=previous,
                 summaries=summaries,
                 profile=self.profile,
-                model=self.profile.vision_model,
+                model=self.profile.model,
                 target_language='Simplified Chinese',
             )
 

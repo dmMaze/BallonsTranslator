@@ -23,6 +23,15 @@ class LLMTranslationSummaryTest(
     LLMTranslationTestMixin,
     unittest.TestCase,
 ):
+    def setUp(self) -> None:
+        super().setUp()
+        last_page_compaction = mock.patch.object(
+            self.translator,
+            '_compact_last_page_memory',
+        )
+        last_page_compaction.start()
+        self.addCleanup(last_page_compaction.stop)
+
     def test_summary_uses_same_request_and_persists_after_page_finalization(self):
         project = self._project(1)
         project.pages['001.png'][0].translation = ''
@@ -328,7 +337,7 @@ class LLMTranslationSummaryTest(
 
         self.assertIsNone(project.get_llm_visual_summary('001.png'))
 
-    def test_missing_summary_preserves_user_owned_summary(self):
+    def test_existing_summary_skips_summary_request_and_is_preserved(self):
         project = self._project(1)
         old_record = {
             'version': 1,
@@ -349,8 +358,8 @@ class LLMTranslationSummaryTest(
         ), mock.patch.object(
             self.translator,
             '_request_translation',
-            return_value='{"translations":{"1":"translated"}}',
-        ):
+            return_value='{"1":"translated"}',
+        ) as request:
             self.translator.translate(
                 ['source-1'],
                 project=project,
@@ -358,6 +367,10 @@ class LLMTranslationSummaryTest(
                 commit_history_window=True,
             )
 
+        self.assertNotIn('summary_enabled', request.call_args.kwargs)
+        messages = request.call_args.args[1]
+        self.assertNotIn('page_summary', messages[0]['content'])
+        self.assertIn('Old summary.', messages[-1]['content'])
         self.assertIsNotNone(project.get_llm_visual_summary('001.png'))
         self.translator.on_page_translation_finished(project, '001.png')
 
@@ -366,8 +379,58 @@ class LLMTranslationSummaryTest(
             'Old summary.',
         )
 
-    def test_user_clear_during_translation_is_not_replaced_by_summary(self):
+    def test_overwrite_summary_ignores_current_context_and_replaces_it(self):
+        project = self._project(2)
+        project.set_llm_visual_summary_text('001.png', 'Prior summary.')
+        project.set_llm_visual_summary_text('002.png', 'Old current summary.')
         pcfg.module.llm_translate_summary_memory = True
+        pcfg.module.llm_translate_overwrite_summary = True
+        response = json.dumps({
+            'translations': {'1': 'translated'},
+            'page_summary': 'Replacement summary.',
+        })
+
+        with mock.patch.object(
+            type(self.translator),
+            'profile',
+            new_callable=mock.PropertyMock,
+            return_value=self.profile,
+        ), mock.patch.object(
+            self.translator,
+            'all_model_loaded',
+            return_value=True,
+        ), mock.patch.object(
+            self.translator,
+            '_request_translation',
+            return_value=response,
+        ) as request:
+            self.translator.translate(
+                ['source-2'],
+                project=project,
+                page_key='002.png',
+                commit_history_window=True,
+            )
+
+        self.assertTrue(request.call_args.kwargs['summary_enabled'])
+        messages = request.call_args.args[1]
+        self.assertIn('page_summary', messages[0]['content'])
+        self.assertIn('Prior summary.', messages[-1]['content'])
+        self.assertNotIn('Old current summary.', messages[-1]['content'])
+        self.assertEqual(
+            project.get_llm_visual_summary('002.png')['text'],
+            'Old current summary.',
+        )
+
+        self.translator.on_page_translation_finished(project, '002.png')
+
+        self.assertEqual(
+            project.get_llm_visual_summary('002.png')['text'],
+            'Replacement summary.',
+        )
+
+    def test_user_clear_during_overwrite_is_not_replaced_by_summary(self):
+        pcfg.module.llm_translate_summary_memory = True
+        pcfg.module.llm_translate_overwrite_summary = True
         project = self._project(1)
         project.set_llm_visual_summary_text('001.png', 'User summary.')
         response = json.dumps({

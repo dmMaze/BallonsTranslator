@@ -46,12 +46,14 @@ class LLMContextConfigTest(unittest.TestCase):
                 loaded.module.llm_glossary_mode,
                 loaded.module.llm_translate_vision,
                 loaded.module.llm_translate_summary_memory,
+                loaded.module.llm_translate_overwrite_summary,
             ),
             (
                 LLMTranslateContext.PAGE,
                 4096,
                 '',
                 LLMGlossaryMode.Matching,
+                False,
                 False,
                 False,
             ),
@@ -72,6 +74,11 @@ class LLMContextConfigTest(unittest.TestCase):
                 (None, 0, 1, 'yes', [], {}),
                 False,
             ),
+            (
+                'llm_translate_overwrite_summary',
+                (None, 0, 1, 'yes', [], {}),
+                False,
+            ),
         )
         for field, values, expected in invalid_cases:
             for value in values:
@@ -89,6 +96,7 @@ class LLMContextConfigTest(unittest.TestCase):
             llm_glossary_mode=LLMGlossaryMode.All,
             llm_translate_vision=True,
             llm_translate_summary_memory=True,
+            llm_translate_overwrite_summary=True,
         ))
         raw = json.loads(json_dump_program_config(cfg))
 
@@ -102,6 +110,7 @@ class LLMContextConfigTest(unittest.TestCase):
                     'llm_glossary_mode',
                     'llm_translate_vision',
                     'llm_translate_summary_memory',
+                    'llm_translate_overwrite_summary',
                 )
             },
             {
@@ -111,6 +120,7 @@ class LLMContextConfigTest(unittest.TestCase):
                 'llm_glossary_mode': LLMGlossaryMode.All,
                 'llm_translate_vision': True,
                 'llm_translate_summary_memory': True,
+                'llm_translate_overwrite_summary': True,
             },
         )
 
@@ -131,6 +141,7 @@ class LLMContextConfigTest(unittest.TestCase):
         self.assertEqual(loaded.module.llm_glossary_mode, LLMGlossaryMode.All)
         self.assertTrue(loaded.module.llm_translate_vision)
         self.assertTrue(loaded.module.llm_translate_summary_memory)
+        self.assertTrue(loaded.module.llm_translate_overwrite_summary)
 
 class ProjectLoadIdentityTest(unittest.TestCase):
 

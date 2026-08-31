@@ -33,6 +33,9 @@ class LLMTranslationTestMixin:
             'llm_translate_summary_memory': (
                 pcfg.module.llm_translate_summary_memory
             ),
+            'llm_translate_overwrite_summary': (
+                pcfg.module.llm_translate_overwrite_summary
+            ),
         }
         # Keep the split suites independent from ambient config and test order.
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
@@ -41,6 +44,7 @@ class LLMTranslationTestMixin:
         pcfg.module.llm_glossary_mode = LLMGlossaryMode.Matching
         pcfg.module.llm_translate_vision = False
         pcfg.module.llm_translate_summary_memory = False
+        pcfg.module.llm_translate_overwrite_summary = False
         self._retry_settings = {
             key: self.translator.get_param_value(key)
             for key in ('retry attempts', 'retry timeout')

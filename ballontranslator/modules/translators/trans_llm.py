@@ -166,7 +166,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         self._history_window: Optional[HistoryWindow] = None
         self._pending_visual_summaries: Dict[
             str,
-            Tuple[str, Dict[str, object]],
+            Tuple[
+                str,
+                Optional[Dict[str, object]],
+                Dict[str, object],
+            ],
         ] = {}
 
     @property
@@ -188,26 +192,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             raise LLMModelRequiredError(profile.id, profile.name)
         return model
 
-    @staticmethod
-    def _vision_model(profile: LLMProfile) -> str:
-        if not profile.support_vision:
-            raise RuntimeError(
-                f'LLM profile "{profile.name}" does not have vision enabled.'
-            )
-        model = str(profile.vision_model or '').strip()
-        model_options = [
-            str(option).strip()
-            for option in profile.vision_model_options
-            if str(option).strip()
-        ]
-        if not model or not model_options:
-            raise LLMModelRequiredError(
-                profile.id,
-                profile.name,
-                target='vision_model',
-            )
-        return model
-
     def translation_run_description(self) -> str:
         """Describe the effective LLM context settings for run diagnostics."""
         profile = runtime_profile(
@@ -215,9 +199,13 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             pcfg.module.translator_llm_id,
         )
         vision_enabled = bool(pcfg.module.llm_translate_vision)
-        model = str(
-            profile.vision_model if vision_enabled else profile.model
-        ).strip()
+        summary_memory_enabled = bool(
+            pcfg.module.llm_translate_summary_memory
+        )
+        overwrite_summary = summary_memory_enabled and bool(
+            pcfg.module.llm_translate_overwrite_summary
+        )
+        model = self._text_model(profile)
         response_format = (
             'json_schema'
             if profile.json_schema_response_format
@@ -230,8 +218,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             f'context={str(pcfg.module.llm_translate_context)!r}, '
             f'history_budget={int(pcfg.module.llm_prior_context_token_budget)}, '
             f'vision={vision_enabled}, '
-            f'summary_memory='
-            f'{bool(pcfg.module.llm_translate_summary_memory)}, '
+            f'summary_memory={summary_memory_enabled}, '
+            f'overwrite_summary={overwrite_summary}, '
             f'max_output_tokens={profile.max_tokens!r}, '
             f'thinking_setting='
             f'{str(profile.thinking_level or THINKING_AUTO)!r}, '
@@ -268,13 +256,29 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         profile: LLMProfile,
     ) -> EncodedChatImage:
         """Read, normalize, and freeze one page image before retries."""
-        self._vision_model(profile)
+        if not profile.support_vision:
+            raise RuntimeError(
+                f'LLM profile "{profile.name}" does not have vision enabled.'
+            )
         image = project.read_img(page_key)
         if image is None or not isinstance(image, np.ndarray) or image.size == 0:
             raise RuntimeError(f'Unable to read page image: {page_key}')
+        request_image = self._scaled_page_image(image)
+        source_height, source_width = image.shape[:2]
+        request_height, request_width = request_image.shape[:2]
+        safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+        detail = str(profile.vision_detail_level or 'None')
+        self.logger.debug(
+            'LLM vision image preprocessing: '
+            f'page={safe_page_key or "-"}, '
+            f'source={source_width}x{source_height}, '
+            f'request={request_width}x{request_height}, '
+            f'resized={request_image.shape[:2] != image.shape[:2]}, '
+            f'jpeg_quality={PAGE_IMAGE_JPEG_QUALITY}, detail={detail!r}'
+        )
         return encode_chat_image(
-            self._scaled_page_image(image),
-            detail=str(profile.vision_detail_level or 'None'),
+            request_image,
+            detail=detail,
             jpeg_quality=PAGE_IMAGE_JPEG_QUALITY,
             failure_message=f'Failed to encode page image: {page_key}',
         )
@@ -316,8 +320,22 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         glossary_path = str(pcfg.module.llm_glossary_path or '')
         glossary_mode = pcfg.module.llm_glossary_mode
         vision_enabled = bool(pcfg.module.llm_translate_vision)
-        summary_enabled = bool(pcfg.module.llm_translate_summary_memory)
-        memory_enabled = summary_enabled
+        summary_memory_enabled = bool(
+            pcfg.module.llm_translate_summary_memory
+        )
+        overwrite_existing_summary = summary_memory_enabled and bool(
+            pcfg.module.llm_translate_overwrite_summary
+        )
+        existing_summary: Optional[Dict[str, object]] = None
+        if page_key is not None:
+            self._pending_visual_summaries.pop(str(page_key), None)
+            if summary_memory_enabled and project is not None:
+                existing_summary = project.get_llm_visual_summary(
+                    str(page_key)
+                )
+        request_summary = summary_memory_enabled and (
+            overwrite_existing_summary or existing_summary is None
+        )
         target_language_name = self._translated_lang(target_language)
         prompt_spec = TranslationPromptSpec(
             source_language=self._translated_lang(source_language),
@@ -326,23 +344,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 profile.prompt,
                 target_language_name,
                 history_enabled=history_enabled,
-                summary_enabled=summary_enabled,
+                summary_enabled=request_summary,
             ),
-            summary_enabled=summary_enabled,
+            summary_enabled=request_summary,
             history_enabled=history_enabled,
         )
-        summary_slot_empty = False
-        if page_key is not None:
-            self._pending_visual_summaries.pop(str(page_key), None)
-            image_info = getattr(project, '_image_info', None)
-            if (
-                summary_enabled
-                and isinstance(image_info, dict)
-                and str(page_key) in image_info
-            ):
-                summary_slot_empty = (
-                    project.get_llm_visual_summary(str(page_key)) is None
-                )
         vision_request = None
         if (
             vision_enabled
@@ -354,11 +360,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 str(page_key),
                 profile,
             )
-        model = (
-            self._vision_model(profile)
-            if vision_request is not None
-            else self._text_model(profile)
-        )
+        model = self._text_model(profile)
         request_context = self._snapshot_request_context(
             project,
             page_key,
@@ -370,7 +372,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             history_budget=history_budget,
             glossary_path=glossary_path,
             glossary_mode=glossary_mode,
-            memory_enabled=memory_enabled,
+            memory_enabled=summary_memory_enabled,
+            ignore_current_summary=(
+                overwrite_existing_summary and existing_summary is not None
+            ),
         )
         text_trans = self._translate(
             queries,
@@ -380,7 +385,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             page_key=page_key,
             commit_history_window=commit_history_window,
             vision_request=vision_request,
-            summary_slot_empty=summary_slot_empty,
+            summary_expected_record=existing_summary,
         )
         if text_trans is None:
             text_trans = [''] * len(text) if is_list else ''
@@ -403,7 +408,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         project: ProjImgTrans,
         page_key: str,
     ) -> None:
-        """Commit the generated page summary after a finalized full page."""
+        """Commit generated context after a finalized full page."""
         pending_summary = self._pending_visual_summaries.pop(
             str(page_key),
             None,
@@ -411,32 +416,45 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         pages = getattr(project, 'pages', None)
         if not isinstance(pages, dict) or page_key not in pages:
             return
-        if pending_summary is None:
-            return
-        source_signature, record = pending_summary
-        _, sources, _ = BaseTranslator._prepare_textblock_sources(
-            self,
-            pages[page_key],
-        )
-        if self._source_signature(tuple(sources)) != source_signature:
-            self.logger.warning(
-                'LLM page summary was not saved because page sources changed: %s',
-                page_key,
+        if pending_summary is not None:
+            source_signature, expected_record, record = pending_summary
+            _, sources, _ = BaseTranslator._prepare_textblock_sources(
+                self,
+                pages[page_key],
             )
-            return
-        try:
-            # Once present, generated or edited page memory belongs to the user.
-            # A later translation may fill an empty slot but never replaces it.
-            if project.get_llm_visual_summary(page_key) is None:
-                project.set_llm_visual_summary(page_key, record)
-        except Exception as error:
-            # Translation is already final; optional context persistence must not
-            # turn a successful page into a failed pipeline stage.
-            self.logger.warning(
-                'Unable to save LLM page summary for %s: %s',
-                page_key,
-                error,
-            )
+            if self._source_signature(tuple(sources)) != source_signature:
+                self.logger.warning(
+                    'LLM page summary was not saved because page sources '
+                    'changed: %s',
+                    page_key,
+                )
+            else:
+                try:
+                    # User edits made while the request was in flight always win.
+                    if (
+                        project.get_llm_visual_summary(page_key)
+                        == expected_record
+                    ):
+                        project.set_llm_visual_summary(page_key, record)
+                        if expected_record is not None:
+                            logged_page_key = str(page_key).replace(
+                                '\r', ' '
+                            ).replace('\n', ' ')
+                            self.logger.info(
+                                'LLM page summary overwritten: page=%s',
+                                logged_page_key or '-',
+                            )
+                except Exception as error:
+                    # Translation is already final; optional summary persistence
+                    # must not turn a successful page into a failed pipeline stage.
+                    self.logger.warning(
+                        'Unable to save LLM page summary for %s: %s',
+                        page_key,
+                        error,
+                    )
+
+        if pcfg.module.llm_translate_summary_memory:
+            self._compact_last_page_memory(project, page_key)
 
     def delay(self) -> float:
         return self.get_param_value('delay')
@@ -456,6 +474,73 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             'covered_pages': list(memory.covered_page_keys),
         })
 
+    def _compact_last_page_memory(
+        self,
+        project: ProjImgTrans,
+        page_key: str,
+    ) -> None:
+        """Compact remaining summaries after the project's last page.
+
+        >>> translator = LLMTranslator.__new__(LLMTranslator)
+        >>> translator._compact_last_page_memory(ProjImgTrans(), '001.png') is None
+        True
+        """
+        pages = getattr(project, 'pages', None)
+        if (
+            not isinstance(pages, dict)
+            or not pages
+            or next(reversed(pages), None) != page_key
+        ):
+            return
+
+        profile = self.profile
+        model = self._text_model(profile)
+        previous_signature = project_memory_signature(project)
+        previous = project_memory_checkpoint(project, model)
+        covered = set(previous.covered_page_keys if previous else ())
+        summaries = tuple(
+            summary
+            for summary in snapshot_page_summaries(project, page_key)
+            if summary.page_key not in covered
+        )
+        safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+        if not summaries:
+            self.logger.debug(
+                'LLM memory compaction skipped: reason=last-page, '
+                f'page={safe_page_key or "-"}, uncovered_summaries=0'
+            )
+            return
+
+        self.logger.info(
+            'LLM memory compaction triggered: reason=last-page, '
+            f'page={safe_page_key or "-"}, '
+            f'uncovered_summaries={len(summaries)}'
+        )
+        candidate = self._compact_summary_batch(
+            previous=previous,
+            summaries=summaries,
+            profile=profile,
+            model=model,
+            target_language=self._translated_lang(str(self.lang_target)),
+        )
+        if candidate is None or candidate == previous:
+            return
+
+        inputs_unchanged = all(
+            saved_page_summary_text(project, summary.page_key) == summary.text
+            for summary in summaries
+        )
+        if (
+            project_memory_signature(project) != previous_signature
+            or not inputs_unchanged
+        ):
+            self.logger.warning(
+                'LLM context changed during last-page memory compaction; '
+                'leaving the latest project memory unchanged.'
+            )
+            return
+        self._persist_memory_checkpoint(project, candidate)
+
     def _snapshot_request_context(
         self,
         project: Optional[ProjImgTrans],
@@ -469,6 +554,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         glossary_path: str,
         glossary_mode: str,
         memory_enabled: bool,
+        ignore_current_summary: bool = False,
         model: Optional[str] = None,
         allow_compaction: bool = True,
     ) -> Optional[RequestContext]:
@@ -498,9 +584,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         saved_summaries = (
             snapshot_page_summaries(project, str(page_key))
-            if summary_enabled and page_key is not None
+            if memory_enabled and page_key is not None
             else ()
         )
+        if ignore_current_summary:
+            saved_summaries = tuple(
+                summary
+                for summary in saved_summaries
+                if summary.page_key != str(page_key)
+            )
         current_summaries = tuple(
             summary
             for summary in saved_summaries
@@ -631,6 +723,18 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 ) + current_summary_tokens,
             )
 
+        missing_history_summaries = tuple(
+            page.page_key
+            for page in history
+            if summary_enabled and not page.snapshot.summary
+        )
+        if missing_history_summaries:
+            self.logger.debug(
+                'LLM history summary policy: '
+                f'pages_without_summary={missing_history_summaries!r}; '
+                'their assistant examples contain an empty page_summary.'
+            )
+
         # Saved summaries absent from selected bilingual history stay in the
         # volatile suffix, so completion state cannot hide user-owned context.
         represented_summary_pages = {
@@ -712,6 +816,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                         glossary_path=glossary_path,
                         glossary_mode=glossary_mode,
                         memory_enabled=memory_enabled,
+                        ignore_current_summary=ignore_current_summary,
                         model=model,
                         allow_compaction=False,
                     )
@@ -977,14 +1082,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         messages: List[Dict],
         expected_translations: int = 1,
         *,
-        vision_enabled: bool = False,
         summary_enabled: bool = False,
     ) -> Dict:
-        model = (
-            self._vision_model(profile)
-            if vision_enabled
-            else self._text_model(profile)
-        )
+        model = self._text_model(profile)
         api_args = {
             "model": model,
             "messages": messages,
@@ -1047,7 +1147,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         expected_translations: int = 1,
         usage_page_key=None,
         usage_attempt: Optional[int] = None,
-        vision_enabled: bool = False,
         summary_enabled: bool = False,
     ) -> str:
         try:
@@ -1057,7 +1156,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     profile,
                     messages,
                     expected_translations,
-                    vision_enabled=vision_enabled,
                     summary_enabled=summary_enabled,
                 ),
             )
@@ -1083,7 +1181,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         page_key: Optional[str] = None,
         commit_history_window: bool = True,
         vision_request: Optional[EncodedChatImage] = None,
-        summary_slot_empty: bool = True,
+        summary_expected_record: Optional[Dict[str, object]] = None,
     ) -> List[str]:
         """Translate with ordinary retries and optional-context recovery.
 
@@ -1144,8 +1242,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     'usage_page_key': usage_page_key,
                     'usage_attempt': provider_attempt,
                 }
-                if vision_request is not None:
-                    request_kwargs['vision_enabled'] = True
                 if summary_enabled:
                     request_kwargs['summary_enabled'] = summary_enabled
                 raw_response = self._request_translation(
@@ -1171,7 +1267,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 translations = list(parsed.translations)
                 successful_context = active_context
                 break
-            except ContextLengthError:
+            except ContextLengthError as error:
                 # Provider tokenization can exceed our estimate; remove optional
                 # summaries, then whole history pages, without consuming retries.
                 if recovery_attempts >= recovery_limit:
@@ -1179,7 +1275,14 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 recovered_context = recover_context_length(active_context)
                 if recovered_context is None:
                     raise
-                self.logger.debug(str(recovered_context.diagnostic))
+                safe_error = str(error).replace('\r', ' ').replace('\n', ' ')
+                self.logger.debug(
+                    'LLM context-length recovery: '
+                    f'provider_attempt={provider_attempt}, '
+                    f'trigger={safe_error!r}, '
+                    f'{recovered_context.diagnostic}; retrying with reduced '
+                    'optional context without consuming the retry budget.'
+                )
                 recovery_attempts += 1
                 active_context = recovered_context
                 messages, prompt = assemble_translation_request(
@@ -1210,12 +1313,12 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window
             and page_key is not None
             and summary_enabled
-            and summary_slot_empty
             and parsed.page_summary
         ):
             source_signature = self._source_signature(queries)
             self._pending_visual_summaries[str(page_key)] = (
                 source_signature,
+                summary_expected_record,
                 {
                     'version': LLM_VISUAL_SUMMARY_VERSION,
                     'text': parsed.page_summary,
@@ -1227,6 +1330,14 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             and summary_enabled
             and not parsed.page_summary
         ):
+            safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+            self.logger.debug(
+                'LLM accepted translations without a usable page summary: '
+                f'page={safe_page_key or "-"}, attempt={provider_attempt}, '
+                'decision=accept-translations-leave-summary-unchanged, '
+                'reason=page_summary-missing-non-string-or-blank, '
+                f'chars={len(raw_response)}, content={raw_response!r}'
+            )
             self.logger.warning(
                 'LLM translation returned no usable page summary for %s; '
                 'the saved summary was left unchanged.',

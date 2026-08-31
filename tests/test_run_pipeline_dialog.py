@@ -131,6 +131,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_glossary_mode,
             pcfg.module.llm_translate_vision,
             pcfg.module.llm_translate_summary_memory,
+            pcfg.module.llm_translate_overwrite_summary,
         )
         self._llm_ocr_settings = (
             pcfg.module.ocr,
@@ -186,6 +187,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.module.llm_glossary_mode,
             pcfg.module.llm_translate_vision,
             pcfg.module.llm_translate_summary_memory,
+            pcfg.module.llm_translate_overwrite_summary,
         ) = self._pipeline_general_settings
         (
             pcfg.module.ocr,
@@ -750,19 +752,25 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertTrue(dialog.glossary_mode_combobox.isEnabled())
         dialog.close()
 
-    def test_llm_context_uses_unified_summary_memory_control(self):
+    def test_llm_context_uses_summary_memory_and_overwrite_controls(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_translate_vision = False
         pcfg.module.llm_translate_summary_memory = False
+        pcfg.module.llm_translate_overwrite_summary = False
         dialog = RunPipelineDialog(
             translator_metadata={'name': 'LLMTranslator'},
         )
 
         self.assertFalse(dialog.llm_features_row.isHidden())
         self.assertTrue(dialog.llm_summary_memory_checkbox.isEnabled())
+        self.assertFalse(dialog.llm_overwrite_summary_checkbox.isChecked())
+        self.assertFalse(dialog.llm_overwrite_summary_checkbox.isEnabled())
 
         dialog.llm_summary_memory_checkbox.setChecked(True)
         self.assertTrue(pcfg.module.llm_translate_summary_memory)
+        self.assertTrue(dialog.llm_overwrite_summary_checkbox.isEnabled())
+        dialog.llm_overwrite_summary_checkbox.setChecked(True)
+        self.assertTrue(pcfg.module.llm_translate_overwrite_summary)
 
         history_index = dialog.llm_context_combobox.findData(
             LLMTranslateContext.HISTORY
@@ -777,6 +785,8 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         dialog.llm_summary_memory_checkbox.setChecked(False)
         self.assertFalse(pcfg.module.llm_translate_summary_memory)
+        self.assertFalse(dialog.llm_overwrite_summary_checkbox.isEnabled())
+        self.assertTrue(pcfg.module.llm_translate_overwrite_summary)
         dialog.close()
 
     def test_copy_source_glossary_error_preserves_clipboard(self):

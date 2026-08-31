@@ -116,6 +116,7 @@ class ModuleConfig(Config):
     llm_glossary_mode: str = LLMGlossaryMode.Matching
     llm_translate_vision: bool = False
     llm_translate_summary_memory: bool = False
+    llm_translate_overwrite_summary: bool = False
 
     check_need_inpaint: bool = True
     empty_runcache: bool = False
@@ -225,6 +226,7 @@ class ModuleConfig(Config):
         for feature in (
             'llm_translate_vision',
             'llm_translate_summary_memory',
+            'llm_translate_overwrite_summary',
         ):
             if not isinstance(getattr(self, feature), bool):
                 LOGGER.warning('Invalid %s value; disabling it.', feature)
