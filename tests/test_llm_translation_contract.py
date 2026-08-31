@@ -91,6 +91,23 @@ class LLMTranslationContractTest(unittest.TestCase):
             system_prompt,
         )
 
+    def test_summary_contract_uses_target_language(self):
+        system_prompt = translation_system_prompt(
+            '',
+            'Simplified Chinese',
+            summary_enabled=True,
+        )
+
+        self.assertIn(
+            '"page_summary":"Concise page memory in Simplified Chinese"',
+            system_prompt,
+        )
+        self.assertIn(
+            'Write page_summary in Simplified Chinese',
+            system_prompt,
+        )
+        self.assertNotIn('English page memory', system_prompt)
+
     def test_combined_context_order_and_current_suffix(self):
         spec = TranslationPromptSpec(
             'Japanese',

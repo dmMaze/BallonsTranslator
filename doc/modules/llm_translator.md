@@ -86,7 +86,7 @@ The message order is deliberately stable:
 ```text
 system: translation contract + profile instructions
 system: complete glossary                         # All mode only
-system: compacted older-page memory               # Memory only
+system: compacted older-page memory               # Summary & Memory, if present
 user / assistant: completed history page pairs   # +history only
 user: saved page context + current JSON + matching glossary + image
                                                     # image is Vision only
@@ -141,10 +141,10 @@ glossary, compacted memory, and recent history remain ahead of the volatile
 page suffix. Retries reuse the frozen data URL and never replay older images.
 
 Summary asks the already-selected text or vision translation request for concise
-English narrative memory alongside translations, then fills an empty
-`llm_visual_summary` record in that page's existing `image_info`. A saved
-summary remains usable across source, image, language, profile, model, and
-page-order changes until the user edits or clears it.
+narrative memory in the active target language alongside translations, then
+fills an empty `llm_visual_summary` record in that page's existing `image_info`.
+A saved summary remains usable across source, image, language, profile, model,
+and page-order changes until the user edits or clears it.
 
 Saved summaries have their own immutable request snapshot and do not inherit
 bilingual-history eligibility. With Summary & Memory enabled, current and
@@ -176,10 +176,11 @@ low-water target used by history. This avoids rewriting the cacheable memory
 prefix on every page. It reads saved summaries directly, so translation
 completion controls only bilingual examples and cannot hide an edited summary
 from compaction. One text-model request merges the previous memory with the new
-page summaries. Failure or an oversized result keeps the previous record and
-normal context fitting. A successful result is staged until page finalization,
-then stored in the project unless the user edited memory while the request was
-running.
+page summaries and writes the complete body in the active target language;
+inputs in another language remain valid semantic context. Failure or an
+oversized result keeps the previous record and normal context fitting. A
+successful result is staged until page finalization, then stored in the project
+unless the user edited memory while the request was running.
 The accepted checkpoint is capped by the budget left after mandatory summary
 context and selected exact history, so compaction cannot silently displace a
 page whose summary was absent from that compaction input.

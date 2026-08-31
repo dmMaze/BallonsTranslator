@@ -741,6 +741,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 summaries=compaction_summaries,
                 profile=profile,
                 model=model,
+                target_language=prompt_spec.target_language,
                 history_budget=history_budget,
                 memory_token_limit=memory_token_limit,
             )
@@ -868,6 +869,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         summaries: Tuple[PageSummary, ...],
         profile: LLMProfile,
         model: str,
+        target_language: str,
         target_tokens: int,
     ) -> Optional[MemoryCheckpoint]:
         covered = list(previous.covered_page_keys if previous else ())
@@ -897,6 +899,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             previous,
             summaries,
             body_token_limit,
+            target_language,
         )
         # Compaction is always a text request, independently of Vision.
         api_args = self._api_args(profile, messages)
@@ -951,6 +954,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         summaries: Tuple[PageSummary, ...],
         profile: LLMProfile,
         model: str,
+        target_language: str,
         history_budget: int,
         memory_token_limit: int,
     ) -> Optional[MemoryCheckpoint]:
@@ -982,6 +986,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 previous,
                 proposed,
                 target_tokens,
+                target_language,
             )
             if messages_token_count(messages, compaction_model) <= input_limit:
                 selected = proposed
@@ -994,6 +999,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             summaries=selected,
             profile=profile,
             model=model,
+            target_language=target_language,
             target_tokens=target_tokens,
         )
         return checkpoint if checkpoint is not None else previous

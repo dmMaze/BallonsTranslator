@@ -246,6 +246,10 @@ class LLMTranslationMemoryTest(
             compact.call_args.kwargs['summaries'],
             (PageSummary('001.png', summary_text),),
         )
+        self.assertEqual(
+            compact.call_args.kwargs['target_language'],
+            'Simplified Chinese',
+        )
         self.assertIs(context.memory, checkpoint)
 
     def test_memory_discovers_late_summary_during_adjacent_growth(self):
@@ -336,6 +340,7 @@ class LLMTranslationMemoryTest(
                 summaries=retired,
                 profile=self.profile,
                 model=self.profile.vision_model,
+                target_language='Simplified Chinese',
                 history_budget=1000,
                 memory_token_limit=1000,
             )
@@ -352,6 +357,7 @@ class LLMTranslationMemoryTest(
                 summaries=(summary,),
                 profile=self.profile,
                 model=self.profile.vision_model,
+                target_language='Simplified Chinese',
                 history_budget=1000,
                 memory_token_limit=1000,
             )
@@ -377,12 +383,17 @@ class LLMTranslationMemoryTest(
                         summaries=(PageSummary('001.png', 'summary'),),
                         profile=self.profile,
                         model=self.profile.model,
+                        target_language='Simplified Chinese',
                         target_tokens=100,
                     )
 
                 request_args = request.call_args.args[1]
                 self.assertIn(
                     'memory body within 99 tokens',
+                    request_args['messages'][0]['content'],
+                )
+                self.assertIn(
+                    'complete memory body in Simplified Chinese',
                     request_args['messages'][0]['content'],
                 )
                 self.assertEqual(
@@ -430,6 +441,7 @@ class LLMTranslationMemoryTest(
                 summaries=summaries,
                 profile=self.profile,
                 model=self.profile.vision_model,
+                target_language='Simplified Chinese',
                 history_budget=1000,
                 memory_token_limit=1000,
             )
@@ -488,6 +500,7 @@ class LLMTranslationMemoryTest(
                 summaries=summaries,
                 profile=self.profile,
                 model=self.profile.model,
+                target_language='Simplified Chinese',
                 history_budget=25,
                 memory_token_limit=25,
             )
@@ -520,6 +533,7 @@ class LLMTranslationMemoryTest(
                 summaries=(PageSummary('001.png', 'summary'),),
                 profile=self.profile,
                 model='vision-model',
+                target_language='Simplified Chinese',
                 history_budget=10,
                 memory_token_limit=2,
             )
