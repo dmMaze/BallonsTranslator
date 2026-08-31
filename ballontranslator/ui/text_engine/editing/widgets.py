@@ -548,21 +548,15 @@ class SourceTextEdit(QTextEdit):
                 return super().keyPressEvent(e)
             finally:
                 self.paste_flag = False
-        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if e.key() == Qt.Key.Key_Z:
-                e.accept()
-                self.undo_signal.emit()
-                return
-            elif e.key() == Qt.Key.Key_Y:
-                e.accept()
-                self.redo_signal.emit()
-                return
-        elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
-            if e.key() == Qt.Key.Key_Z:
-                e.accept()
-                self.redo_signal.emit()
-                return
-        elif e.key() == Qt.Key.Key_Return:
+        if e.matches(QKeySequence.StandardKey.Undo):
+            e.accept()
+            self.undo_signal.emit()
+            return
+        if e.matches(QKeySequence.StandardKey.Redo):
+            e.accept()
+            self.redo_signal.emit()
+            return
+        if e.key() == Qt.Key.Key_Return:
             e.accept()
             self.textCursor().insertText('\n')
             return
