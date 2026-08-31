@@ -61,9 +61,18 @@ class TextStyleUndoCommand(QUndoCommand):
         self.style_func(values=self.undo_values, **self.params)
 
 
-def wrap_fntformat_input(values: str, blkitems: List[TextBlkItem], is_global: bool):
+def wrap_fntformat_input(
+    values: str,
+    blkitems: List[TextBlkItem],
+    is_global: bool,
+    target_items: List[TextBlkItem] = None,
+):
     if is_global:
-        blkitems = SW.canvas.selected_text_items()
+        blkitems = (
+            list(target_items)
+            if target_items is not None
+            else SW.canvas.selected_text_items()
+        )
     else:
         if not isinstance(blkitems, List):
             blkitems = [blkitems]
@@ -81,7 +90,10 @@ def font_formating(push_undostack: bool = False, is_property = True):
                 else:
                     print(f'undefined param name: {param_name}')
 
-            blkitems, values = wrap_fntformat_input(values, blkitems, is_global)
+            target_items = kwargs.pop('target_items', None)
+            blkitems, values = wrap_fntformat_input(
+                values, blkitems, is_global, target_items
+            )
             if len(blkitems) > 0:
                 if is_property:
                     act_ffmt[param_name] = values[0]

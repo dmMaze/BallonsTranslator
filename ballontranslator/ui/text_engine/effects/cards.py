@@ -550,7 +550,7 @@ def _choose_project_raster(parent: QWidget, title: str) -> str:
 
 
 class EffectNumericControl(CommittedTransformControl):
-    """Reuse the committed numeric editor with typed-text preview signals.
+    """Reuse the committed numeric editor with optional typed-text previews.
 
     >>> issubclass(EffectNumericControl, CommittedTransformControl)
     True
@@ -559,8 +559,11 @@ class EffectNumericControl(CommittedTransformControl):
     value_preview_requested = Signal(str, object)
     value_preview_canceled = Signal(str)
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(
+        self, *args, preview_typed_text: bool = True, **kwargs
+    ) -> None:
         super().__init__(*args, **kwargs)
+        self.preview_typed_text = bool(preview_typed_text)
         self.setObjectName('TextEffectControl')
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
@@ -584,6 +587,8 @@ class EffectNumericControl(CommittedTransformControl):
 
     def _on_text_edited(self) -> None:
         super()._on_text_edited()
+        if not self.preview_typed_text:
+            return
         try:
             value = self._parse(self.editor.text())
         except (TypeError, ValueError):
@@ -752,7 +757,7 @@ class StrokeEffectCard(_EffectCard):
 
         self.width_control = EffectNumericControl(
             self.tr('Width'), 'width', 1.0, 0.0, 10.0, '', 0.01,
-            self, decimals=2,
+            self, decimals=2, preview_typed_text=False,
         )
         self.opacity_control = EffectNumericControl(
             self.tr('Opacity'), 'opacity', 100.0, 0.0, 1.0, '%', 1.0,

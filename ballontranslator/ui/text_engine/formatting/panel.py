@@ -395,7 +395,9 @@ class FontSizeBox(QFrame):
         self.downBtn.setObjectName("FsizeIncrementDown")
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
-        self.fcombobox = SizeComboBox([1, 1000], 'font_size', self)
+        self.fcombobox = SizeComboBox(
+            [1, 1000], 'font_size', self, defer_text_changes=True
+        )
         self.fcombobox.setObjectName("FontFormatSizeBox")
         self.fcombobox.addItems([
             "5", "5.5", "6.5", "7.5", "8", "9", "10", "10.5",
@@ -699,7 +701,11 @@ class FontFormatPanel(Widget):
         self.fontsizebox.setToolTip(self.tr("Font Size"))
         self.fontsizebox.setObjectName("FontSizeBox")
         self.fontsizebox.fcombobox.setToolTip(self.tr("Change font size"))
-        self.fontsizebox.param_changed.connect(self.on_param_changed)
+        self._font_size_pending_context = None
+        self.fontsizebox.fcombobox.pending_edit_started.connect(
+            self._capture_font_size_edit_context
+        )
+        self.fontsizebox.param_changed.connect(self._on_font_size_changed)
         
         self.lineSpacingLabel = SizeControlLabel(self, direction=1, transparent_bg=False)
         self.lineSpacingLabel.setObjectName("lineSpacingLabel")
@@ -905,16 +911,63 @@ class FontFormatPanel(Widget):
         else:
             return None
 
-    def on_param_changed(self, param_name: str, value):
+    def _font_size_owner_context(self):
+        if self.global_mode():
+            items = list(self.text_transform_session.items)
+            if not items:
+                canvas = getattr(SW, 'canvas', None)
+                selected = getattr(canvas, 'selected_text_items', None)
+                items = list(selected()) if callable(selected) else []
+            return True, items
+        return False, (
+            [self.textblk_item] if self.textblk_item is not None else []
+        )
+
+    def _capture_font_size_edit_context(self) -> None:
+        self._font_size_pending_context = self._font_size_owner_context()
+
+    def _on_font_size_changed(self, param_name: str, value) -> None:
+        combo = self.fontsizebox.fcombobox
+        context = self._font_size_pending_context
+        if combo.committing_pending and context is not None:
+            self._font_size_pending_context = None
+            is_global, target_items = context
+            self.on_param_changed(
+                param_name,
+                value,
+                target_items=target_items,
+                is_global_override=is_global,
+            )
+            return
+        self.on_param_changed(param_name, value)
+
+    def on_param_changed(
+        self,
+        param_name: str,
+        value,
+        *,
+        target_items=None,
+        is_global_override=None,
+    ):
         func = handle_ffmt_change.get(param_name)
         func_kwargs = {}
         if param_name in {'font_size', 'rel_font_size'}:
             func_kwargs['clip_size'] = True
-        if self.global_mode():
+        is_global = (
+            self.global_mode()
+            if is_global_override is None
+            else bool(is_global_override)
+        )
+        if is_global:
+            if target_items is not None:
+                func_kwargs['target_items'] = target_items
             func(param_name, value, self.global_format, is_global=True, **func_kwargs)
             self.update_text_style_label()
         else:
-            func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
+            blkitems = (
+                self.textblk_item if target_items is None else target_items
+            )
+            func(param_name, value, C.active_format, is_global=False, blkitems=blkitems, set_focus=True, **func_kwargs)
 
     def on_font_family_changed(
         self, param_name: str, font_family: str
@@ -1095,6 +1148,8 @@ class FontFormatPanel(Widget):
         self._restore_ruby_edit_focus(item)
 
     def resolve_text_transform_edits_for_save(self) -> None:
+        self.fontsizebox.fcombobox.commit_pending()
+        self._font_size_pending_context = None
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_save()
         self.text_transform_session.resolve_for_save()
@@ -1105,18 +1160,24 @@ class FontFormatPanel(Widget):
         self.text_effect_session.stop_image_generation(detach_card=True)
 
     def resolve_text_transform_edits_for_history_change(self) -> None:
+        self.fontsizebox.fcombobox.cancel_pending()
+        self._font_size_pending_context = None
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_history_change()
         self.text_transform_session.resolve_for_history_change()
         self.text_effect_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self) -> None:
+        self.fontsizebox.fcombobox.commit_pending()
+        self._font_size_pending_context = None
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_page_change()
         self.text_effect_session.resolve_for_page_change()
         self.text_transform_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self) -> None:
+        self.fontsizebox.fcombobox.cancel_pending()
+        self._font_size_pending_context = None
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.cancel_for_scene_change()
         self.text_effect_session.cancel_for_scene_change()
@@ -1242,6 +1303,10 @@ class FontFormatPanel(Widget):
         update_transform_panel: bool = True,
         update_effect_panel: bool = True,
     ) -> None:
+        # A programmatic rebind must not leave typed Font Size text attached
+        # to the previous formatting owner.
+        self.fontsizebox.fcombobox.cancel_pending()
+        self._font_size_pending_context = None
         self.sync_inline_format(
             font_format,
             multi_size,
@@ -1301,6 +1366,12 @@ class FontFormatPanel(Widget):
         multi_select: bool = False,
         primary_item: Optional[TextBlkItem] = None,
     ) -> None:
+        if (
+            self.fontsizebox.fcombobox.has_pending_text
+            and self._font_size_pending_context is None
+        ):
+            self._font_size_pending_context = self._font_size_owner_context()
+
         if textblk_item is not None:
             transform_items = [textblk_item]
         elif multi_select:
@@ -1346,6 +1417,8 @@ class FontFormatPanel(Widget):
         if not preserve_local_owner:
             # A real selection transition settles edits against the old target
             # list. A transient clear from a nested color dialog is not one.
+            self.fontsizebox.fcombobox.commit_pending()
+            self._font_size_pending_context = None
             self.text_transform_session.finish_pending_edits()
             self.text_effect_session.finish_pending_edits()
             self.text_transform_session.replace_targets(transform_items)

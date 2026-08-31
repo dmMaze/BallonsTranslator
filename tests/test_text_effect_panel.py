@@ -229,6 +229,93 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.effective_text_effects(), before)
         self.assertEqual(self.canvas.stack.count(), 1)
 
+    def test_font_size_typing_waits_for_commit(self):
+        item = self._item()
+        self.panel.set_textblk_item(item)
+        control = self.panel.fontsizebox.fcombobox
+        self.assertTrue(control._defer_text_changes)
+        before = item.fontformat.font_size
+        changes = []
+        self.panel.fontsizebox.param_changed.connect(
+            lambda name, value: changes.append((name, value))
+        )
+
+        self.panel.show()
+        control.lineEdit().setFocus()
+        self.app.processEvents()
+        control.lineEdit().setText('800')
+        self.assertEqual(changes, [])
+        self.assertEqual(item.fontformat.font_size, before)
+
+        control.lineEdit().returnPressed.emit()
+        self.assertEqual(changes, [('font_size', 800.0)])
+        self.assertNotEqual(item.fontformat.font_size, before)
+
+    def _begin_pending_global_font_size_edit(self, items):
+        self.canvas.selected = list(items)
+        self.panel.set_textblk_item(
+            None,
+            multi_select=True,
+            primary_item=items[-1],
+        )
+        control = self.panel.fontsizebox.fcombobox
+        self.panel.show()
+        control.lineEdit().setFocus()
+        self.app.processEvents()
+        control.lineEdit().setText('80')
+        self.assertTrue(control.has_pending_text)
+
+    def test_pending_font_size_multi_to_single_keeps_original_targets(self):
+        old_items = [self._item(), self._item()]
+        new_item = self._item()
+        self._begin_pending_global_font_size_edit(old_items)
+
+        with patch.object(old_items[0], 'setFontSize') as old_first, \
+                patch.object(old_items[1], 'setFontSize') as old_second, \
+                patch.object(new_item, 'setFontSize') as new:
+            self.canvas.selected = [new_item]
+            self.panel.set_textblk_item(new_item)
+
+        old_first.assert_called_once()
+        old_second.assert_called_once()
+        new.assert_not_called()
+        self.assertIs(self.panel.textblk_item, new_item)
+
+    def test_pending_font_size_different_multi_keeps_original_targets(self):
+        old_items = [self._item(), self._item()]
+        new_items = [self._item(), self._item()]
+        self._begin_pending_global_font_size_edit(old_items)
+
+        with patch.object(old_items[0], 'setFontSize') as old_first, \
+                patch.object(old_items[1], 'setFontSize') as old_second, \
+                patch.object(new_items[0], 'setFontSize') as new_first, \
+                patch.object(new_items[1], 'setFontSize') as new_second:
+            self.canvas.selected = list(new_items)
+            self.panel.set_textblk_item(
+                None,
+                multi_select=True,
+                primary_item=new_items[-1],
+            )
+
+        old_first.assert_called_once()
+        old_second.assert_called_once()
+        new_first.assert_not_called()
+        new_second.assert_not_called()
+        self.assertEqual(self.panel.text_transform_session.items, new_items)
+
+    def test_pending_font_size_multi_to_empty_keeps_original_targets(self):
+        old_items = [self._item(), self._item()]
+        self._begin_pending_global_font_size_edit(old_items)
+
+        with patch.object(old_items[0], 'setFontSize') as old_first, \
+                patch.object(old_items[1], 'setFontSize') as old_second:
+            self.canvas.selected = []
+            self.panel.set_textblk_item()
+
+        old_first.assert_called_once()
+        old_second.assert_called_once()
+        self.assertEqual(self.panel.text_transform_session.items, [])
+
     def test_faster_preview_is_opt_in_and_follows_selected_items(self):
         first = self._item(self._stack(StrokeEffect(width=0.12)))
         second = self._item(self._stack(StrokeEffect(width=0.18)))
@@ -257,7 +344,7 @@ class TextEffectPanelTest(unittest.TestCase):
         editor.setText('0.45')
         editor.textEdited.emit('0.45')
         self.assertEqual(item.blk.fontformat.text_effects, before)
-        self.assertEqual(item.effective_text_effects()[0].width, 0.45)
+        self.assertEqual(item.effective_text_effects(), before)
         self.assertEqual(self.canvas.stack.count(), 0)
 
         editor.returnPressed.emit()
@@ -268,7 +355,7 @@ class TextEffectPanelTest(unittest.TestCase):
 
         editor.setText('0.70')
         editor.textEdited.emit('0.70')
-        self.assertEqual(item.effective_text_effects()[0].width, 0.7)
+        self.assertEqual(item.effective_text_effects(), committed)
         QApplication.sendEvent(
             editor,
             QKeyEvent(
@@ -279,6 +366,15 @@ class TextEffectPanelTest(unittest.TestCase):
         )
         self.assertEqual(item.effective_text_effects(), committed)
         self.assertEqual(self.canvas.stack.count(), 1)
+
+        editor.setText('0.85')
+        editor.textEdited.emit('0.85')
+        QApplication.sendEvent(
+            editor,
+            QFocusEvent(QEvent.Type.FocusOut),
+        )
+        self.assertEqual(item.blk.fontformat.text_effects[0].width, 0.85)
+        self.assertEqual(self.canvas.stack.count(), 2)
 
     def test_global_preview_cancel_and_commit_update_style_only_on_commit(self):
         before = self.panel.global_format.text_effects

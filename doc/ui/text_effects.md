@@ -165,6 +165,12 @@ history, or the paired editor. Structural changes settle or cancel incompatible
 previews before indices change. Save, undo/redo, page replacement, selection
 change, and teardown must resolve pending work at its owner.
 
+Font Size and Stroke Width keyboard input is treated as pending text: it is
+committed on Enter or when the editor loses focus, so intermediate values do
+not rerender the text. Font Size presets and steppers remain immediate, and
+effect-label drags continue to provide deliberate continuous previews. Other
+effect numeric fields retain their existing typed preview behavior.
+
 The panel displays the most recently selected primary item's exact values. For
 multi-selection it derives an occurrence map by effect identity and occurrence
 number, intersecting the available count across all targets; it never builds a
