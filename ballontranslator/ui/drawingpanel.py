@@ -101,6 +101,7 @@ class InpainterSelectorRow(Widget):
         with QSignalBlocker(self.selector):
             self.selector.setCurrentText(value)
 
+
 class InpaintPanel(Widget):
 
     thicknessChanged = Signal(int)
@@ -110,8 +111,9 @@ class InpaintPanel(Widget):
 
         self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
-        self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.thicknessSpinBox = self.thicknessSlider.enableValueEditor(' px')
+        self.thicknessSlider.valueEdited.connect(self.thicknessChanged)
         
         thickness_layout = QHBoxLayout()
         thickness_label = ToolNameLabel(100, self.tr('Thickness'))
@@ -140,10 +142,6 @@ class InpaintPanel(Widget):
         layout.addLayout(shape_layout)
         layout.setSpacing(14)
 
-    def on_thickness_changed(self):
-        if self.thicknessSlider.hasFocus():
-            self.thicknessChanged.emit(self.thicknessSlider.value())
-
     @property
     def shape(self):
         return self.shapeCombobox.currentIndex()
@@ -156,8 +154,9 @@ class PenConfigPanel(Widget):
         super().__init__(*args, **kwargs)
         self.thicknessSlider = PaintQSlider()
         self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
-        self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.thicknessSpinBox = self.thicknessSlider.enableValueEditor(' px')
+        self.thicknessSlider.valueEdited.connect(self.thicknessChanged)
         self.alphaSlider = PaintQSlider()
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.setValue(255)
@@ -198,10 +197,6 @@ class PenConfigPanel(Widget):
         layout.addLayout(thickness_layout)
         layout.addLayout(shape_layout)
         layout.setSpacing(20)
-
-    def on_thickness_changed(self):
-        if self.thicknessSlider.hasFocus():
-            self.thicknessChanged.emit(self.thicknessSlider.value())
 
     def on_alpha_changed(self):
         color = self.colorPicker.rgba()

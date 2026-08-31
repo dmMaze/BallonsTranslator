@@ -180,6 +180,49 @@ class CanvasCursorLifecycleTest(unittest.TestCase):
         self._move_to_scene(250, 250)
         self.assertEqual(self.canvas.gv.viewport().cursor(), inpaint_cursor)
 
+    def test_brush_thickness_accepts_exact_pixel_values(self) -> None:
+        original_pen_width = self.panel.pentool_pen.widthF()
+        original_inpaint_width = self.panel.inpaint_pen.widthF()
+        try:
+            pen_spinbox = self.panel.penConfigPanel.thicknessSpinBox
+            pen_slider = self.panel.penConfigPanel.thicknessSlider
+            pen_spinbox.setFocus()
+            pen_spinbox.selectAll()
+            QTest.keyClicks(pen_spinbox, '22')
+            QTest.keyClick(pen_spinbox, Qt.Key.Key_Return)
+            _APP.processEvents()
+            self.assertEqual(pen_slider.value(), 22)
+            self.assertEqual(self.panel.pentool_pen.widthF(), 22)
+
+            pen_spinbox.clearFocus()
+            pen_slider.setFocus()
+            pen_slider.setValue(35)
+            _APP.processEvents()
+            self.assertEqual(pen_spinbox.value(), 35)
+            self.assertEqual(self.panel.pentool_pen.widthF(), 35)
+
+            self.panel.on_use_inpainttool()
+            inpaint_spinbox = self.panel.inpaintConfigPanel.thicknessSpinBox
+            inpaint_spinbox.setFocus()
+            inpaint_spinbox.setValue(48)
+            _APP.processEvents()
+            self.assertEqual(
+                self.panel.inpaintConfigPanel.thicknessSlider.value(), 48
+            )
+            self.assertEqual(self.panel.inpaint_pen.widthF(), 48)
+        finally:
+            self.panel.penConfigPanel.thicknessSpinBox.clearFocus()
+            self.panel.inpaintConfigPanel.thicknessSpinBox.clearFocus()
+            self.panel.setPenToolWidth(original_pen_width)
+            self.panel.penConfigPanel.thicknessSlider.setValue(
+                int(original_pen_width)
+            )
+            self.panel.setInpaintToolWidth(original_inpaint_width)
+            self.panel.inpaintConfigPanel.thicknessSlider.setValue(
+                int(original_inpaint_width)
+            )
+            self.panel.on_use_pentool()
+
     def test_native_and_item_cursors_return_after_canvas_cursor_release(self) -> None:
         self.panel.on_use_handtool()
         self.canvas.setPaintMode(False)
