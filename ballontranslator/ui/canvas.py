@@ -1426,6 +1426,7 @@ class Canvas(QGraphicsScene):
                 and editing_item.isEditing()
             ):
                 editing_item.show_editing_context_menu(pos, self.gv)
+                self.gv.setFocus(Qt.FocusReason.MouseFocusReason)
                 return
 
             menu = QMenu(self.gv)
@@ -1456,6 +1457,7 @@ class Canvas(QGraphicsScene):
             inpaint_act = menu.addAction(self.tr("inpaint"))
 
             rst = menu.exec(pos)
+            self.gv.setFocus(Qt.FocusReason.MouseFocusReason)
             
             if rst == delete_act:
                 self.delete_textblks.emit(0)

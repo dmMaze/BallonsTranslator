@@ -1587,6 +1587,16 @@ class TextTransformUndoTest(TextTransformTestBase):
         )
         self.app.processEvents()
         self.assertTrue(canvas.gv.hasFocus())
+
+        focus_editor.setFocus()
+        self.app.processEvents()
+        with patch(
+            'ballontranslator.ui.canvas.QMenu.exec',
+            return_value=None,
+        ):
+            canvas.editor_index = 1
+            canvas.on_create_contextmenu(QPoint(20, 20), False)
+        self.assertTrue(canvas.gv.hasFocus())
         host.close()
 
     def test_text_edit_shortcuts_accept_transient_modifiers(self) -> None:
