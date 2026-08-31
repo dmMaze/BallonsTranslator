@@ -223,7 +223,7 @@ def normalize_thinking_level(value: Any) -> str:
 
     >>> normalize_thinking_level('None')
     'Auto'
-    >>> normalize_thinking_level('disable')
+    >>> normalize_thinking_level('Disabled')
     'Disabled'
     """
     if not isinstance(value, str):
@@ -231,7 +231,7 @@ def normalize_thinking_level(value: Any) -> str:
     level = value.strip()
     if level.lower() in {'', 'none', 'auto'}:
         return THINKING_AUTO
-    if level.lower() in {'disable', 'disabled'}:
+    if level.lower() == 'disabled':
         return THINKING_DISABLED
     return level
 
@@ -694,7 +694,9 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     """Migrate old LLM translator settings in a raw module config dict.
 
     Example:
-        >>> migrate_module_llm_profiles({}, secret_store=SecretStore()) == {}
+        >>> migrated = migrate_module_llm_profiles(
+        ...     {}, secret_store=SecretStore())
+        >>> bool(migrated['llm_profiles'])
         True
     """
 

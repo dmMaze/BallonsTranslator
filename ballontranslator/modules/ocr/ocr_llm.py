@@ -299,23 +299,6 @@ class LLMOCR(LLMChatRequester, OCRBase):
             )
         return api_args
 
-    def _request_ocr(
-        self,
-        profile: LLMProfile,
-        messages: List[Dict],
-        response_schema: Optional[Dict] = None,
-    ) -> str:
-        result = self.request_chat_completion(
-            profile,
-            self._api_args(profile, messages, response_schema),
-        )
-        if result.usage is not None:
-            self.token_count += result.usage.total_tokens
-            self.token_count_last = result.usage.total_tokens
-        else:
-            self.token_count_last = 0
-        return result.content
-
     def _request_with_retries(
         self,
         profile: LLMProfile,
@@ -329,10 +312,18 @@ class LLMOCR(LLMChatRequester, OCRBase):
             if self.stop_event is not None and self.stop_event.is_set():
                 raise LLMRequestStopped()
             try:
-                result = self._request_ocr(profile, messages, response_schema)
+                completion = self.request_chat_completion(
+                    profile,
+                    self._api_args(profile, messages, response_schema),
+                )
+                if completion.usage is not None:
+                    self.token_count += completion.usage.total_tokens
+                    self.token_count_last = completion.usage.total_tokens
+                else:
+                    self.token_count_last = 0
                 if self.token_count_last:
                     self.logger.info(f'Used {self.token_count_last} tokens (Total: {self.token_count})')
-                return result
+                return completion.content
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as e:

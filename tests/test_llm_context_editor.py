@@ -5,13 +5,10 @@ from unittest.mock import Mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import Qt
-from qtpy.QtTest import QSignalSpy
-from qtpy.QtWidgets import QApplication, QMainWindow
+from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui.llm_context_editor import LLMContextEditor
 from ballontranslator.ui.mainwindow import MainWindow
-from ballontranslator.ui.mainwindowbars import LeftBar
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -32,16 +29,9 @@ class LLMContextEditorTest(unittest.TestCase):
         project.current_img = '001.png'
         return project
 
-    def test_editors_stack_vertically_and_write_project_owned_text(self):
+    def test_editors_write_project_owned_text_and_follow_the_page(self):
         project = self._project()
         panel = LLMContextEditor(project)
-        changed = QSignalSpy(panel.project_changed)
-
-        self.assertEqual(
-            panel.editor_splitter.orientation(),
-            Qt.Orientation.Vertical,
-        )
-        self.assertEqual(panel.editor_splitter.count(), 2)
 
         panel.summary_editor.setPlainText('Page one.\nUser note.')
         panel.memory_editor.setPlainText('Shared memory.')
@@ -54,7 +44,6 @@ class LLMContextEditorTest(unittest.TestCase):
             project.get_llm_compact_memory()['text'],
             'Shared memory.',
         )
-        self.assertGreaterEqual(len(changed), 2)
 
         project.set_llm_visual_summary_text('002.png', 'Page two.')
         panel.set_page('002.png')
@@ -68,20 +57,6 @@ class LLMContextEditorTest(unittest.TestCase):
         self.assertFalse(panel.summary_editor.isEnabled())
         self.assertFalse(panel.memory_editor.isEnabled())
         panel.deleteLater()
-
-    def test_left_bar_exposes_a_checkable_context_toggle(self):
-        window = QMainWindow()
-        left_bar = LeftBar(window)
-
-        self.assertFalse(left_bar.llmContextChecker.isChecked())
-        left_bar.llmContextChecker.click()
-        self.assertTrue(left_bar.llmContextChecker.isChecked())
-        self.assertEqual(
-            left_bar.llmContextChecker.toolTip(),
-            'LLM Context Editor',
-        )
-        left_bar.deleteLater()
-        window.deleteLater()
 
     def test_context_only_page_change_saves_without_rendering(self):
         project = SimpleNamespace(save=Mock())

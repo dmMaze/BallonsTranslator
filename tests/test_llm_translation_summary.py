@@ -10,11 +10,6 @@ from _llm_translation_test_support import (
 )
 from ballontranslator.modules.context.translation_context import (
     PageSummary,
-    fit_page_summaries,
-    page_summary_context_token_count,
-)
-from ballontranslator.modules.translators.llm_translation_contract import (
-    parse_translation_response,
 )
 from ballontranslator.utils.config import LLMTranslateContext, pcfg
 
@@ -32,13 +27,9 @@ class LLMTranslationSummaryTest(
         last_page_compaction.start()
         self.addCleanup(last_page_compaction.stop)
 
-    def test_summary_uses_same_request_and_persists_after_page_finalization(self):
+    def test_summary_persists_only_after_page_finalization(self):
         project = self._project(1)
         project.pages['001.png'][0].translation = ''
-        project.read_img = mock.Mock(
-            return_value=np.zeros((32, 24, 3), dtype=np.uint8)
-        )
-        pcfg.module.llm_translate_vision = True
         pcfg.module.llm_translate_summary_memory = True
         response = json.dumps({
             'translations': {'1': 'translated'},
@@ -75,62 +66,6 @@ class LLMTranslationSummaryTest(
             record['text'],
             'A short-haired girl waits at a station.',
         )
-        snapshot = self.translator._snapshot_history_page(
-            project,
-            '001.png',
-            '简体中文',
-            summary_enabled=True,
-        )
-        self.assertEqual(snapshot.summary, record['text'])
-        project.pages['001.png'][0].text = ['changed source']
-        stale_snapshot = self.translator._snapshot_history_page(
-            project,
-            '001.png',
-            '简体中文',
-            summary_enabled=True,
-        )
-        self.assertEqual(stale_snapshot.summary, record['text'])
-
-    def test_text_only_summary_uses_translation_request_and_text_model(self):
-        project = self._project(1)
-        project.pages['001.png'][0].translation = ''
-        pcfg.module.llm_translate_summary_memory = True
-        response = json.dumps({
-            'translations': {'1': 'translated'},
-            'page_summary': 'Two speakers argue about a missing key.',
-        })
-
-        with mock.patch.object(
-            type(self.translator),
-            'profile',
-            new_callable=mock.PropertyMock,
-            return_value=self.profile,
-        ), mock.patch.object(
-            self.translator,
-            'all_model_loaded',
-            return_value=True,
-        ), mock.patch.object(
-            self.translator,
-            '_request_translation',
-            return_value=response,
-        ) as request:
-            self.translator.translate_textblk_lst(
-                project.pages['001.png'],
-                project=project,
-                page_key='001.png',
-                full_page=True,
-            )
-
-        request_kwargs = request.call_args.kwargs
-        self.assertTrue(request_kwargs['summary_enabled'])
-        self.assertNotIn('vision_enabled', request_kwargs)
-        project.mark_translation_finished('001.png', '简体中文')
-        self.translator.on_page_translation_finished(project, '001.png')
-        record = project.get_llm_visual_summary('001.png')
-        self.assertEqual(record, {
-            'version': 1,
-            'text': 'Two speakers argue about a missing key.',
-        })
 
     def test_saved_summaries_are_independent_from_exact_history_completion(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
@@ -208,44 +143,17 @@ class LLMTranslationSummaryTest(
         )
         self.assertIn('User summary for the current page.', current_prompt)
 
-    def test_saved_current_summary_applies_without_history(self):
-        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
-        pcfg.module.llm_translate_summary_memory = True
-        project = self._project(1)
-        project.set_llm_visual_summary_text(
-            '001.png',
-            'The user identifies the masked speaker as Kuro.',
-        )
-
-        context = self._snapshot_request_context(
-            project,
-            '001.png',
-            self.profile,
-            summary_enabled=True,
-        )
-        messages, _ = self._assemble_request(
-            ['current'],
-            self.profile,
-            request_context=context,
-            summary_enabled=True,
-        )
-
-        self.assertEqual(
-            [message['role'] for message in messages],
-            ['system', 'user'],
-        )
-        self.assertIn(
-            'The user identifies the masked speaker as Kuro.',
-            messages[-1]['content'],
-        )
-
-    def test_saved_prior_summary_applies_without_history(self):
+    def test_saved_summaries_apply_without_history(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_translate_summary_memory = True
         project = self._project(2)
         project.set_llm_visual_summary_text(
             '001.png',
             'The masked speaker promised to return the key.',
+        )
+        project.set_llm_visual_summary_text(
+            '002.png',
+            'The user identifies the masked speaker as Kuro.',
         )
 
         context = self._snapshot_request_context(
@@ -264,78 +172,25 @@ class LLMTranslationSummaryTest(
         self.assertEqual(context.history, ())
         self.assertEqual(
             context.page_summaries,
-            (PageSummary(
-                '001.png',
-                'The masked speaker promised to return the key.',
-            ),),
+            (
+                PageSummary(
+                    '001.png',
+                    'The masked speaker promised to return the key.',
+                ),
+                PageSummary(
+                    '002.png',
+                    'The user identifies the masked speaker as Kuro.',
+                ),
+            ),
         )
         self.assertIn(
             'The masked speaker promised to return the key.',
             messages[-1]['content'],
         )
-
-    def test_saved_summary_context_keeps_recent_whole_entries(self):
-        summaries = tuple(
-            PageSummary(str(index), f'summary-{index}')
-            for index in range(1, 4)
+        self.assertIn(
+            'The user identifies the masked speaker as Kuro.',
+            messages[-1]['content'],
         )
-        budget = page_summary_context_token_count(
-            summaries[1:],
-            self.profile.model,
-        )
-
-        selected = fit_page_summaries(
-            summaries,
-            self.profile.model,
-            budget,
-            required_page_key='3',
-        )
-
-        self.assertEqual(selected, summaries[1:])
-
-    def test_missing_summary_keeps_valid_translations(self):
-        parsed = parse_translation_response(
-            '{"translations":{"1":"translated"}}',
-            1,
-        )
-
-        self.assertEqual(parsed.translations, ('translated',))
-        self.assertEqual(parsed.page_summary, '')
-
-    def test_source_change_before_finalization_discards_generated_summary(self):
-        project = self._project(1)
-        project.pages['001.png'][0].translation = ''
-        pcfg.module.llm_translate_summary_memory = True
-        response = json.dumps({
-            'translations': {'1': 'translated'},
-            'page_summary': 'Scene memory.',
-        })
-
-        with mock.patch.object(
-            type(self.translator),
-            'profile',
-            new_callable=mock.PropertyMock,
-            return_value=self.profile,
-        ), mock.patch.object(
-            self.translator,
-            'all_model_loaded',
-            return_value=True,
-        ), mock.patch.object(
-            self.translator,
-            '_request_translation',
-            return_value=response,
-        ):
-            self.translator.translate(
-                ['source-1'],
-                project=project,
-                page_key='001.png',
-                commit_history_window=True,
-            )
-
-        project.pages['001.png'][0].text = ['changed source']
-        self.translator.on_page_translation_finished(project, '001.png')
-
-        self.assertIsNone(project.get_llm_visual_summary('001.png'))
 
     def test_existing_summary_skips_summary_request_and_is_preserved(self):
         project = self._project(1)

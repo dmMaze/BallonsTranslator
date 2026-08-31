@@ -84,19 +84,15 @@ def memory_message_content(memory: str) -> str:
     )
 
 
-def project_memory_checkpoint(
-    project: Optional['ProjImgTrans'],
+def memory_checkpoint(
+    record: Optional[Dict],
     model: str,
 ) -> Optional[MemoryCheckpoint]:
-    """Freeze the editable project memory for one translation request.
+    """Freeze one saved memory record for a translation request.
 
-    >>> project_memory_checkpoint(None, 'demo') is None
+    >>> memory_checkpoint(None, 'demo') is None
     True
     """
-    getter = getattr(project, 'get_llm_compact_memory', None)
-    if not callable(getter):
-        return None
-    record = getter()
     if record is None:
         return None
     text = str(record['text']).strip()
@@ -121,70 +117,15 @@ def memory_window_signature(memory: Optional[MemoryCheckpoint]) -> str:
     return hashlib.sha256(memory.text.encode('utf-8')).hexdigest()
 
 
-def project_memory_signature(
-    project: Optional['ProjImgTrans'],
-) -> str:
-    """Return the exact project-state identity used to protect user edits."""
-    getter = getattr(project, 'get_llm_compact_memory', None)
-    record = getter() if callable(getter) else None
-    if record is None:
-        return ''
-    record_payload = json.dumps(
-        {
-            'text': record['text'],
-            'covered_pages': record.get('covered_pages', ()),
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(',', ':'),
-    )
-    return hashlib.sha256(
-        record_payload.encode('utf-8')
-    ).hexdigest()
-
-
 def saved_page_summary_text(
     project: 'ProjImgTrans',
     page_key: str,
 ) -> str:
     """Return user-owned page context without provenance applicability gates."""
-    getter = getattr(project, 'get_llm_visual_summary', None)
-    if not callable(getter):
-        return ''
-    record = getter(page_key)
+    record = project.get_llm_visual_summary(page_key)
     if record is None:
         return ''
     return str(record['text']).strip()
-
-
-def snapshot_page_summary(
-    project: Optional['ProjImgTrans'],
-    page_key: str,
-) -> Optional[PageSummary]:
-    """Copy saved summary text without consulting translation completion.
-
-    >>> snapshot_page_summary(None, '001.png') is None
-    True
-    """
-    if project is None:
-        return None
-    text = saved_page_summary_text(project, page_key)
-    if not text:
-        return None
-    return PageSummary(page_key=str(page_key), text=text)
-
-
-def snapshot_page_summaries_for_keys(
-    project: Optional['ProjImgTrans'],
-    page_keys: Tuple[str, ...],
-) -> Tuple[PageSummary, ...]:
-    """Copy existing summaries for the supplied project page keys."""
-    summaries = []
-    for page_key in page_keys:
-        summary = snapshot_page_summary(project, page_key)
-        if summary is not None:
-            summaries.append(summary)
-    return tuple(summaries)
 
 
 def snapshot_page_summaries(
@@ -196,15 +137,17 @@ def snapshot_page_summaries(
     >>> snapshot_page_summaries(None, '001.png')
     ()
     """
-    pages = getattr(project, 'pages', None)
-    if not isinstance(pages, dict) or page_key not in pages:
+    if project is None or page_key not in project.pages:
         return ()
-    page_keys = []
-    for candidate_key in pages:
-        page_keys.append(str(candidate_key))
+    summaries = []
+    for candidate_key in project.pages:
+        candidate_key = str(candidate_key)
+        text = saved_page_summary_text(project, candidate_key)
+        if text:
+            summaries.append(PageSummary(candidate_key, text))
         if candidate_key == page_key:
             break
-    return snapshot_page_summaries_for_keys(project, tuple(page_keys))
+    return tuple(summaries)
 
 
 def page_summary_context_content(

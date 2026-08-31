@@ -157,9 +157,7 @@ def _mark_translation_finished(
 ) -> None:
     """Mark completion, then let the owning translator commit page context."""
     project.mark_translation_finished(page_key, translator.lang_target)
-    finished_hook = getattr(translator, 'on_page_translation_finished', None)
-    if callable(finished_hook):
-        finished_hook(project, page_key)
+    translator.on_page_translation_finished(project, page_key)
 
 
 class ModuleThread(QThread):
@@ -628,6 +626,7 @@ class TranslateThread(ModuleThread):
                 page_key=page_key,
                 full_page=True,
             )
+            _mark_translation_finished(project, page_key, self.translator)
         except LLMUserActionRequiredError as e:
             success = False
             _show_llm_user_action_required_dialog(
@@ -651,8 +650,6 @@ class TranslateThread(ModuleThread):
                 page_key,
                 self.tr('Page'),
             )
-        if success:
-            _mark_translation_finished(project, page_key, self.translator)
         return success
 
     def push_pagekey_queue(self, page_key: str):
@@ -683,10 +680,10 @@ class TranslateThread(ModuleThread):
                 self._translate_page(self.imgtrans_proj, page_key)
             except Exception as e:
                 # TODO: allowing retry/skip/terminate
-                msg = _failure_message_for_page(
+                msg = '{}\n{}: {}'.format(
                     self.tr('Translation Failed.'),
-                    page_key,
                     self.tr('Page'),
+                    page_key,
                 )
                 if isinstance(e, MissingTranslatorParams):
                     msg = msg + '\n' + self.tr('{param} is required for {translator}').format(

@@ -239,10 +239,6 @@ class LLMChatRequesterTest(unittest.TestCase):
                     {'model': 'demo-model', 'messages': []},
                 )
 
-        self.assertEqual(len(self.requester.logs), 1)
-        self.assertIn('completion=1234', self.requester.logs[0])
-        self.assertIn('content=\'{"partial":\'', self.requester.logs[0])
-
     def test_request_normalizes_authentication_and_status_errors(self):
         def client_for(error: Exception):
             completions = SimpleNamespace(

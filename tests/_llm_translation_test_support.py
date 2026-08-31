@@ -119,7 +119,7 @@ class LLMTranslationTestMixin:
             glossary_path=str(pcfg.module.llm_glossary_path or ''),
             glossary_mode=pcfg.module.llm_glossary_mode,
             memory_enabled=bool(pcfg.module.llm_translate_summary_memory),
-            model=model,
+            model=model or self.translator._text_model(profile),
         )
 
     def _assemble_request(

@@ -86,11 +86,7 @@ class LLMContextEditor(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumWidth(300)
         self._project = project
-        self._page_key: Optional[str] = getattr(
-            project,
-            'current_img',
-            None,
-        )
+        self._page_key = project.current_img if project is not None else None
 
         self.summary_card = _ContextEditorCard(
             self.tr('Page Summary'),
@@ -123,17 +119,18 @@ class LLMContextEditor(QWidget):
         self.memory_editor.textChanged.connect(self._on_memory_changed)
         self.refresh()
 
-    @property
-    def page_key(self) -> Optional[str]:
-        return self._page_key
-
     def set_project(self, project: Optional[ProjImgTrans]) -> None:
         self._project = project
-        self._page_key = getattr(project, 'current_img', None)
+        self._page_key = project.current_img if project is not None else None
         self.refresh()
 
     def set_page(self, page_key: Optional[str]) -> None:
-        self._page_key = str(page_key) if page_key is not None else None
+        normalized_page_key = (
+            str(page_key) if page_key is not None else None
+        )
+        if normalized_page_key == self._page_key:
+            return
+        self._page_key = normalized_page_key
         self.refresh()
 
     @staticmethod
@@ -146,14 +143,12 @@ class LLMContextEditor(QWidget):
 
     def refresh(self) -> None:
         project = self._project
-        has_project = bool(
-            project is not None and getattr(project, 'directory', None)
-        )
+        has_project = bool(project is not None and project.directory)
         page_key = self._page_key
         has_page = bool(
             has_project
             and page_key is not None
-            and page_key in project._image_info
+            and page_key in project.pages
         )
 
         summary_text = ''
@@ -190,7 +185,7 @@ class LLMContextEditor(QWidget):
         if (
             project is None
             or page_key is None
-            or page_key not in project._image_info
+            or page_key not in project.pages
         ):
             return
         project.set_llm_visual_summary_text(
@@ -201,7 +196,7 @@ class LLMContextEditor(QWidget):
 
     def _on_memory_changed(self) -> None:
         project = self._project
-        if project is None or not getattr(project, 'directory', None):
+        if project is None or not project.directory:
             return
         project.set_llm_compact_memory_text(
             self.memory_editor.toPlainText()

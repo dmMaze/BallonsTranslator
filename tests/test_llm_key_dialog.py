@@ -92,6 +92,9 @@ class SuccessfulTranslator:
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
 
+    def on_page_translation_finished(self, project, page_key):
+        pass
+
     def translate_textblk_lst(
         self,
         blk_list,
@@ -119,15 +122,7 @@ class FailingTranslator(SuccessfulTranslator):
 
 
 class OutputLimitedTranslator(SuccessfulTranslator):
-    def translate_textblk_lst(
-        self,
-        blk_list,
-        *,
-        project=None,
-        page_key=None,
-        full_page=False,
-    ):
-        self.calls.append((blk_list, project, page_key, full_page))
+    def on_page_translation_finished(self, project, page_key):
         raise LLMOutputLimitError('profile-1', 'Profile 1', 8192, 'low')
 
 
@@ -249,10 +244,8 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             [('profile-1', 'Profile 1'), ('profile-1', 'Profile 1')],
         )
 
-    def test_page_failure_message_is_logged_and_shown(self):
-        with mock.patch(
-            'ballontranslator.utils.message.LOGGER.error',
-        ) as log_error, mock.patch.object(
+    def test_page_failure_message_includes_the_page(self):
+        with mock.patch.object(
             shared,
             'create_errdialog_in_mainthread',
         ) as show_error:
@@ -263,11 +256,6 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                 'page-1',
             )
 
-        logged = '\n'.join(
-            str(call.args[0])
-            for call in log_error.call_args_list
-        )
-        self.assertIn('Page: page-1', logged)
         self.assertIn('Page: page-1', show_error.call_args.args[0])
 
     def test_missing_llm_model_dialog_emits_once_until_reset(self):
@@ -431,6 +419,10 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
 
         self.assertFalse(success)
         self.assertTrue(thread.pipeline_stop_event.is_set())
+        self.assertTrue(
+            project._image_info['page-1']['finish_code']
+            & RunStatus.FIN_TRANSLATE
+        )
         self.assertIsInstance(show_error.call_args.args[0], LLMOutputLimitError)
         self.assertIn('increase Max Tokens', str(show_error.call_args.args[0]))
 
@@ -488,9 +480,6 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             for mode in ('parallel', 'direct', 'low-vram'):
                 with self.subTest(mode=mode):
                     translator = SuccessfulTranslator()
-                    translator.translation_run_description = mock.Mock(
-                        return_value='LLM translation run: test',
-                    )
                     translator.computational_intensive = mode == 'direct'
                     translator.low_vram_mode = mode == 'low-vram'
                     translate_thread = FakeTranslateThread(translator)
@@ -518,13 +507,8 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                         return_value=True,
                     ) as full_page, mock.patch(
                         'ballontranslator.ui.module_manager.unload_modules',
-                    ), mock.patch(
-                        'ballontranslator.ui.module_manager.LOGGER.info',
-                    ) as log_info:
+                    ):
                         thread._imgtrans_pipeline()
-
-                    translator.translation_run_description.assert_called_once_with()
-                    log_info.assert_any_call('LLM translation run: test')
 
                     if mode == 'parallel':
                         self.assertEqual(

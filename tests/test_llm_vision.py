@@ -30,18 +30,23 @@ class LLMVisionEncodingTest(unittest.TestCase):
                     expected,
                 )
 
-    def test_default_and_explicit_jpeg_parameters_remain_distinct(self):
+    def test_encoding_parameters_and_image_part(self):
         image = np.zeros((2, 2), dtype=np.uint8)
-        encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
+        encoded_bytes = b'jpeg bytes'
+        encoded = np.frombuffer(encoded_bytes, dtype=np.uint8)
 
         with mock.patch(
             'ballontranslator.modules.llm_vision.cv2.imencode',
             return_value=(True, encoded),
         ) as imencode:
-            encode_chat_image(image)
+            default = encode_chat_image(image)
             self.assertEqual(imencode.call_args.args, ('.jpg', image))
 
-            encode_chat_image(image, jpeg_quality=85)
+            explicit = encode_chat_image(
+                image,
+                detail='HIGH',
+                jpeg_quality=85,
+            )
             self.assertEqual(
                 imencode.call_args.args,
                 (
@@ -50,38 +55,16 @@ class LLMVisionEncodingTest(unittest.TestCase):
                     [int(cv2.IMWRITE_JPEG_QUALITY), 85],
                 ),
             )
-
-    def test_encoded_value_owns_detail_and_data_url(self):
-        encoded_bytes = b'jpeg bytes'
-        encoded = np.frombuffer(encoded_bytes, dtype=np.uint8)
-        with mock.patch(
-            'ballontranslator.modules.llm_vision.cv2.imencode',
-            return_value=(True, encoded),
-        ):
-            result = encode_chat_image(
-                np.zeros((2, 2), dtype=np.uint8),
-                detail='HIGH',
-            )
-
         self.assertEqual(
-            result.data_url,
+            explicit.data_url,
             'data:image/jpeg;base64,'
             + base64.b64encode(encoded_bytes).decode('ascii'),
         )
-        self.assertEqual(result.image_part()['image_url']['detail'], 'HIGH')
-
-    def test_none_detail_is_omitted_case_insensitively(self):
-        encoded = np.frombuffer(b'jpeg', dtype=np.uint8)
-        with mock.patch(
-            'ballontranslator.modules.llm_vision.cv2.imencode',
-            return_value=(True, encoded),
-        ):
-            image_part = encode_chat_image(
-                np.zeros((2, 2), dtype=np.uint8),
-                detail='nOnE',
-            ).image_part()
-
-        self.assertNotIn('detail', image_part['image_url'])
+        self.assertEqual(
+            explicit.image_part()['image_url']['detail'],
+            'HIGH',
+        )
+        self.assertNotIn('detail', default.image_part()['image_url'])
 
     def test_encoding_failure_uses_the_callers_message(self):
         with mock.patch(

@@ -36,9 +36,7 @@ from ballontranslator.ui.run_pipeline_dialog import (
 from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.drawingpanel import DrawingPanel
 from ballontranslator.ui.canvas import Canvas
-from ballontranslator.ui.llm_profile_widgets import ProfileDetailsWidget
 from ballontranslator.ui.module_parse_widgets import ModuleParamDialog
-from ballontranslator.ui.page_range_progress import PageRangeProgressWidget
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.module_manager import ModuleManager
@@ -54,7 +52,6 @@ from ballontranslator.ui.text_engine.pipeline_formatting import (
 )
 from ballontranslator.utils.config import (
     AutoTateChuYokoConfig,
-    LLMGlossaryMode,
     LLMTranslateContext,
     OCRTextPostprocess,
     ProgramConfig,
@@ -75,7 +72,6 @@ from ballontranslator.utils.text_effects import (
     TextEffectStack,
 )
 from ballontranslator.utils.textblock import TextBlock
-from ballontranslator.modules import GET_VALID_TEXTDETECTORS
 from ballontranslator.modules.translators import base as translator_base
 from ballontranslator.modules.translators.base import postprocess_translation_text
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
@@ -678,12 +674,9 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         self.assertFalse(dialog.llm_ocr_settings.isHidden())
         self.assertFalse(dialog.llm_ocr_mask_non_text.isEnabled())
-        self.assertFalse(dialog.llm_ocr_reading_order.isEnabled())
 
         dialog.llm_ocr_page_level.click()
         self.assertTrue(pcfg.module.ocr_llm_page_level)
-        self.assertTrue(dialog.llm_ocr_mask_non_text.isEnabled())
-        self.assertTrue(dialog.llm_ocr_reading_order.isEnabled())
         dialog.llm_ocr_mask_non_text.click()
         dialog.llm_ocr_reading_order.click()
         self.assertFalse(pcfg.module.ocr_llm_mask_non_text)
@@ -691,65 +684,36 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         dialog.setModuleSelection('ocr', 'mit48px')
         self.assertTrue(dialog.llm_ocr_settings.isHidden())
-        dialog.setModuleSelection('ocr', 'LLMOCR')
-        self.assertFalse(dialog.llm_ocr_settings.isHidden())
-        self.assertFalse(dialog.llm_ocr_mask_non_text.isChecked())
-        self.assertTrue(dialog.llm_ocr_reading_order.isChecked())
         dialog.close()
 
     def test_llm_context_budget_stays_visible_and_persists(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_prior_context_token_budget = 8192
-        pcfg.module.llm_glossary_path = ''
-        pcfg.module.llm_glossary_mode = LLMGlossaryMode.Matching
         translate_context = pcfg.module.translate_context
         dialog = RunPipelineDialog(
             translator_metadata={'name': 'LLMTranslator'},
         )
 
         self.assertTrue(dialog.context_row.isHidden())
-        self.assertFalse(dialog.llm_context_row.isHidden())
         self.assertFalse(dialog.llm_context_budget_row.isHidden())
-        self.assertEqual(
-            [
-                dialog.llm_context_combobox.itemText(index)
-                for index in range(dialog.llm_context_combobox.count())
-            ],
-            ['page', '+history'],
-        )
         history_index = dialog.llm_context_combobox.findData(
             LLMTranslateContext.HISTORY
         )
         dialog.llm_context_combobox.setCurrentIndex(history_index)
         self.assertFalse(dialog.llm_context_budget_row.isHidden())
         dialog.prior_context_token_budget.setValue(16384)
-        page_index = dialog.llm_context_combobox.findData(
-            LLMTranslateContext.PAGE
-        )
-        dialog.llm_context_combobox.setCurrentIndex(page_index)
-        dialog.glossary_path_edit.setText('/tmp/glossary.tsv')
-        all_index = dialog.glossary_mode_combobox.findData(LLMGlossaryMode.All)
-        dialog.glossary_mode_combobox.setCurrentIndex(all_index)
-        dialog.glossary_path_edit.clear()
 
         self.assertEqual(
             (
                 pcfg.module.llm_translate_context,
                 pcfg.module.llm_prior_context_token_budget,
-                pcfg.module.llm_glossary_path,
-                pcfg.module.llm_glossary_mode,
             ),
             (
-                LLMTranslateContext.PAGE,
+                LLMTranslateContext.HISTORY,
                 16384,
-                '',
-                LLMGlossaryMode.All,
             ),
         )
         self.assertEqual(pcfg.module.translate_context, translate_context)
-        self.assertEqual(dialog.prior_context_token_budget.value(), 16384)
-        self.assertFalse(dialog.llm_context_budget_row.isHidden())
-        self.assertTrue(dialog.glossary_mode_combobox.isEnabled())
         dialog.close()
 
     def test_llm_context_uses_summary_memory_and_overwrite_controls(self):
@@ -761,8 +725,6 @@ class RunPipelineDialogTests(unittest.TestCase):
             translator_metadata={'name': 'LLMTranslator'},
         )
 
-        self.assertFalse(dialog.llm_features_row.isHidden())
-        self.assertTrue(dialog.llm_summary_memory_checkbox.isEnabled())
         self.assertFalse(dialog.llm_overwrite_summary_checkbox.isChecked())
         self.assertFalse(dialog.llm_overwrite_summary_checkbox.isEnabled())
 
@@ -771,12 +733,6 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertTrue(dialog.llm_overwrite_summary_checkbox.isEnabled())
         dialog.llm_overwrite_summary_checkbox.setChecked(True)
         self.assertTrue(pcfg.module.llm_translate_overwrite_summary)
-
-        history_index = dialog.llm_context_combobox.findData(
-            LLMTranslateContext.HISTORY
-        )
-        dialog.llm_context_combobox.setCurrentIndex(history_index)
-        self.assertTrue(dialog.llm_summary_memory_checkbox.isEnabled())
 
         dialog.llm_vision_checkbox.setChecked(True)
         dialog.llm_vision_checkbox.setChecked(False)

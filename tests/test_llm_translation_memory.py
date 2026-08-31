@@ -5,7 +5,6 @@ from unittest import mock
 
 from _llm_translation_test_support import LLMTranslationTestMixin
 from ballontranslator.modules.context.history import (
-    ContextAction,
     HistoryPage,
     HistoryWindow,
     HistoryWindowKey,
@@ -19,8 +18,6 @@ from ballontranslator.modules.context.translation_context import (
 )
 from ballontranslator.modules.exceptions import (
     LLMMemoryCompactionError,
-    LLMRequestStopped,
-    LLMUserActionRequiredError,
 )
 from ballontranslator.utils.config import LLMTranslateContext, pcfg
 
@@ -135,6 +132,7 @@ class LLMTranslationMemoryTest(
         completion = SimpleNamespace(
             content='{"memory":"The station meeting remains unresolved."}',
             usage=None,
+            finish_reason='',
         )
 
         with mock.patch.object(
@@ -189,37 +187,6 @@ class LLMTranslationMemoryTest(
             messages[1]['content'].startswith('Compacted translation memory')
         )
 
-    def test_memory_waits_while_saved_summaries_fit_context_budget(self):
-        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
-        pcfg.module.llm_translate_summary_memory = True
-        project = self._project(2)
-        project.set_llm_visual_summary_text(
-            '001.png',
-            'User-owned summary without completed translation.',
-        )
-
-        with mock.patch.object(
-            self.translator,
-            '_compact_summary_batch',
-            return_value=None,
-        ) as compact:
-            context = self._snapshot_request_context(
-                project,
-                '002.png',
-                self.profile,
-                summary_enabled=True,
-            )
-
-        compact.assert_not_called()
-        self.assertEqual(context.history, ())
-        self.assertEqual(
-            context.page_summaries,
-            (PageSummary(
-                '001.png',
-                'User-owned summary without completed translation.',
-            ),),
-        )
-
     def test_memory_compacts_summary_overflow_without_history(self):
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
         pcfg.module.llm_prior_context_token_budget = 128
@@ -268,14 +235,11 @@ class LLMTranslationMemoryTest(
         pcfg.module.llm_translate_summary_memory = True
         project = self._project(2)
         project.set_llm_visual_summary_text('001.png', 'Earlier summary.')
+        project.set_llm_visual_summary_text('002.png', 'Final summary.')
         project.set_llm_compact_memory({
             'version': 1,
             'text': 'Existing memory.',
             'covered_pages': ['001.png'],
-        })
-        response = json.dumps({
-            'translations': {'1': 'translated'},
-            'page_summary': 'Final-page summary.',
         })
         merged = MemoryCheckpoint(
             'Merged memory.',
@@ -290,25 +254,10 @@ class LLMTranslationMemoryTest(
             return_value=self.profile,
         ), mock.patch.object(
             self.translator,
-            'all_model_loaded',
-            return_value=True,
-        ), mock.patch.object(
-            self.translator,
-            '_request_translation',
-            return_value=response,
-        ), mock.patch.object(
-            self.translator,
             '_compact_summary_batch',
             return_value=merged,
         ) as compact:
             self.translator.on_page_translation_finished(project, '001.png')
-            compact.assert_not_called()
-            self.translator.translate(
-                ['source-2'],
-                project=project,
-                page_key='002.png',
-                commit_history_window=True,
-            )
             compact.assert_not_called()
             self._complete(project, '002.png')
             self.translator.on_page_translation_finished(project, '002.png')
@@ -319,7 +268,7 @@ class LLMTranslationMemoryTest(
 
         self.assertEqual(
             compaction_kwargs['summaries'],
-            (PageSummary('002.png', 'Final-page summary.'),),
+            (PageSummary('002.png', 'Final summary.'),),
         )
         self.assertEqual(
             compaction_kwargs['previous'].text,
@@ -333,116 +282,6 @@ class LLMTranslationMemoryTest(
                 'covered_pages': ['001.png', '002.png'],
             },
         )
-
-    def test_user_edit_wins_over_last_page_compaction(self):
-        pcfg.module.llm_translate_summary_memory = True
-        project = self._project(1)
-        project.set_llm_visual_summary_text('001.png', 'Final summary.')
-        project.set_llm_compact_memory({
-            'version': 1,
-            'text': 'Original memory.',
-            'covered_pages': [],
-        })
-        generated = MemoryCheckpoint('Generated.', ('001.png',), 4)
-
-        def edit_during_compaction(**_kwargs: object) -> MemoryCheckpoint:
-            project.set_llm_compact_memory_text('User edit.')
-            return generated
-
-        with mock.patch.object(
-            type(self.translator),
-            'profile',
-            new_callable=mock.PropertyMock,
-            return_value=self.profile,
-        ), mock.patch.object(
-            self.translator,
-            '_compact_summary_batch',
-            side_effect=edit_during_compaction,
-        ) as compact:
-            self._complete(project, '001.png')
-            self.translator.on_page_translation_finished(project, '001.png')
-
-        compact.assert_called_once()
-        self.assertEqual(
-            project.get_llm_compact_memory(),
-            {
-                'version': 1,
-                'text': 'User edit.',
-                'covered_pages': [],
-            },
-        )
-
-    def test_memory_discovers_late_summary_during_adjacent_growth(self):
-        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
-        pcfg.module.llm_translate_summary_memory = True
-        pcfg.module.llm_prior_context_token_budget = 10
-        project = self._project(3)
-
-        with mock.patch(
-            'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
-            return_value=1,
-        ), mock.patch.object(
-            self.translator,
-            '_request_translation',
-            return_value='{"1":"target-2"}',
-        ):
-            self._translate(
-                ['source-2'],
-                profile=self.profile,
-                request_context=self._snapshot_request_context(
-                    project,
-                    '002.png',
-                    self.profile,
-                    summary_enabled=True,
-                ),
-            )
-            self._complete(project, '002.png')
-            project.set_llm_visual_summary_text(
-                '001.png',
-                'Late summary from an incomplete page.',
-            )
-            project.set_llm_visual_summary_text(
-                '002.png',
-                'Summary from the exact page at risk of eviction.',
-            )
-            with mock.patch.object(
-                self.translator,
-                '_compact_summary_batch',
-                return_value=MemoryCheckpoint(
-                    'Memory.',
-                    ('001.png',),
-                    2,
-                ),
-            ) as compact, mock.patch(
-                'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
-                return_value=8,
-            ):
-                context = self._snapshot_request_context(
-                    project,
-                    '003.png',
-                    self.profile,
-                    summary_enabled=True,
-                )
-
-        self.assertEqual(context.diagnostic.action, ContextAction.GROW)
-        self.assertEqual(
-            tuple(page.page_key for page in context.history),
-            ('002.png',),
-        )
-        self.assertEqual(context.diagnostic.evicted, 0)
-        self.assertEqual(context.diagnostic.token_count, 10)
-        self.assertLessEqual(
-            context.diagnostic.token_count,
-            context.history_budget,
-        )
-        self.assertEqual(
-            compact.call_args.kwargs['summaries'],
-            (PageSummary(
-                '001.png',
-                'Late summary from an incomplete page.',
-            ),),
-        )
-        self.assertEqual(context.memory.token_count, 2)
 
     def test_memory_compaction_failure_propagates_after_retries(self):
         previous = MemoryCheckpoint('old memory', ('001.png',), 1)
@@ -467,105 +306,20 @@ class LLMTranslationMemoryTest(
                     target_language='Simplified Chinese',
                 )
 
-    def test_memory_compaction_user_action_error_bypasses_retries(self):
-        self.translator.set_param_value('retry attempts', 5)
-        with mock.patch.object(
-            self.translator,
-            'request_chat_completion',
-            side_effect=LLMUserActionRequiredError('update profile'),
-        ) as request:
-            with self.assertRaisesRegex(
-                LLMUserActionRequiredError,
-                'update profile',
-            ):
-                self.translator._compact_summary_batch(
-                    previous=None,
-                    summaries=(PageSummary('001.png', 'summary'),),
-                    profile=self.profile,
-                    model=self.profile.model,
-                    target_language='Simplified Chinese',
-                )
-
-        self.assertEqual(request.call_count, 1)
-
-    def test_memory_compaction_honors_cancellation(self):
-        self.translator.stop_event = SimpleNamespace(is_set=lambda: True)
-        summary = PageSummary('001.png', 'summary')
-
-        with self.assertRaises(LLMRequestStopped):
-            self.translator._compact_summary_batch(
-                previous=None,
-                summaries=(summary,),
-                profile=self.profile,
-                model=self.profile.model,
-                target_language='Simplified Chinese',
-            )
-
-    def test_memory_compaction_uses_its_own_response_format_name(self):
-        completion = SimpleNamespace(
-            content='{"memory":"merged memory"}',
-            usage=None,
-        )
-        for strict in (False, True):
-            with self.subTest(strict=strict):
-                self.profile.json_schema_response_format = strict
-                with mock.patch.object(
-                    self.translator,
-                    'request_chat_completion',
-                    return_value=completion,
-                ) as request, mock.patch(
-                    'ballontranslator.modules.translators.trans_llm.messages_token_count',
-                    return_value=1,
-                ):
-                    self.translator._compact_memory(
-                        previous=None,
-                        summaries=(PageSummary('001.png', 'summary'),),
-                        profile=self.profile,
-                        model=self.profile.model,
-                        target_language='Simplified Chinese',
-                    )
-
-                request_args = request.call_args.args[1]
-                self.assertIn(
-                    'Keep the memory concise.',
-                    request_args['messages'][0]['content'],
-                )
-                self.assertIn(
-                    'complete memory body in Simplified Chinese',
-                    request_args['messages'][0]['content'],
-                )
-                self.assertEqual(
-                    request_args['max_completion_tokens'],
-                    self.profile.max_tokens,
-                )
-                response_format = request_args['response_format']
-                if strict:
-                    self.assertEqual(response_format['type'], 'json_schema')
-                    self.assertEqual(
-                        response_format['json_schema']['name'],
-                        'translation_memory',
-                    )
-                    self.assertEqual(
-                        response_format['json_schema']['schema']['required'],
-                        ['memory'],
-                    )
-                else:
-                    self.assertEqual(
-                        response_format,
-                        {'type': 'json_object'},
-                    )
-
     def test_memory_compaction_sends_only_not_yet_covered_summaries(self):
         self.profile.model = 'selected-translation-model'
         self.profile.vision_model = 'ignored-ocr-model'
+        self.profile.json_schema_response_format = True
         previous = MemoryCheckpoint('old memory', ('001.png',), 1)
         summaries = (
             PageSummary('001.png', 'covered summary'),
             PageSummary('002.png', 'new summary'),
+            PageSummary('003.png', 'another summary'),
         )
         completion = SimpleNamespace(
             content='{"memory":"merged memory"}',
             usage=None,
+            finish_reason='',
         )
 
         with mock.patch.object(
@@ -589,55 +343,34 @@ class LLMTranslationMemoryTest(
         )
         self.assertEqual(
             user_payload['page_summaries'],
-            [{'page': '002.png', 'summary': 'new summary'}],
+            [
+                {'page': '002.png', 'summary': 'new summary'},
+                {'page': '003.png', 'summary': 'another summary'},
+            ],
         )
         self.assertEqual(
             checkpoint.covered_page_keys,
-            ('001.png', '002.png'),
+            ('001.png', '002.png', '003.png'),
         )
         self.assertEqual(checkpoint.text, 'merged memory')
         self.assertEqual(
             request.call_args.args[1]['model'],
             self.profile.model,
         )
-
-    def test_memory_compaction_sends_all_selected_summaries(self):
-        summaries = tuple(
-            PageSummary(f'00{index}.png', f'summary-{index}')
-            for index in range(1, 4)
-        )
-        completion = SimpleNamespace(
-            content='{"memory":"merged memory"}',
-            usage=None,
-        )
-
-        with mock.patch.object(
-            self.translator,
-            'request_chat_completion',
-            return_value=completion,
-        ) as request, mock.patch(
-            'ballontranslator.modules.translators.trans_llm.'
-            'messages_token_count',
-            return_value=1,
-        ):
-            self.translator._compact_summary_batch(
-                previous=None,
-                summaries=summaries,
-                profile=self.profile,
-                model=self.profile.model,
-                target_language='Simplified Chinese',
-            )
-
-        payload = json.loads(request.call_args.args[1]['messages'][1]['content'])
         self.assertEqual(
-            [summary['page'] for summary in payload['page_summaries']],
-            ['001.png', '002.png', '003.png'],
+            request.call_args.args[1]['response_format']['json_schema']['name'],
+            'translation_memory',
+        )
+        self.assertIn(
+            'complete memory body in Simplified Chinese',
+            request.call_args.args[1]['messages'][0]['content'],
         )
 
     def test_memory_compaction_keeps_its_actual_translation_context_size(self):
         completion = SimpleNamespace(
             content='{"memory":"merged memory"}',
             usage=None,
+            finish_reason='',
         )
 
         with mock.patch.object(

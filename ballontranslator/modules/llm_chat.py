@@ -297,26 +297,6 @@ class LLMChatRequester:
         self.last_request_time = time.time()
         self.request_count_minute += 1
 
-    @staticmethod
-    def _completion_content(completion: Any) -> str:
-        for choice in getattr(completion, 'choices', ()):
-            message = getattr(choice, 'message', None)
-            content = getattr(message, 'content', None)
-            if content is not None:
-                return str(content)
-            text = getattr(choice, 'text', None)
-            if text is not None:
-                return str(text)
-        return ''
-
-    @staticmethod
-    def _completion_finish_reason(completion: Any) -> str:
-        for choice in getattr(completion, 'choices', ()):
-            finish_reason = getattr(choice, 'finish_reason', None)
-            if finish_reason is not None:
-                return str(finish_reason)
-        return ''
-
     def request_chat_completion(
         self,
         profile: LLMProfile,
@@ -335,10 +315,17 @@ class LLMChatRequester:
         except getattr(openai, 'APIStatusError') as error:
             raise LLMChatRequestError(error) from error
 
+        choice = next(iter(getattr(completion, 'choices', ())), None)
+        message = getattr(choice, 'message', None)
+        content = getattr(message, 'content', None)
+        if content is None:
+            content = getattr(choice, 'text', '')
         result = LLMChatResult(
-            content=self._completion_content(completion),
+            content=str(content or ''),
             usage=getattr(completion, 'usage', None),
-            finish_reason=self._completion_finish_reason(completion),
+            finish_reason=str(
+                getattr(choice, 'finish_reason', '') or ''
+            ),
         )
         if result.finish_reason.strip().lower() == 'length':
             usage = format_completion_token_usage(result)

@@ -2,7 +2,7 @@ import json, os, string, traceback
 import os.path as osp
 import copy
 from dataclasses import fields
-from typing import Callable, Mapping, Optional
+from typing import Mapping, Optional
 
 from . import shared
 from .fontformat import (
@@ -201,6 +201,9 @@ class ModuleConfig(Config):
             ('ocr_llm_page_level', False),
             ('ocr_llm_mask_non_text', True),
             ('ocr_llm_sort_reading_order', True),
+            ('llm_translate_vision', False),
+            ('llm_translate_summary_memory', False),
+            ('llm_translate_overwrite_summary', False),
         ):
             if type(getattr(self, setting_name)) is not bool:
                 LOGGER.warning(
@@ -223,14 +226,6 @@ class ModuleConfig(Config):
             or self.llm_prior_context_token_budget <= 0
         ):
             self.llm_prior_context_token_budget = 4096
-        for feature in (
-            'llm_translate_vision',
-            'llm_translate_summary_memory',
-            'llm_translate_overwrite_summary',
-        ):
-            if not isinstance(getattr(self, feature), bool):
-                LOGGER.warning('Invalid %s value; disabling it.', feature)
-                setattr(self, feature, False)
         if not self.llm_profiles:
             self.llm_profiles = default_profiles()
         else:
@@ -502,7 +497,7 @@ def load_textstyle_from(p: str, raise_exception = False):
                         )
                         style_format.text_effects = portable_effects
                     styles_loaded.append(style_format)
-                except Exception as e:
+                except Exception:
                     LOGGER.warning(f'Skip invalid text style: {style}')
             warn_ignored_legacy_effects(effect_notices, 'text styles')
     except Exception as e:

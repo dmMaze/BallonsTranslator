@@ -123,6 +123,7 @@ class LLMTranslationHistoryTest(
                 glossary_path=str(pcfg.module.llm_glossary_path or ''),
                 glossary_mode=pcfg.module.llm_glossary_mode,
                 memory_enabled=False,
+                model=self.translator._text_model(self.profile),
             )
 
         pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
@@ -334,6 +335,7 @@ class LLMTranslationHistoryTest(
             '007.png': [_block('future', '未来')],
         }
         project = SimpleNamespace(
+            load_identity=object(),
             pages=pages,
             _image_info={
                 '001.png': {
@@ -938,6 +940,7 @@ class LLMTranslationHistoryTest(
             current_prompt = captured_messages[0][-1]['content']
 
             project = SimpleNamespace(
+                load_identity=object(),
                 pages={
                     '001.png': [block],
                     '002.png': [_block('Next page')],
@@ -1139,13 +1142,6 @@ class LLMTranslationHistoryTest(
             with open(glossary_path, 'w', encoding='utf-8') as glossary_file:
                 glossary_file.write('SecretTerm\tSecretTranslation\n')
             pcfg.module.llm_glossary_path = glossary_path
-            debug_lines = []
-            self.translator.logger = SimpleNamespace(
-                debug=debug_lines.append,
-                info=lambda *_args: None,
-                warning=lambda *_args: None,
-                error=lambda *_args: None,
-            )
             with mock.patch(
                 'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
                 return_value=1,
@@ -1179,11 +1175,6 @@ class LLMTranslationHistoryTest(
             ['002.png', '003.png'],
         )
         self.assertEqual(context.history[1:], self.translator._history_window.history)
-        diagnostic_text = '\n'.join(debug_lines)
-        self.assertIn('action=context-recovery', diagnostic_text)
-        self.assertNotIn('current-source', diagnostic_text)
-        self.assertNotIn('SecretTerm', diagnostic_text)
-        self.assertNotIn('SecretTranslation', diagnostic_text)
 
     def test_context_overflow_without_history_is_reraised(self):
         context = RequestContext(
