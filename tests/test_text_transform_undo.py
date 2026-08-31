@@ -12,7 +12,7 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
+from qtpy.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
     QImage,
@@ -31,6 +31,7 @@ from qtpy.QtWidgets import (
     QGraphicsScene,
     QGraphicsTextItem,
     QGraphicsView,
+    QLineEdit,
     QStyleOptionGraphicsItem,
     QVBoxLayout,
     QWidget,
@@ -1564,6 +1565,29 @@ class TextTransformUndoTest(TextTransformTestBase):
         canvas.gv.close()
 
         self.assertEqual(calls, ['copy', 'paste'])
+
+    def test_canvas_right_click_restores_keyboard_focus(self) -> None:
+        canvas = Canvas()
+        canvas.imgtrans_proj = SimpleNamespace(img_valid=False)
+        focus_editor = QLineEdit()
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.addWidget(focus_editor)
+        layout.addWidget(canvas.gv)
+        host.show()
+        focus_editor.setFocus()
+        self.app.processEvents()
+        self.assertTrue(focus_editor.hasFocus())
+
+        QTest.mouseClick(
+            canvas.gv.viewport(),
+            Qt.MouseButton.RightButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPoint(20, 20),
+        )
+        self.app.processEvents()
+        self.assertTrue(canvas.gv.hasFocus())
+        host.close()
 
     def test_text_edit_shortcuts_accept_transient_modifiers(self) -> None:
         item, pair = self._make_pair(0, 'text', False)

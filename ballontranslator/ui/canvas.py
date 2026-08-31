@@ -1117,6 +1117,11 @@ class Canvas(QGraphicsScene):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if btn in (
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.RightButton,
+        ):
+            self.gv.setFocus(Qt.FocusReason.MouseFocusReason)
         if self.alpha_mask_edit_session.handle_mouse_press(event):
             event.accept()
             return
