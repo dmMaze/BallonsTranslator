@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import io
 import os, json, shutil, re, docx, docx2txt, piexif, cv2
@@ -49,6 +50,8 @@ RASTER_ASSET_MAX_SOURCE_BYTES = 32 * 1024 * 1024
 # large number of tiny decoded entries from accumulating.
 RASTER_ASSET_DECODE_CACHE_ITEMS = 16
 RASTER_ASSET_DECODE_CACHE_MAX_BYTES = RASTER_ASSET_MAX_DECODED_BYTES * 2
+LLM_VISUAL_SUMMARY_VERSION = 1
+LLM_COMPACT_MEMORY_VERSION = 1
 _RASTER_ASSET_RGBA8_MODES = {
     '1', 'L', 'LA', 'P', 'RGB', 'RGBA', 'CMYK', 'YCbCr', 'HSV'
 }
@@ -147,6 +150,7 @@ class ProjImgTrans:
         self._pagename2idx = {}
         self._idx2pagename = {}
         self._image_info = {}
+        self._llm_compact_memory: Optional[Dict] = None
 
         self._fuzzy_inpainted_list = None
 
@@ -618,6 +622,7 @@ class ProjImgTrans:
     def load_from_dict(self, proj_dict: dict):
         self._raster_asset_cache.clear()
         self.set_current_img(None)
+        self._llm_compact_memory = None
         effect_notices = set()
 
         def load_blocks(records: List[dict]) -> List[TextBlock]:
@@ -662,6 +667,16 @@ class ProjImgTrans:
             if p not in self._image_info:
                 self._image_info[p] = {}
             img_info = self._image_info[p]
+            summary_record = img_info.get('llm_visual_summary')
+            if (
+                summary_record is not None
+                and not self._valid_llm_visual_summary(summary_record)
+            ):
+                LOGGER.warning(
+                    'Invalid llm_visual_summary for page %s; ignoring it.',
+                    p,
+                )
+                img_info.pop('llm_visual_summary', None)
             if 'finish_code' not in img_info:
                 page_blklist = self.pages[p]
                 has_empty_blk = len(page_blklist) == 0 or \
@@ -670,6 +685,15 @@ class ProjImgTrans:
                     img_info['finish_code'] = 0
                 else:
                     img_info['finish_code'] = RunStatus.FIN_ALL
+
+        memory_record = proj_dict.get('llm_compact_memory')
+        if memory_record is not None:
+            if self._valid_llm_compact_memory(memory_record):
+                self._llm_compact_memory = copy.deepcopy(memory_record)
+            else:
+                LOGGER.warning(
+                    'Invalid llm_compact_memory; ignoring it.'
+                )
             
         set_img_failed = False
         if 'current_img' in proj_dict:
@@ -717,6 +741,134 @@ class ProjImgTrans:
     def mark_translation_finished(self, page_key, target_language):
         self.update_page_progress(page_key, RunStatus.FIN_TRANSLATE)
         self._image_info[page_key]['translation_target'] = target_language
+
+    @staticmethod
+    def _valid_llm_visual_summary(record: object) -> bool:
+        """Validate the optional per-page LLM summary payload.
+
+        Unknown record versions are ignored so optional feature data can never
+        prevent the rest of an older or newer project from loading.
+
+        >>> ProjImgTrans._valid_llm_visual_summary({})
+        False
+        """
+        if not isinstance(record, dict):
+            return False
+        text = record.get('text')
+        return (
+            record.get('version') == LLM_VISUAL_SUMMARY_VERSION
+            and isinstance(text, str)
+            and bool(text.strip())
+        )
+
+    def get_llm_visual_summary(self, page_key: str) -> Optional[Dict]:
+        """Return a detached valid summary record for one page, if present."""
+        info = self._image_info.get(str(page_key))
+        if not isinstance(info, dict):
+            return None
+        record = info.get('llm_visual_summary')
+        if record is None:
+            return None
+        if not self._valid_llm_visual_summary(record):
+            LOGGER.warning(
+                'Invalid llm_visual_summary for page %s; ignoring it.',
+                page_key,
+            )
+            info.pop('llm_visual_summary', None)
+            return None
+        return copy.deepcopy(record)
+
+    def set_llm_visual_summary(self, page_key: str, record: Dict) -> None:
+        """Persist a validated summary record at the project boundary."""
+        if page_key not in self._image_info:
+            raise ImgnameNotInProjectException
+        if not self._valid_llm_visual_summary(record):
+            raise ValueError('Invalid llm_visual_summary record.')
+        self._image_info[page_key]['llm_visual_summary'] = copy.deepcopy(record)
+
+    def set_llm_visual_summary_text(self, page_key: str, text: str) -> None:
+        """Replace user-owned summary text.
+
+        >>> project = ProjImgTrans()
+        >>> project._image_info['001.png'] = {}
+        >>> project.set_llm_visual_summary_text('001.png', '  A meets B.  ')
+        >>> project.get_llm_visual_summary('001.png')['text']
+        '  A meets B.  '
+        """
+        if page_key not in self._image_info:
+            raise ImgnameNotInProjectException
+        user_text = str(text)
+        if not user_text.strip():
+            self.clear_llm_visual_summary(page_key)
+            return
+        record = self.get_llm_visual_summary(page_key) or {
+            'version': LLM_VISUAL_SUMMARY_VERSION,
+        }
+        record['text'] = user_text
+        self.set_llm_visual_summary(page_key, record)
+
+    def clear_llm_visual_summary(self, page_key: str) -> None:
+        """Discard the optional summary without affecting page translations."""
+        if page_key not in self._image_info:
+            raise ImgnameNotInProjectException
+        self._image_info[page_key].pop('llm_visual_summary', None)
+
+    @staticmethod
+    def _valid_llm_compact_memory(record: object) -> bool:
+        """Validate only the stable structure of optional project memory.
+
+        Coverage is descriptive bookkeeping, never a condition for using the
+        user-owned memory text.
+
+        >>> ProjImgTrans._valid_llm_compact_memory({
+        ...     'version': 1, 'text': 'Memory.', 'covered_pages': []})
+        True
+        """
+        if not isinstance(record, dict):
+            return False
+        text = record.get('text')
+        covered_pages = record.get('covered_pages')
+        return (
+            record.get('version') == LLM_COMPACT_MEMORY_VERSION
+            and isinstance(text, str)
+            and bool(text.strip())
+            and isinstance(covered_pages, list)
+            and all(isinstance(page_key, str) for page_key in covered_pages)
+        )
+
+    def get_llm_compact_memory(self) -> Optional[Dict]:
+        """Return a detached valid project-wide memory record, if present."""
+        record = self._llm_compact_memory
+        if record is None:
+            return None
+        if not self._valid_llm_compact_memory(record):
+            LOGGER.warning('Invalid llm_compact_memory; ignoring it.')
+            self._llm_compact_memory = None
+            return None
+        return copy.deepcopy(record)
+
+    def set_llm_compact_memory(self, record: Dict) -> None:
+        """Persist one structurally valid project-wide memory record."""
+        if not self._valid_llm_compact_memory(record):
+            raise ValueError('Invalid llm_compact_memory record.')
+        self._llm_compact_memory = copy.deepcopy(record)
+
+    def set_llm_compact_memory_text(self, text: str) -> None:
+        """Replace editable memory text without changing recorded coverage."""
+        user_text = str(text)
+        if not user_text.strip():
+            self.clear_llm_compact_memory()
+            return
+        record = self.get_llm_compact_memory() or {
+            'version': LLM_COMPACT_MEMORY_VERSION,
+            'covered_pages': [],
+        }
+        record['text'] = user_text
+        self.set_llm_compact_memory(record)
+
+    def clear_llm_compact_memory(self) -> None:
+        """Discard only the optional project-wide LLM memory."""
+        self._llm_compact_memory = None
 
     def load_translation_from_txt(self, file_path: str, target_language=None):
         page_list = parse_txt_translation(file_path)
@@ -839,6 +991,7 @@ class ProjImgTrans:
         self._pagename2idx = {}
         self._idx2pagename = {}
         self._image_info = {}
+        self._llm_compact_memory = None
         for ii, imgname in enumerate(imglist):
             self.pages[imgname] = []
             self._pagename2idx[imgname] = ii
@@ -868,12 +1021,16 @@ class ProjImgTrans:
         pages = self.pages.copy()
         pages.update(self.not_found_pages)        
         image_info = self._image_info.copy()
-        return {
+        project = {
             'directory': self.directory,
             'pages': pages,
             'current_img': self.current_img,
             'image_info': image_info,
         }
+        memory_record = self.get_llm_compact_memory()
+        if memory_record is not None:
+            project['llm_compact_memory'] = memory_record
+        return project
 
     def read_img(self, imgname: str) -> np.ndarray:
         if imgname not in self.pages:

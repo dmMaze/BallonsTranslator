@@ -10,6 +10,8 @@ from ballontranslator.utils.llm_profiles import (
     DEFAULT_TRANSLATION_PROMPT,
     LLMProfile,
     PROVIDER_DEFAULTS,
+    THINKING_AUTO,
+    THINKING_DISABLED,
     VISION_DETAIL_LEVEL_OPTIONS,
     copy_profile,
     default_profile,
@@ -19,11 +21,39 @@ from ballontranslator.utils.llm_profiles import (
     profile_to_export_dict,
     profiles_from_json,
     restore_builtin_profiles,
+    runtime_profile,
 )
 from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_runtime_profile_selects_falls_back_and_returns_a_copy(self):
+        first = default_profile('OpenAI')
+        second = default_profile('Ollama')
+        first.support_text = False
+
+        selected = runtime_profile([first, second], second.id)
+        fallback = runtime_profile([first, second], 'missing')
+        selected.name = 'Runtime edit'
+        selected.model_options.append('runtime-only')
+
+        self.assertEqual(selected.id, second.id)
+        self.assertEqual(fallback.id, first.id)
+        self.assertFalse(fallback.support_text)
+        self.assertNotEqual(second.name, 'Runtime edit')
+        self.assertNotIn('runtime-only', second.model_options)
+
+    def test_runtime_profile_rejects_an_empty_list(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            '^No LLM profile is configured\\.$',
+        ):
+            runtime_profile([], 'missing')
+
+    def test_runtime_profile_propagates_malformed_selected_entry(self):
+        with self.assertRaisesRegex(TypeError, 'Unsupported LLM profile config'):
+            runtime_profile([object()], 'missing')
+
     def test_load_profiles_merges_builtin_option_lists_and_selections(self):
         profile = default_profile('OpenAI')
         profile.model = 'saved-text-model'
@@ -59,6 +89,21 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(first.base_url, 'https://saved.example/v1')
         self.assertEqual(first.image_base_url, 'https://saved.example/image-edit')
         self.assertEqual(first.api_key, 'saved-key')
+
+    def test_load_profiles_migrates_legacy_none_thinking_to_auto(self):
+        profile = default_profile('OpenAI')
+        profile.thinking_level = 'None'
+        profile.thinking_level_options = ['None', 'low', 'high']
+
+        first = load_profiles([profile])[0]
+        second = load_profiles([first])[0]
+
+        self.assertEqual(first.thinking_level, THINKING_AUTO)
+        self.assertEqual(
+            first.thinking_level_options,
+            [THINKING_AUTO, THINKING_DISABLED, 'low', 'high'],
+        )
+        self.assertEqual(profile_to_dict(first), profile_to_dict(second))
 
     def test_load_profiles_leaves_custom_profiles_unchanged(self):
         custom = LLMProfile(
@@ -215,8 +260,10 @@ class LLMProfileMigrationTest(unittest.TestCase):
             self.assertIn(model, profile.vision_model_options)
         self.assertIn('gpt-4.1', profile.model_options)
         self.assertIn('gpt-4.1-mini', profile.model_options)
-        self.assertIn('None', profile.thinking_level_options)
-        self.assertNotIn('none', profile.thinking_level_options)
+        self.assertEqual(profile.thinking_level, THINKING_AUTO)
+        self.assertIn(THINKING_AUTO, profile.thinking_level_options)
+        self.assertIn(THINKING_DISABLED, profile.thinking_level_options)
+        self.assertNotIn('None', profile.thinking_level_options)
         self.assertEqual(profile.prompt, DEFAULT_TRANSLATION_PROMPT)
         self.assertEqual(profile.vision_prompt, DEFAULT_OCR_PROMPT)
         self.assertEqual(profile.image_prompt, DEFAULT_INPAINT_PROMPT)
@@ -381,6 +428,19 @@ class SecretStoreTest(unittest.TestCase):
             PROVIDER_DEFAULTS['OpenAI']['vision_model_options'],
         )
         self.assertEqual(selected.vision_detail_level, 'high')
+
+    def test_llm_ocr_page_mode_defaults_off_and_invalid_values_reset(self):
+        self.assertFalse(ModuleConfig().ocr_llm_page_level)
+
+        config = ModuleConfig(
+            ocr_llm_page_level='yes',
+            ocr_llm_mask_non_text=1,
+            ocr_llm_sort_reading_order=None,
+        )
+
+        self.assertFalse(config.ocr_llm_page_level)
+        self.assertTrue(config.ocr_llm_mask_non_text)
+        self.assertTrue(config.ocr_llm_sort_reading_order)
 
     def test_saved_config_roundtrips_inpaint_llm_profile_selection(self):
         profile = default_profile('OpenRouter')

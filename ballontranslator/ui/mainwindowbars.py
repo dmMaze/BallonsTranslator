@@ -89,7 +89,6 @@ class StateChecker(QCheckBox):
 
 class LeftBar(Widget):
     recent_proj_list = []
-    imgTransChecked = Signal()
     configChecked = Signal()
     open_dir = Signal(str)
     open_json_proj = Signal(str)
@@ -104,19 +103,18 @@ class LeftBar(Widget):
         self.setFixedWidth(LEFTBAR_WIDTH)
         self.showPageListLabel = ShowPageListChecker()
         self.showPageListLabel.setObjectName('ShowPageListChecker')
+        self.showPageListLabel.setToolTip(
+            self.tr('Page List and Context')
+        )
 
         self.globalSearchChecker = QCheckBox()
         self.globalSearchChecker.setObjectName('GlobalSearchChecker')
         self.globalSearchChecker.setToolTip(self.tr('Global Search (Ctrl+G)'))
 
-        self.imgTransChecker = StateChecker('imgtrans')
-        self.imgTransChecker.setObjectName('ImgTransChecker')
-        self.imgTransChecker.checked.connect(self.stateCheckerChanged)
-        
         self.configChecker = StateChecker('config', uncheckable=True)
         self.configChecker.setObjectName('ConfigChecker')
-        self.configChecker.checked.connect(self.stateCheckerChanged)
-        self.configChecker.unchecked.connect(self.stateCheckerChanged)
+        self.configChecker.checked.connect(self.configCheckerChanged)
+        self.configChecker.unchecked.connect(self.configCheckerChanged)
 
         actionOpenFolder = QAction(self.tr("Open Folder ..."), self)
         actionOpenFolder.triggered.connect(self.onOpenFolder)
@@ -183,7 +181,6 @@ class LeftBar(Widget):
         vlayout.addWidget(self.openBtn)
         vlayout.addWidget(self.showPageListLabel)
         vlayout.addWidget(self.globalSearchChecker)
-        vlayout.addWidget(self.imgTransChecker)
         vlayout.addItem(QSpacerItem(0, 0, QSizePolicy.Minimum, QSizePolicy.Expanding))
         vlayout.addWidget(self.configChecker)
         vlayout.addWidget(self.runImgtransBtn)
@@ -279,21 +276,13 @@ class LeftBar(Widget):
         if osp.exists(json_path):
             self.open_json_proj.emit(json_path)
 
-    def stateCheckerChanged(self, checker_type: str):
-        if checker_type == 'imgtrans':
+    def configCheckerChanged(self, _checker_type: str) -> None:
+        if self.configChecker.isChecked():
+            self.configChecked.emit()
+            self.configChecker.blockSignals(True)
             self.configChecker.setChecked(False)
-            self.imgTransChecked.emit()
-        elif checker_type == 'config':
-            if self.configChecker.isChecked():
-                self.configChecked.emit()
-                self.configChecker.blockSignals(True)
-                self.configChecker.setChecked(False)
-                self.configChecker.blockSignals(False)
+            self.configChecker.blockSignals(False)
                 
-
-    def needleftStackWidget(self) -> bool:
-        return self.showPageListLabel.isChecked() or self.globalSearchChecker.isChecked()
-
 
 class TitleBar(Widget):
 

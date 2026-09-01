@@ -322,7 +322,6 @@ QCheckBox#TexteditChecker::indicator,
 QCheckBox#TextblockChecker::indicator,
 QCheckBox#ShowPageListChecker::indicator,
 QCheckBox#GlobalSearchChecker::indicator,
-QCheckBox#ImgTransChecker::indicator,
 QCheckBox#ConfigChecker::indicator,
 DrawToolCheckBox::indicator,
 QCheckBox#CaseSensitiveToggle::indicator,
@@ -1095,6 +1094,13 @@ QLabel#RunPipelineSettingLabel {
     font-size: 12px;
 }
 
+QLabel#RunPipelineSubsectionHeader {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 QRadioButton#RunPipelineOCRTextPostprocessOption {
     color: @qwidgetForegroundColor;
     background-color: transparent;
@@ -1196,7 +1202,12 @@ QWidget#RunPipelineSettingsSection QPushButton#RunPipelineGlossaryFileButton:hov
 }
 
 QWidget#RunPipelineSettingsSection QCheckBox {
-    font-size: 13px;
+    font-size: 12px;
+}
+
+QWidget#RunPipelineSettingsSection QCheckBox::indicator {
+    width: 12px;
+    height: 12px;
 }
 
 QSpinBox#RunPipelineRangeStart,
@@ -1873,16 +1884,16 @@ TaskProgressBar QProgressBar {
 QCheckBox#ShowPageListChecker::indicator{
     height: 27px;
     width: 27px;
-    image: url(resources/icons/showpagelist.svg);
+    image: url(resources/icons/llm_context.svg);
 }
 
 QCheckBox#ShowPageListChecker::indicator:hover
 {
-    image: url(resources/icons/showpagelist_activate.svg);
+    image: url(resources/icons/llm_context_activate.svg);
 }
 QCheckBox#ShowPageListChecker::indicator:checked
 {
-    image: url(resources/icons/showpagelist_activate.svg);
+    image: url(resources/icons/llm_context_activate.svg);
 }
 
 QCheckBox#GlobalSearchChecker::indicator{
@@ -1900,22 +1911,133 @@ QCheckBox#GlobalSearchChecker::indicator:checked
     image: url(resources/icons/search_activate.svg);
 }
 
-
-StateChecker#ImgTransChecker::indicator{
-    height: 27px;
-    width: 27px;
-    image: url(resources/icons/leftbar_imgtrans.svg);
+QSplitter#LLMContextPanelSplitter {
+    background-color: @widgetBackgroundColor;
+    border: none;
+    border-radius: 5px;
 }
 
-StateChecker#ImgTransChecker::indicator:hover
-{
-    image: url(resources/icons/leftbar_imgtrans_activate.svg);
+QWidget#LLMContextView {
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-radius: 5px;
 }
-StateChecker#ImgTransChecker::indicator:checked
-{
-    image: url(resources/icons/leftbar_imgtrans_activate.svg);
-    color: red;
+
+QWidget#LLMContextView .ExpandLabel {
+    background-color: @widgetBackgroundColor;
+    border: none;
+    border-radius: 0;
 }
+
+QWidget#LLMContextView .ExpandLabel QLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#LLMContextView .ExpandLabel:hover {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QPlainTextEdit#LLMContextTextEdit {
+    background-color: @emptyContentBackgroundColor;
+    border: none;
+    border-top: 1px solid transparent;
+    border-radius: 5px;
+    padding: 8px;
+}
+
+QPlainTextEdit#LLMContextTextEdit:focus {
+    border-top-color: rgb(30, 147, 229);
+}
+
+QToolButton#LLMContextBulkEditButton {
+    border: none;
+    border-radius: 4px;
+    background-color: transparent;
+}
+
+QToolButton#LLMContextBulkEditButton:hover,
+QToolButton#LLMContextBulkEditButton:pressed {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QWidget#BulkPageSummaryDialog[opaqueFrame="true"] {
+    background-color: @widgetBackgroundColor;
+}
+
+QWidget#BulkPageSummaryDialog[opaqueFrame="false"] {
+    background-color: transparent;
+}
+
+QFrame#BulkPageSummarySurface {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 12px;
+}
+
+QWidget#BulkPageSummaryDialog[nativeFrame="true"]
+QFrame#BulkPageSummarySurface {
+    border: none;
+    border-radius: 0px;
+}
+
+QWidget#BulkPageSummaryTitleBar,
+QLabel#BulkPageSummaryTitle {
+    background-color: transparent;
+}
+
+QLabel#BulkPageSummaryTitle {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QPlainTextEdit#BulkPageSummaryTextEdit {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 7px;
+    padding: 8px 8px 8px 0px;
+    selection-background-color: rgb(30, 147, 229);
+}
+
+QPlainTextEdit#BulkPageSummaryTextEdit:focus {
+    border-color: rgb(30, 147, 229);
+}
+
+QSplitter#LLMContextPanelSplitter::handle {
+    background-color: transparent;
+}
+
+QSplitter#LLMContextPanelSplitter::handle:hover,
+QSplitter#LLMContextPanelSplitter::handle:pressed {
+    background-color: rgb(30, 147, 229);
+}
+
+QSplitter#ComicTransSplitter::handle {
+    background-color: transparent;
+}
+
+QSplitter#ComicTransSplitter::handle:hover,
+QSplitter#ComicTransSplitter::handle:pressed {
+    background-color: rgb(30, 147, 229);
+}
+
+QListWidget#PageListArea {
+    background-color: @emptyContentBackgroundColor;
+    border-radius: 5px;
+    font-size: 13px;
+}
+
+QListWidget#PageListArea QWidget#qt_scrollarea_viewport {
+    background-color: transparent;
+    border-radius: 5px;
+}
+
+CustomGV {
+    border-radius: 5px;
+}
+
 
 StateChecker#ConfigChecker::indicator{
     height: 27px;

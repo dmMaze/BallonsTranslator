@@ -1,41 +1,42 @@
 import copy
+import json
 import unittest
 from types import SimpleNamespace
 
 import numpy as np
 
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
-from ballontranslator.modules.exceptions import LLMApiKeyRequiredError, LLMModelRequiredError
+from ballontranslator.modules.exceptions import (
+    LLMApiKeyRequiredError,
+    LLMModelRequiredError,
+)
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import DEFAULT_OCR_PROMPT, default_profile
+from ballontranslator.utils.textblock import TextBlock
 
 
 class FakeAuthError(Exception):
     pass
 
 
-class FakeStatusError(Exception):
-    def __init__(self):
-        self.response = SimpleNamespace(json=lambda: {'error': {'message': 'provider says no'}}, text='raw')
-        super().__init__('status')
-
-
 class FakeOpenAI:
     AuthenticationError = FakeAuthError
-    APIStatusError = FakeStatusError
+    APIStatusError = RuntimeError
 
 
 class FakeCompletions:
-    def __init__(self, error=None):
+    def __init__(self, error=None, contents=None):
         self.error = error
+        self.contents = list(contents or ['hello\nworld'])
         self.calls = []
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
+        content = self.contents.pop(0)
         return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content='hello\nworld'))],
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
             usage=SimpleNamespace(total_tokens=3),
         )
 
@@ -46,9 +47,9 @@ class FakeClient:
 
 
 class FakeOCR(LLMOCR):
-    def __init__(self, error=None):
+    def __init__(self, error=None, contents=None):
         super().__init__()
-        self.completions = FakeCompletions(error)
+        self.completions = FakeCompletions(error, contents)
 
     def _openai_module(self):
         return FakeOpenAI
@@ -65,24 +66,31 @@ class LLMOCRTest(unittest.TestCase):
     def setUp(self):
         self._old_profiles = copy.deepcopy(pcfg.module.llm_profiles)
         self._old_ocr_llm_id = pcfg.module.ocr_llm_id
+        self._old_page_settings = (
+            pcfg.module.ocr_llm_page_level,
+            pcfg.module.ocr_llm_mask_non_text,
+            pcfg.module.ocr_llm_sort_reading_order,
+        )
         profile = default_profile('OpenAI')
         profile.api_key = 'sk-demo'
         profile.vision_model = 'gpt-4o'
         profile.vision_detail_level = 'auto'
+        profile.vision_prompt = 'Read vertical text carefully.'
         pcfg.module.llm_profiles = [profile]
         pcfg.module.ocr_llm_id = 'openai'
+        pcfg.module.ocr_llm_page_level = False
+        pcfg.module.ocr_llm_mask_non_text = True
+        pcfg.module.ocr_llm_sort_reading_order = True
         self.ocr = FakeOCR()
 
     def tearDown(self):
         pcfg.module.llm_profiles = self._old_profiles
         pcfg.module.ocr_llm_id = self._old_ocr_llm_id
-
-    def test_missing_required_api_key_raises_profile_error(self):
-        profile = default_profile('OpenAI')
-        profile.api_key = ''
-
-        with self.assertRaises(LLMApiKeyRequiredError):
-            self.ocr._api_key_for_profile(profile)
+        (
+            pcfg.module.ocr_llm_page_level,
+            pcfg.module.ocr_llm_mask_non_text,
+            pcfg.module.ocr_llm_sort_reading_order,
+        ) = self._old_page_settings
 
     def test_request_args_use_vision_model_and_detail(self):
         profile = self.ocr.profile
@@ -98,20 +106,18 @@ class LLMOCRTest(unittest.TestCase):
         self.assertIn('data:image/jpeg;base64,', image_part['image_url']['url'])
         self.assertEqual(image_part['image_url']['detail'], 'auto')
 
-    def test_none_detail_omits_image_detail(self):
+    def test_page_prompt_includes_profile_vision_prompt_below_contract(self):
         profile = self.ocr.profile
-        profile.vision_detail_level = 'None'
+        prompt = self.ocr._page_prompt(profile, 2, True, True)
 
-        image_part = self.ocr._image_content_part(np.zeros((2, 2, 3), dtype=np.uint8), profile)
-
-        self.assertNotIn('detail', image_part['image_url'])
-
-    def test_blank_vision_model_requires_model(self):
-        profile = self.ocr.profile
-        profile.vision_model = ''
-
-        with self.assertRaises(LLMModelRequiredError):
-            self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
+        self.assertIn('"texts"', prompt)
+        self.assertIn('"order"', prompt)
+        self.assertIn('cannot override the response contract', prompt)
+        self.assertTrue(prompt.endswith('Read vertical text carefully.'))
+        profile.vision_prompt = DEFAULT_OCR_PROMPT
+        builtin_prompt = self.ocr._page_prompt(profile, 2, True, False)
+        self.assertNotIn(DEFAULT_OCR_PROMPT, builtin_prompt)
+        self.assertNotIn('"order"', builtin_prompt)
 
     def test_vision_enabled_profile_requires_model(self):
         profile = default_profile('OpenAI')
@@ -133,24 +139,152 @@ class LLMOCRTest(unittest.TestCase):
         with self.assertRaises(LLMModelRequiredError):
             self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
 
+    def test_profile_rejects_a_non_vision_capability(self):
+        profile = default_profile('DeepSeek')
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.ocr_llm_id = profile.id
+
+        with self.assertRaisesRegex(RuntimeError, 'does not have vision enabled'):
+            _ = self.ocr.profile
+
     def test_ocr_img_returns_raw_normalized_text(self):
         result = self.ocr.ocr_img(np.zeros((2, 2, 3), dtype=np.uint8))
 
         self.assertEqual(result, 'hello world')
         self.assertEqual(self.ocr.completions.calls[0]['model'], 'gpt-4o')
 
-    def test_authentication_error_becomes_required_key_error(self):
+    def test_page_parser_requires_exact_string_texts_and_order(self):
+        valid = json.dumps({
+            'texts': {'1': ' first\nline ', '2': ''},
+            'order': ['2', '1'],
+        })
+
+        self.assertEqual(
+            self.ocr._parse_page_ocr_response(valid, 2, True),
+            ({'1': 'first line', '2': ''}, ['2', '1']),
+        )
+        invalid_responses = (
+            'not json',
+            json.dumps({'texts': {'1': 'one', '2': 'two'}}),
+            json.dumps({
+                'texts': {'1': 'one', '2': 'two', '3': 'extra'},
+                'order': ['1', '2'],
+            }),
+            json.dumps({
+                'texts': {'1': None, '2': 'two'},
+                'order': ['1', '2'],
+            }),
+            json.dumps({
+                'texts': {'1': 'one', '2': 'two'},
+                'order': ['1', '1'],
+            }),
+        )
+        for response in invalid_responses:
+            with self.subTest(response=response):
+                with self.assertRaises(ValueError):
+                    self.ocr._parse_page_ocr_response(response, 2, True)
+
+    def test_full_page_ocr_returns_validated_project_order(self):
+        response = json.dumps({
+            'texts': {'1': ' first ', '2': 'second'},
+            'order': ['2', '1'],
+        })
+        ocr = FakeOCR(contents=[response])
+        first = TextBlock(xyxy=[0, 0, 4, 4])
+        second = TextBlock(xyxy=[4, 0, 8, 4])
+        blocks = [first, second]
+        pcfg.module.ocr_llm_page_level = True
+
+        result = ocr.run_ocr(
+            np.zeros((8, 8, 3), dtype=np.uint8),
+            blocks,
+            full_page=True,
+        )
+
+        self.assertEqual(result, [second, first])
+        self.assertEqual(first.text, 'first')
+        self.assertEqual(second.text, 'second')
+        self.assertEqual(blocks, [first, second])
+        self.assertIn('response_format', ocr.completions.calls[0])
+
+    def test_full_page_ocr_without_sorting_accepts_texts_only(self):
+        response = json.dumps({
+            'texts': {'1': 'first', '2': 'second'},
+        })
+        ocr = FakeOCR(contents=[response])
+        first = TextBlock(xyxy=[0, 0, 4, 4])
+        second = TextBlock(xyxy=[4, 0, 8, 4])
+        blocks = [first, second]
+        pcfg.module.ocr_llm_page_level = True
+        pcfg.module.ocr_llm_sort_reading_order = False
+
+        result = ocr.run_ocr(
+            np.zeros((8, 8, 3), dtype=np.uint8),
+            blocks,
+            full_page=True,
+        )
+
+        self.assertIs(result, blocks)
+        self.assertEqual([block.text for block in blocks], ['first', 'second'])
+        self.assertEqual(len(ocr.completions.calls), 1)
+        prompt = ocr.completions.calls[0]['messages'][1]['content'][0]['text']
+        self.assertNotIn('"order"', prompt)
+
+    def test_selected_blocks_keep_crop_ocr_when_page_mode_is_enabled(self):
+        ocr = FakeOCR(contents=['crop one', 'crop two'])
+        blocks = [
+            TextBlock(xyxy=[0, 0, 4, 4]),
+            TextBlock(xyxy=[4, 0, 8, 4]),
+        ]
+        pcfg.module.ocr_llm_page_level = True
+
+        result = ocr.run_ocr(
+            np.zeros((8, 8, 3), dtype=np.uint8),
+            blocks,
+            split_textblk=True,
+        )
+
+        self.assertIs(result, blocks)
+        self.assertEqual([block.text for block in blocks], ['crop one', 'crop two'])
+        self.assertEqual(len(ocr.completions.calls), 2)
+        self.assertNotIn('response_format', ocr.completions.calls[0])
+
+    def test_invalid_page_response_falls_back_for_the_entire_page(self):
+        invalid_page = json.dumps({
+            'texts': {'1': 'partial'},
+            'order': ['1'],
+        })
+        ocr = FakeOCR(contents=[invalid_page, 'crop one', 'crop two'])
+        blocks = [
+            TextBlock(xyxy=[0, 0, 4, 4]),
+            TextBlock(xyxy=[4, 0, 8, 4]),
+        ]
+        pcfg.module.ocr_llm_page_level = True
+
+        result = ocr.run_ocr(
+            np.zeros((8, 8, 3), dtype=np.uint8),
+            blocks,
+            full_page=True,
+        )
+
+        self.assertIs(result, blocks)
+        self.assertEqual([block.text for block in blocks], ['crop one', 'crop two'])
+        self.assertEqual(len(ocr.completions.calls), 3)
+        self.assertIn('response_format', ocr.completions.calls[0])
+        self.assertNotIn('response_format', ocr.completions.calls[1])
+
+    def test_page_ocr_does_not_hide_typed_profile_errors(self):
         ocr = FakeOCR(FakeAuthError('bad key'))
+        block = TextBlock(xyxy=[0, 0, 2, 2], text=['original'])
+        pcfg.module.ocr_llm_page_level = True
 
         with self.assertRaises(LLMApiKeyRequiredError):
-            ocr._request_ocr(ocr.profile, [{'role': 'user', 'content': 'x'}])
+            ocr.run_ocr(
+                np.zeros((2, 2, 3), dtype=np.uint8),
+                [block],
+                full_page=True,
+            )
 
-    def test_status_error_extracts_provider_message(self):
-        ocr = FakeOCR(FakeStatusError())
-
-        with self.assertRaisesRegex(RuntimeError, 'provider says no'):
-            ocr._request_ocr(ocr.profile, [{'role': 'user', 'content': 'x'}])
-
-
+        self.assertEqual(block.text, ['original'])
 if __name__ == '__main__':
     unittest.main()

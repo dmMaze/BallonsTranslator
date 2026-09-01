@@ -1,5 +1,5 @@
 import threading
-from typing import Union, List, Callable
+from typing import Callable, List, Optional, Union
 import os.path as osp
 
 import numpy as np
@@ -21,6 +21,7 @@ from ballontranslator.modules.exceptions import (
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
     ModuleRunError,
 )
 from ballontranslator.modules.base import BaseModule, soft_empty_cache
@@ -42,7 +43,7 @@ from .custom_widget import ImgtransProgressMessageBox, ParamComboBox, ProgressMe
 from .configpanel import ConfigPanel
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.config import pcfg, RunStatus, save_config
-from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY
+from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY, LLM_OCR_KEY
 from ballontranslator.utils.global_callbacks import register_global_callback
 cfg_module = pcfg.module
 
@@ -59,9 +60,9 @@ def _create_page_error_dialog(
     exception: Exception,
     error_msg: str,
     exception_type: str,
-    page_key: str = None,
+    page_key: Optional[str] = None,
     page_label: str = 'Page',
-):
+) -> None:
 
     if page_key:
         error_msg = f'{error_msg}\n{page_label}: {page_key}'
@@ -109,6 +110,37 @@ def _show_llm_base_url_required_dialog(error: LLMBaseURLRequiredError):
         LOGGER.error(str(error))
 
 
+def _show_llm_user_action_required_dialog(
+    error: LLMUserActionRequiredError,
+    error_msg: str,
+    exception_type: str,
+    page_key: Optional[str] = None,
+    page_label: str = 'Page',
+) -> None:
+    """Route known setup errors and show every other actionable LLM failure.
+
+    >>> issubclass(LLMApiKeyRequiredError, LLMUserActionRequiredError)
+    True
+    """
+    if isinstance(error, LLMApiKeyRequiredError):
+        _show_llm_key_required_dialog(error)
+        return
+    if isinstance(error, LLMModelRequiredError):
+        _show_llm_model_required_dialog(error)
+        return
+    if isinstance(error, LLMBaseURLRequiredError):
+        _show_llm_base_url_required_dialog(error)
+        return
+    profile_id = str(getattr(error, 'profile_id', '') or '')
+    _create_page_error_dialog(
+        error,
+        error_msg,
+        f'{exception_type}:{type(error).__name__}:{profile_id}',
+        page_key,
+        page_label,
+    )
+
+
 def _reset_llm_key_required_dialogs():
     with _llm_key_dialog_lock:
         _shown_llm_key_dialog_profiles.clear()
@@ -116,6 +148,16 @@ def _reset_llm_key_required_dialogs():
         _shown_llm_model_dialog_profiles.clear()
     with _llm_base_url_dialog_lock:
         _shown_llm_base_url_dialog_profiles.clear()
+
+
+def _mark_translation_finished(
+    project: ProjImgTrans,
+    page_key: str,
+    translator: BaseTranslator,
+) -> None:
+    """Mark completion, then let the owning translator commit page context."""
+    project.mark_translation_finished(page_key, translator.lang_target)
+    translator.on_page_translation_finished(project, page_key)
 
 
 class ModuleThread(QThread):
@@ -338,16 +380,12 @@ class ModuleThread(QThread):
         try:
             if self.job is not None:
                 self.job()
-        except LLMApiKeyRequiredError as e:
-            _show_llm_key_required_dialog(e)
-            if self.pipeline_stop_event is not None:
-                self.pipeline_stop_event.set()
-        except LLMModelRequiredError as e:
-            _show_llm_model_required_dialog(e)
-            if self.pipeline_stop_event is not None:
-                self.pipeline_stop_event.set()
-        except LLMBaseURLRequiredError as e:
-            _show_llm_base_url_required_dialog(e)
+        except LLMUserActionRequiredError as e:
+            _show_llm_user_action_required_dialog(
+                e,
+                self.tr('Module task failed.'),
+                f'ModuleThreadFailed:{self.module_key}',
+            )
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
         except LLMRequestStopped:
@@ -392,20 +430,12 @@ class InpaintThread(ModuleThread):
                 'inpaint_rect': inpaint_rect
             }
             self.finish_inpaint.emit(inpaint_dict)
-        except LLMApiKeyRequiredError as e:
-            _show_llm_key_required_dialog(e)
-            if self.pipeline_stop_event is not None:
-                self.pipeline_stop_event.set()
-            self.inpainting = False
-            self.inpaint_failed.emit()
-        except LLMModelRequiredError as e:
-            _show_llm_model_required_dialog(e)
-            if self.pipeline_stop_event is not None:
-                self.pipeline_stop_event.set()
-            self.inpainting = False
-            self.inpaint_failed.emit()
-        except LLMBaseURLRequiredError as e:
-            _show_llm_base_url_required_dialog(e)
+        except LLMUserActionRequiredError as e:
+            _show_llm_user_action_required_dialog(
+                e,
+                self.tr('Inpainting Failed.'),
+                'InpaintFailed',
+            )
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
             self.inpainting = False
@@ -596,19 +626,16 @@ class TranslateThread(ModuleThread):
                 page_key=page_key,
                 full_page=True,
             )
-        except LLMApiKeyRequiredError as e:
+            _mark_translation_finished(project, page_key, self.translator)
+        except LLMUserActionRequiredError as e:
             success = False
-            _show_llm_key_required_dialog(e)
-            if self.pipeline_stop_event is not None:
-                self.pipeline_stop_event.set()
-        except LLMModelRequiredError as e:
-            success = False
-            _show_llm_model_required_dialog(e)
-            if self.pipeline_stop_event is not None:
-                self.pipeline_stop_event.set()
-        except LLMBaseURLRequiredError as e:
-            success = False
-            _show_llm_base_url_required_dialog(e)
+            _show_llm_user_action_required_dialog(
+                e,
+                self.tr('Translation Failed.'),
+                'TranslationFailed',
+                page_key,
+                self.tr('Page'),
+            )
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
         except LLMRequestStopped:
@@ -623,8 +650,6 @@ class TranslateThread(ModuleThread):
                 page_key,
                 self.tr('Page'),
             )
-        if success:
-            project.mark_translation_finished(page_key, self.translator.lang_target)
         return success
 
     def push_pagekey_queue(self, page_key: str):
@@ -655,10 +680,10 @@ class TranslateThread(ModuleThread):
                 self._translate_page(self.imgtrans_proj, page_key)
             except Exception as e:
                 # TODO: allowing retry/skip/terminate
-                msg = _failure_message_for_page(
+                msg = '{}\n{}: {}'.format(
                     self.tr('Translation Failed.'),
-                    page_key,
                     self.tr('Page'),
+                    page_key,
                 )
                 if isinstance(e, MissingTranslatorParams):
                     msg = msg + '\n' + self.tr('{param} is required for {translator}').format(
@@ -830,14 +855,14 @@ class ImgtransThread(QThread):
                 full_page=full_page,
             )
             return True
-        except LLMApiKeyRequiredError as e:
-            _show_llm_key_required_dialog(e)
-            self.requestStop()
-        except LLMModelRequiredError as e:
-            _show_llm_model_required_dialog(e)
-            self.requestStop()
-        except LLMBaseURLRequiredError as e:
-            _show_llm_base_url_required_dialog(e)
+        except LLMUserActionRequiredError as e:
+            _show_llm_user_action_required_dialog(
+                e,
+                self.tr('Translation Failed.'),
+                'TranslationFailed',
+                page_key,
+                self.tr('Page'),
+            )
             self.requestStop()
         except LLMRequestStopped:
             LOGGER.info('Translation stopped by user.')
@@ -865,10 +890,7 @@ class ImgtransThread(QThread):
             full_page=True,
         )
         if success:
-            project.mark_translation_finished(
-                page_key,
-                self.translator.lang_target,
-            )
+            _mark_translation_finished(project, page_key, self.translator)
         return success
 
     def _blktrans_pipeline(
@@ -892,18 +914,14 @@ class ImgtransThread(QThread):
                 ocr_module.set_stop_event(self.stop_event)
             try:
                 ocr_module.run_ocr(tgt_img, blk_list, split_textblk=True)
-            except LLMApiKeyRequiredError as e:
-                _show_llm_key_required_dialog(e)
-                self.requestStop()
-                self.finish_blktrans.emit(mode, blk_ids)
-                return
-            except LLMModelRequiredError as e:
-                _show_llm_model_required_dialog(e)
-                self.requestStop()
-                self.finish_blktrans.emit(mode, blk_ids)
-                return
-            except LLMBaseURLRequiredError as e:
-                _show_llm_base_url_required_dialog(e)
+            except LLMUserActionRequiredError as e:
+                _show_llm_user_action_required_dialog(
+                    e,
+                    self.tr('OCR Failed.'),
+                    'OCRFailed',
+                    page_key,
+                    self.tr('Page'),
+                )
                 self.requestStop()
                 self.finish_blktrans.emit(mode, blk_ids)
                 return
@@ -938,9 +956,10 @@ class ImgtransThread(QThread):
                     or bool(str(getattr(block, 'translation', '') or '').strip())
                     for block in page
                 ):
-                    self.imgtrans_proj.mark_translation_finished(
+                    _mark_translation_finished(
+                        self.imgtrans_proj,
                         page_key,
-                        self.translator.lang_target,
+                        self.translator,
                     )
             self.finish_blktrans.emit(mode, blk_ids)
         if mode > 1:
@@ -966,18 +985,14 @@ class ImgtransThread(QThread):
                     if mask.sum() > 0:
                         try:
                             inpainted = self.inpaint_thread.inpainter.inpaint(im, mask)
-                        except LLMApiKeyRequiredError as e:
-                            _show_llm_key_required_dialog(e)
-                            self.requestStop()
-                            self.finish_blktrans.emit(mode, blk_ids)
-                            return
-                        except LLMModelRequiredError as e:
-                            _show_llm_model_required_dialog(e)
-                            self.requestStop()
-                            self.finish_blktrans.emit(mode, blk_ids)
-                            return
-                        except LLMBaseURLRequiredError as e:
-                            _show_llm_base_url_required_dialog(e)
+                        except LLMUserActionRequiredError as e:
+                            _show_llm_user_action_required_dialog(
+                                e,
+                                self.tr('Inpainting Failed.'),
+                                'InpaintFailed',
+                                page_key,
+                                self.tr('Page'),
+                            )
                             self.requestStop()
                             self.finish_blktrans.emit(mode, blk_ids)
                             return
@@ -1021,6 +1036,20 @@ class ImgtransThread(QThread):
             for i in range(num_pages):
                 self.process_idx_to_page_idx[i] = i
             LOGGER.info(f'Processing all {num_pages} pages')
+        if cfg_module.enable_translate and self.translator is not None:
+            describe_run = getattr(
+                self.translator,
+                'translation_run_description',
+                None,
+            )
+            if callable(describe_run):
+                try:
+                    LOGGER.info(describe_run())
+                except Exception as error:
+                    # Diagnostics must never make an otherwise valid run fail.
+                    LOGGER.debug(
+                        f'Unable to describe translation run settings: {error}'
+                    )
         self.textdetect_thread.num_process_pages = self.num_pages
         self.ocr_thread.num_process_pages = self.num_pages
         self.inpaint_thread.num_process_pages = self.num_pages
@@ -1084,7 +1113,19 @@ class ImgtransThread(QThread):
                 if hasattr(self.ocr, 'set_stop_event'):
                     self.ocr.set_stop_event(self.stop_event)
                 try:
-                    self.ocr.run_ocr(img, blk_list)
+                    # full_page is an LLMOCR-only extension; preserve the
+                    # historical two-argument contract for custom OCR modules.
+                    if getattr(self.ocr, 'name', '') == LLM_OCR_KEY:
+                        ocr_result = self.ocr.run_ocr(
+                            img,
+                            blk_list,
+                            full_page=True,
+                        )
+                    else:
+                        ocr_result = self.ocr.run_ocr(img, blk_list)
+                    if isinstance(ocr_result, list):
+                        blk_list = ocr_result
+                    self.imgtrans_proj.pages[imgname] = blk_list
                     self.ocr_counter += 1
 
                     if pcfg.restore_ocr_empty:
@@ -1121,16 +1162,14 @@ class ImgtransThread(QThread):
                                 if need_save_mask:
                                     self.imgtrans_proj.save_mask(imgname, mask)
                                     need_save_mask = False
-                except LLMApiKeyRequiredError as e:
-                    _show_llm_key_required_dialog(e)
-                    self.requestStop()
-                    break
-                except LLMModelRequiredError as e:
-                    _show_llm_model_required_dialog(e)
-                    self.requestStop()
-                    break
-                except LLMBaseURLRequiredError as e:
-                    _show_llm_base_url_required_dialog(e)
+                except LLMUserActionRequiredError as e:
+                    _show_llm_user_action_required_dialog(
+                        e,
+                        self.tr('OCR Failed.'),
+                        'OCRFailed',
+                        imgname,
+                        self.tr('Page'),
+                    )
                     self.requestStop()
                     break
                 except LLMRequestStopped:
@@ -1179,16 +1218,14 @@ class ImgtransThread(QThread):
                     try:
                         inpainted = self.inpainter.inpaint(img, mask, blk_list)
                         self.imgtrans_proj.save_inpainted(imgname, inpainted)
-                    except LLMApiKeyRequiredError as e:
-                        _show_llm_key_required_dialog(e)
-                        self.requestStop()
-                        break
-                    except LLMModelRequiredError as e:
-                        _show_llm_model_required_dialog(e)
-                        self.requestStop()
-                        break
-                    except LLMBaseURLRequiredError as e:
-                        _show_llm_base_url_required_dialog(e)
+                    except LLMUserActionRequiredError as e:
+                        _show_llm_user_action_required_dialog(
+                            e,
+                            self.tr('Inpainting Failed.'),
+                            'InpaintFailed',
+                            imgname,
+                            self.tr('Page'),
+                        )
                         self.requestStop()
                         break
                     except LLMRequestStopped:
@@ -1253,12 +1290,14 @@ class ImgtransThread(QThread):
         try:
             if self.job is not None:
                 self.job()
-        except LLMApiKeyRequiredError as e:
-            _show_llm_key_required_dialog(e)
-        except LLMModelRequiredError as e:
-            _show_llm_model_required_dialog(e)
-        except LLMBaseURLRequiredError as e:
-            _show_llm_base_url_required_dialog(e)
+        except LLMUserActionRequiredError as e:
+            _show_llm_user_action_required_dialog(
+                e,
+                self.tr('Image translation failed.'),
+                'ImageTranslationFailed',
+            )
+            self.requestStop()
+            self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         except LLMRequestStopped:
             LOGGER.info('Image translation task stopped by user.')
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)

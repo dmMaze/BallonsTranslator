@@ -18,6 +18,7 @@ from ballontranslator.modules.exceptions import (
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.utils.llm_profiles import LLMProfile, resolve_api_key
 from ballontranslator.utils.logger import logger as LOGGER
@@ -711,12 +712,7 @@ class LLMImageRequester:
                     model=model,
                     resize_to_input=image is not None,
                 )
-            except (
-                LLMApiKeyRequiredError,
-                LLMModelRequiredError,
-                LLMBaseURLRequiredError,
-                LLMRequestStopped,
-            ):
+            except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as error:
                 if attempt + 1 >= attempts:

@@ -2,7 +2,7 @@ import json, os, string, traceback
 import os.path as osp
 import copy
 from dataclasses import fields
-from typing import Callable, Mapping, Optional
+from typing import Mapping, Optional
 
 from . import shared
 from .fontformat import (
@@ -13,7 +13,14 @@ from .fontformat import (
 from .structures import List, Dict, Config, field, nested_dataclass
 from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
-from .llm_profiles import default_profiles, load_profiles, migrate_module_llm_profiles, profile_by_id, profile_to_dict, LLMProfile
+from .llm_profiles import (
+    LLMProfile,
+    default_profiles,
+    load_profiles,
+    migrate_module_llm_profiles,
+    profile_by_id,
+    profile_to_dict,
+)
 from .secret_store import SecretStore
 from .text_effects import without_project_raster_effects
 
@@ -89,6 +96,9 @@ class ModuleConfig(Config):
     # 是否在 OCR 后进行字体检测（默认不启用）
     ocr_font_detect: bool = False
     ocr_text_postprocess: str = OCRTextPostprocess.NONE
+    ocr_llm_page_level: bool = False
+    ocr_llm_mask_non_text: bool = True
+    ocr_llm_sort_reading_order: bool = True
     textdetector_params: Dict = field(default_factory=lambda: dict())
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
@@ -104,6 +114,9 @@ class ModuleConfig(Config):
     llm_prior_context_token_budget: int = 4096
     llm_glossary_path: str = ''
     llm_glossary_mode: str = LLMGlossaryMode.Matching
+    llm_translate_vision: bool = False
+    llm_translate_summary_memory: bool = False
+    llm_translate_overwrite_summary: bool = False
 
     check_need_inpaint: bool = True
     empty_runcache: bool = False
@@ -184,6 +197,19 @@ class ModuleConfig(Config):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
     def __post_init__(self):
+        for setting_name, default in (
+            ('ocr_llm_page_level', False),
+            ('ocr_llm_mask_non_text', True),
+            ('ocr_llm_sort_reading_order', True),
+            ('llm_translate_vision', False),
+            ('llm_translate_summary_memory', False),
+            ('llm_translate_overwrite_summary', False),
+        ):
+            if type(getattr(self, setting_name)) is not bool:
+                LOGGER.warning(
+                    f'Discard invalid module.{setting_name} config: expected a boolean.'
+                )
+                setattr(self, setting_name, default)
         if self.ocr_text_postprocess not in OCRTextPostprocess.Valid:
             self.ocr_text_postprocess = OCRTextPostprocess.NONE
         if self.translate_context not in TranslateContext.Valid:
@@ -296,6 +322,10 @@ class ProgramConfig(Config):
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())
     show_page_list: bool = False
+    show_llm_page_summary: bool = True
+    expand_llm_page_summary: bool = True
+    show_llm_compact_memory: bool = True
+    expand_llm_compact_memory: bool = True
     imgtrans_paintmode: bool = False
     imgtrans_textedit: bool = True
     imgtrans_textblock: bool = True
@@ -408,7 +438,6 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
-            # LLM translator keys must be consumed before module-param patching drops unknown keys.
             migrate_module_llm_profiles(module_cfg)
 
         effect_notices = set()
@@ -472,7 +501,7 @@ def load_textstyle_from(p: str, raise_exception = False):
                         )
                         style_format.text_effects = portable_effects
                     styles_loaded.append(style_format)
-                except Exception as e:
+                except Exception:
                     LOGGER.warning(f'Skip invalid text style: {style}')
             warn_ignored_legacy_effects(effect_notices, 'text styles')
     except Exception as e:
