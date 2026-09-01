@@ -1,11 +1,28 @@
-from typing import Optional
-
-from qtpy.QtWidgets import QAbstractSpinBox, QSlider, QSpinBox, QWidget
-from qtpy.QtCore import Qt, QPropertyAnimation, QRectF, QSignalBlocker, Signal, QPoint, Property
-from qtpy.QtGui import QFontMetrics, QMouseEvent, QPainter, QResizeEvent, QColor
+from qtpy.QtWidgets import QWidget, QStyle, QSlider, QStyle, QStyleOptionSlider
+from qtpy.QtCore import  Qt, QPropertyAnimation, QRect, QRectF, Signal, QPoint, Property
+from qtpy.QtGui import QFontMetrics, QMouseEvent, QPainter, QFontMetrics, QColor
 
 from .helper import themeColor, borderColor, widgetBackgroundColor
 from ballontranslator.utils import shared
+
+
+def slider_subcontrol_rect(r: QRect, widget: QWidget):
+    if widget.orientation() == Qt.Orientation.Horizontal:
+        y = widget.height() // 4
+        h = y * 2
+        r = QRect(r.x(), y, r.width(), h)
+    else:
+        x = widget.width() // 4
+        w = x * 2
+        r = QRect(x, r.y(), w, r.height())
+
+    # seems a bit dumb, otherwise the handle is buggy
+    if r.height() < r.width():
+        r.setHeight(r.width())
+    else:
+        r.setWidth(r.height())
+    return r
+
 
 class SliderHandle(QWidget):
     """ Slider handle """
@@ -81,6 +98,7 @@ class Slider(QSlider):
     def __init__(self, orientation: Qt.Orientation, parent: QWidget = None):
         super().__init__(orientation, parent=parent)
         self.hovering = False
+        self.show_hover_value = True
         self._postInit()
 
     def _postInit(self):
@@ -110,13 +128,9 @@ class Slider(QSlider):
         self.sliderMoved.emit(self.value())
 
     @property
-    def grooveLength(self) -> int:
-        return self._track_span() - self.handle.width()
-
-    def _track_span(self) -> int:
-        if self.orientation() == Qt.Orientation.Horizontal:
-            return self.width()
-        return self.height()
+    def grooveLength(self):
+        l = self.width() if self.orientation() == Qt.Orientation.Horizontal else self.height()
+        return l - self.handle.width()
 
     def _adjustHandlePos(self):
         total = max(self.maximum() - self.minimum(), 1)
@@ -146,28 +160,40 @@ class Slider(QSlider):
 
         if hasattr(self, 'draw_content') and self.hovering:
             # its a bad idea to display text like this, but I leave it as it is for now
+
+            option = QStyleOptionSlider()
+            self.initStyleOption(option)
+
+            rect = self.style().subControlRect(
+                QStyle.CC_Slider, option, QStyle.SC_SliderHandle, self)
+            rect = slider_subcontrol_rect(rect, self)
             
+            value = self.value()
+            value_str = str(value)
+
             painter.setPen(QColor(*shared.SLIDERHANDLE_COLOR,255))
             font = painter.font()
             font.setPointSizeF(8)
             fm = QFontMetrics(font)
             painter.setFont(font)
 
-            dy = self.height() - fm.height() + fm.descent()
-            if getattr(self, 'value_editor', None) is None:
-                value_str = str(self.value())
+            is_hor = self.orientation() == Qt.Orientation.Horizontal
+            if is_hor:
                 value_w = fm.boundingRect(value_str).width()
-                dx = self.width() - value_w if (
-                    self.orientation() == Qt.Orientation.Horizontal
-                ) else 0
+                dx = self.width() - value_w
+            else:
+                dx = dy = 0
+
+            dy = self.height() - fm.height() + fm.descent()
+            if self.show_hover_value:
                 painter.drawText(dx, dy, value_str)
 
             if self.draw_content is not None:
-                painter.drawText(0, dy, self.draw_content)
+                painter.drawText(0, dy, self.draw_content, )
                 
 
     def _drawHorizonGroove(self, painter: QPainter):
-        w, r = self._track_span(), self.handle.width() / 2
+        w, r = self.width(), self.handle.width() / 2
         painter.drawRoundedRect(QRectF(r, r-2, w-r*2, 4), 2, 2)
 
         if self.maximum() - self.minimum() == 0:
@@ -178,7 +204,7 @@ class Slider(QSlider):
         painter.drawRoundedRect(QRectF(r, r-2, aw, 4), 2, 2)
 
     def _drawVerticalGroove(self, painter: QPainter):
-        h, r = self._track_span(), self.handle.width() / 2
+        h, r = self.height(), self.handle.width() / 2
         painter.drawRoundedRect(QRectF(r-2, r, 4, h-2*r), 2, 2)
 
         if self.maximum() - self.minimum() == 0:
@@ -206,84 +232,13 @@ class Slider(QSlider):
 
 
 class PaintQSlider(Slider):
-    """Paint slider with an optional editable value at its right edge.
-
-    >>> hasattr(PaintQSlider, 'enableValueEditor')
-    True
-    """
 
     mouse_released = Signal()
-    valueEdited = Signal(int)
 
-    VALUE_EDITOR_WIDTH = 60
-    VALUE_EDITOR_HEIGHT = 22
-    VALUE_EDITOR_GAP = 8
-
-    def __init__(self, draw_content=None, orientation=Qt.Orientation.Horizontal, *args, **kwargs) -> None:
-        self.value_editor: Optional[QSpinBox] = None
+    def __init__(self, draw_content = None, orientation=Qt.Orientation.Horizontal, *args, **kwargs):
         super().__init__(orientation, *args, **kwargs)
         self.draw_content = draw_content
         self.pressed: bool = False
-        self.valueChanged.connect(self._sync_value_editor)
-
-    def enableValueEditor(self, suffix: str = '') -> QSpinBox:
-        """Replace the hover value with a persistent inline editor."""
-        if self.value_editor is not None:
-            self.value_editor.setSuffix(suffix)
-            return self.value_editor
-
-        editor = QSpinBox(self)
-        editor.setProperty('paintSliderValueEditor', True)
-        editor.setRange(self.minimum(), self.maximum())
-        editor.setValue(self.value())
-        editor.setSuffix(suffix)
-        editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        button_symbols = getattr(
-            QAbstractSpinBox, 'ButtonSymbols', QAbstractSpinBox
-        )
-        editor.setButtonSymbols(button_symbols.NoButtons)
-        editor.setKeyboardTracking(False)
-        editor.setFixedSize(
-            self.VALUE_EDITOR_WIDTH,
-            self.VALUE_EDITOR_HEIGHT,
-        )
-        editor.valueChanged.connect(self._set_value_from_editor)
-        self.rangeChanged.connect(editor.setRange)
-        self.value_editor = editor
-        editor.show()
-        self._position_value_editor()
-        self._adjustHandlePos()
-        self.update()
-        return editor
-
-    def _track_span(self) -> int:
-        span = super()._track_span()
-        if (
-            self.value_editor is not None
-            and self.orientation() == Qt.Orientation.Horizontal
-        ):
-            span -= self.VALUE_EDITOR_WIDTH + self.VALUE_EDITOR_GAP
-        return max(self.handle.width(), span)
-
-    def _sync_value_editor(self, value: int) -> None:
-        if self.value_editor is not None:
-            with QSignalBlocker(self.value_editor):
-                self.value_editor.setValue(value)
-        if self.hasFocus():
-            self.valueEdited.emit(value)
-
-    def _set_value_from_editor(self, value: int) -> None:
-        self.setValue(value)
-        if self.value_editor is not None and self.value_editor.hasFocus():
-            self.valueEdited.emit(value)
-
-    def _position_value_editor(self) -> None:
-        if self.value_editor is None:
-            return
-        self.value_editor.move(
-            self.width() - self.value_editor.width(),
-            max(0, (self.height() - self.value_editor.height()) // 2),
-        )
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -295,7 +250,3 @@ class PaintQSlider(Slider):
             self.pressed = False
             self.mouse_released.emit()
         return super().mouseReleaseEvent(event)
-
-    def resizeEvent(self, event: QResizeEvent) -> None:
-        super().resizeEvent(event)
-        self._position_value_editor()

@@ -1,5 +1,5 @@
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker
-from qtpy.QtWidgets import QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
+from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
 from typing import Union, Tuple, List
@@ -25,6 +25,36 @@ INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
 MAX_PEN_SIZE = 1000
 MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
+
+
+def _create_thickness_control(
+    parent: Widget,
+) -> tuple[PaintQSlider, QSpinBox, QHBoxLayout]:
+    slider = PaintQSlider(parent=parent)
+    slider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
+    slider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    slider.show_hover_value = False
+
+    spinbox = QSpinBox(parent)
+    spinbox.setProperty('paintSliderValueEditor', True)
+    spinbox.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
+    spinbox.setValue(slider.value())
+    spinbox.setSuffix(' px')
+    spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    button_symbols = getattr(
+        QAbstractSpinBox, 'ButtonSymbols', QAbstractSpinBox
+    )
+    spinbox.setButtonSymbols(button_symbols.NoButtons)
+    spinbox.setKeyboardTracking(False)
+    spinbox.setFixedSize(60, 22)
+
+    layout = QHBoxLayout()
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+    layout.addWidget(slider, 1)
+    layout.addWidget(spinbox)
+    return slider, spinbox, layout
+
 
 class DrawToolCheckBox(QCheckBox):
     checked = Signal()
@@ -109,16 +139,18 @@ class InpaintPanel(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
-        self.thicknessSlider = PaintQSlider()
-        self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
-        self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.thicknessSpinBox = self.thicknessSlider.enableValueEditor(' px')
-        self.thicknessSlider.valueEdited.connect(self.thicknessChanged)
+        (
+            self.thicknessSlider,
+            self.thicknessSpinBox,
+            thickness_control_layout,
+        ) = _create_thickness_control(self)
+        self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
+        self.thicknessSpinBox.valueChanged.connect(self.on_thickness_changed)
         
         thickness_layout = QHBoxLayout()
         thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
-        thickness_layout.addWidget(self.thicknessSlider)
+        thickness_layout.addLayout(thickness_control_layout, 1)
         thickness_layout.setSpacing(10)
 
         shape_label = ToolNameLabel(100, self.tr('Shape'))
@@ -142,6 +174,17 @@ class InpaintPanel(Widget):
         layout.addLayout(shape_layout)
         layout.setSpacing(14)
 
+    def on_thickness_changed(self, value: int) -> None:
+        sender = self.sender()
+        if sender is self.thicknessSlider:
+            with QSignalBlocker(self.thicknessSpinBox):
+                self.thicknessSpinBox.setValue(value)
+            if self.thicknessSlider.hasFocus():
+                self.thicknessChanged.emit(value)
+        elif sender is self.thicknessSpinBox:
+            self.thicknessSlider.setValue(value)
+            self.thicknessChanged.emit(value)
+
     @property
     def shape(self):
         return self.shapeCombobox.currentIndex()
@@ -152,11 +195,13 @@ class PenConfigPanel(Widget):
     colorChanged = Signal(list)
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.thicknessSlider = PaintQSlider()
-        self.thicknessSlider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
-        self.thicknessSlider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.thicknessSpinBox = self.thicknessSlider.enableValueEditor(' px')
-        self.thicknessSlider.valueEdited.connect(self.thicknessChanged)
+        (
+            self.thicknessSlider,
+            self.thicknessSpinBox,
+            thickness_control_layout,
+        ) = _create_thickness_control(self)
+        self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
+        self.thicknessSpinBox.valueChanged.connect(self.on_thickness_changed)
         self.alphaSlider = PaintQSlider()
         self.alphaSlider.setRange(0, 255)
         self.alphaSlider.setValue(255)
@@ -176,7 +221,7 @@ class PenConfigPanel(Widget):
         thickness_layout = QHBoxLayout()
         thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
-        thickness_layout.addWidget(self.thicknessSlider)
+        thickness_layout.addLayout(thickness_control_layout, 1)
         thickness_layout.setSpacing(10)
 
         shape_label = ToolNameLabel(100, self.tr('Shape'))
@@ -197,6 +242,17 @@ class PenConfigPanel(Widget):
         layout.addLayout(thickness_layout)
         layout.addLayout(shape_layout)
         layout.setSpacing(20)
+
+    def on_thickness_changed(self, value: int) -> None:
+        sender = self.sender()
+        if sender is self.thicknessSlider:
+            with QSignalBlocker(self.thicknessSpinBox):
+                self.thicknessSpinBox.setValue(value)
+            if self.thicknessSlider.hasFocus():
+                self.thicknessChanged.emit(value)
+        elif sender is self.thicknessSpinBox:
+            self.thicknessSlider.setValue(value)
+            self.thicknessChanged.emit(value)
 
     def on_alpha_changed(self):
         color = self.colorPicker.rgba()
