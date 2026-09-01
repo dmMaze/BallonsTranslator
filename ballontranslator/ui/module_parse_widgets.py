@@ -31,8 +31,8 @@ from qtpy.QtWidgets import (
     QLabel,
     QScrollArea,
 )
-from qtpy.QtCore import QTimer, Qt, Signal
-from qtpy.QtGui import QDoubleValidator, QKeySequence
+from qtpy.QtCore import QLocale, QTimer, Qt, Signal
+from qtpy.QtGui import QCloseEvent, QDoubleValidator, QKeySequence
 
 try:
     from qtpy.QtGui import QAction
@@ -72,13 +72,26 @@ class ParamLineEditor(QLineEdit):
         self.param_key = param_key
         self.setFixedWidth(size2width(size))
         self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
-        self.textChanged.connect(self.on_text_changed)
+        self._edit_dirty = False
+        self.textEdited.connect(self._mark_edited)
+        self.editingFinished.connect(self._commit_edit)
 
         if force_digital:
             validator = QDoubleValidator()
+            validator.setLocale(QLocale.c())
+            notation = getattr(
+                QDoubleValidator, 'Notation', QDoubleValidator
+            )
+            validator.setNotation(notation.StandardNotation)
             self.setValidator(validator)
 
-    def on_text_changed(self):
+    def _mark_edited(self, _text: str) -> None:
+        self._edit_dirty = True
+
+    def _commit_edit(self) -> None:
+        if not self._edit_dirty:
+            return
+        self._edit_dirty = False
         self.paramwidget_edited.emit(self.param_key, self.text())
 
 
@@ -640,6 +653,6 @@ class ModuleParamDialog(OutsideClickFramelessMixin, QDialog):
         parent_window = parent.window() if parent is not None else None
         return active_modal not in (None, self, parent_window)
 
-    def closeEvent(self, event) -> None:
-        save_config()
+    def closeEvent(self, event: QCloseEvent) -> None:
         super().closeEvent(event)
+        save_config()

@@ -98,6 +98,7 @@ class Slider(QSlider):
     def __init__(self, orientation: Qt.Orientation, parent: QWidget = None):
         super().__init__(orientation, parent=parent)
         self.hovering = False
+        self.show_hover_value = True
         self._postInit()
 
     def _postInit(self):
@@ -131,9 +132,17 @@ class Slider(QSlider):
         l = self.width() if self.orientation() == Qt.Orientation.Horizontal else self.height()
         return l - self.handle.width()
 
-    def _adjustHandlePos(self):
+    def _value_to_position_ratio(self) -> float:
         total = max(self.maximum() - self.minimum(), 1)
-        delta = int((self.value() - self.minimum()) / total * self.grooveLength)
+        return (self.value() - self.minimum()) / total
+
+    def _position_ratio_to_value(self, ratio: float) -> int:
+        return int(
+            ratio * (self.maximum() - self.minimum()) + self.minimum()
+        )
+
+    def _adjustHandlePos(self):
+        delta = int(self._value_to_position_ratio() * self.grooveLength)
 
         if self.orientation() == Qt.Orientation.Vertical:
             self.handle.move(0, delta)
@@ -144,7 +153,7 @@ class Slider(QSlider):
         pd = self.handle.width() / 2
         gs = max(self.grooveLength, 1)
         v = pos.x() if self.orientation() == Qt.Orientation.Horizontal else pos.y()
-        return int((v - pd) / gs * (self.maximum() - self.minimum()) + self.minimum())
+        return self._position_ratio_to_value((v - pd) / gs)
 
     def paintEvent(self, e):
         painter = QPainter(self)
@@ -159,7 +168,7 @@ class Slider(QSlider):
 
         if hasattr(self, 'draw_content') and self.hovering:
             # its a bad idea to display text like this, but I leave it as it is for now
-            
+
             option = QStyleOptionSlider()
             self.initStyleOption(option)
 
@@ -169,7 +178,7 @@ class Slider(QSlider):
             
             value = self.value()
             value_str = str(value)
-                
+
             painter.setPen(QColor(*shared.SLIDERHANDLE_COLOR,255))
             font = painter.font()
             font.setPointSizeF(8)
@@ -177,14 +186,15 @@ class Slider(QSlider):
             painter.setFont(font)
 
             is_hor = self.orientation() == Qt.Orientation.Horizontal
-            if is_hor: 
+            if is_hor:
                 value_w = fm.boundingRect(value_str).width()
                 dx = self.width() - value_w
             else:
                 dx = dy = 0
 
             dy = self.height() - fm.height() + fm.descent()
-            painter.drawText(dx, dy, value_str)
+            if self.show_hover_value:
+                painter.drawText(dx, dy, value_str)
 
             if self.draw_content is not None:
                 painter.drawText(0, dy, self.draw_content, )
@@ -198,7 +208,7 @@ class Slider(QSlider):
             return
 
         painter.setBrush(themeColor())
-        aw = (self.value() - self.minimum()) / (self.maximum() - self.minimum()) * (w - r*2)
+        aw = self._value_to_position_ratio() * (w - r*2)
         painter.drawRoundedRect(QRectF(r, r-2, aw, 4), 2, 2)
 
     def _drawVerticalGroove(self, painter: QPainter):
@@ -209,7 +219,7 @@ class Slider(QSlider):
             return
 
         painter.setBrush(themeColor())
-        ah = (self.value() - self.minimum()) / (self.maximum() - self.minimum()) * (h - r*2)
+        ah = self._value_to_position_ratio() * (h - r*2)
         painter.drawRoundedRect(QRectF(r-2, r, 4, ah), 2, 2)
 
     def grooveColor(self) -> QColor:

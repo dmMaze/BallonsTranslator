@@ -14,6 +14,30 @@ Widget {
     background-color: @widgetBackgroundColor;
 }
 
+QSpinBox[paintSliderValueEditor="true"] {
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0px;
+    color: @qwidgetForegroundColor;
+    background-color: transparent;
+    border: none;
+    border-bottom: 1px solid @borderColor;
+    border-radius: 0px;
+    font-size: 12px;
+}
+
+QSpinBox[paintSliderValueEditor="true"]:hover,
+QSpinBox[paintSliderValueEditor="true"]:focus {
+    border-bottom: 1px solid rgb(30, 147, 229);
+}
+
+QSpinBox[paintSliderValueEditor="true"]::up-button,
+QSpinBox[paintSliderValueEditor="true"]::down-button {
+    width: 0px;
+    height: 0px;
+    border: none;
+}
+
 
 /* ConfigTextLabel {
     background-color : @emptyContentBackgroundColor;

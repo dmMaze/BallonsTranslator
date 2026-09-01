@@ -4,7 +4,7 @@ import unittest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QPoint, QPointF, QRectF, Qt
 from qtpy.QtGui import QCursor
 from qtpy.QtWidgets import (
     QApplication,
@@ -13,7 +13,7 @@ from qtpy.QtWidgets import (
     QStackedWidget,
     QWidget,
 )
-from qtpy.QtTest import QTest
+from qtpy.QtTest import QSignalSpy, QTest
 
 from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.drawingpanel import DrawingPanel
@@ -179,6 +179,102 @@ class CanvasCursorLifecycleTest(unittest.TestCase):
         self.canvas.textLayer.hide()
         self._move_to_scene(250, 250)
         self.assertEqual(self.canvas.gv.viewport().cursor(), inpaint_cursor)
+
+    def test_brush_thickness_controls_commit_once_and_stay_synchronized(
+        self,
+    ) -> None:
+        original_pen_width = self.panel.pentool_pen.widthF()
+        original_inpaint_width = self.panel.inpaint_pen.widthF()
+        try:
+            pen_spinbox = self.panel.penConfigPanel.thicknessSpinBox
+            pen_slider = self.panel.penConfigPanel.thicknessSlider
+            pen_changes = QSignalSpy(
+                self.panel.penConfigPanel.thicknessChanged
+            )
+            previous_slider_value = pen_slider.value()
+            pen_spinbox.setFocus()
+            pen_spinbox.selectAll()
+            QTest.keyClicks(pen_spinbox, '22')
+            _APP.processEvents()
+            self.assertEqual(pen_slider.value(), previous_slider_value)
+            self.assertEqual(len(pen_changes), 0)
+            self.assertEqual(
+                self.panel.pentool_pen.widthF(), original_pen_width
+            )
+
+            QTest.keyClick(pen_spinbox, Qt.Key.Key_Tab)
+            _APP.processEvents()
+            self.assertEqual(pen_slider.value(), 22)
+            self.assertEqual(self.panel.pentool_pen.widthF(), 22)
+            self.assertEqual(len(pen_changes), 1)
+            self.assertEqual(pen_changes[0][0], 22)
+
+            pen_slider.setFocus()
+            pen_slider.setValue(35)
+            _APP.processEvents()
+            self.assertEqual(pen_spinbox.value(), 35)
+            self.assertEqual(self.panel.pentool_pen.widthF(), 35)
+            self.assertEqual(len(pen_changes), 2)
+            self.assertEqual(pen_changes[1][0], 35)
+
+            self.panel.on_use_inpainttool()
+            inpaint_spinbox = self.panel.inpaintConfigPanel.thicknessSpinBox
+            inpaint_changes = QSignalSpy(
+                self.panel.inpaintConfigPanel.thicknessChanged
+            )
+            inpaint_spinbox.setFocus()
+            inpaint_spinbox.setValue(48)
+            _APP.processEvents()
+            self.assertEqual(
+                self.panel.inpaintConfigPanel.thicknessSlider.value(), 48
+            )
+            self.assertEqual(self.panel.inpaint_pen.widthF(), 48)
+            self.assertEqual(len(inpaint_changes), 1)
+            self.assertEqual(inpaint_changes[0][0], 48)
+        finally:
+            self.panel.penConfigPanel.thicknessSpinBox.clearFocus()
+            self.panel.inpaintConfigPanel.thicknessSpinBox.clearFocus()
+            self.panel.setPenToolWidth(original_pen_width)
+            self.panel.penConfigPanel.thicknessSlider.setValue(
+                int(original_pen_width)
+            )
+            self.panel.setInpaintToolWidth(original_inpaint_width)
+            self.panel.inpaintConfigPanel.thicknessSlider.setValue(
+                int(original_inpaint_width)
+            )
+            self.panel.on_use_pentool()
+
+    def test_brush_thickness_slider_uses_logarithmic_track(self) -> None:
+        slider = self.panel.penConfigPanel.thicknessSlider
+        original_pen_width = self.panel.pentool_pen.widthF()
+        try:
+            slider.setFocus()
+            midpoint = QPoint(
+                slider.handle.width() // 2 + slider.grooveLength // 2,
+                slider.height() // 2,
+            )
+            QTest.mouseClick(
+                slider,
+                Qt.MouseButton.LeftButton,
+                pos=midpoint,
+            )
+            _APP.processEvents()
+
+            self.assertIn(slider.value(), range(30, 34))
+            self.assertEqual(
+                self.panel.penConfigPanel.thicknessSpinBox.value(),
+                slider.value(),
+            )
+            self.assertEqual(
+                self.panel.pentool_pen.widthF(), slider.value()
+            )
+
+            slider.setValue(100)
+            self.assertGreater(slider.handle.x(), slider.grooveLength // 2)
+        finally:
+            slider.clearFocus()
+            self.panel.setPenToolWidth(original_pen_width)
+            slider.setValue(int(original_pen_width))
 
     def test_native_and_item_cursors_return_after_canvas_cursor_release(self) -> None:
         self.panel.on_use_handtool()

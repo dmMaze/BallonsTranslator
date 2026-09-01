@@ -190,6 +190,11 @@ class MissingBaseURLInpainter:
         raise LLMBaseURLRequiredError('profile-1', 'Profile 1', target='image_base_url')
 
 
+class FailingInpainter:
+    def inpaint(self, *_args) -> None:
+        raise RuntimeError('inpainting failed')
+
+
 class FakeOCRThread:
     def __init__(self, ocr):
         self.module = ocr
@@ -656,6 +661,70 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
         self.assertNotIn('translation_target', info)
         self.assertIn('Page: page-1', show_error.call_args.args[1])
+
+    def test_ocr_and_inpaint_pipeline_failures_include_page_name(self) -> None:
+        ocr = FailingRuntimeOCR()
+        ocr.name = 'failing'
+        cases = (
+            (
+                'ocr',
+                1,
+                FakeOCRThread(ocr),
+                SimpleNamespace(inpainter=None),
+            ),
+            (
+                'inpaint',
+                3,
+                FakeOCRThread(None),
+                SimpleNamespace(inpainter=FailingInpainter()),
+            ),
+        )
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        try:
+            for name, stage_index, ocr_thread, inpaint_thread in cases:
+                with self.subTest(stage=name):
+                    project = ProjImgTrans()
+                    project.pages = {
+                        'page-1': [TextBlock(
+                            xyxy=[0, 0, 10, 10], text=['old'],
+                        )],
+                    }
+                    project._image_info = {
+                        'page-1': {'finish_code': 0},
+                    }
+                    project.read_img = lambda _page: np.zeros(
+                        (12, 12, 3),
+                        dtype=np.uint8,
+                    )
+                    project.load_mask_by_imgname = lambda _page: np.ones(
+                        (12, 12),
+                        dtype=np.uint8,
+                    )
+                    thread = module_manager.ImgtransThread(
+                        SimpleNamespace(textdetector=None),
+                        ocr_thread,
+                        FakeTranslateThread(None),
+                        inpaint_thread,
+                    )
+                    thread.imgtrans_proj = project
+                    thread.process_idx_to_page_idx = {}
+                    for index in range(4):
+                        pcfg.module.set_stage_enabled(
+                            index,
+                            index == stage_index,
+                        )
+                    with mock.patch(
+                        'ballontranslator.ui.module_manager.create_error_dialog',
+                    ) as show_error:
+                        thread._imgtrans_pipeline()
+
+                    self.assertIn(
+                        'Page: page-1',
+                        show_error.call_args.args[1],
+                    )
+        finally:
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
 
     def test_full_pipeline_commits_ocr_returned_block_order(self):
         first = TextBlock(xyxy=[0, 0, 4, 4])
