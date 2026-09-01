@@ -322,6 +322,10 @@ class ProgramConfig(Config):
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
     recent_proj_list: List = field(default_factory=lambda: list())
     show_page_list: bool = False
+    show_llm_page_summary: bool = True
+    expand_llm_page_summary: bool = True
+    show_llm_compact_memory: bool = True
+    expand_llm_compact_memory: bool = True
     imgtrans_paintmode: bool = False
     imgtrans_textedit: bool = True
     imgtrans_textblock: bool = True

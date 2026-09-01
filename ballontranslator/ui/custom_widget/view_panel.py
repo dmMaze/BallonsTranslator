@@ -111,7 +111,6 @@ class ExpandLabel(Widget):
     def mousePressEvent(self, e: QMouseEvent) -> None:
         if e.button() == Qt.MouseButton.LeftButton:
             self.setExpand(not self.expanded)
-            pcfg.expand_tstyle_panel = self.expanded
             self.clicked.emit()
         return super().mousePressEvent(e)
 

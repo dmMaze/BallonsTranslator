@@ -322,8 +322,6 @@ QCheckBox#TexteditChecker::indicator,
 QCheckBox#TextblockChecker::indicator,
 QCheckBox#ShowPageListChecker::indicator,
 QCheckBox#GlobalSearchChecker::indicator,
-QCheckBox#LLMContextChecker::indicator,
-QCheckBox#ImgTransChecker::indicator,
 QCheckBox#ConfigChecker::indicator,
 DrawToolCheckBox::indicator,
 QCheckBox#CaseSensitiveToggle::indicator,
@@ -1874,16 +1872,16 @@ TaskProgressBar QProgressBar {
 QCheckBox#ShowPageListChecker::indicator{
     height: 27px;
     width: 27px;
-    image: url(resources/icons/showpagelist.svg);
+    image: url(resources/icons/llm_context.svg);
 }
 
 QCheckBox#ShowPageListChecker::indicator:hover
 {
-    image: url(resources/icons/showpagelist_activate.svg);
+    image: url(resources/icons/llm_context_activate.svg);
 }
 QCheckBox#ShowPageListChecker::indicator:checked
 {
-    image: url(resources/icons/showpagelist_activate.svg);
+    image: url(resources/icons/llm_context_activate.svg);
 }
 
 QCheckBox#GlobalSearchChecker::indicator{
@@ -1901,50 +1899,27 @@ QCheckBox#GlobalSearchChecker::indicator:checked
     image: url(resources/icons/search_activate.svg);
 }
 
-QCheckBox#LLMContextChecker::indicator{
-    height: 28px;
-    width: 28px;
-    image: url(resources/icons/llm_context.svg);
-}
-
-QCheckBox#LLMContextChecker::indicator:hover,
-QCheckBox#LLMContextChecker::indicator:checked
-{
-    image: url(resources/icons/llm_context_activate.svg);
-}
-
 QWidget#LLMContextEditor {
     background-color: @emptyContentBackgroundColor;
     border: none;
     border-radius: 5px;
 }
 
-QFrame#LLMContextEditorCard {
-    background-color: @emptyContentBackgroundColor;
+QWidget#LLMContextView {
+    background-color: @widgetBackgroundColor;
     border: 1px solid @borderColor;
     border-radius: 5px;
 }
 
-QFrame#LLMContextEditorHeader {
-    background-color: @emptyContentBackgroundColor;
+QWidget#LLMContextView .ExpandLabel,
+QWidget#LLMContextView .ExpandLabel QLabel {
+    background-color: @widgetBackgroundColor;
     border: none;
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
-}
-
-QLabel#LLMContextEditorTitle {
-    background-color: transparent;
-    color: @titleBarColor;
-    font-weight: 600;
-}
-
-QLabel#LLMContextEditorDetail {
-    background-color: transparent;
-    color: @qwidgetForegroundColor;
+    border-radius: 4px;
 }
 
 QPlainTextEdit#LLMContextTextEdit {
-    background-color: @emptyContentBackgroundColor;
+    background-color: @widgetBackgroundColor;
     border: none;
     border-top: 1px solid @borderColor;
     border-bottom-left-radius: 4px;
@@ -1956,37 +1931,33 @@ QPlainTextEdit#LLMContextTextEdit:focus {
     border-top: 1px solid rgb(30, 147, 229);
 }
 
-QSplitter#LLMContextVerticalSplitter::handle {
+QSplitter#LLMContextVerticalSplitter::handle,
+QSplitter#LLMContextPanelSplitter::handle {
     height: 8px;
     background-color: @widgetBackgroundColor;
 }
 
 QSplitter#LLMContextVerticalSplitter::handle:hover,
-QSplitter#LLMContextVerticalSplitter::handle:pressed {
+QSplitter#LLMContextVerticalSplitter::handle:pressed,
+QSplitter#LLMContextPanelSplitter::handle:hover,
+QSplitter#LLMContextPanelSplitter::handle:pressed {
     background-color: rgb(30, 147, 229);
 }
 
-QListWidget#PageListArea,
+QListWidget#PageListArea {
+    background-color: @emptyContentBackgroundColor;
+    border-radius: 5px;
+}
+
+QListWidget#PageListArea QWidget#qt_scrollarea_viewport {
+    background-color: transparent;
+    border-radius: 5px;
+}
+
 CustomGV {
     border-radius: 5px;
 }
 
-
-StateChecker#ImgTransChecker::indicator{
-    height: 27px;
-    width: 27px;
-    image: url(resources/icons/leftbar_imgtrans.svg);
-}
-
-StateChecker#ImgTransChecker::indicator:hover
-{
-    image: url(resources/icons/leftbar_imgtrans_activate.svg);
-}
-StateChecker#ImgTransChecker::indicator:checked
-{
-    image: url(resources/icons/leftbar_imgtrans_activate.svg);
-    color: red;
-}
 
 StateChecker#ConfigChecker::indicator{
     height: 27px;

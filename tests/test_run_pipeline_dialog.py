@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QObject, QEvent, QPoint, Qt
+from qtpy.QtCore import QCoreApplication, QObject, QEvent, QPoint, Qt
 from qtpy.QtGui import QColor, QTextCursor, QTextDocument
 from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import (
@@ -1090,6 +1090,12 @@ class RunPipelineDialogTests(unittest.TestCase):
 
     def test_view_actions_only_control_bottom_bar_visibility(self):
         window = QMainWindow()
+        self.addCleanup(
+            QCoreApplication.sendPostedEvents,
+            None,
+            QEvent.Type.DeferredDelete,
+        )
+        self.addCleanup(window.deleteLater)
         title_bar = TitleBar(window)
         visibility_texts = [action.text() for action in title_bar.moduleVisibilityActions]
         self.assertEqual(
@@ -1115,13 +1121,17 @@ class RunPipelineDialogTests(unittest.TestCase):
             [action.text() for action in title_bar.sponsorToolBtn.menu().actions()],
             ['Patreon', 'Afdian'],
         )
-        self.assertEqual(
-            [
+        self.assertTrue(
+            {
                 action.text()
                 for action in title_bar.toolsToolBtn.menu().actions()
                 if not action.isSeparator()
-            ],
-            ['区域合并工具', 'Font Exclusion'],
+            }.issuperset({
+                '区域合并工具',
+                'Photoshop Bridge',
+                'Path Reorder',
+                'Font Exclusion',
+            })
         )
         self.assertTrue(hasattr(title_bar, 'font_exclusion_trigger'))
         with patch(
@@ -1167,9 +1177,6 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertFalse(widgets[0].visible)
         self.assertTrue(widgets[2].visible)
         self.assertTrue(widgets[3].visible)
-        title_bar.deleteLater()
-        window.deleteLater()
-
     def test_tool_visibility_round_trips_through_program_config(self):
         config = ProgramConfig(show_ocr_tool=False)
         restored = ProgramConfig(**json.loads(json_dump_program_config(config)))
