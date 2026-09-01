@@ -108,6 +108,13 @@ def format_token_usage(usage) -> str:
     if total is None and prompt is not None and completion is not None:
         total = prompt + completion
 
+    completion_details = _usage_member(
+        usage,
+        'completion_tokens_details',
+        'output_tokens_details',
+    )
+    reasoning = _usage_count(completion_details, 'reasoning_tokens')
+
     prompt_details = _usage_member(
         usage,
         'prompt_tokens_details',
@@ -152,6 +159,7 @@ def format_token_usage(usage) -> str:
     fields = (
         ('prompt', prompt),
         ('completion', completion),
+        ('reasoning', reasoning),
         ('total', total),
         ('cache_hit', cache_hit),
         ('cache_miss', cache_miss),

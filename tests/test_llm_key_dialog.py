@@ -2,6 +2,7 @@ import threading
 import unittest
 from unittest import mock
 from types import SimpleNamespace
+from typing import List
 
 import numpy as np
 
@@ -10,6 +11,7 @@ from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
+    LLMOutputLimitError,
     ModuleRunError,
 )
 from ballontranslator.ui import module_manager
@@ -90,6 +92,9 @@ class SuccessfulTranslator:
     def set_stop_event(self, stop_event):
         self.stop_event = stop_event
 
+    def on_page_translation_finished(self, project, page_key):
+        pass
+
     def translate_textblk_lst(
         self,
         blk_list,
@@ -114,6 +119,11 @@ class FailingTranslator(SuccessfulTranslator):
     ):
         self.calls.append((blk_list, project, page_key, full_page))
         raise RuntimeError('translation failed')
+
+
+class OutputLimitedTranslator(SuccessfulTranslator):
+    def on_page_translation_finished(self, project, page_key):
+        raise LLMOutputLimitError('profile-1', 'Profile 1', 8192, 'low')
 
 
 class FailingDetector:
@@ -141,6 +151,28 @@ class MissingModelOCR(OCRBase):
 class FailingRuntimeOCR(OCRBase):
     def _ocr_blk_list(self, _img, _blk_list, *args, **kwargs):
         raise RuntimeError('ocr failed')
+
+
+class ReorderingOCR(OCRBase):
+    def _ocr_blk_list(self, _img, blk_list, *args, **kwargs):
+        self.full_page = kwargs.get('full_page', False)
+        for index, block in enumerate(blk_list):
+            block.text = [f'text {index}']
+        return list(reversed(blk_list))
+
+
+class LegacySignatureOCR(OCRBase):
+    def __init__(self) -> None:
+        super().__init__()
+        self.called = False
+
+    def run_ocr(
+        self,
+        _img: np.ndarray,
+        blk_list: List[TextBlock],
+    ) -> List[TextBlock]:
+        self.called = True
+        return blk_list
 
 
 class MissingKeyInpainter:
@@ -217,10 +249,8 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             [('profile-1', 'Profile 1'), ('profile-1', 'Profile 1')],
         )
 
-    def test_page_failure_message_is_logged_and_shown(self):
-        with mock.patch(
-            'ballontranslator.utils.message.LOGGER.error',
-        ) as log_error, mock.patch.object(
+    def test_page_failure_message_includes_the_page(self):
+        with mock.patch.object(
             shared,
             'create_errdialog_in_mainthread',
         ) as show_error:
@@ -231,11 +261,6 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                 'page-1',
             )
 
-        logged = '\n'.join(
-            str(call.args[0])
-            for call in log_error.call_args_list
-        )
-        self.assertIn('Page: page-1', logged)
         self.assertIn('Page: page-1', show_error.call_args.args[0])
 
     def test_missing_llm_model_dialog_emits_once_until_reset(self):
@@ -380,6 +405,31 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
                 else:
                     self.assertNotIn('translation_target', info)
                     self.assertIn('Page: page-1', show_error.call_args.args[1])
+
+    def test_output_limit_dialog_stops_parallel_translation(self):
+        translator = OutputLimitedTranslator()
+        thread = module_manager.TranslateThread()
+        thread.translator = translator
+        thread.pipeline_stop_event = threading.Event()
+        project = ProjImgTrans()
+        project.pages = {
+            'page-1': [TextBlock(text=['source'], translation='old')],
+        }
+        project._image_info = {'page-1': {'finish_code': 0}}
+
+        with mock.patch(
+            'ballontranslator.ui.module_manager.create_error_dialog',
+        ) as show_error:
+            success = thread._translate_page(project, 'page-1')
+
+        self.assertFalse(success)
+        self.assertTrue(thread.pipeline_stop_event.is_set())
+        self.assertTrue(
+            project._image_info['page-1']['finish_code']
+            & RunStatus.FIN_TRANSLATE
+        )
+        self.assertIsInstance(show_error.call_args.args[0], LLMOutputLimitError)
+        self.assertIn('increase Max Tokens', str(show_error.call_args.args[0]))
 
     def test_imgtrans_full_page_forwards_context_and_marks_only_success(self):
         for translator_type, expected_success in (
@@ -675,6 +725,74 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
         finally:
             for index, enabled in enumerate(old_stages):
                 pcfg.module.set_stage_enabled(index, enabled)
+
+    def test_full_pipeline_commits_ocr_returned_block_order(self):
+        first = TextBlock(xyxy=[0, 0, 4, 4])
+        second = TextBlock(xyxy=[4, 0, 8, 4])
+        project = ProjImgTrans()
+        project.pages = {'page-1': [first, second]}
+        project._image_info = {'page-1': {'finish_code': 0}}
+        project.read_img = lambda _page: np.zeros(
+            (8, 8, 3),
+            dtype=np.uint8,
+        )
+        ocr = ReorderingOCR()
+        ocr.name = 'LLMOCR'
+        thread = module_manager.ImgtransThread(
+            SimpleNamespace(textdetector=None),
+            FakeOCRThread(ocr),
+            FakeTranslateThread(None),
+            SimpleNamespace(inpainter=None),
+        )
+        thread.imgtrans_proj = project
+        thread.process_idx_to_page_idx = {}
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        old_restore_empty = pcfg.restore_ocr_empty
+        try:
+            pcfg.restore_ocr_empty = False
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 1)
+            thread._imgtrans_pipeline()
+        finally:
+            pcfg.restore_ocr_empty = old_restore_empty
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
+
+        self.assertTrue(ocr.full_page)
+        self.assertEqual(project.pages['page-1'], [second, first])
+
+    def test_full_pipeline_preserves_legacy_ocr_call_signature(self):
+        block = TextBlock(xyxy=[0, 0, 4, 4])
+        project = ProjImgTrans()
+        project.pages = {'page-1': [block]}
+        project._image_info = {'page-1': {'finish_code': 0}}
+        project.read_img = lambda _page: np.zeros(
+            (4, 4, 3),
+            dtype=np.uint8,
+        )
+        ocr = LegacySignatureOCR()
+        thread = module_manager.ImgtransThread(
+            SimpleNamespace(textdetector=None),
+            FakeOCRThread(ocr),
+            FakeTranslateThread(None),
+            SimpleNamespace(inpainter=None),
+        )
+        thread.imgtrans_proj = project
+        thread.process_idx_to_page_idx = {}
+        old_stages = [pcfg.module.stage_enabled(index) for index in range(4)]
+        old_restore_empty = pcfg.restore_ocr_empty
+        try:
+            pcfg.restore_ocr_empty = False
+            for index in range(4):
+                pcfg.module.set_stage_enabled(index, index == 1)
+            thread._imgtrans_pipeline()
+        finally:
+            pcfg.restore_ocr_empty = old_restore_empty
+            for index, enabled in enumerate(old_stages):
+                pcfg.module.set_stage_enabled(index, enabled)
+
+        self.assertTrue(ocr.called)
+        self.assertEqual(project.pages['page-1'], [block])
 
     def test_missing_llm_key_stops_ocr_block_pipeline(self):
         ocr = MissingKeyOCR()

@@ -3,10 +3,20 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
-import re
 from collections.abc import Mapping
-from typing import Any, Dict, List, Optional, Tuple, get_args, get_origin, get_type_hints
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
+from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.secret_store import SecretStore
 from ballontranslator.utils.structures import Config, field, nested_dataclass
 
@@ -16,18 +26,21 @@ LLM_OCR_KEY = "LLMOCR"
 LLM_INPAINT_KEY = "LLMInpaint"
 OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
 
-THINKING_LEVEL_OPTIONS = ["None", "minimal", "low", "medium", "high", "xhigh"]
+THINKING_AUTO = "Auto"
+THINKING_DISABLED = "Disabled"
+THINKING_LEVEL_OPTIONS = [
+    THINKING_AUTO,
+    THINKING_DISABLED,
+    "minimal",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+]
 VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 PROVIDER_ALIASES = {
     "Google": "Gemini",
 }
-OPENAI_MAX_TOKENS_MODELS = frozenset({
-    "gpt-4.1",
-    "gpt-4.1-mini",
-    "gpt-4o",
-    "gpt-4o-mini",
-})
-
 PROVIDER_DEFAULTS = {
     "OpenAI": {
         "id": "openai",
@@ -62,15 +75,17 @@ PROVIDER_DEFAULTS = {
         "id": "google",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "require_api_key": True,
-        "model": "gemini-3.5-flash",
+        "model": "gemini-3.1-flash-lite",
+        "thinking_level": "medium",
         "support_vision": True,
-        "vision_model": "gemini-flash-latest",
+        "vision_model": "gemini-3.1-flash-lite",
         "vision_detail_level": "auto",
-        "model_options": ["gemini-flash-latest", "gemini-pro-latest", "gemma-4-31b-it", "gemma-4-26b-a4b-it"],
-        "vision_model_options": ["gemini-flash-latest", "gemini-pro-latest"],
+        "model_options": ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-pro-latest", "gemma-4-31b-it", "gemma-4-26b-a4b-it"],
+        "vision_model_options": ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-pro-latest"],
         "support_image": True,
         "image_model_options": ["gemini-3.1-flash-lite-image"],
-        "image_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"
+        "image_base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "json_schema_response_format": True,
     },
     "OpenRouter": {
         "id": "openrouter",
@@ -182,7 +197,7 @@ class LLMProfile(Config):
     image_base_url: str = ""
     image_model: str = ""
     image_model_options: List[str] = field(default_factory=list)
-    thinking_level: str = "None"
+    thinking_level: str = THINKING_AUTO
     thinking_level_options: List[str] = field(default_factory=lambda: list(THINKING_LEVEL_OPTIONS))
     prompt: str = DEFAULT_TRANSLATION_PROMPT
     vision_prompt: str = DEFAULT_OCR_PROMPT
@@ -205,50 +220,78 @@ class LLMProfile(Config):
         return copy.deepcopy(self.__dict__)
 
 
-def openai_chat_completion_args(profile: LLMProfile, model: str) -> Dict[str, Any]:
-    """Map provider-neutral profile values to OpenAI chat API arguments.
+def normalize_thinking_level(value: Any) -> str:
+    """Return the canonical persisted reasoning-control value.
 
-    Native OpenAI models default to ``max_completion_tokens`` so future model
-    names do not need version-pattern guesses. Only explicitly listed older
-    models and compatibility endpoints retain ``max_tokens``. Native GPT-5.5+
-    models use the API's fixed default temperature, so omit that argument.
-
-    Example:
-        >>> profile = LLMProfile.from_provider('OpenAI')
-        >>> openai_chat_completion_args(profile, 'gpt-5.5')
-        {'top_p': 1.0, 'max_completion_tokens': 8192}
-        >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
-        0.1
+    >>> normalize_thinking_level('None')
+    'Auto'
+    >>> normalize_thinking_level('Disabled')
+    'Disabled'
     """
+    if not isinstance(value, str):
+        return THINKING_AUTO
+    level = value.strip()
+    if level.lower() in {'', 'none', 'auto'}:
+        return THINKING_AUTO
+    if level.lower() == 'disabled':
+        return THINKING_DISABLED
+    return level
 
-    base_url = _normal_url(profile.base_url)
-    openai_base_url = _normal_url(PROVIDER_DEFAULTS["OpenAI"]["base_url"])
-    model_name = str(model or "").rsplit("/", 1)[-1].lower()
-    is_native_openai = not base_url or base_url == openai_base_url
-    args: Dict[str, Any] = {"top_p": float(profile.top_p)}
-    version_match = re.match(r"^gpt-(\d+)(?:\.(\d+))?(?:-|$)", model_name)
-    gpt_version = (
-        (int(version_match.group(1)), int(version_match.group(2) or 0))
-        if version_match
-        else None
-    )
-    if not is_native_openai or gpt_version is None or gpt_version < (5, 5):
-        args["temperature"] = float(profile.temperature)
-    api_key = (
-        "max_completion_tokens"
-        if is_native_openai and model_name not in OPENAI_MAX_TOKENS_MODELS
-        else "max_tokens"
-    )
-    args[api_key] = int(profile.max_tokens)
-    return args
+
+def _normalize_profile_thinking(profile: LLMProfile) -> LLMProfile:
+    """Migrate legacy reasoning settings without dropping custom options.
+
+    >>> profile = LLMProfile(
+    ...     thinking_level='None',
+    ...     thinking_level_options=['None', 'high'],
+    ... )
+    >>> migrated = _normalize_profile_thinking(profile)
+    >>> migrated.thinking_level, migrated.thinking_level_options
+    ('Auto', ['Auto', 'Disabled', 'high'])
+    """
+    raw_level = profile.thinking_level
+    if not isinstance(raw_level, str):
+        LOGGER.warning(
+            'Discard invalid LLM profile thinking_level for %s.',
+            profile.id or profile.name or '<unnamed>',
+        )
+    profile.thinking_level = normalize_thinking_level(raw_level)
+
+    raw_options = profile.thinking_level_options
+    if not isinstance(raw_options, list):
+        LOGGER.warning(
+            'Discard invalid LLM profile thinking_level_options for %s.',
+            profile.id or profile.name or '<unnamed>',
+        )
+        raw_options = THINKING_LEVEL_OPTIONS
+    elif any(not isinstance(option, str) for option in raw_options):
+        LOGGER.warning(
+            'Discard invalid entries from LLM profile '
+            'thinking_level_options for %s.',
+            profile.id or profile.name or '<unnamed>',
+        )
+
+    normalized_options = []
+    for option in [THINKING_AUTO, THINKING_DISABLED, *raw_options]:
+        if not isinstance(option, str):
+            continue
+        option = normalize_thinking_level(option)
+        if option not in normalized_options:
+            normalized_options.append(option)
+    if profile.thinking_level not in normalized_options:
+        normalized_options.append(profile.thinking_level)
+    profile.thinking_level_options = normalized_options
+    return profile
 
 
 def profile_from_config(profile: Any) -> LLMProfile:
     if isinstance(profile, LLMProfile):
-        return copy.deepcopy(profile)
-    if isinstance(profile, Mapping):
-        return LLMProfile(**copy.deepcopy(dict(profile)))
-    raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
+        loaded = copy.deepcopy(profile)
+    elif isinstance(profile, Mapping):
+        loaded = LLMProfile(**copy.deepcopy(dict(profile)))
+    else:
+        raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
+    return _normalize_profile_thinking(loaded)
 
 
 def profile_to_dict(profile: Any) -> Dict:
@@ -329,7 +372,7 @@ def profiles_from_json(value: str) -> List[LLMProfile]:
         data.pop('profile_type', None)
         data = _normalize_import_profile_data(data)
         try:
-            profiles.append(LLMProfile(**data))
+            profiles.append(profile_from_config(data))
         except (TypeError, ValueError):
             continue
     return profiles
@@ -377,11 +420,31 @@ def _builtin_profile_id(profile: Any) -> str:
     return ""
 
 
-def profile_by_id(profiles: List[Any], profile_id: str) -> Optional[Any]:
+def profile_by_id(
+    profiles: Sequence[Any],
+    profile_id: str,
+) -> Optional[Any]:
     for profile in profiles:
         if _profile_value(profile, "id") == profile_id:
             return profile
     return None
+
+
+def runtime_profile(
+    profiles: Sequence[Any],
+    selected_profile_id: str,
+) -> LLMProfile:
+    """Copy the selected runtime profile, falling back to the first entry.
+
+    >>> runtime_profile([LLMProfile(id='first')], 'missing').id
+    'first'
+    """
+    selected = profile_by_id(profiles, selected_profile_id)
+    if selected is None and profiles:
+        selected = profiles[0]
+    if selected is None:
+        raise RuntimeError('No LLM profile is configured.')
+    return profile_from_config(selected)
 
 
 def _merge_profile_options(default_options: Any, saved_options: Any, selected: Any) -> List[str]:
@@ -534,7 +597,7 @@ def _infer_provider(provider: str, base_url: str, model: str) -> str:
 def normalize_model(provider: str, model: str) -> Tuple[str, str]:
     provider = canonical_provider(provider)
     model = _strip_model_prefix(model)
-    thinking = "None"
+    thinking = THINKING_AUTO
     if provider == "OpenAI":
         aliases = {
             "gpt3": "gpt-5.5",
@@ -551,7 +614,7 @@ def normalize_model(provider: str, model: str) -> Tuple[str, str]:
             thinking = "high"
         elif model == "deepseek-chat":
             model = "deepseek-v4-flash"
-            thinking = "None"
+            thinking = THINKING_AUTO
     if not model:
         model = PROVIDER_DEFAULTS[provider]["model"]
     return model, thinking
@@ -592,7 +655,7 @@ def profile_from_old_settings(old_key: str, params: Dict, secret_store: SecretSt
     if provider in {"OpenAI", "DeepSeek"} and not using_override:
         if model not in PROVIDER_DEFAULTS[provider]["model_options"]:
             model = PROVIDER_DEFAULTS[provider]["model"]
-            thinking = "None"
+            thinking = THINKING_AUTO
     api_key = _old_api_key(old_key, params)
     require_key = PROVIDER_DEFAULTS[provider]["require_api_key"]
     if require_key and not api_key:
@@ -633,7 +696,9 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     """Migrate old LLM translator settings in a raw module config dict.
 
     Example:
-        >>> migrate_module_llm_profiles({}, secret_store=SecretStore()) == {}
+        >>> migrated = migrate_module_llm_profiles(
+        ...     {}, secret_store=SecretStore())
+        >>> bool(migrated['llm_profiles'])
         True
     """
 

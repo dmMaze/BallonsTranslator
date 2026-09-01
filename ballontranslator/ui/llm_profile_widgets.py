@@ -408,7 +408,10 @@ class ProfileCardWidget(QGroupBox):
             'vision_model': self.tr('Model used by LLMOCR for image OCR.'),
             'image_model': self.tr('Model used by LLMInpaint for image cleanup.'),
             'vision_detail_level': self.tr('Image detail level sent to vision-capable providers.'),
-            'thinking_level': self.tr('Reasoning effort sent only when it is not None.'),
+            'thinking_level': self.tr(
+                'Auto uses the provider default. Disabled requests no '
+                'reasoning; explicit levels set the reasoning effort.'
+            ),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
             'vision_prompt': self.tr('Instructions sent to the vision model for OCR.'),
             'image_prompt': self.tr('Instructions sent to the image model for cleanup.'),
@@ -540,7 +543,6 @@ class ProfileCardWidget(QGroupBox):
         self.model_combo.setObjectName('LLMProfileModelCombo')
         self.model_label.setToolTip(model_tooltip)
         self.model_combo.setToolTip(model_tooltip)
-        self.model_combo.setEditable(False)
         self.model_combo.setCurrentText(profile.model)
         right_column.addWidget(self.model_modality_row)
         right_column.addWidget(self.model_combo, 0, Qt.AlignmentFlag.AlignLeft)
@@ -593,7 +595,6 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.setObjectName('LLMProfileModelCombo')
         self.vision_model_label.setToolTip(vision_model_tooltip)
         self.vision_model_combo.setToolTip(vision_model_tooltip)
-        self.vision_model_combo.setEditable(False)
         self.vision_model_combo.setCurrentText(profile.vision_model)
         vision_column.addWidget(self.vision_model_modality_row)
         vision_column.addWidget(self.vision_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
@@ -646,18 +647,26 @@ class ProfileCardWidget(QGroupBox):
         self.image_model_combo.setObjectName('LLMProfileModelCombo')
         self.image_model_label.setToolTip(image_model_tooltip)
         self.image_model_combo.setToolTip(image_model_tooltip)
-        self.image_model_combo.setEditable(False)
         self.image_model_combo.setCurrentText(profile.image_model)
         image_column.addWidget(self.image_model_modality_row)
         image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
         _widen_profile_editor(self.api_key_widget)
         _widen_profile_editor(self.api_key_widget.editor)
-        for editor in (self.model_combo, self.vision_model_combo, self.image_model_combo):
-            _widen_profile_editor(editor)
+        for combo in (
+            self.model_combo,
+            self.vision_model_combo,
+            self.image_model_combo,
+        ):
+            _widen_profile_editor(combo)
+            combo.setEditable(True)
+            model_editor = combo.lineEdit()
+            if model_editor is not None:
+                model_editor.setObjectName('LLMProfileModelEditor')
+                model_editor.setReadOnly(True)
             # The finish handlers own option insertion; otherwise Enter also lets
             # QComboBox insert the edit text before editingFinished is emitted.
-            editor.setInsertPolicy(editor.InsertPolicy.NoInsert)
+            combo.setInsertPolicy(combo.InsertPolicy.NoInsert)
         self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
         self._setSummaryColumnWidth(self.vision_model_summary_widget, vision_model_label_row, self.vision_model_combo)
         self._setSummaryColumnWidth(self.image_model_summary_widget, image_model_label_row, self.image_model_combo)
@@ -1107,17 +1116,16 @@ class ProfileCardWidget(QGroupBox):
         self.profile_changed.emit()
         self.profile_summary_changed.emit()
 
-    def startModelEdit(self):
+    def startModelEdit(self) -> None:
         if self._model_editing:
             return
         self._model_editing = True
         self._previous_model_text = self.model_combo.currentText()
-        self.model_combo.setEditable(True)
         editor = self.model_combo.lineEdit()
         if editor is None:
             self._model_editing = False
             return
-        editor.setObjectName('LLMProfileModelEditor')
+        editor.setReadOnly(False)
         editor.setPlaceholderText(self.tr('Model name'))
         try:
             editor.editingFinished.disconnect(self.finishModelEdit)
@@ -1128,13 +1136,15 @@ class ProfileCardWidget(QGroupBox):
         editor.setFocus()
         editor.selectAll()
 
-    def finishModelEdit(self):
+    def finishModelEdit(self) -> None:
         if not self._model_editing:
             return
         editor = self.model_combo.lineEdit()
         text = editor.text().strip() if editor is not None else ''
         self._model_editing = False
-        self.model_combo.setEditable(False)
+        if editor is not None:
+            editor.setReadOnly(True)
+            editor.setPlaceholderText('')
         if not text:
             self._setModelText(self._previous_model_text, emit_changed=False)
             return
@@ -1172,17 +1182,16 @@ class ProfileCardWidget(QGroupBox):
             self.profile_changed.emit()
             self.profile_summary_changed.emit()
 
-    def startVisionModelEdit(self):
+    def startVisionModelEdit(self) -> None:
         if self._vision_model_editing:
             return
         self._vision_model_editing = True
         self._previous_vision_model_text = self.vision_model_combo.currentText()
-        self.vision_model_combo.setEditable(True)
         editor = self.vision_model_combo.lineEdit()
         if editor is None:
             self._vision_model_editing = False
             return
-        editor.setObjectName('LLMProfileModelEditor')
+        editor.setReadOnly(False)
         editor.setPlaceholderText(self.tr('Vision model name'))
         try:
             editor.editingFinished.disconnect(self.finishVisionModelEdit)
@@ -1193,13 +1202,15 @@ class ProfileCardWidget(QGroupBox):
         editor.setFocus()
         editor.selectAll()
 
-    def finishVisionModelEdit(self):
+    def finishVisionModelEdit(self) -> None:
         if not self._vision_model_editing:
             return
         editor = self.vision_model_combo.lineEdit()
         text = editor.text().strip() if editor is not None else ''
         self._vision_model_editing = False
-        self.vision_model_combo.setEditable(False)
+        if editor is not None:
+            editor.setReadOnly(True)
+            editor.setPlaceholderText('')
         if not text:
             self._setVisionModelText(self._previous_vision_model_text, emit_changed=False)
             return
@@ -1209,6 +1220,13 @@ class ProfileCardWidget(QGroupBox):
             self.vision_model_combo.blockSignals(True)
             self.vision_model_combo.addItem(text)
             self.vision_model_combo.blockSignals(False)
+        if text not in self.profile.model_options:
+            self.profile.model_options.append(text)
+            self._syncComboBox(
+                self.model_combo,
+                self.profile.model_options,
+                self.profile.model,
+            )
         self._setVisionModelText(text, emit_changed=True)
 
     def deleteCurrentVisionModel(self):
@@ -1240,17 +1258,16 @@ class ProfileCardWidget(QGroupBox):
     def _syncVisionModelCombo(self):
         self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
 
-    def startImageModelEdit(self):
+    def startImageModelEdit(self) -> None:
         if self._image_model_editing:
             return
         self._image_model_editing = True
         self._previous_image_model_text = self.image_model_combo.currentText()
-        self.image_model_combo.setEditable(True)
         editor = self.image_model_combo.lineEdit()
         if editor is None:
             self._image_model_editing = False
             return
-        editor.setObjectName('LLMProfileModelEditor')
+        editor.setReadOnly(False)
         editor.setPlaceholderText(self.tr('Image model name'))
         try:
             editor.editingFinished.disconnect(self.finishImageModelEdit)
@@ -1261,13 +1278,15 @@ class ProfileCardWidget(QGroupBox):
         editor.setFocus()
         editor.selectAll()
 
-    def finishImageModelEdit(self):
+    def finishImageModelEdit(self) -> None:
         if not self._image_model_editing:
             return
         editor = self.image_model_combo.lineEdit()
         text = editor.text().strip() if editor is not None else ''
         self._image_model_editing = False
-        self.image_model_combo.setEditable(False)
+        if editor is not None:
+            editor.setReadOnly(True)
+            editor.setPlaceholderText('')
         if not text:
             self._setImageModelText(self._previous_image_model_text, emit_changed=False)
             return
