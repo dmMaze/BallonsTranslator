@@ -877,20 +877,31 @@ class RunPipelineDialogTests(unittest.TestCase):
                 'display_name': 'Delay',
             }
         }
+        events = []
         with patch(
-            'ballontranslator.ui.module_parse_widgets.save_config'
+            'ballontranslator.ui.module_parse_widgets.save_config',
+            side_effect=lambda: events.append(('save',)),
         ) as save:
             dialog = ModuleParamDialog('ocr', 'demo', params, False)
-            changes = []
             dialog.paramwidget_edited.connect(
-                lambda *args: changes.append(args)
+                lambda *args: events.append(('edit', args))
             )
             dialog_ref = weakref.ref(dialog)
             dialog.show()
             self.app.processEvents()
-            dialog.param_widget.param_widgets['delay'].setText('2')
-            self.assertEqual(changes[-1][:3], ('ocr', 'demo', 'delay'))
+            editor = dialog.param_widget.param_widgets['delay']
+            editor.setFocus()
+            editor.selectAll()
+            QTest.keyClicks(editor, '2')
+            self.assertEqual(events, [])
             dialog.close()
+            self.app.processEvents()
+            self.assertEqual(events[0][0], 'edit')
+            self.assertEqual(
+                events[0][1][:3], ('ocr', 'demo', 'delay')
+            )
+            self.assertEqual(events[0][1][3]['content'], '2')
+            self.assertEqual(events[1], ('save',))
             save.assert_called_once_with()
             del dialog
             QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
