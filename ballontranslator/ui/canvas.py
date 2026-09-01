@@ -3,6 +3,7 @@ from typing import Callable, List, Optional, Union
 import os
 
 from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QShortcut
 from qtpy.QtCore import Qt, QDateTime, QRectF, QPointF, QPoint, Signal, QSize, QSizeF, QEvent, QTimer
 from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 from qtpy.QtWidgets import QGraphicsPathItem
@@ -91,6 +92,41 @@ class CustomGV(QGraphicsView):
 
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self._copy_shortcut = QShortcut(
+            QKeySequence.StandardKey.Copy,
+            self,
+        )
+        self._copy_shortcut.setContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut
+        )
+        self._copy_shortcut.activated.connect(self._copy_shortcut_activated)
+        self._paste_shortcut = QShortcut(
+            QKeySequence.StandardKey.Paste,
+            self,
+        )
+        self._paste_shortcut.setContext(
+            Qt.ShortcutContext.WidgetWithChildrenShortcut
+        )
+        self._paste_shortcut.activated.connect(self._paste_shortcut_activated)
+
+    def _copy_shortcut_activated(self) -> None:
+        if self.canvas is None:
+            return
+        item = self.canvas.editing_textblkitem
+        if item is not None and item.isEditing():
+            if item.textCursor().hasSelection():
+                item._copy_selected_text()
+            return
+        self.canvas.handle_ctrlc()
+
+    def _paste_shortcut_activated(self) -> None:
+        if self.canvas is None:
+            return
+        item = self.canvas.editing_textblkitem
+        if item is not None and item.isEditing():
+            item.pasted.emit(item.idx)
+            return
+        self.canvas.handle_ctrlv()
 
     def wheelEvent(self, event : QWheelEvent) -> None:
         # qgraphicsview always scroll content according to wheelevent
@@ -1117,6 +1153,11 @@ class Canvas(QGraphicsScene):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if btn in (
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.RightButton,
+        ):
+            self.gv.setFocus(Qt.FocusReason.MouseFocusReason)
         if self.alpha_mask_edit_session.handle_mouse_press(event):
             event.accept()
             return

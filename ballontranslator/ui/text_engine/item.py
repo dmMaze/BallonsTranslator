@@ -21,6 +21,7 @@ from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
+from ballontranslator.utils import shared
 from ballontranslator.utils.text_effects import (
     SolidPaint,
     TextEffect,
@@ -85,6 +86,22 @@ from .annotations import (
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
+
+
+def _discard_macos_marked_text() -> None:
+    try:
+        from AppKit import NSApp
+    except ImportError:
+        return
+
+    window = NSApp.keyWindow()
+    responder = window.firstResponder() if window is not None else None
+    if responder is None or not responder.respondsToSelector_(b'unmarkText'):
+        return
+    responder.unmarkText()
+    context = responder.inputContext()
+    if context is not None:
+        context.discardMarkedText()
 
 
 class _OrderBadgeItem(QGraphicsItem):
@@ -1217,12 +1234,28 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.setPosition(hit)
             self.setTextCursor(cursor)
 
-    def endEdit(self, keep_focus=True) -> None:
+    def endEdit(self, keep_focus: bool = True) -> None:
+        input_method = None
+        if shared.ON_MACOS and self.pre_editing:
+            preedit_text = self.textCursor().block().layout().preeditAreaText()
+            if preedit_text:
+                input_method = QApplication.inputMethod()
+                input_method.commit()
+                if self.pre_editing:
+                    # Qt 6.11's Cocoa context can leave marked text visible
+                    # without delivering its final commit to a graphics item.
+                    event = QInputMethodEvent('', [])
+                    event.setCommitString(preedit_text)
+                    self.inputMethodEvent(event)
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        if input_method is not None:
+            # The canvas QNSView can retain marked text after Qt drops the
+            # final commit, so clear it after duplicate insertion is disabled.
+            _discard_macos_marked_text()
         self.refresh_cache_policy()
         self._sync_order_badge()
         if keep_focus:
