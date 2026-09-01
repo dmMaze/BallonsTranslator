@@ -1950,6 +1950,61 @@ QPlainTextEdit#LLMContextTextEdit:focus {
     border-top-color: rgb(30, 147, 229);
 }
 
+QToolButton#LLMContextBulkEditButton {
+    border: none;
+    border-radius: 4px;
+    background-color: transparent;
+}
+
+QToolButton#LLMContextBulkEditButton:hover,
+QToolButton#LLMContextBulkEditButton:pressed {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QWidget#BulkPageSummaryDialog[opaqueFrame="true"] {
+    background-color: @widgetBackgroundColor;
+}
+
+QWidget#BulkPageSummaryDialog[opaqueFrame="false"] {
+    background-color: transparent;
+}
+
+QFrame#BulkPageSummarySurface {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 12px;
+}
+
+QWidget#BulkPageSummaryDialog[nativeFrame="true"]
+QFrame#BulkPageSummarySurface {
+    border: none;
+    border-radius: 0px;
+}
+
+QWidget#BulkPageSummaryTitleBar,
+QLabel#BulkPageSummaryTitle {
+    background-color: transparent;
+}
+
+QLabel#BulkPageSummaryTitle {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QPlainTextEdit#BulkPageSummaryTextEdit {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    border: 1px solid @borderColor;
+    border-radius: 7px;
+    padding: 8px 8px 8px 0px;
+    selection-background-color: rgb(30, 147, 229);
+}
+
+QPlainTextEdit#BulkPageSummaryTextEdit:focus {
+    border-color: rgb(30, 147, 229);
+}
+
 QSplitter#LLMContextPanelSplitter::handle {
     background-color: transparent;
 }
@@ -1971,6 +2026,7 @@ QSplitter#ComicTransSplitter::handle:pressed {
 QListWidget#PageListArea {
     background-color: @emptyContentBackgroundColor;
     border-radius: 5px;
+    font-size: 13px;
 }
 
 QListWidget#PageListArea QWidget#qt_scrollarea_viewport {

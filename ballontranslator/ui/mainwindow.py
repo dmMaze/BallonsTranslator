@@ -297,6 +297,9 @@ class MainWindow(mainwindow_cls):
         # set up canvas
         SW.canvas = self.canvas = Canvas()
         self.canvas.imgtrans_proj = self.imgtrans_proj
+        self.llmContextEditor.set_summary_command_pusher(
+            self.canvas.push_text_command
+        )
         self.canvas.gv.hide_canvas.connect(self.onHideCanvas)
         self.canvas.proj_savestate_changed.connect(self.on_savestate_changed)
         self.canvas.textstack_changed.connect(self.on_textstack_changed)
@@ -464,6 +467,9 @@ class MainWindow(mainwindow_cls):
         )
         module_manager.module_selection_changed.connect(self.on_module_selection_changed)
         module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
+        module_manager.progress_msgbox.showed.connect(
+            self.llmContextEditor.close_bulk_summary_editor
+        )
         # Preparation and RUN dialogs share placement so the first RUN is stable.
         module_manager.prepare_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
         module_manager.blktrans_pipeline_finished.connect(self.on_blktrans_finished)
@@ -1998,7 +2004,12 @@ class MainWindow(mainwindow_cls):
 
         self.saveCurrentPage(False, False)
 
-    def on_savestate_changed(self, unsaved: bool):
+    def on_savestate_changed(self, unsaved: bool) -> None:
+        if not unsaved and self._llm_context_dirty:
+            # Canvas stack state and direct context edits are independent dirty
+            # sources; clearing one must not hide unsaved changes in the other.
+            self.canvas.setProjSaveState(True)
+            return
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')
         self.titleBar.setTitleContent(save_state=save_state)
 

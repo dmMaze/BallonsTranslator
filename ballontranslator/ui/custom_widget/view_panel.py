@@ -40,9 +40,18 @@ class ExpandLabel(Widget):
 
     clicked = Signal()
 
-    def __init__(self, text=None, parent=None, size_type='normal', *args, **kwargs):
+    def __init__(
+        self,
+        text=None,
+        parent=None,
+        size_type='normal',
+        show_hide_button: bool = True,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(parent=parent, *args, **kwargs)
         self.size_type = size_type
+        self._show_hide_button = show_hide_button
         self.textlabel = QLabel(self)
         self.textlabel.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.arrowlabel = QLabel(self)
@@ -85,7 +94,7 @@ class ExpandLabel(Widget):
         self.setExpand(True)
 
     def enterEvent(self, event) -> None:
-        self.hidelabel.setVisible(True)
+        self.hidelabel.setVisible(self._show_hide_button)
         return super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
@@ -229,10 +238,24 @@ class ViewWidget(Widget):
     view_hide_btn_clicked = Signal(str)
     expend_changed = Signal()
 
-    def __init__(self, content_widget: Widget, panel_name: str = None, parent=None, title_size_type='normal', *args, **kwargs):
+    def __init__(
+        self,
+        content_widget: Widget,
+        panel_name: str = None,
+        parent=None,
+        title_size_type='normal',
+        show_hide_button: bool = True,
+        *args,
+        **kwargs,
+    ) -> None:
         super().__init__(parent=parent, *args, **kwargs)
         
-        self.title_label = ExpandLabel(panel_name, self, size_type=title_size_type)
+        self.title_label = ExpandLabel(
+            panel_name,
+            self,
+            size_type=title_size_type,
+            show_hide_button=show_hide_button,
+        )
         self.title_label.hidelabel.clicked.connect(self.on_view_hide_btn_clicked)
         self.content_widget = content_widget
 
