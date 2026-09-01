@@ -309,11 +309,10 @@ class TextBlkItem(QGraphicsTextItem):
             self.input_method_from = -1
             self.input_method_removed = 0
             self.input_method_text = ''
-        # Preedit text and attributes live in QTextLayout, so they need an
-        # explicit surface invalidation even when the document revision does
-        # not change. The next paint is cached until another IME event.
+        # Preedit text and attributes live in QTextLayout, so they may not
+        # change the document revision or schedule an item repaint.
         self.geometry_controller.invalidate_surface_cache()
-        self._update_nonlinear_editing_ui()
+        self.update()
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         self._vertical_navigation_y = None
@@ -458,7 +457,7 @@ class TextBlkItem(QGraphicsTextItem):
             self._update_effect_padding()
             if self.repaint_on_changed:
                 if not self.repainting:
-                    self.repaint_background()
+                    self.effect_renderer.repaint_after_document_change()
             self.update()
 
     def repaint_background(self, render_scale: float = 1.0):

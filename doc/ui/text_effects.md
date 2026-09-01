@@ -110,6 +110,9 @@ and Eraser cannot alter editing feedback. Image layers are intentionally omitted
 during native horizontal and vertical text editing; ordinary Filters remain
 active. Editing visibility participates in cache identity so settled Image
 pixels cannot leak into the editing surface or vice versa.
+IME may reuse a completed effect surface only while its committed document and
+effect semantics still match. Otherwise editing temporarily uses native paint
+and rebuilds the effects once the composition settles.
 
 Interactive rendering may bypass an active missing optional raster, invalid
 Filter, or bounded allocation failure with a warning and compatible fallback.

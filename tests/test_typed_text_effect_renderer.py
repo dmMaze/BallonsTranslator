@@ -2089,6 +2089,104 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         ), 0)
         view.close()
 
+    def test_gradient_reuses_effect_cache_for_transient_preedit(self):
+        item = self._item(TextEffectStack(effects=(TextFillEffect(
+            paint=self._constant_gradient((0, 0, 255))
+        ),)))
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        view.show()
+        item.startEdit()
+        view.setFocus()
+        item.setFocus()
+        self.app.processEvents()
+        before = self._render(item)
+        renderer = item.effect_renderer
+        state = renderer._peek_raster_state()
+        cached_pixmap_key = state.background_pixmap.cacheKey()
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+
+        with patch.object(
+            renderer,
+            '_render_effect_surface',
+            wraps=renderer._render_effect_surface,
+        ) as render_surface:
+            item.inputMethodEvent(QInputMethodEvent('かな', []))
+            during = self._render(item)
+            item.inputMethodEvent(QInputMethodEvent('', []))
+            after = self._render(item)
+
+        self.assertEqual(render_surface.call_count, 0)
+        self.assertEqual(
+            state.background_pixmap.cacheKey(), cached_pixmap_key
+        )
+        self.assertEqual(
+            state.cache_input_key, renderer._effect_cache_input_key()
+        )
+        self.assertGreater(np.count_nonzero(
+            (before[..., 2] > 180) & (before[..., 3] > 0)
+        ), 0)
+        self.assertGreater(np.count_nonzero(
+            (during[..., 0] > 180)
+            & (during[..., 1] < 80)
+            & (during[..., 2] < 80)
+            & (during[..., 3] > 0)
+        ), 0)
+        self.assertGreater(np.count_nonzero(
+            (after[..., 2] > 180) & (after[..., 3] > 0)
+        ), 0)
+        view.close()
+
+    def test_gradient_preedit_replacement_hides_stale_effect_cache(self):
+        item = self._item(TextEffectStack(effects=(TextFillEffect(
+            paint=self._constant_gradient((0, 0, 255))
+        ),)))
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        view.show()
+        item.startEdit()
+        view.setFocus()
+        item.setFocus()
+        self.app.processEvents()
+        before = self._render(item)
+        renderer = item.effect_renderer
+        state = renderer._peek_raster_state()
+        cached_pixmap_key = state.background_pixmap.cacheKey()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+
+        with patch.object(
+            renderer,
+            '_draw_surface_pixmap',
+            wraps=renderer._draw_surface_pixmap,
+        ) as draw_surface:
+            item.inputMethodEvent(QInputMethodEvent('かな', []))
+            during = self._render(item)
+
+        before_blue = np.count_nonzero(
+            (before[..., 2] > 180) & (before[..., 3] > 0)
+        )
+        during_blue = np.count_nonzero(
+            (during[..., 2] > 180) & (during[..., 3] > 0)
+        )
+        self.assertGreater(before_blue, 0)
+        self.assertLess(during_blue, before_blue / 2)
+        self.assertGreater(np.count_nonzero(during[..., 3]), 0)
+        draw_surface.assert_not_called()
+        self.assertEqual(
+            item.document().firstBlock().layout().preeditAreaText(),
+            'かな',
+        )
+        self.assertEqual(
+            state.background_pixmap.cacheKey(), cached_pixmap_key
+        )
+        view.close()
+
     def test_deferred_cursor_is_visible_over_neutral_effect_surface(self):
         item = self._item(TextEffectStack(effects=(HollowEffect(),)))
         cursor_rect = QRectF(20, 20, 3, 18)

@@ -1691,6 +1691,35 @@ class TextTransformUndoTest(TextTransformTestBase):
             view.close()
             scene.removeItem(item)
 
+    def test_canvas_ime_preedit_requests_full_repaint(self) -> None:
+        class RecordingTextBlkItem(TextBlkItem):
+            def __init__(self, *args, **kwargs):
+                self.full_update_count = 0
+                super().__init__(*args, **kwargs)
+
+            def update(self, *args) -> None:
+                if not args:
+                    self.full_update_count += 1
+                super().update(*args)
+
+        block = TextBlock([0, 0, 92, 162])
+        block._bounding_rect = [0, 0, 92, 162]
+        block.translation = '테스트'
+        item = RecordingTextBlkItem(block, 0)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.full_update_count = 0
+
+        item.inputMethodEvent(QInputMethodEvent('테스트', []))
+
+        self.assertEqual(
+            item.document().firstBlock().layout().preeditAreaText(),
+            '테스트',
+        )
+        self.assertGreaterEqual(item.full_update_count, 1)
+
     def test_pair_editor_paste_shortcuts_at_document_start_stay_synced(self):
         shortcuts = (
             (Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier),
