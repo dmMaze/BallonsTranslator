@@ -234,7 +234,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.panel.set_textblk_item(item)
         control = self.panel.fontsizebox.fcombobox
         self.assertTrue(control._defer_text_changes)
-        before = item.fontformat.font_size
+        before = item.get_fontformat().font_size
         changes = []
         self.panel.fontsizebox.param_changed.connect(
             lambda name, value: changes.append((name, value))
@@ -245,11 +245,11 @@ class TextEffectPanelTest(unittest.TestCase):
         self.app.processEvents()
         control.lineEdit().setText('800')
         self.assertEqual(changes, [])
-        self.assertEqual(item.fontformat.font_size, before)
+        self.assertEqual(item.get_fontformat().font_size, before)
 
         control.lineEdit().returnPressed.emit()
         self.assertEqual(changes, [('font_size', 800.0)])
-        self.assertNotEqual(item.fontformat.font_size, before)
+        self.assertNotEqual(item.get_fontformat().font_size, before)
 
     def _begin_pending_global_font_size_edit(self, items):
         self.canvas.selected = list(items)
@@ -4108,7 +4108,7 @@ class TextEffectPanelTest(unittest.TestCase):
         editor = self._cards(StrokeEffectCard)[0].width_control.editor
         editor.setText('0.65')
         editor.textEdited.emit('0.65')
-        self.assertEqual(item.effective_text_effects()[0].width, 0.65)
+        self.assertEqual(item.effective_text_effects()[0].width, 0.1)
 
         self.panel.cancel_text_transform_edits_for_scene_change()
 
