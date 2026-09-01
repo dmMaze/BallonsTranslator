@@ -117,7 +117,7 @@ An oversized previous page is skipped rather than split.
 
 ## Page summaries and compact memory
 
-`Summary & Memory` is independent of `+history`. When enabled, saved summaries
+`Summary` is independent of `+history`. When enabled, saved summaries
 through the current page can guide translation even when their pages are
 incomplete or history is disabled.
 

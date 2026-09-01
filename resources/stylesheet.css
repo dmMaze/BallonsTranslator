@@ -1094,6 +1094,13 @@ QLabel#RunPipelineSettingLabel {
     font-size: 12px;
 }
 
+QLabel#RunPipelineSubsectionHeader {
+    color: @qwidgetForegroundColor;
+    background-color: @widgetBackgroundColor;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 QRadioButton#RunPipelineOCRTextPostprocessOption {
     color: @qwidgetForegroundColor;
     background-color: transparent;
@@ -1195,7 +1202,12 @@ QWidget#RunPipelineSettingsSection QPushButton#RunPipelineGlossaryFileButton:hov
 }
 
 QWidget#RunPipelineSettingsSection QCheckBox {
-    font-size: 13px;
+    font-size: 12px;
+}
+
+QWidget#RunPipelineSettingsSection QCheckBox::indicator {
+    width: 12px;
+    height: 12px;
 }
 
 QSpinBox#RunPipelineRangeStart,
@@ -1899,48 +1911,60 @@ QCheckBox#GlobalSearchChecker::indicator:checked
     image: url(resources/icons/search_activate.svg);
 }
 
-QWidget#LLMContextEditor {
-    background-color: @emptyContentBackgroundColor;
+QSplitter#LLMContextPanelSplitter {
+    background-color: @widgetBackgroundColor;
     border: none;
     border-radius: 5px;
 }
 
 QWidget#LLMContextView {
-    background-color: @widgetBackgroundColor;
-    border: 1px solid @borderColor;
+    background-color: @emptyContentBackgroundColor;
+    border: none;
     border-radius: 5px;
 }
 
-QWidget#LLMContextView .ExpandLabel,
-QWidget#LLMContextView .ExpandLabel QLabel {
+QWidget#LLMContextView .ExpandLabel {
     background-color: @widgetBackgroundColor;
     border: none;
-    border-radius: 4px;
+    border-radius: 0;
+}
+
+QWidget#LLMContextView .ExpandLabel QLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#LLMContextView .ExpandLabel:hover {
+    background-color: rgba(30, 147, 229, 20%);
 }
 
 QPlainTextEdit#LLMContextTextEdit {
-    background-color: @widgetBackgroundColor;
+    background-color: @emptyContentBackgroundColor;
     border: none;
-    border-top: 1px solid @borderColor;
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
+    border-top: 1px solid transparent;
+    border-radius: 5px;
     padding: 8px;
 }
 
 QPlainTextEdit#LLMContextTextEdit:focus {
-    border-top: 1px solid rgb(30, 147, 229);
+    border-top-color: rgb(30, 147, 229);
 }
 
-QSplitter#LLMContextVerticalSplitter::handle,
 QSplitter#LLMContextPanelSplitter::handle {
-    height: 8px;
-    background-color: @widgetBackgroundColor;
+    background-color: transparent;
 }
 
-QSplitter#LLMContextVerticalSplitter::handle:hover,
-QSplitter#LLMContextVerticalSplitter::handle:pressed,
 QSplitter#LLMContextPanelSplitter::handle:hover,
 QSplitter#LLMContextPanelSplitter::handle:pressed {
+    background-color: rgb(30, 147, 229);
+}
+
+QSplitter#ComicTransSplitter::handle {
+    background-color: transparent;
+}
+
+QSplitter#ComicTransSplitter::handle:hover,
+QSplitter#ComicTransSplitter::handle:pressed {
     background-color: rgb(30, 147, 229);
 }
 

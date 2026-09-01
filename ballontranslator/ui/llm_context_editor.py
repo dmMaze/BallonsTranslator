@@ -4,12 +4,13 @@ from qtpy.QtCore import QSignalBlocker, Qt, Signal
 from qtpy.QtWidgets import (
     QLabel,
     QPlainTextEdit,
+    QSizePolicy,
     QSplitter,
-    QVBoxLayout,
     QWIDGETSIZE_MAX,
     QWidget,
 )
 
+from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.ui.custom_widget import ScrollBar, ViewWidget
 
@@ -22,18 +23,23 @@ class _ContextView(ViewWidget):
         content_widget: QWidget,
         panel_name: str,
         parent: Optional[QWidget] = None,
+        show_detail: bool = False,
     ) -> None:
         super().__init__(content_widget, panel_name, parent)
-        # Keep the card border visible around children that fill the view.
-        self.layout().setContentsMargins(1, 1, 1, 1)
-        self.detail_label = QLabel(self.title_label)
-        self.detail_label.setObjectName('LLMContextEditorDetail')
-        self.detail_label.setFont(self.title_label.textlabel.font())
-        title_layout = self.title_label.layout()
-        title_layout.insertWidget(
-            title_layout.count() - 1,
-            self.detail_label,
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
         )
+        self.detail_label: Optional[QLabel] = None
+        if show_detail:
+            self.detail_label = QLabel(self.title_label)
+            self.detail_label.setObjectName('LLMContextEditorDetail')
+            self.detail_label.setFont(self.title_label.textlabel.font())
+            title_layout = self.title_label.layout()
+            title_layout.insertWidget(
+                title_layout.count() - 1,
+                self.detail_label,
+            )
 
     def set_expend_area(
         self,
@@ -43,14 +49,16 @@ class _ContextView(ViewWidget):
         if expend is None:
             expend = self.title_label.expanded
         super().set_expend_area(expend, set_config)
-        self.setMaximumHeight(
-            QWIDGETSIZE_MAX if expend else self.sizeHint().height()
-        )
+        if expend:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(QWIDGETSIZE_MAX)
+        else:
+            self.setFixedHeight(self.title_label.height())
         self.expend_changed.emit()
 
 
-class LLMContextEditor(QWidget):
-    """Edit the current page summary and project memory in one split pane.
+class LLMContextEditor(QSplitter):
+    """Place page context and its two editors in one split pane.
 
     Writes update project-owned state only; the window decides when to save the
     project file.
@@ -63,13 +71,20 @@ class LLMContextEditor(QWidget):
 
     def __init__(
         self,
+        page_widget: QWidget,
         project: Optional[ProjImgTrans] = None,
         parent: Optional[QWidget] = None,
     ) -> None:
-        super().__init__(parent)
-        self.setObjectName('LLMContextEditor')
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        super().__init__(Qt.Orientation.Vertical, parent)
+        self.setObjectName('LLMContextPanelSplitter')
+        self.setChildrenCollapsible(False)
+        self.setHandleWidth(1)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         self.setMinimumWidth(300)
+        self._page_widget = page_widget
         self._project = project
         self._page_key = project.current_img if project is not None else None
 
@@ -84,50 +99,51 @@ class LLMContextEditor(QWidget):
 
         self.summary_view = _ContextView(
             self.summary_editor,
-            self.tr('Summary'),
+            self.tr('Page Summary'),
             self,
         )
         self.summary_view.setObjectName('LLMContextView')
         self.memory_view = _ContextView(
             self.memory_editor,
-            self.tr('Compact Memory'),
+            self.tr('Memory'),
             self,
+            show_detail=True,
         )
         self.memory_view.setObjectName('LLMContextView')
+        self.memory_detail_label = self.memory_view.detail_label
+        assert self.memory_detail_label is not None
 
-        self.editor_splitter = QSplitter(Qt.Orientation.Vertical, self)
-        self.editor_splitter.setObjectName('LLMContextVerticalSplitter')
-        self.editor_splitter.setChildrenCollapsible(False)
-        self.editor_splitter.addWidget(self.summary_view)
-        self.editor_splitter.addWidget(self.memory_view)
-        self.editor_splitter.setStretchFactor(0, 1)
-        self.editor_splitter.setStretchFactor(1, 1)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self.editor_splitter)
+        page_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.addWidget(page_widget)
+        self.addWidget(self.summary_view)
+        self.addWidget(self.memory_view)
+        self.setStretchFactor(0, 1)
+        self.setStretchFactor(1, 0)
+        self.setStretchFactor(2, 0)
 
         self.summary_view.expend_changed.connect(
-            self._sync_expanded_height
+            self._redistribute_view_space
         )
         self.memory_view.expend_changed.connect(
-            self._sync_expanded_height
+            self._redistribute_view_space
         )
         self.summary_editor.textChanged.connect(self._on_summary_changed)
         self.memory_editor.textChanged.connect(self._on_memory_changed)
-        self.refresh()
+        self.refresh_context()
 
     def register_views(self) -> None:
         self.summary_view.register_view_widget(
             config_name='show_llm_page_summary',
             config_expand_name='expand_llm_page_summary',
-            action_name=self.tr('Summary'),
+            action_name=self.tr('Page Summary'),
         )
         self.memory_view.register_view_widget(
             config_name='show_llm_compact_memory',
             config_expand_name='expand_llm_compact_memory',
-            action_name=self.tr('Compact Memory'),
+            action_name=self.tr('Memory'),
         )
 
     def _create_editor(self, placeholder: str) -> QPlainTextEdit:
@@ -136,35 +152,52 @@ class LLMContextEditor(QWidget):
         editor.setPlaceholderText(placeholder)
         editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         editor.setTabChangesFocus(True)
+        editor.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         ScrollBar(Qt.Orientation.Vertical, editor)
         return editor
 
-    def sync_view_visibility(self) -> None:
-        """Hide the editor area when both View-menu entries are hidden."""
-        has_visible_view = any(
-            not view.isHidden()
-            for view in (self.summary_view, self.memory_view)
+    def set_context_visible(self, visible: bool) -> None:
+        self.summary_view.setVisible(
+            visible and pcfg.show_llm_page_summary
         )
-        self.setVisible(has_visible_view)
-        self._sync_expanded_height()
+        self.memory_view.setVisible(
+            visible and pcfg.show_llm_compact_memory
+        )
 
-    def _sync_expanded_height(self) -> None:
-        has_expanded_view = any(
-            not view.isHidden() and view.title_label.expanded
-            for view in (self.summary_view, self.memory_view)
+    def _redistribute_view_space(self) -> None:
+        """Give folded editor space to the page list and reclaim it on reopen."""
+        view = self.sender()
+        if not isinstance(view, _ContextView):
+            return
+        sizes = self.sizes()
+        view_index = self.indexOf(view)
+        if view_index < 1 or len(sizes) != self.count():
+            return
+
+        current_height = sizes[view_index]
+        target_height = (
+            view.sizeHint().height()
+            if view.title_label.expanded
+            else view.title_label.height()
         )
-        minimum_height = self.editor_splitter.minimumSizeHint().height()
-        if has_expanded_view:
-            self.setMaximumHeight(QWIDGETSIZE_MAX)
-            self.setMinimumHeight(minimum_height)
-        else:
-            self.setMinimumHeight(minimum_height)
-            self.setMaximumHeight(minimum_height)
+        delta = target_height - current_height
+        if delta > 0:
+            page_minimum = self._page_widget.minimumSizeHint().height()
+            delta = min(
+                delta,
+                max(0, sizes[0] - page_minimum),
+            )
+        sizes[0] -= delta
+        sizes[view_index] += delta
+        self.setSizes(sizes)
 
     def set_project(self, project: Optional[ProjImgTrans]) -> None:
         self._project = project
         self._page_key = project.current_img if project is not None else None
-        self.refresh()
+        self.refresh_context()
 
     def set_page(self, page_key: Optional[str]) -> None:
         normalized_page_key = (
@@ -173,7 +206,7 @@ class LLMContextEditor(QWidget):
         if normalized_page_key == self._page_key:
             return
         self._page_key = normalized_page_key
-        self.refresh()
+        self.refresh_context()
 
     @staticmethod
     def _replace_text(editor: QPlainTextEdit, text: str) -> None:
@@ -183,7 +216,7 @@ class LLMContextEditor(QWidget):
         editor.setPlainText(text)
         del blocker
 
-    def refresh(self) -> None:
+    def refresh_context(self) -> None:
         project = self._project
         has_project = bool(project is not None and project.directory)
         page_key = self._page_key
@@ -200,9 +233,6 @@ class LLMContextEditor(QWidget):
                 summary_text = str(summary_record['text'])
         self._replace_text(self.summary_editor, summary_text)
         self.summary_editor.setEnabled(has_page)
-        self.summary_view.detail_label.setText(
-            page_key if has_page else self.tr('No page selected')
-        )
 
         memory_text = ''
         covered_count = 0
@@ -215,11 +245,11 @@ class LLMContextEditor(QWidget):
         self.memory_editor.setEnabled(has_project)
         if has_project:
             memory_detail = self.tr(
-                'All pages · {count} covered'
+                '{count} covered'
             ).format(count=covered_count)
         else:
             memory_detail = self.tr('No project open')
-        self.memory_view.detail_label.setText(memory_detail)
+        self.memory_detail_label.setText(memory_detail)
 
     def _on_summary_changed(self) -> None:
         project = self._project
@@ -245,8 +275,8 @@ class LLMContextEditor(QWidget):
         )
         record = project.get_llm_compact_memory()
         covered_count = len(record['covered_pages']) if record else 0
-        self.memory_view.detail_label.setText(
-            self.tr('All pages · {count} covered').format(
+        self.memory_detail_label.setText(
+            self.tr('{count} covered').format(
                 count=covered_count
             )
         )

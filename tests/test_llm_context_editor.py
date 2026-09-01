@@ -5,7 +5,7 @@ from unittest.mock import Mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QWidget
 
 from ballontranslator.ui.llm_context_editor import LLMContextEditor
 from ballontranslator.ui.mainwindow import MainWindow
@@ -31,7 +31,7 @@ class LLMContextEditorTest(unittest.TestCase):
 
     def test_editors_write_project_owned_text_and_follow_the_page(self):
         project = self._project()
-        panel = LLMContextEditor(project)
+        panel = LLMContextEditor(QWidget(), project)
 
         panel.summary_editor.setPlainText('Page one.\nUser note.')
         panel.memory_editor.setPlainText('Shared memory.')
@@ -52,7 +52,7 @@ class LLMContextEditorTest(unittest.TestCase):
         panel.deleteLater()
 
     def test_empty_project_disables_both_editors(self):
-        panel = LLMContextEditor(ProjImgTrans())
+        panel = LLMContextEditor(QWidget(), ProjImgTrans())
 
         self.assertFalse(panel.summary_editor.isEnabled())
         self.assertFalse(panel.memory_editor.isEnabled())

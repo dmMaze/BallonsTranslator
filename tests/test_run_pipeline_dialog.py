@@ -726,11 +726,11 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
 
         self.assertFalse(dialog.llm_overwrite_summary_checkbox.isChecked())
-        self.assertFalse(dialog.llm_overwrite_summary_checkbox.isEnabled())
+        self.assertTrue(dialog.llm_features_row.isHidden())
 
         dialog.llm_summary_memory_checkbox.setChecked(True)
         self.assertTrue(pcfg.module.llm_translate_summary_memory)
-        self.assertTrue(dialog.llm_overwrite_summary_checkbox.isEnabled())
+        self.assertFalse(dialog.llm_features_row.isHidden())
         dialog.llm_overwrite_summary_checkbox.setChecked(True)
         self.assertTrue(pcfg.module.llm_translate_overwrite_summary)
 
@@ -741,7 +741,7 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         dialog.llm_summary_memory_checkbox.setChecked(False)
         self.assertFalse(pcfg.module.llm_translate_summary_memory)
-        self.assertFalse(dialog.llm_overwrite_summary_checkbox.isEnabled())
+        self.assertTrue(dialog.llm_features_row.isHidden())
         self.assertTrue(pcfg.module.llm_translate_overwrite_summary)
         dialog.close()
 
@@ -1489,7 +1489,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
-            llmContextEditor=SimpleNamespace(refresh=Mock()),
+            llmContextEditor=SimpleNamespace(refresh_context=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=True,
@@ -1583,7 +1583,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
-            llmContextEditor=SimpleNamespace(refresh=Mock()),
+            llmContextEditor=SimpleNamespace(refresh_context=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=False,
@@ -1834,7 +1834,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
-            llmContextEditor=SimpleNamespace(refresh=Mock()),
+            llmContextEditor=SimpleNamespace(refresh_context=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=False,
@@ -1927,7 +1927,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         )
         owner = SimpleNamespace(
             imgtrans_proj=project,
-            llmContextEditor=SimpleNamespace(refresh=Mock()),
+            llmContextEditor=SimpleNamespace(refresh_context=Mock()),
             backup_blkstyles=[],
             _run_imgtrans_wo_textstyle_update=False,
             _render_only=False,

@@ -268,26 +268,15 @@ class MainWindow(mainwindow_cls):
         self.leftStackWidget.addWidget(self.global_search_widget)
 
         self.llmContextEditor = LLMContextEditor(
-            self.imgtrans_proj,
-            self,
+            project=self.imgtrans_proj,
+            page_widget=self.leftStackWidget,
+            parent=self,
         )
         self.llmContextEditor.register_views()
         self.llmContextEditor.project_changed.connect(
             self.on_llm_context_project_changed
         )
         self.llmContextEditor.hide()
-
-        self.leftContextSplitter = QSplitter(
-            Qt.Orientation.Vertical,
-            self,
-        )
-        self.leftContextSplitter.setObjectName('LLMContextPanelSplitter')
-        self.leftContextSplitter.setChildrenCollapsible(False)
-        self.leftContextSplitter.addWidget(self.leftStackWidget)
-        self.leftContextSplitter.addWidget(self.llmContextEditor)
-        self.leftContextSplitter.setStretchFactor(0, 1)
-        self.leftContextSplitter.setStretchFactor(1, 1)
-        self.leftContextSplitter.hide()
         
         self.centralStackWidget = QStackedWidget(self)
         
@@ -356,7 +345,9 @@ class MainWindow(mainwindow_cls):
         self.rightComicTransStackPanel.currentChanged.connect(self.on_transpanel_changed)
 
         self.comicTransSplitter = QSplitter(Qt.Orientation.Horizontal)
-        self.comicTransSplitter.addWidget(self.leftContextSplitter)
+        self.comicTransSplitter.setObjectName('ComicTransSplitter')
+        self.comicTransSplitter.setHandleWidth(5)
+        self.comicTransSplitter.addWidget(self.llmContextEditor)
         self.comicTransSplitter.addWidget(self.canvas.gv)
         self.comicTransSplitter.addWidget(self.rightComicTransStackPanel)
 
@@ -820,17 +811,16 @@ class MainWindow(mainwindow_cls):
         content: Optional[QWidget],
     ) -> None:
         if content is None:
-            self.leftContextSplitter.hide()
+            self.llmContextEditor.hide()
             return
         self.leftStackWidget.setCurrentWidget(content)
         self._sync_llm_context_editor_visibility()
-        self.leftContextSplitter.show()
+        self.llmContextEditor.show()
 
     def _sync_llm_context_editor_visibility(self) -> None:
-        if self.leftStackWidget.currentWidget() is self.pageList:
-            self.llmContextEditor.sync_view_visibility()
-        else:
-            self.llmContextEditor.hide()
+        self.llmContextEditor.set_context_visible(
+            self.leftStackWidget.currentWidget() is self.pageList
+        )
 
     def pageLabelStateChanged(self) -> None:
         setup = self.leftBar.showPageListLabel.isChecked()
@@ -2000,7 +1990,7 @@ class MainWindow(mainwindow_cls):
         if page_index + 1 == self.imgtrans_proj.num_pages:
             self.st_manager.auto_textlayout_flag = False
 
-        self.llmContextEditor.refresh()
+        self.llmContextEditor.refresh_context()
 
         # save proj file on page trans finished
         self.imgtrans_proj.save()
