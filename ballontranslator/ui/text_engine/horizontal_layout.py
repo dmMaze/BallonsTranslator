@@ -112,30 +112,63 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         block: QTextBlock,
         line: QTextLine,
     ) -> Tuple[int, List[Tuple[int, float]]]:
-        """Return the suffix start and whole spaces Qt cannot fit.
+        """Return the content end and trailing spaces that need relocation.
 
         Qt preserves the positions of hanging spaces but clamps their cursor
-        advances to the line edge. We independently fit complete U+0020 cells;
-        visible text and every other Unicode separator retain Qt semantics.
+        advances to the line edge. Normal single U+0020 soft-wrap separators
+        keep Qt's native geometry. Overflowing multiple or terminal U+0020
+        spaces receive derived continuation-row geometry.
 
         >>> callable(HorizontalTextDocumentLayout._trailing_space_layout)
         True
         """
         text = block.text()
         line_start = line.textStart()
-        if line_start + line.textLength() > _utf16_length(text):
-            # IME preedit text has layout positions but no document format or
-            # stable persistence position until it is committed.
-            return line_start + line.textLength(), []
-        line_text = _utf16_slice(text, line_start, line.textLength())
+        line_length = line.textLength()
+        line_end = line_start + line_length
+
+        text_layout = block.layout()
+        preedit_text = text_layout.preeditAreaText()
+        preedit_start = text_layout.preeditAreaPosition()
+
+        # A line extending past preedit_start can contain transient UTF-16
+        # units absent from the committed block text and format tables.
+        # Equality is safe: that line ends immediately before the insertion.
+        if preedit_text and line_end > preedit_start:
+            return line_end, []
+
+        # Keep a final safety net for transient layout positions even when
+        # the binding does not expose matching preedit metadata.
+        if line_end > _utf16_length(text):
+            return line_end, []
+
+        line_text = _utf16_slice(text, line_start, line_length)
         suffix_length = len(line_text) - len(line_text.rstrip(' '))
         if suffix_length == 0 or self.available_width <= 0:
-            return line_start + line.textLength(), []
+            return line_end, []
 
-        suffix_start = (
-            line_start
-            + _utf16_length(line_text[:-suffix_length])
+        line_content = line_text[:-suffix_length]
+        suffix_start = line_start + _utf16_length(line_content)
+        # At an exact insertion boundary, preedit is visually next even
+        # though it has not been committed to block.text().
+        next_character = (
+            _utf16_slice(preedit_text, 0, 1)
+            if preedit_text and line_end == preedit_start
+            else _utf16_slice(text, line_end, 1)
         )
+        if (
+            suffix_length == 1
+            and bool(line_content)
+            and not line_content[-1].isspace()
+            and bool(next_character)
+            and not next_character.isspace()
+        ):
+            # This is a normal word separator retained by Qt at a soft wrap,
+            # not overflowing trailing whitespace that needs relocation.
+            # An inherited synthetic row can still merge into this line;
+            # suffix_start keeps the hanging separator out of its width.
+            return suffix_start, []
+
         cursor_left, cursor_right = self._cursor_span(
             line, line_start, suffix_start
         )
@@ -168,18 +201,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if not spaces:
             return suffix_start, []
 
-        alignment = block.layout().textOption().alignment()
-        line_end = line_start + line.textLength()
-        next_character = _utf16_slice(text, line_end, 1)
-        # Keep a single U+0020 soft-wrap separator editable, but do not let
-        # the part of its advance excluded from naturalTextWidth() shift the
-        # line content Qt has already centered.
-        centered_soft_wrap_separator = (
-            suffix_length == 1
-            and bool(next_character)
-            and not next_character.isspace()
-            and bool(alignment & Qt.AlignmentFlag.AlignHCenter)
-        )
+        alignment = text_layout.textOption().alignment()
 
         # Qt sometimes includes fitting terminal spaces in naturalTextWidth(),
         # but excludes the identical suffix when another word follows. Shift
@@ -189,10 +211,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             max(0.0, line.naturalTextWidth() - base_advance),
         )
         extra_aligned_width = max(0.0, fitted_width - native_space_width)
-        if (
-            extra_aligned_width > 1e-6
-            and not centered_soft_wrap_separator
-        ):
+        if extra_aligned_width > 1e-6:
             position = line.position()
             position.setX(
                 position.x()
