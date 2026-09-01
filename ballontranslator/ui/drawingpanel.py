@@ -3,6 +3,7 @@ from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox
 from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
 from typing import Union, Tuple, List
+from math import log
 import numpy as np
 import cv2
 
@@ -27,10 +28,29 @@ MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
 
 
+class _BrushThicknessSlider(PaintQSlider):
+    """Keep exact pixel values while spacing brush sizes logarithmically."""
+
+    def _value_to_position_ratio(self) -> float:
+        minimum = self.minimum()
+        maximum = self.maximum()
+        if minimum < 1 or maximum <= minimum:
+            return super()._value_to_position_ratio()
+        return log(self.value() / minimum) / log(maximum / minimum)
+
+    def _position_ratio_to_value(self, ratio: float) -> int:
+        minimum = self.minimum()
+        maximum = self.maximum()
+        if minimum < 1 or maximum <= minimum:
+            return super()._position_ratio_to_value(ratio)
+        ratio = min(max(ratio, 0.0), 1.0)
+        return round(minimum * (maximum / minimum) ** ratio)
+
+
 def _create_thickness_control(
     parent: Widget,
-) -> tuple[PaintQSlider, QSpinBox, QHBoxLayout]:
-    slider = PaintQSlider(parent=parent)
+) -> tuple[_BrushThicknessSlider, QSpinBox, QHBoxLayout]:
+    slider = _BrushThicknessSlider(parent=parent)
     slider.setRange(MIN_PEN_SIZE, MAX_PEN_SIZE)
     slider.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
     slider.show_hover_value = False

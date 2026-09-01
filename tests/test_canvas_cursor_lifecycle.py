@@ -4,7 +4,7 @@ import unittest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QPoint, QPointF, QRectF, Qt
 from qtpy.QtGui import QCursor
 from qtpy.QtWidgets import (
     QApplication,
@@ -243,6 +243,38 @@ class CanvasCursorLifecycleTest(unittest.TestCase):
                 int(original_inpaint_width)
             )
             self.panel.on_use_pentool()
+
+    def test_brush_thickness_slider_uses_logarithmic_track(self) -> None:
+        slider = self.panel.penConfigPanel.thicknessSlider
+        original_pen_width = self.panel.pentool_pen.widthF()
+        try:
+            slider.setFocus()
+            midpoint = QPoint(
+                slider.handle.width() // 2 + slider.grooveLength // 2,
+                slider.height() // 2,
+            )
+            QTest.mouseClick(
+                slider,
+                Qt.MouseButton.LeftButton,
+                pos=midpoint,
+            )
+            _APP.processEvents()
+
+            self.assertIn(slider.value(), range(30, 34))
+            self.assertEqual(
+                self.panel.penConfigPanel.thicknessSpinBox.value(),
+                slider.value(),
+            )
+            self.assertEqual(
+                self.panel.pentool_pen.widthF(), slider.value()
+            )
+
+            slider.setValue(100)
+            self.assertGreater(slider.handle.x(), slider.grooveLength // 2)
+        finally:
+            slider.clearFocus()
+            self.panel.setPenToolWidth(original_pen_width)
+            slider.setValue(int(original_pen_width))
 
     def test_native_and_item_cursors_return_after_canvas_cursor_release(self) -> None:
         self.panel.on_use_handtool()
