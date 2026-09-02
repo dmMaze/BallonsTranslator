@@ -1089,7 +1089,7 @@ class MainWindow(mainwindow_cls):
 
     def shortcutBold(self):
         if self.textPanel.formatpanel.isVisible():
-            self.textPanel.formatpanel.toggle_bold()
+            self.textPanel.formatpanel.formatBtnGroup.boldBtn.click()
 
     def shortcutDelete(self):
         if self.canvas.gv.isVisible():

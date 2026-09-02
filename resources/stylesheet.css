@@ -1507,7 +1507,8 @@ QFontChecker#FontUnderlineChecker::indicator:checked {
     image: url(resources/icons/fontfmt_underline_activate.svg);
 }
 
-QToolButton#FontEmphasisToolButton {
+QToolButton#FontEmphasisToolButton,
+QToolButton#FontBoldToolButton {
     min-width: 39px;
     max-width: 39px;
     min-height: 26px;
@@ -1518,14 +1519,30 @@ QToolButton#FontEmphasisToolButton {
     background-color: transparent;
 }
 
-QToolButton#FontEmphasisToolButton::menu-button {
+QToolButton#FontEmphasisToolButton::menu-button,
+QToolButton#FontBoldToolButton::menu-button {
     width: 11px;
     border: none;
     background-color: transparent;
 }
 
-QToolButton#FontEmphasisToolButton::menu-arrow {
+QToolButton#FontEmphasisToolButton::menu-arrow,
+QToolButton#FontBoldToolButton::menu-arrow {
     image: none;
+}
+
+QWidget#SyntheticBoldEditor,
+QWidget#SyntheticBoldEditor QLabel,
+QWidget#SyntheticBoldEditor QCheckBox,
+QWidget#SyntheticBoldEditor QComboBox,
+QWidget#SyntheticBoldEditor QLineEdit {
+    font-size: 10px;
+}
+
+QComboBox#SyntheticBoldOffsetBox {
+    min-height: 20px;
+    max-height: 20px;
+    padding: 0px 3px;
 }
 
 QFontChecker#FontVerticalChecker::indicator {

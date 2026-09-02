@@ -60,6 +60,11 @@ values only at the Qt/HTML boundary. Pass saved or UI-provided family names
 through `qfont_with_family()` so Qt-unsafe names can use runtime aliases without
 changing persisted names.
 
+Synthetic bold remains a `FontFormat` property rather than an effect card. It
+expands the canonical glyph contour on the requested X/Y axes before Stroke,
+Shadow, Glow, Filter, mask, and transform processing, without changing layout
+metrics or the selected font face.
+
 ## Rich text and CSS extensions
 
 This layer extends `QTextDocument` rich text; it is not Qt Style Sheets (QSS)

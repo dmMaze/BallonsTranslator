@@ -715,6 +715,9 @@ class FontFormat(Config):
     # weight from an explicitly saved Normal value. __post_init__ canonicalizes
     # every live instance to FontWeight.
     font_weight: FontWeight = None
+    synthetic_bold: bool = False
+    # Outward X/Y contour expansion as fractions of the current font size.
+    synthetic_bold_offset: Union[float, List] = 0.01
     line_spacing: float = 1.2
     letter_spacing: float = 1.15
     ligature_common: str = 'default'
@@ -861,6 +864,36 @@ class FontFormat(Config):
                 setattr(self, name, 'default')
 
         self.font_weight = coerce_font_weight(self.font_weight)
+        if not isinstance(self.synthetic_bold, bool):
+            LOGGER.warning(
+                'Ignoring invalid synthetic bold state (%r); using disabled.',
+                self.synthetic_bold,
+            )
+            self.synthetic_bold = False
+        raw_offsets = self.synthetic_bold_offset
+        if isinstance(raw_offsets, (int, float)):
+            raw_offsets = (raw_offsets, raw_offsets)
+        elif not (
+            isinstance(raw_offsets, (list, tuple))
+            and len(raw_offsets) == 2
+        ):
+            LOGGER.warning(
+                'Ignoring invalid synthetic bold offset (%r); using 1%%.',
+                raw_offsets,
+            )
+            raw_offsets = (0.01, 0.01)
+        offsets = []
+        for value in raw_offsets:
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                LOGGER.warning(
+                    'Ignoring invalid synthetic bold offset (%r); using 0.',
+                    value,
+                )
+                value = 0.0
+            offsets.append(min(max(value, 0.0), 0.2))
+        self.synthetic_bold_offset = offsets
         if not isinstance(self.text_transform, TextTransformStack):
             if isinstance(self.text_transform, (list, tuple)):
                 transforms = []
@@ -908,6 +941,11 @@ class FontFormat(Config):
         """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
         serialized.pop('deprecated_attributes', None)
+        x_bold, y_bold = self.synthetic_bold_offset
+        serialized['synthetic_bold_offset'] = (
+            x_bold if math.isclose(x_bold, y_bold, abs_tol=1e-12)
+            else [x_bold, y_bold]
+        )
         serialized['font_weight'] = int(FontWeight(self.font_weight))
         serialized['text_transform'] = [
             asdict(transform) for transform in self.text_transform
