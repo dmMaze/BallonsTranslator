@@ -1,4 +1,5 @@
 import hashlib
+import math
 import os
 import shutil
 import tempfile
@@ -48,12 +49,14 @@ from ballontranslator.ui.text_engine.effects.blend import (
     CUSTOM_BLEND_MODES,
     composite_custom_blend_rgba,
 )
+from ballontranslator.ui.text_engine.rendering.morphology import (
+    EXACT_DILATE_RADIUS,
+    dilate_alpha_disc,
+)
 from ballontranslator.ui.text_engine.effects.shadow import (
     EXACT_BLUR_RADIUS,
-    EXACT_DILATE_RADIUS,
     _blur,
     _blur_sigma,
-    _dilate,
     render_glow_alpha,
     render_shadow_alpha,
 )
@@ -277,7 +280,7 @@ class TypedShadowRasterTest(unittest.TestCase):
                 cv2.MORPH_ELLIPSE, (diameter, diameter)
             ),
         )
-        grown = _dilate(mask, radius)
+        grown = dilate_alpha_disc(mask, radius)
         # Only the antialiased boundary may differ, so compare the covered
         # area rather than the ramp across it.
         disagreement = np.count_nonzero((grown >= 128) ^ (reference >= 128))
@@ -288,6 +291,22 @@ class TypedShadowRasterTest(unittest.TestCase):
 
         self.assertLess(disagreement, perimeter)
         self.assertEqual(np.count_nonzero(grown[mask == 255] != 255), 0)
+
+    def test_large_dilation_tracks_the_ideal_disc_area(self):
+        """A point grows into the disc the radius names, at any radius."""
+        for radius in (EXACT_DILATE_RADIUS * 4, EXACT_DILATE_RADIUS * 16):
+            with self.subTest(radius=radius):
+                point = np.zeros(
+                    (2 * radius + 40, 2 * radius + 40), np.uint8
+                )
+                point[radius + 20, radius + 20] = 255
+
+                covered = np.count_nonzero(
+                    dilate_alpha_disc(point, radius) >= 128
+                )
+
+                ideal = math.pi * radius * radius
+                self.assertLess(abs(covered - ideal) / ideal, 0.01)
 
     def test_large_dilation_of_a_blurred_source_stays_within_a_step(self):
         radius = EXACT_DILATE_RADIUS * 3
@@ -303,7 +322,7 @@ class TypedShadowRasterTest(unittest.TestCase):
             ),
         )
         deviation = np.abs(
-            _dilate(
+            dilate_alpha_disc(
                 source, radius, _blur_sigma(blur_radius)
             ).astype(np.int16)
             - reference.astype(np.int16)

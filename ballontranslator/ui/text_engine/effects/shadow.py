@@ -5,27 +5,20 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 
+from ..rendering.morphology import dilate_alpha_disc
 
-# Both operators below are radius limited rather than area limited. OpenCV
-# blurs separably, so its Gaussian costs O(radius) per pixel, and it can only
-# decompose rectangular structuring elements, so an elliptical dilation costs
-# O(radius^2) per pixel. Effect radii are a fraction of the font size, so a
-# 200px font already reaches a 2000px radius at the slider limit and the exact
-# kernels stall the UI for minutes. Past the thresholds here each operator
-# switches to a formulation that carries the same geometry for a linear cost.
+
+# Blur is radius limited rather than area limited: OpenCV blurs separably, so
+# its Gaussian costs O(radius) per pixel. Effect radii are a fraction of the
+# font size, so a 200px font already reaches a 2000px radius at the slider
+# limit and the exact kernel stalls the UI for minutes. Past the threshold
+# here the blur carries the same geometry for a linear cost, and dilation does
+# the same through the shared alpha morphology.
 EXACT_BLUR_RADIUS = 24
-EXACT_DILATE_RADIUS = 16
-# Sigma and radius retained inside a reduced-resolution buffer. Both are far
-# above the point where a kernel is cheap, so the buffer stays small without
-# the resampling itself becoming the bottleneck.
+# Deviation retained inside a reduced-resolution buffer, far above the point
+# where the kernel is cheap so the buffer stays small without the resampling
+# itself becoming the bottleneck.
 COARSE_BLUR_SIGMA = 12.0
-COARSE_DILATE_RADIUS = 16.0
-# A source blurred by less than this behaves as a hard coverage edge, which is
-# what the distance field reproduces.
-HARD_EDGE_SIGMA = 2.0
-# OpenCV's discrete ellipse covers marginally more than the disc of the same
-# radius. Biasing the distance field by this much matches the two footprints.
-DISC_EDGE_BIAS = 0.75
 
 
 def _blur_sigma(radius: int) -> float:
@@ -37,86 +30,6 @@ def _blur_sigma(radius: int) -> float:
     1.5
     """
     return 0.0 if radius <= 0 else (radius * 2 + 1) / 6
-
-
-def _disc(radius: int) -> np.ndarray:
-    diameter = radius * 2 + 1
-    return cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (diameter, diameter)
-    )
-
-
-def _coarse_dilate(
-    mask: np.ndarray, radius: int, source_sigma: float
-) -> np.ndarray:
-    """Grow an already blurred mask inside a reduced-resolution buffer.
-
-    A source blurred by ``source_sigma`` holds no detail finer than that, so
-    subsampling below it is lossless. Max pooling is the downsample that
-    matches a dilation: it never drops coverage the full kernel would find.
-    """
-    factor = int(min(radius // COARSE_DILATE_RADIUS, source_sigma))
-    if factor < 2:
-        return cv2.dilate(mask, _disc(radius))
-    height, width = mask.shape
-    pooled = cv2.dilate(
-        mask, cv2.getStructuringElement(cv2.MORPH_RECT, (factor, factor))
-    )
-    small = cv2.resize(
-        pooled,
-        (max(1, width // factor), max(1, height // factor)),
-        interpolation=cv2.INTER_NEAREST,
-    )
-    # Pooling already carried one cell of coverage, so the reduced kernel is
-    # one step short of the full radius.
-    small = cv2.dilate(
-        small, _disc(max(1, int(round(radius / factor)) - 1))
-    )
-    return np.maximum(
-        mask,
-        cv2.resize(
-            small, (width, height), interpolation=cv2.INTER_LINEAR
-        ),
-    )
-
-
-def _hard_dilate(mask: np.ndarray, radius: int) -> np.ndarray:
-    """Grow a hard coverage mask through its exterior distance field.
-
-    Dilating by a disc covers exactly the pixels within ``radius`` of the
-    mask, which the distance field answers in one linear pass instead of one
-    kernel area per pixel. The clip keeps the boundary antialiased.
-    """
-    exterior = np.where(mask >= 128, 0, 255).astype(np.uint8)
-    distance = cv2.distanceTransform(
-        exterior, cv2.DIST_L2, cv2.DIST_MASK_PRECISE
-    )
-    grown = np.clip(radius + DISC_EDGE_BIAS - distance, 0.0, 1.0)
-    grown *= 255.0
-    return np.maximum(mask, grown.astype(np.uint8))
-
-
-def _dilate(
-    mask: np.ndarray, radius: int, source_sigma: float = 0.0
-) -> np.ndarray:
-    """Grow ``mask`` by a disc of ``radius``.
-
-    ``source_sigma`` is the deviation already blurred into ``mask``. It only
-    selects how the growth is computed; callers pass what the pipeline
-    applied so a large radius never falls back to the quadratic kernel.
-
-    >>> source = np.zeros((5, 5), dtype=np.uint8)
-    >>> source[2, 2] = 255
-    >>> int(_dilate(source, 1)[2, 1])
-    255
-    """
-    if radius <= 0:
-        return mask
-    if radius <= EXACT_DILATE_RADIUS:
-        return cv2.dilate(mask, _disc(radius))
-    if source_sigma <= HARD_EDGE_SIGMA:
-        return _hard_dilate(mask, radius)
-    return _coarse_dilate(mask, radius, source_sigma)
 
 
 def _coarse_blur(mask: np.ndarray, sigma: float) -> np.ndarray:
@@ -222,13 +135,15 @@ def render_glow_alpha(
     """
     if glow_type == 'outer':
         expanded = _blur(
-            _dilate(source_alpha, spread_radius), size_radius
+            dilate_alpha_disc(source_alpha, spread_radius), size_radius
         )
         return _alpha_intersection(expanded, 255 - source_alpha)
     if glow_type == 'inner':
         edge = 255 - _blur(source_alpha, size_radius)
         return _alpha_intersection(
-            _dilate(edge, spread_radius, _blur_sigma(size_radius)),
+            dilate_alpha_disc(
+                edge, spread_radius, _blur_sigma(size_radius)
+            ),
             source_alpha,
         )
     raise ValueError('unsupported glow type')
@@ -266,13 +181,15 @@ def render_shadow_alpha(
         )
     elif shadow_type == 'drop':
         mask = _translate(
-            _blur(_dilate(source_alpha, spread_radius), blur_radius),
+            _blur(dilate_alpha_disc(source_alpha, spread_radius), blur_radius),
             offset,
         )
     elif shadow_type == 'inner':
         shifted = _translate(_blur(source_alpha, blur_radius), offset)
         mask = cv2.subtract(255, shifted)
-        mask = _dilate(mask, spread_radius, _blur_sigma(blur_radius))
+        mask = dilate_alpha_disc(
+            mask, spread_radius, _blur_sigma(blur_radius)
+        )
         mask = _alpha_intersection(mask, source_alpha)
     else:
         raise ValueError('unsupported shadow type')

@@ -60,6 +60,7 @@ from .filters import (
     get_filter_registry,
 )
 from .shadow import render_glow_alpha, render_shadow_alpha
+from ..rendering.morphology import dilate_alpha_disc
 from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
@@ -2340,11 +2341,7 @@ class TextEffectRenderer:
             alpha = rgba[..., 3]
             radius = math.ceil(logical_radius * render_scale)
             if radius > 0:
-                diameter = radius * 2 + 1
-                kernel = cv2.getStructuringElement(
-                    cv2.MORPH_ELLIPSE, (diameter, diameter)
-                )
-                alpha = cv2.dilate(alpha, kernel)
+                alpha = dilate_alpha_disc(alpha, radius)
             if stroke_alpha is None:
                 stroke_alpha = alpha
             else:
