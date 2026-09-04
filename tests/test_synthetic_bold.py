@@ -1,8 +1,10 @@
+import math
 import os
 import unittest
 from unittest.mock import patch
 
 import cv2
+import numpy as np
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -241,39 +243,73 @@ class SyntheticBoldTest(unittest.TestCase):
             abs(emboldened_outline[3] - regular_outline[3]), 1
         )
 
-    def test_emboldened_stroke_uses_one_render_and_one_dilation(self) -> None:
+    def test_emboldened_stroke_renders_once_and_only_sweeps(self) -> None:
+        """The pen carries the disc, so only a sweep reaches the raster.
+
+        A uniform embolden is all disc and needs no raster pass at all; an
+        anisotropic one leaves exactly one axis-aligned sweep behind.
+        """
+        for offset, sweeps in (([0.05, 0.05], 0), ([0.05, 0.02], 1)):
+            with self.subTest(offset=offset):
+                block = TextBlock([0, 0, 180, 100])
+                block._bounding_rect = [0, 0, 180, 100]
+                block.translation = 'HH'
+                block.fontformat.font_size = 48
+                block.fontformat.stroke_width = 0.08
+                block.fontformat.synthetic_bold = True
+                block.fontformat.synthetic_bold_offset = offset
+                item = TextBlkItem(block, 0)
+                renderer = item.effect_renderer
+                rect = renderer.boundingRect()
+                canonical = renderer._cached_effect_source(
+                    rect, 1.0, needs_alpha=True
+                )[1]
+                renderer.release_caches()
+
+                with patch.object(
+                    renderer,
+                    '_paint_stroke_core',
+                    wraps=renderer._paint_stroke_core,
+                ) as paint_stroke_core, patch.object(
+                    renderer,
+                    '_sweep_synthetic_bold_alpha',
+                    wraps=renderer._sweep_synthetic_bold_alpha,
+                ) as sweep:
+                    renderer._positioned_stroke_coverage(
+                        rect,
+                        1.0,
+                        renderer._current_stroke(),
+                        canonical,
+                    )
+
+                self.assertEqual(paint_stroke_core.call_count, 1)
+                self.assertEqual(sweep.call_count, 1)
+
+                probe = np.zeros((9, 9), dtype=np.uint8)
+                probe[4, 4] = 255
+                carried = renderer._sweep_synthetic_bold_alpha(probe, 1.0)
+                self.assertEqual(carried is probe, not sweeps)
+
+    def test_sweep_replaces_the_quadratic_offset_grid(self) -> None:
+        """Offsets scale with the axis difference, not with their product."""
         block = TextBlock([0, 0, 180, 100])
         block._bounding_rect = [0, 0, 180, 100]
         block.translation = 'HH'
-        block.fontformat.font_size = 48
-        block.fontformat.stroke_width = 0.08
+        block.fontformat.font_size = 300
         block.fontformat.synthetic_bold = True
-        block.fontformat.synthetic_bold_offset = [0.05, 0.05]
+        block.fontformat.synthetic_bold_offset = [0.2, 0.1]
         item = TextBlkItem(block, 0)
         renderer = item.effect_renderer
-        rect = renderer.boundingRect()
-        canonical = renderer._cached_effect_source(
-            rect, 1.0, needs_alpha=True
-        )[1]
-        renderer.release_caches()
 
-        with patch.object(
-            renderer,
-            '_paint_stroke_core',
-            wraps=renderer._paint_stroke_core,
-        ) as paint_stroke_core, patch(
-            'ballontranslator.ui.text_engine.effects.renderer.cv2.dilate',
-            wraps=cv2.dilate,
-        ) as dilate:
-            renderer._positioned_stroke_coverage(
-                rect,
-                1.0,
-                renderer._current_stroke(),
-                canonical,
-            )
+        x_outset, y_outset = renderer._synthetic_bold_outsets()
+        offsets = renderer._synthetic_bold_offsets()
 
-        self.assertEqual(paint_stroke_core.call_count, 1)
-        self.assertEqual(dilate.call_count, 1)
+        self.assertEqual(len(offsets), 2 * math.ceil(x_outset - y_outset) + 1)
+        self.assertLess(len(offsets), 200)
+        self.assertTrue(all(y_offset == 0.0 for _x, y_offset in offsets))
+        self.assertAlmostEqual(
+            renderer._synthetic_bold_pen_ratio(), 0.1
+        )
 
     def test_xy_offsets_are_edited_independently(self) -> None:
         button = BoldToolButton()

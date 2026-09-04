@@ -912,6 +912,18 @@ class TextEffectRenderer:
         # redefine the saved width as an outside-only radius.
         return stroke.width
 
+    def _stroke_pen_ratio(self) -> float:
+        """Return the Stroke pen width carrying the synthetic bold disc.
+
+        A bolded stroke reaches its own radius plus the shared disc, and one
+        pen carries both. The caller applies the sweep that completes the
+        ellipse.
+        """
+        width = self._stroke_width()
+        if width <= 0.0:
+            return width
+        return width + 2.0 * self._synthetic_bold_pen_ratio()
+
     def _all_strokes_vector_compatible(
         self,
         strokes: Optional[Tuple[StrokeEffect, ...]] = None,
@@ -1841,66 +1853,82 @@ class TextEffectRenderer:
     def _synthetic_bold_outset(self) -> float:
         return max(self._synthetic_bold_outsets())
 
-    def _dilate_synthetic_bold_alpha(
+    def _synthetic_bold_pen_ratio(self) -> float:
+        """Return the round expansion both axes share.
+
+        Expanding by a different amount per axis is a dilation by an ellipse,
+        and an ellipse is the smaller axis' disc swept along the longer one.
+        The disc half is an outline pen, which costs one pass and keeps each
+        fragment's own paint; only the sweep needs repeated draws.
+        """
+        return min(self._synthetic_bold_ratios())
+
+    def _synthetic_bold_offsets(self) -> Tuple[Tuple[float, float], ...]:
+        """Return the sweep that carries the shared disc along one axis.
+
+        >>> hasattr(TextEffectRenderer, '_synthetic_bold_offsets')
+        True
+        """
+        x_outset, y_outset = self._synthetic_bold_outsets()
+        reach = abs(x_outset - y_outset)
+        if reach <= 0.0:
+            return ((0.0, 0.0),)
+        steps = max(1, math.ceil(reach))
+        horizontal = x_outset > y_outset
+        return tuple(
+            (reach * step / steps, 0.0)
+            if horizontal
+            else (0.0, reach * step / steps)
+            for step in range(-steps, steps + 1)
+        )
+
+    def _sweep_synthetic_bold_alpha(
         self,
         alpha: np.ndarray,
         render_scale: float,
     ) -> np.ndarray:
-        """Expand Stroke coverage on the configured synthetic-bold axes.
+        """Carry rasterized Stroke coverage along the synthetic bold sweep.
 
-        >>> hasattr(TextEffectRenderer, '_dilate_synthetic_bold_alpha')
+        The pen that drew the coverage already holds the shared disc, so only
+        the sweep is left. It is axis aligned, which OpenCV decomposes into
+        two linear passes however long it is.
+
+        >>> hasattr(TextEffectRenderer, '_sweep_synthetic_bold_alpha')
         True
         """
         x_outset, y_outset = self._synthetic_bold_outsets()
-        x_radius = math.ceil(x_outset * render_scale)
-        y_radius = math.ceil(y_outset * render_scale)
-        if x_radius <= 0 and y_radius <= 0:
+        reach = math.ceil(abs(x_outset - y_outset) * render_scale)
+        if reach <= 0:
             return alpha
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_RECT,
-            (x_radius * 2 + 1, y_radius * 2 + 1),
+        size = (
+            (reach * 2 + 1, 1)
+            if x_outset > y_outset
+            else (1, reach * 2 + 1)
         )
-        return cv2.dilate(alpha, kernel, borderType=cv2.BORDER_CONSTANT)
+        return cv2.dilate(
+            alpha,
+            cv2.getStructuringElement(cv2.MORPH_RECT, size),
+            borderType=cv2.BORDER_CONSTANT,
+        )
 
-    def _anisotropic_synthetic_bold_offsets(
-        self,
-    ) -> Tuple[Tuple[float, float], ...]:
-        """Return translations whose union expands ink on requested axes."""
-        x_radius, y_radius = self._synthetic_bold_outsets()
-        x_steps = max(1, math.ceil(x_radius)) if x_radius > 0 else 0
-        y_steps = max(1, math.ceil(y_radius)) if y_radius > 0 else 0
-        x_offsets = (
-            tuple(
-                x_radius * step / x_steps
-                for step in range(-x_steps, x_steps + 1)
-            )
-            if x_steps else (0.0,)
-        )
-        y_offsets = (
-            tuple(
-                y_radius * step / y_steps
-                for step in range(-y_steps, y_steps + 1)
-            )
-            if y_steps else (0.0,)
-        )
-        return tuple(
-            (x_offset, y_offset)
-            for x_offset in x_offsets
-            for y_offset in y_offsets
-        )
+    def _synthetic_bold_context(self):
+        """Return the layout pass carrying the shared disc, if there is one.
+
+        A zero width QPen is cosmetic in Qt and would paint a one pixel
+        outline at every scale, so a sweep with no shared disc paints plain.
+        """
+        pen_ratio = self._synthetic_bold_pen_ratio()
+        if pen_ratio <= 0.0:
+            return self._effect_paint_context()
+        return self._synthetic_bold_uniform_context(pen_ratio)
 
     def _paint_synthetic_bold(self, painter: QPainter) -> None:
         """Expand glyph ink without changing the selected font or metrics."""
-        x_ratio, y_ratio = self._synthetic_bold_ratios()
-        if x_ratio <= 0.0 and y_ratio <= 0.0:
+        offsets = self._synthetic_bold_offsets()
+        if self._synthetic_bold_pen_ratio() <= 0.0 and len(offsets) == 1:
             return
-        if math.isclose(x_ratio, y_ratio, abs_tol=1e-12):
-            self._paint_live_layout(
-                painter, self._synthetic_bold_uniform_context(x_ratio)
-            )
-            return
-        context = self._effect_paint_context()
-        for x_offset, y_offset in self._anisotropic_synthetic_bold_offsets():
+        context = self._synthetic_bold_context()
+        for x_offset, y_offset in offsets:
             painter.save()
             try:
                 painter.translate(x_offset, y_offset)
@@ -1975,7 +2003,7 @@ class TextEffectRenderer:
 
                 pen = QPen(
                     self.stroke_qcolor,
-                    pt2px(point_size) * self._stroke_width(),
+                    pt2px(point_size) * self._stroke_pen_ratio(),
                     Qt.PenStyle.SolidLine,
                     Qt.PenCapStyle.RoundCap,
                     Qt.PenJoinStyle.RoundJoin,
@@ -2258,7 +2286,7 @@ class TextEffectRenderer:
         for position, length, char_format in fragments:
             stroke_pen.setWidthF(
                 pt2px(char_format.fontPointSize())
-                * self._stroke_width()
+                * self._stroke_pen_ratio()
             )
             cursor.setPosition(position)
             cursor.setPosition(
@@ -2381,7 +2409,7 @@ class TextEffectRenderer:
         render_scale: float = 1.0,
         surface_rect: QRectF = None,
     ) -> None:
-        for x_offset, y_offset in self._anisotropic_synthetic_bold_offsets():
+        for x_offset, y_offset in self._synthetic_bold_offsets():
             painter.save()
             try:
                 painter.translate(x_offset, y_offset)
@@ -3566,9 +3594,9 @@ class TextEffectRenderer:
             # sentinel, not visible foreground in the persistent band.
             alpha = rgba[..., 3]
             alpha[alpha <= 1] = 0
-            # Stroke geometry is already rasterized. Expanding its coverage
-            # here replaces the quadratic grid of translated pixmap draws.
-            alpha = self._dilate_synthetic_bold_alpha(alpha, render_scale)
+            # Stroke geometry is already rasterized, disc included, so the
+            # sweep here replaces the grid of translated pixmap draws.
+            alpha = self._sweep_synthetic_bold_alpha(alpha, render_scale)
             if stroke.position != 'center':
                 if canonical_alpha is None:
                     raise EffectRasterAllocationError(
@@ -3776,25 +3804,23 @@ class TextEffectRenderer:
             painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
             self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
-            x_ratio, y_ratio = self._synthetic_bold_ratios()
-            anisotropic = (
-                (x_ratio > 0.0 or y_ratio > 0.0)
-                and not math.isclose(x_ratio, y_ratio, abs_tol=1e-12)
-            )
-            if anisotropic:
-                canonical = self._capture_plain_effect_source(
-                    surface_rect, render_scale
+            offsets = self._synthetic_bold_offsets()
+            if len(offsets) > 1:
+                # The disc already sits in the captured pen pass, so the
+                # sweep replicates one surface instead of relaying out glyphs.
+                swept = self._capture_plain_effect_source(
+                    surface_rect,
+                    render_scale,
+                    self._synthetic_bold_context(),
                 )
-                for x_offset, y_offset in (
-                    self._anisotropic_synthetic_bold_offsets()
-                ):
+                for x_offset, y_offset in offsets:
                     painter.save()
                     try:
                         painter.translate(x_offset, y_offset)
                         self._draw_surface_pixmap(
                             painter,
                             surface_rect,
-                            canonical,
+                            swept,
                             render_scale,
                         )
                     finally:
@@ -3830,8 +3856,9 @@ class TextEffectRenderer:
         self,
         surface_rect: QRectF,
         render_scale: float,
+        context=None,
     ) -> QPixmap:
-        """Capture one glyph layout pass for cheap anisotropic replication."""
+        """Capture one glyph layout pass for cheap sweep replication."""
         source = self._new_effect_pixmap(render_scale, surface_rect)
         painter = QPainter(source)
         if not painter.isActive():
@@ -3842,7 +3869,10 @@ class TextEffectRenderer:
             painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
             self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
-            self._paint_live_layout(painter, self._effect_paint_context())
+            self._paint_live_layout(
+                painter,
+                self._effect_paint_context() if context is None else context,
+            )
         finally:
             painter.end()
         return source
