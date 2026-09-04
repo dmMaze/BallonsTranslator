@@ -49,6 +49,11 @@ from ballontranslator.ui.text_engine.effects.blend import (
     composite_custom_blend_rgba,
 )
 from ballontranslator.ui.text_engine.effects.shadow import (
+    EXACT_BLUR_RADIUS,
+    EXACT_DILATE_RADIUS,
+    _blur,
+    _blur_sigma,
+    _dilate,
     render_glow_alpha,
     render_shadow_alpha,
 )
@@ -236,6 +241,75 @@ class TypedShadowRasterTest(unittest.TestCase):
                 )
                 self.assertEqual(np.count_nonzero(shifted[alpha > 0]), 0)
                 self.assertGreater(np.count_nonzero(shifted), 0)
+
+    def _mask(self, padding: int) -> np.ndarray:
+        mask = np.zeros((90 + 2 * padding, 130 + 2 * padding), np.uint8)
+        cv2.ellipse(
+            mask, (padding + 40, padding + 45), (34, 41), 0, 0, 360, 255, -1
+        )
+        mask[padding:padding + 90, padding + 84:padding + 96] = 255
+        return mask
+
+    def test_large_blur_matches_the_exact_gaussian(self):
+        radius = EXACT_BLUR_RADIUS * 2
+        mask = self._mask(radius + 2)
+        ksize = radius * 2 + 1
+
+        reference = cv2.GaussianBlur(
+            mask, (ksize, ksize), ksize / 6,
+            borderType=cv2.BORDER_CONSTANT,
+        )
+        deviation = np.abs(
+            _blur(mask, radius).astype(np.int16)
+            - reference.astype(np.int16)
+        )
+
+        self.assertLessEqual(int(deviation.max()), 4)
+
+    def test_large_dilation_keeps_the_exact_disc_silhouette(self):
+        radius = EXACT_DILATE_RADIUS * 3
+        mask = self._mask(radius + 2)
+        diameter = radius * 2 + 1
+
+        reference = cv2.dilate(
+            mask,
+            cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (diameter, diameter)
+            ),
+        )
+        grown = _dilate(mask, radius)
+        # Only the antialiased boundary may differ, so compare the covered
+        # area rather than the ramp across it.
+        disagreement = np.count_nonzero((grown >= 128) ^ (reference >= 128))
+        perimeter = np.count_nonzero(
+            (reference >= 128)
+            ^ cv2.erode(reference, np.ones((3, 3), np.uint8)).astype(bool)
+        )
+
+        self.assertLess(disagreement, perimeter)
+        self.assertEqual(np.count_nonzero(grown[mask == 255] != 255), 0)
+
+    def test_large_dilation_of_a_blurred_source_stays_within_a_step(self):
+        radius = EXACT_DILATE_RADIUS * 3
+        blur_radius = 8
+        mask = self._mask(radius + blur_radius + 2)
+        source = 255 - _blur(mask, blur_radius)
+        diameter = radius * 2 + 1
+
+        reference = cv2.dilate(
+            source,
+            cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (diameter, diameter)
+            ),
+        )
+        deviation = np.abs(
+            _dilate(
+                source, radius, _blur_sigma(blur_radius)
+            ).astype(np.int16)
+            - reference.astype(np.int16)
+        )
+
+        self.assertLessEqual(int(deviation.max()), 16)
 
     def test_blur_is_translation_invariant_at_array_edges(self):
         source = np.zeros((11, 13), dtype=np.uint8)

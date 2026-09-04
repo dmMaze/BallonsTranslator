@@ -6,26 +6,159 @@ import cv2
 import numpy as np
 
 
-def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
-    if radius <= 0:
-        return mask
+# Both operators below are radius limited rather than area limited. OpenCV
+# blurs separably, so its Gaussian costs O(radius) per pixel, and it can only
+# decompose rectangular structuring elements, so an elliptical dilation costs
+# O(radius^2) per pixel. Effect radii are a fraction of the font size, so a
+# 200px font already reaches a 2000px radius at the slider limit and the exact
+# kernels stall the UI for minutes. Past the thresholds here each operator
+# switches to a formulation that carries the same geometry for a linear cost.
+EXACT_BLUR_RADIUS = 24
+EXACT_DILATE_RADIUS = 16
+# Sigma and radius retained inside a reduced-resolution buffer. Both are far
+# above the point where a kernel is cheap, so the buffer stays small without
+# the resampling itself becoming the bottleneck.
+COARSE_BLUR_SIGMA = 12.0
+COARSE_DILATE_RADIUS = 16.0
+# A source blurred by less than this behaves as a hard coverage edge, which is
+# what the distance field reproduces.
+HARD_EDGE_SIGMA = 2.0
+# OpenCV's discrete ellipse covers marginally more than the disc of the same
+# radius. Biasing the distance field by this much matches the two footprints.
+DISC_EDGE_BIAS = 0.75
+
+
+def _blur_sigma(radius: int) -> float:
+    """Return the deviation :func:`_blur` applies at ``radius``.
+
+    >>> _blur_sigma(0)
+    0.0
+    >>> _blur_sigma(4)
+    1.5
+    """
+    return 0.0 if radius <= 0 else (radius * 2 + 1) / 6
+
+
+def _disc(radius: int) -> np.ndarray:
     diameter = radius * 2 + 1
-    kernel = cv2.getStructuringElement(
+    return cv2.getStructuringElement(
         cv2.MORPH_ELLIPSE, (diameter, diameter)
     )
-    return cv2.dilate(mask, kernel)
+
+
+def _coarse_dilate(
+    mask: np.ndarray, radius: int, source_sigma: float
+) -> np.ndarray:
+    """Grow an already blurred mask inside a reduced-resolution buffer.
+
+    A source blurred by ``source_sigma`` holds no detail finer than that, so
+    subsampling below it is lossless. Max pooling is the downsample that
+    matches a dilation: it never drops coverage the full kernel would find.
+    """
+    factor = int(min(radius // COARSE_DILATE_RADIUS, source_sigma))
+    if factor < 2:
+        return cv2.dilate(mask, _disc(radius))
+    height, width = mask.shape
+    pooled = cv2.dilate(
+        mask, cv2.getStructuringElement(cv2.MORPH_RECT, (factor, factor))
+    )
+    small = cv2.resize(
+        pooled,
+        (max(1, width // factor), max(1, height // factor)),
+        interpolation=cv2.INTER_NEAREST,
+    )
+    # Pooling already carried one cell of coverage, so the reduced kernel is
+    # one step short of the full radius.
+    small = cv2.dilate(
+        small, _disc(max(1, int(round(radius / factor)) - 1))
+    )
+    return np.maximum(
+        mask,
+        cv2.resize(
+            small, (width, height), interpolation=cv2.INTER_LINEAR
+        ),
+    )
+
+
+def _hard_dilate(mask: np.ndarray, radius: int) -> np.ndarray:
+    """Grow a hard coverage mask through its exterior distance field.
+
+    Dilating by a disc covers exactly the pixels within ``radius`` of the
+    mask, which the distance field answers in one linear pass instead of one
+    kernel area per pixel. The clip keeps the boundary antialiased.
+    """
+    exterior = np.where(mask >= 128, 0, 255).astype(np.uint8)
+    distance = cv2.distanceTransform(
+        exterior, cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+    )
+    grown = np.clip(radius + DISC_EDGE_BIAS - distance, 0.0, 1.0)
+    grown *= 255.0
+    return np.maximum(mask, grown.astype(np.uint8))
+
+
+def _dilate(
+    mask: np.ndarray, radius: int, source_sigma: float = 0.0
+) -> np.ndarray:
+    """Grow ``mask`` by a disc of ``radius``.
+
+    ``source_sigma`` is the deviation already blurred into ``mask``. It only
+    selects how the growth is computed; callers pass what the pipeline
+    applied so a large radius never falls back to the quadratic kernel.
+
+    >>> source = np.zeros((5, 5), dtype=np.uint8)
+    >>> source[2, 2] = 255
+    >>> int(_dilate(source, 1)[2, 1])
+    255
+    """
+    if radius <= 0:
+        return mask
+    if radius <= EXACT_DILATE_RADIUS:
+        return cv2.dilate(mask, _disc(radius))
+    if source_sigma <= HARD_EDGE_SIGMA:
+        return _hard_dilate(mask, radius)
+    return _coarse_dilate(mask, radius, source_sigma)
+
+
+def _coarse_blur(mask: np.ndarray, sigma: float) -> np.ndarray:
+    """Blur inside a buffer small enough for the kernel to be cheap.
+
+    The result is band limited by ``sigma``, so it survives the round trip
+    through a buffer subsampled well below it. ``resize`` rounds each axis
+    independently, so the deviation is rescaled by the ratio it really used.
+    """
+    height, width = mask.shape
+    factor = max(2, int(sigma // COARSE_BLUR_SIGMA))
+    small_height = max(1, height // factor)
+    small_width = max(1, width // factor)
+    small = cv2.resize(
+        mask,
+        (small_width, small_height),
+        interpolation=cv2.INTER_AREA,
+    )
+    small = cv2.GaussianBlur(
+        small,
+        (0, 0),
+        sigma * small_width / width,
+        sigmaY=sigma * small_height / height,
+        borderType=cv2.BORDER_CONSTANT,
+    )
+    return cv2.resize(
+        small, (width, height), interpolation=cv2.INTER_LINEAR
+    )
 
 
 def _blur(mask: np.ndarray, radius: int) -> np.ndarray:
     if radius <= 0:
         return mask
-    ksize = radius * 2 + 1
-    return cv2.GaussianBlur(
-        mask,
-        (ksize, ksize),
-        ksize / 6,
-        borderType=cv2.BORDER_CONSTANT,
-    )
+    if radius <= EXACT_BLUR_RADIUS:
+        ksize = radius * 2 + 1
+        return cv2.GaussianBlur(
+            mask,
+            (ksize, ksize),
+            ksize / 6,
+            borderType=cv2.BORDER_CONSTANT,
+        )
+    return _coarse_blur(mask, _blur_sigma(radius))
 
 
 def _translate(mask: np.ndarray, offset: Tuple[float, float]) -> np.ndarray:
@@ -95,7 +228,8 @@ def render_glow_alpha(
     if glow_type == 'inner':
         edge = 255 - _blur(source_alpha, size_radius)
         return _alpha_intersection(
-            _dilate(edge, spread_radius), source_alpha
+            _dilate(edge, spread_radius, _blur_sigma(size_radius)),
+            source_alpha,
         )
     raise ValueError('unsupported glow type')
 
@@ -138,7 +272,7 @@ def render_shadow_alpha(
     elif shadow_type == 'inner':
         shifted = _translate(_blur(source_alpha, blur_radius), offset)
         mask = cv2.subtract(255, shifted)
-        mask = _dilate(mask, spread_radius)
+        mask = _dilate(mask, spread_radius, _blur_sigma(blur_radius))
         mask = _alpha_intersection(mask, source_alpha)
     else:
         raise ValueError('unsupported shadow type')
