@@ -36,7 +36,9 @@ from qtpy.QtWidgets import (
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.raster import (
+    EFFECT_CACHE_MAX_PIXELS,
     EFFECT_MIN_TILE_TIER,
+    EFFECT_TILE_MAX_EDGE,
     plan_effect_raster,
     EFFECT_RASTER_GUARD,
     EffectRasterPlan,
@@ -354,6 +356,60 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_a_view_too_wide_to_stage_at_once_still_paints(self):
+        """One staging surface per view dropped effects on a large window."""
+        block = TextBlock([0, 0, 283, 722])
+        block._bounding_rect = [0, 0, 283, 722]
+        block.translation = 'Sh'
+        block.fontformat.font_size = 300.0
+        block.fontformat.frgb = [240, 240, 240]
+        block.fontformat.text_effects = TextEffectStack(effects=(
+            ShadowEffect(
+                shadow_type='drop',
+                blur=0.0,
+                spread=3.0,
+                distance=0.05,
+                angle=45.0,
+                paint=SolidPaint(color=(220, 20, 20)),
+            ),
+        ))
+        item = TextBlkItem(block, 1)
+        renderer = item.effect_renderer
+        bounds = renderer.boundingRect()
+        # The whole item on screen at 1x is more than one surface may hold,
+        # which is all it takes: a maximised window reaches this.
+        self.assertGreater(
+            bounds.width() * bounds.height(), EFFECT_CACHE_MAX_PIXELS
+        )
+
+        image = QImage(
+            math.ceil(bounds.width()),
+            math.ceil(bounds.height()),
+            QImage.Format.Format_ARGB32_Premultiplied,
+        )
+        image.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(image)
+        painter.translate(-bounds.topLeft())
+        renderer.tile_cache.clear()
+        try:
+            renderer._draw_tiled_effects(
+                painter,
+                EffectRasterPlan(
+                    'tiles', 1.0, 0, 0, EFFECT_TILE_MAX_EDGE
+                ),
+                bounds,
+            )
+        finally:
+            painter.end()
+
+        rgba = pixmap2ndarray(image, keep_alpha=True)
+        shadow = np.count_nonzero(
+            (rgba[..., 3] > 8)
+            & (rgba[..., 0].astype(int) > rgba[..., 2].astype(int) + 40)
+        )
+
+        self.assertGreater(shadow, 0)
 
     def test_reach_past_the_tile_core_coarsens_instead_of_vanishing(self):
         """An effect wider than the tile core still has to reach the screen."""

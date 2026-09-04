@@ -4650,6 +4650,62 @@ class TextEffectRenderer:
             tier /= 2.0
         return plan if tier == plan.tier else plan._replace(tier=tier)
 
+    def _draw_effect_core(
+        self,
+        painter: QPainter,
+        core: QRectF,
+        visible: QRectF,
+        cached: Tuple[QRectF, QPixmap],
+        tier: float,
+    ) -> None:
+        """Blit one finished tile core through its own staging surface.
+
+        A core is a complete surface region, so it is source-copied to keep
+        the premultiplied pixels its tile produced rather than blending them
+        into the canvas. Staging a single core bounds that copy by the tile
+        edge; a staging surface spanning the whole visible rectangle instead
+        dropped every effect on the item once the view grew past the raster
+        policy, which is reachable simply by opening a large window.
+
+        >>> hasattr(TextEffectRenderer, '_draw_effect_core')
+        True
+        """
+        exposed = core.intersected(visible)
+        if exposed.isEmpty():
+            return
+        if self.export_render:
+            painter.save()
+            try:
+                painter.setClipRect(core, Qt.ClipOperation.IntersectClip)
+                self._draw_surface_pixmap(
+                    painter, cached[0], cached[1], tier
+                )
+            finally:
+                painter.restore()
+            return
+        staging = self._new_effect_pixmap(tier, exposed)
+        staging_painter = QPainter(staging)
+        if not staging_painter.isActive():
+            raise EffectRasterAllocationError(
+                'unable to begin effect core staging painter'
+            )
+        try:
+            self._prepare_effect_surface_painter(staging_painter, tier)
+            staging_painter.translate(-exposed.topLeft())
+            staging_painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_Source
+            )
+            staging_painter.setRenderHint(
+                QPainter.RenderHint.SmoothPixmapTransform
+            )
+            self._draw_surface_pixmap(
+                staging_painter, cached[0], cached[1], tier
+            )
+        finally:
+            if staging_painter.isActive():
+                staging_painter.end()
+        self._draw_surface_pixmap(painter, exposed, staging, tier)
+
     def _draw_tiled_effects(
         self,
         painter: QPainter,
@@ -4772,41 +4828,9 @@ class TextEffectRenderer:
         )
 
         active_keys = set()
-        staging_pixmap = None
-        staging_painter = None
-        tile_painter = painter
         raster_failure = None
         try:
-            if not self.export_render:
-                staging_plan = plan_effect_raster(
-                    visible.width(), visible.height(), plan.tier
-                )
-                if (
-                    staging_plan.mode != 'full'
-                    or staging_plan.tier != plan.tier
-                ):
-                    raise EffectRasterAllocationError(
-                        'visible effect staging surface exceeds policy'
-                    )
-                staging_pixmap = self._new_effect_pixmap(
-                    plan.tier, visible
-                )
-                staging_painter = QPainter(staging_pixmap)
-                if not staging_painter.isActive():
-                    raise EffectRasterAllocationError(
-                        'unable to begin visible effect staging painter'
-                    )
-                self._prepare_effect_surface_painter(
-                    staging_painter, plan.tier
-                )
-                staging_painter.translate(-visible.topLeft())
-                # Each core is a complete surface region. Source-copying it
-                # preserves the premultiplied pixels produced by every tile.
-                staging_painter.setCompositionMode(
-                    QPainter.CompositionMode.CompositionMode_Source
-                )
-                tile_painter = staging_painter
-            tile_painter.setRenderHint(
+            painter.setRenderHint(
                 QPainter.RenderHint.SmoothPixmapTransform
             )
             for tile_y in range(first_y, last_y + 1):
@@ -4860,16 +4884,9 @@ class TextEffectRenderer:
                                     if candidate != key
                                 )
                             self.tile_cache.pop(oldest, None)
-                    tile_painter.save()
-                    try:
-                        tile_painter.setClipRect(
-                            core, Qt.ClipOperation.IntersectClip
-                        )
-                        self._draw_surface_pixmap(
-                            tile_painter, cached[0], cached[1], plan.tier
-                        )
-                    finally:
-                        tile_painter.restore()
+                    self._draw_effect_core(
+                        painter, core, visible, cached, plan.tier
+                    )
         except RASTER_BOUNDARY_FAILURES as error:
             raster_failure = (
                 error
@@ -4880,17 +4897,6 @@ class TextEffectRenderer:
             )
             if raster_failure is not error:
                 raster_failure.__cause__ = error
-        finally:
-            if staging_painter is not None:
-                try:
-                    if staging_painter.isActive():
-                        staging_painter.end()
-                except RASTER_BOUNDARY_FAILURES as error:
-                    if raster_failure is None:
-                        raster_failure = EffectRasterAllocationError(
-                            'unable to finish tiled effect painter'
-                        )
-                        raster_failure.__cause__ = error
 
         if raster_failure is not None:
             self.tile_cache.clear()
@@ -4904,12 +4910,6 @@ class TextEffectRenderer:
                 return
             self._warn_effect_allocation_once(raster_failure)
             return
-
-        if staging_pixmap is not None:
-            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-            self._draw_surface_pixmap(
-                painter, visible, staging_pixmap, plan.tier
-            )
 
         # Retain no cache from a viewport that is no longer exposed.
         for key in list(self.tile_cache):

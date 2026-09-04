@@ -91,10 +91,13 @@ def plan_effect_raster(
             return EffectRasterPlan(
                 'full', tier, pixel_width, pixel_height, 0
             )
+    # A tile's surface is its edge plus whatever ceil() adds for a fractional
+    # rectangle. Without this pixel of headroom a full tile lands exactly on
+    # the surface cap, and one rounded axis fails the allocation outright.
     tile_edge = min(
         EFFECT_TILE_MAX_EDGE,
         EFFECT_CACHE_MAX_DIMENSION,
-        int(math.sqrt(EFFECT_CACHE_MAX_PIXELS)),
+        int(math.sqrt(EFFECT_CACHE_MAX_PIXELS)) - 1,
     )
     tile_tier = (
         1.0
