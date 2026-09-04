@@ -65,6 +65,7 @@ from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
     EFFECT_MIN_TILE_TIER,
+    EFFECT_TILE_CORE_DIVISOR,
     EFFECT_CACHE_MAX_PIXELS,
     EFFECT_CACHE_MAX_SCALE,
     EFFECT_RASTER_FAILURES,
@@ -4630,25 +4631,57 @@ class TextEffectRenderer:
     ) -> EffectRasterPlan:
         """Coarsen the tile tier until the overlap leaves a core to draw.
 
-        Overlap is the effect's own reach, so a reach past half the tile edge
-        left no core and dropped every effect on the item without a trace.
-        Reaching that far also means the result holds no detail the finer
-        tier would have shown, so on screen the surface is coarsened instead.
-        An export says nothing silently: it keeps raising, because a settled
-        deliverable should not quietly drop to a fraction of its resolution.
+        Overlap is the effect's own reach and it eats the tile from both
+        sides, so a reach near half the tile edge left a sliver of a core and
+        the item needed hundreds of them; past half it left none at all and
+        every effect on the item disappeared without a trace. Reaching that
+        far also means the result holds no detail the finer tier would have
+        shown, so on screen the surface is coarsened until a core is worth
+        drawing. Overlap and core shrink together, so one or two steps are
+        always enough. An export says nothing silently: it keeps raising,
+        because a settled deliverable should not quietly drop to a fraction
+        of its resolution.
 
         >>> hasattr(TextEffectRenderer, '_tile_plan_within_overlap')
         True
         """
         if plan.mode != 'tiles' or self.export_render:
             return plan
+        if self._fits_one_surface(self.boundingRect(), plan.tier):
+            # The surface fits whole at the tier asked for, so tiling is a
+            # choice here and has to reproduce it exactly. Coarsening cannot.
+            return plan
+        usable = max(1, plan.tile_edge // EFFECT_TILE_CORE_DIVISOR)
         tier = plan.tier
         while (
             tier > EFFECT_MIN_TILE_TIER
-            and plan.tile_edge - 2 * math.ceil(target_overlap * tier) < 1
+            and plan.tile_edge - 2 * math.ceil(target_overlap * tier)
+            < usable
         ):
             tier /= 2.0
         return plan if tier == plan.tier else plan._replace(tier=tier)
+
+    @staticmethod
+    def _fits_one_surface(bounds: QRectF, tier: float) -> bool:
+        """Report whether ``bounds`` is allocatable as a single surface.
+
+        Mirrors the policy :meth:`_new_effect_pixmap` enforces, so a caller
+        can tell a chosen tiling from a forced one.
+
+        >>> TextEffectRenderer._fits_one_surface(QRectF(0, 0, 64, 64), 1.0)
+        True
+        >>> TextEffectRenderer._fits_one_surface(QRectF(0, 0, 9000, 9000), 1.0)
+        False
+        """
+        width = max(1, math.ceil(bounds.width() * tier))
+        height = max(1, math.ceil(bounds.height() * tier))
+        pixels = width * height
+        return (
+            width <= EFFECT_CACHE_MAX_DIMENSION
+            and height <= EFFECT_CACHE_MAX_DIMENSION
+            and pixels <= EFFECT_CACHE_MAX_PIXELS
+            and pixels * 4 <= EFFECT_CACHE_MAX_BYTES
+        )
 
     def _draw_effect_core(
         self,

@@ -418,7 +418,7 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         block.translation = 'Sh'
         block.fontformat.font_size = 300.0
         painted = {}
-        for spread in (1.0, SHADOW_SPREAD_LIMIT):
+        for spread in (1.0, 3.0, SHADOW_SPREAD_LIMIT):
             block.fontformat.text_effects = TextEffectStack(effects=(
                 ShadowEffect(
                     shadow_type='drop',
@@ -436,21 +436,30 @@ class TypedTextEffectRendererTest(unittest.TestCase):
             overlap = renderer._effect_tile_overlap()
             fitted = renderer._tile_plan_within_overlap(plan, overlap)
 
+            core = fitted.tile_edge - 2 * math.ceil(overlap * fitted.tier)
             if fitted.mode == 'tiles':
-                self.assertGreaterEqual(
-                    fitted.tile_edge
-                    - 2 * math.ceil(overlap * fitted.tier),
-                    1,
+                self.assertGreaterEqual(core, 1)
+                # A sliver of a core means the item needs hundreds of tiles,
+                # and every one still renders a whole overlapped surface.
+                core_reach = core / fitted.tier
+                tiles = (
+                    math.ceil(bounds.width() / core_reach)
+                    * math.ceil(bounds.height() / core_reach)
                 )
+                self.assertLessEqual(tiles, 16)
             self.assertGreaterEqual(fitted.tier, EFFECT_MIN_TILE_TIER)
+            if renderer._fits_one_surface(bounds, plan.tier):
+                # Tiling is a choice at this size, so it has to reproduce the
+                # single surface exactly and the tier may not move.
+                self.assertEqual(fitted.tier, plan.tier)
             rgba = self._render(item)
             painted[spread] = int(np.count_nonzero(
                 (rgba[..., 3] > 8)
                 & (rgba[..., 0].astype(int) > rgba[..., 2].astype(int) + 20)
             ))
 
-        self.assertGreater(painted[1.0], 0)
-        self.assertGreater(painted[SHADOW_SPREAD_LIMIT], 0)
+        for spread, count in painted.items():
+            self.assertGreater(count, 0, f'nothing painted at spread {spread}')
 
     @classmethod
     def _item(cls, stack: TextEffectStack, vertical: bool = False):
