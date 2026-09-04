@@ -36,6 +36,8 @@ from qtpy.QtWidgets import (
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.raster import (
+    EFFECT_MIN_TILE_TIER,
+    plan_effect_raster,
     EFFECT_RASTER_GUARD,
     EffectRasterPlan,
     EffectRasterAllocationError,
@@ -67,6 +69,7 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
+    SHADOW_SPREAD_LIMIT,
     FilterEffect,
     GlowEffect,
     TextFillEffect,
@@ -351,6 +354,47 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_reach_past_the_tile_core_coarsens_instead_of_vanishing(self):
+        """An effect wider than the tile core still has to reach the screen."""
+        block = TextBlock([0, 0, 283, 722])
+        block._bounding_rect = [0, 0, 283, 722]
+        block.translation = 'Sh'
+        block.fontformat.font_size = 300.0
+        painted = {}
+        for spread in (1.0, SHADOW_SPREAD_LIMIT):
+            block.fontformat.text_effects = TextEffectStack(effects=(
+                ShadowEffect(
+                    shadow_type='drop',
+                    blur=0.0,
+                    spread=spread,
+                    distance=0.05,
+                    angle=45.0,
+                    paint=SolidPaint(color=(220, 20, 20)),
+                ),
+            ))
+            item = TextBlkItem(block, 1)
+            renderer = item.effect_renderer
+            bounds = renderer.boundingRect()
+            plan = plan_effect_raster(bounds.width(), bounds.height(), 1.0)
+            overlap = renderer._effect_tile_overlap()
+            fitted = renderer._tile_plan_within_overlap(plan, overlap)
+
+            if fitted.mode == 'tiles':
+                self.assertGreaterEqual(
+                    fitted.tile_edge
+                    - 2 * math.ceil(overlap * fitted.tier),
+                    1,
+                )
+            self.assertGreaterEqual(fitted.tier, EFFECT_MIN_TILE_TIER)
+            rgba = self._render(item)
+            painted[spread] = int(np.count_nonzero(
+                (rgba[..., 3] > 8)
+                & (rgba[..., 0].astype(int) > rgba[..., 2].astype(int) + 20)
+            ))
+
+        self.assertGreater(painted[1.0], 0)
+        self.assertGreater(painted[SHADOW_SPREAD_LIMIT], 0)
 
     @classmethod
     def _item(cls, stack: TextEffectStack, vertical: bool = False):

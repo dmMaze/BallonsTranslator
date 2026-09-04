@@ -16,6 +16,10 @@ EFFECT_CACHE_MAX_PIXELS = 4_194_304
 EFFECT_CACHE_MAX_DIMENSION = 8192
 EFFECT_CACHE_MAX_BYTES = 32 * 1024 * 1024
 EFFECT_TILE_MAX_EDGE = 2048
+# An effect reaching past half the tile edge has no tile core left to
+# draw. Coarsening the tier shrinks the reach in pixels, and this
+# floor covers a reach of tens of thousands of pixels.
+EFFECT_MIN_TILE_TIER = 1.0 / 64.0
 
 
 class EffectRasterPlan(NamedTuple):

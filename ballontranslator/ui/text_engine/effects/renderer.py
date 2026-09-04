@@ -64,6 +64,7 @@ from ..rendering.morphology import dilate_alpha_disc
 from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
+    EFFECT_MIN_TILE_TIER,
     EFFECT_CACHE_MAX_PIXELS,
     EFFECT_CACHE_MAX_SCALE,
     EFFECT_RASTER_FAILURES,
@@ -4622,6 +4623,33 @@ class TextEffectRenderer:
                 visible = visible.intersected(clip)
         return visible
 
+    def _tile_plan_within_overlap(
+        self,
+        plan: EffectRasterPlan,
+        target_overlap: float,
+    ) -> EffectRasterPlan:
+        """Coarsen the tile tier until the overlap leaves a core to draw.
+
+        Overlap is the effect's own reach, so a reach past half the tile edge
+        left no core and dropped every effect on the item without a trace.
+        Reaching that far also means the result holds no detail the finer
+        tier would have shown, so on screen the surface is coarsened instead.
+        An export says nothing silently: it keeps raising, because a settled
+        deliverable should not quietly drop to a fraction of its resolution.
+
+        >>> hasattr(TextEffectRenderer, '_tile_plan_within_overlap')
+        True
+        """
+        if plan.mode != 'tiles' or self.export_render:
+            return plan
+        tier = plan.tier
+        while (
+            tier > EFFECT_MIN_TILE_TIER
+            and plan.tile_edge - 2 * math.ceil(target_overlap * tier) < 1
+        ):
+            tier /= 2.0
+        return plan if tier == plan.tier else plan._replace(tier=tier)
+
     def _draw_tiled_effects(
         self,
         painter: QPainter,
@@ -4675,6 +4703,7 @@ class TextEffectRenderer:
             )
             self.force_tiles = False
             return
+        plan = self._tile_plan_within_overlap(plan, target_overlap)
         included_filters = self._retained_filter_indices(nodes)
         filter_plan = self._filter_execution_plan(
             plan.tier, included_filters=included_filters
