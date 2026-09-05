@@ -121,6 +121,7 @@ class _EffectRasterState:
         self.background_pixmap = None
         self.background_pixmap_scale = None
         self.cache_input_key = None
+        self.cache_document_html = None
         # Mask previews only change the final alpha. Keep at most two complete
         # pre-mask surfaces so visible full/tile output can be derived cheaply.
         self.pre_mask_cache = {}
@@ -592,6 +593,39 @@ class TextEffectRenderer:
             layout_render_key,
         ) + cache_key[5:]
 
+    @classmethod
+    def _effect_cache_ime_key(
+        cls,
+        cache_key: tuple,
+        document_html: str,
+    ) -> tuple:
+        """Ignore transient Qt generations but retain committed rich text."""
+        semantic = cls._effect_cache_semantic_key(cache_key)
+        return semantic[:2] + (document_html,) + semantic[3:]
+
+    def _active_cache_matches_committed_document(
+        self,
+        state: Optional[_EffectRasterState],
+        current_key: Optional[tuple] = None,
+    ) -> bool:
+        if (
+            state is None
+            or state.cache_dirty
+            or state.cache_rendered_generation != state.cache_generation
+            or state.cache_input_key is None
+            or state.cache_document_html is None
+        ):
+            return False
+        if current_key is None:
+            current_key = self._effect_cache_input_key()
+        return self._effect_cache_ime_key(
+            state.cache_input_key,
+            state.cache_document_html,
+        ) == self._effect_cache_ime_key(
+            current_key,
+            self.document().toHtml(),
+        )
+
     @staticmethod
     def _effect_cache_key_without_mask(cache_key: tuple) -> tuple:
         return cache_key[:1] + cache_key[2:]
@@ -891,6 +925,18 @@ class TextEffectRenderer:
             return True
         return False
 
+    def repaint_after_document_change(self) -> bool:
+        """Re-key unchanged committed pixels or rebuild them once."""
+        state = self._peek_raster_state()
+        current_key = self._effect_cache_input_key()
+        if self._active_cache_matches_committed_document(
+            state, current_key
+        ):
+            state.cache_input_key = current_key
+            return False
+        self.repaint_background()
+        return True
+
     def _current_stroke(self) -> Optional[StrokeEffect]:
         if self._render_stroke is not None:
             return self._render_stroke
@@ -1089,6 +1135,7 @@ class TextEffectRenderer:
         state.cache_dirty = True
         state.cache_rendered_generation = -1
         state.cache_input_key = None
+        state.cache_document_html = None
         state.tile_cache.clear()
         state.pre_mask_cache.clear()
         state.pre_filter_cache.clear()
@@ -1107,6 +1154,7 @@ class TextEffectRenderer:
         state.cache_dirty = True
         state.cache_rendered_generation = -1
         state.cache_input_key = None
+        state.cache_document_html = None
         state.tile_cache.clear()
         state.background_pixmap = None
         state.background_pixmap_scale = None
@@ -1122,6 +1170,7 @@ class TextEffectRenderer:
         state.cache_dirty = True
         state.cache_rendered_generation = -1
         state.cache_input_key = None
+        state.cache_document_html = None
         state.tile_cache.clear()
         state.pre_mask_cache.clear()
         state.pre_filter_cache.clear()
@@ -1567,6 +1616,12 @@ class TextEffectRenderer:
                 option.state = QStyle.State_None
                 base_paint(painter, option, widget)
                 return
+            if (
+                self.pre_editing
+                and not self._preedit_effect_cache_is_reusable(painter)
+            ):
+                base_paint(painter, option, widget)
+                return
             interaction_option = QStyleOptionGraphicsItem(option)
             if any(flags):
                 self._draw_effects(
@@ -1620,6 +1675,23 @@ class TextEffectRenderer:
             state is not None
             and not state.cache_dirty
             and state.cache_rendered_generation == state.cache_generation
+        )
+
+    def _preedit_effect_cache_is_reusable(self, painter: QPainter) -> bool:
+        state = self._peek_raster_state()
+        if not self._active_cache_matches_committed_document(state):
+            return False
+        if state.force_tiles or state.background_pixmap is None:
+            return False
+        rect = self.boundingRect()
+        plan = plan_effect_raster(
+            rect.width(),
+            rect.height(),
+            self._raster_request(self._paint_device_scale(painter)),
+        )
+        return (
+            plan.mode == 'full'
+            and state.background_pixmap_scale == plan.tier
         )
 
     def _paint_effect_interaction(
@@ -4155,8 +4227,8 @@ class TextEffectRenderer:
             or (self.reshaping and not self._export_active)
             or (self.pre_editing and not self._export_active)
         ):
-            # Avoid reshape/reentrant work. During IME, reuse the preedit-free
-            # cache because PaintContext cannot exclude active preedit glyphs.
+            # Avoid reshape/reentrant work. During IME, preserve the completed
+            # preedit-free cache; paint_item decides whether it is still safe.
             return
 
         planned_here = nodes is None
@@ -4271,19 +4343,23 @@ class TextEffectRenderer:
             self.force_tiles = False
             self.cache_dirty = False
             self.cache_rendered_generation = self.cache_generation
-            self._raster_state().cache_input_key = (
-                self._effect_cache_input_key()
-            )
+            self._stamp_active_cache_input()
         finally:
             self.repainting = False
         self.item.update()
 
+
+    def _stamp_active_cache_input(self) -> None:
+        state = self._raster_state()
+        state.cache_input_key = self._effect_cache_input_key()
+        state.cache_document_html = self.document().toHtml()
 
     def _mark_effect_cache_dirty(self) -> None:
         state = self._raster_state()
         state.cache_generation += 1
         state.cache_dirty = True
         state.cache_input_key = None
+        state.cache_document_html = None
         state.tile_cache.clear()
         state.pre_mask_cache.clear()
         # Completed effect pixels contain the previous paint parameters.
@@ -4296,6 +4372,7 @@ class TextEffectRenderer:
         state.cache_generation += 1
         state.cache_dirty = True
         state.cache_input_key = None
+        state.cache_document_html = None
         state.tile_cache.clear()
         self.background_pixmap = None
         self.background_pixmap_scale = None
@@ -4360,9 +4437,7 @@ class TextEffectRenderer:
             self.direct_stroke = True
             self.cache_dirty = False
             self.cache_rendered_generation = self.cache_generation
-            self._raster_state().cache_input_key = (
-                self._effect_cache_input_key()
-            )
+            self._stamp_active_cache_input()
             self.force_tiles = False
             return
         included_filters = self._retained_filter_indices(nodes)
@@ -4580,9 +4655,7 @@ class TextEffectRenderer:
         self.direct_stroke = vector_stroke_direct
         self.cache_dirty = False
         self.cache_rendered_generation = self.cache_generation
-        self._raster_state().cache_input_key = (
-            self._effect_cache_input_key()
-        )
+        self._stamp_active_cache_input()
         self.force_tiles = False
 
     def _draw_direct_stroke(self, painter: QPainter) -> None:

@@ -14,13 +14,14 @@ from qtpy.QtWidgets import (
     QGraphicsSceneMouseEvent,
 )
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
-from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
+from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
                        QInputMethodEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QFontMetrics, QPen,
                        QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
+from ballontranslator.utils import shared
 from ballontranslator.utils.text_effects import (
     SolidPaint,
     TextEffect,
@@ -85,6 +86,22 @@ from .annotations import (
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
 TEXTRECT_SELECTED_COLOR = QColor(248, 64, 147, 170)
+
+
+def _discard_macos_marked_text() -> None:
+    try:
+        from AppKit import NSApp
+    except ImportError:
+        return
+
+    window = NSApp.keyWindow()
+    responder = window.firstResponder() if window is not None else None
+    if responder is None or not responder.respondsToSelector_(b'unmarkText'):
+        return
+    responder.unmarkText()
+    context = responder.inputContext()
+    if context is not None:
+        context.discardMarkedText()
 
 
 class _OrderBadgeItem(QGraphicsItem):
@@ -292,11 +309,10 @@ class TextBlkItem(QGraphicsTextItem):
             self.input_method_from = -1
             self.input_method_removed = 0
             self.input_method_text = ''
-        # Preedit text and attributes live in QTextLayout, so they need an
-        # explicit surface invalidation even when the document revision does
-        # not change. The next paint is cached until another IME event.
+        # Preedit text and attributes live in QTextLayout, so they may not
+        # change the document revision or schedule an item repaint.
         self.geometry_controller.invalidate_surface_cache()
-        self._update_nonlinear_editing_ui()
+        self.update()
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         self._vertical_navigation_y = None
@@ -441,7 +457,7 @@ class TextBlkItem(QGraphicsTextItem):
             self._update_effect_padding()
             if self.repaint_on_changed:
                 if not self.repainting:
-                    self.repaint_background()
+                    self.effect_renderer.repaint_after_document_change()
             self.update()
 
     def repaint_background(self, render_scale: float = 1.0):
@@ -1012,35 +1028,30 @@ class TextBlkItem(QGraphicsTextItem):
             return
         self._vertical_navigation_y = None
 
-        if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if e.key() == Qt.Key.Key_Z:
-                e.accept()
-                self.undo_signal.emit()
-                return
-            elif e.key() == Qt.Key.Key_Y:
-                e.accept()
-                self.redo_signal.emit()
-                return
-            elif e.key() == Qt.Key.Key_V:
-                if self.isEditing():
-                    e.accept()
-                    self.pasted.emit(self.idx)
-                    return
-            elif e.key() in (Qt.Key.Key_C, Qt.Key.Key_X):
-                cursor = self.textCursor()
-                if cursor.hasSelection():
-                    self._copy_selected_text()
-                    if e.key() == Qt.Key.Key_X:
-                        cursor.removeSelectedText()
-                        self.setTextCursor(cursor)
-                e.accept()
-                return
-        elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
-            if e.key() == Qt.Key.Key_Z:
-                e.accept()
-                self.redo_signal.emit()
-                return
-        elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+        if e.matches(QKeySequence.StandardKey.Undo):
+            e.accept()
+            self.undo_signal.emit()
+            return
+        if e.matches(QKeySequence.StandardKey.Redo):
+            e.accept()
+            self.redo_signal.emit()
+            return
+        if e.matches(QKeySequence.StandardKey.Paste) and self.isEditing():
+            e.accept()
+            self.pasted.emit(self.idx)
+            return
+        is_copy = e.matches(QKeySequence.StandardKey.Copy)
+        is_cut = e.matches(QKeySequence.StandardKey.Cut)
+        if is_copy or is_cut:
+            cursor = self.textCursor()
+            if cursor.hasSelection():
+                self._copy_selected_text()
+                if is_cut:
+                    cursor.removeSelectedText()
+                    self.setTextCursor(cursor)
+            e.accept()
+            return
+        if e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             e.accept()
             cursor = self.textCursor()
             cursor.beginEditBlock()
@@ -1222,12 +1233,28 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.setPosition(hit)
             self.setTextCursor(cursor)
 
-    def endEdit(self, keep_focus=True) -> None:
+    def endEdit(self, keep_focus: bool = True) -> None:
+        input_method = None
+        if shared.ON_MACOS and self.pre_editing:
+            preedit_text = self.textCursor().block().layout().preeditAreaText()
+            if preedit_text:
+                input_method = QApplication.inputMethod()
+                input_method.commit()
+                if self.pre_editing:
+                    # Qt 6.11's Cocoa context can leave marked text visible
+                    # without delivering its final commit to a graphics item.
+                    event = QInputMethodEvent('', [])
+                    event.setCommitString(preedit_text)
+                    self.inputMethodEvent(event)
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
         cursor.clearSelection()
         self.setTextCursor(cursor)
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        if input_method is not None:
+            # The canvas QNSView can retain marked text after Qt drops the
+            # final commit, so clear it after duplicate insertion is disabled.
+            _discard_macos_marked_text()
         self.refresh_cache_policy()
         self._sync_order_badge()
         if keep_focus:

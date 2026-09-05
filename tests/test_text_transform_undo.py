@@ -12,7 +12,7 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
+from qtpy.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
     QImage,
@@ -30,6 +30,7 @@ from qtpy.QtWidgets import (
     QGraphicsScene,
     QGraphicsTextItem,
     QGraphicsView,
+    QLineEdit,
     QStyleOptionGraphicsItem,
     QVBoxLayout,
     QWidget,
@@ -1543,6 +1544,182 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
+    def test_canvas_block_shortcuts_accept_transient_modifiers(self) -> None:
+        canvas = Canvas()
+        canvas.editor_index = 1
+        calls = []
+        canvas.handle_ctrlc = lambda: calls.append('copy') or True
+        canvas.handle_ctrlv = lambda: calls.append('paste') or True
+        canvas.gv.show()
+        canvas.gv.setFocus()
+        self.app.processEvents()
+
+        modifiers = (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.KeypadModifier
+        )
+        QTest.keyClick(canvas.gv, Qt.Key.Key_C, modifiers)
+        QTest.keyClick(canvas.gv, Qt.Key.Key_V, modifiers)
+        self.app.processEvents()
+        canvas.gv.close()
+
+        self.assertEqual(calls, ['copy', 'paste'])
+
+    def test_canvas_pointer_input_restores_keyboard_focus(self) -> None:
+        canvas = Canvas()
+        canvas.imgtrans_proj = SimpleNamespace(img_valid=False)
+        editor = QLineEdit()
+        host = QWidget()
+        layout = QVBoxLayout(host)
+        layout.addWidget(editor)
+        layout.addWidget(canvas.gv)
+        host.show()
+        editor.setFocus()
+        self.app.processEvents()
+        self.assertTrue(editor.hasFocus())
+
+        QTest.mouseClick(
+            canvas.gv.viewport(),
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+            QPoint(20, 20),
+        )
+        self.app.processEvents()
+
+        self.assertTrue(canvas.gv.hasFocus())
+        host.close()
+
+    def test_text_edit_shortcuts_accept_transient_modifiers(self) -> None:
+        item, pair = self._make_pair(0, 'text', False)
+        modifiers = (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.KeypadModifier
+        )
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        self.app.clipboard().clear()
+        item.keyPressEvent(QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_C,
+            modifiers,
+        ))
+
+        item_events = []
+        item.pasted.connect(lambda _index: item_events.append('paste'))
+        item.undo_signal.connect(lambda: item_events.append('undo'))
+        item.redo_signal.connect(lambda: item_events.append('redo'))
+        for key in (Qt.Key.Key_V, Qt.Key.Key_Z, Qt.Key.Key_Y):
+            item.keyPressEvent(QKeyEvent(
+                QEvent.Type.KeyPress,
+                key,
+                modifiers,
+            ))
+
+        pair_events = []
+        pair.e_trans.undo_signal.connect(
+            lambda: pair_events.append('undo')
+        )
+        pair.e_trans.redo_signal.connect(
+            lambda: pair_events.append('redo')
+        )
+        for key in (Qt.Key.Key_Z, Qt.Key.Key_Y):
+            pair.e_trans.keyPressEvent(QKeyEvent(
+                QEvent.Type.KeyPress,
+                key,
+                modifiers,
+            ))
+
+        self.assertEqual(self.app.clipboard().text(), 'te')
+        self.assertEqual(item_events, ['paste', 'undo', 'redo'])
+        self.assertEqual(pair_events, ['undo', 'redo'])
+
+    def test_canvas_end_edit_commits_macos_ime_before_disabling(self) -> None:
+        item, pair = self._make_pair(0, '테스', False)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        view.show()
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        item.inputMethodEvent(QInputMethodEvent('트', []))
+        self.app.processEvents()
+        item.propagate_user_edited.connect(
+            lambda *args: propagate_user_edit(pair.e_trans, *args)
+        )
+
+        calls = []
+
+        def commit() -> None:
+            self.assertTrue(item.isEditing())
+            self.assertTrue(item.hasFocus())
+            calls.append(('commit', item.isEditing()))
+
+        def discard() -> None:
+            calls.append(('discard', item.isEditing()))
+
+        try:
+            with (
+                patch(
+                    'ballontranslator.ui.text_engine.item.shared.ON_MACOS',
+                    True,
+                ),
+                patch(
+                    'ballontranslator.ui.text_engine.item.QApplication.inputMethod',
+                    return_value=SimpleNamespace(commit=commit),
+                ),
+                patch(
+                    'ballontranslator.ui.text_engine.item._discard_macos_marked_text',
+                    side_effect=discard,
+                ),
+            ):
+                item.endEdit()
+
+            self.assertEqual(item.toPlainText(), '테스트')
+            self.assertEqual(pair.e_trans.toPlainText(), '테스트')
+            self.assertFalse(item.isEditing())
+            self.assertEqual(
+                item.document().firstBlock().layout().preeditAreaText(),
+                '',
+            )
+            self.assertEqual(calls, [('commit', True), ('discard', False)])
+        finally:
+            view.close()
+            scene.removeItem(item)
+
+    def test_canvas_ime_preedit_requests_full_repaint(self) -> None:
+        class RecordingTextBlkItem(TextBlkItem):
+            def __init__(self, *args, **kwargs):
+                self.full_update_count = 0
+                super().__init__(*args, **kwargs)
+
+            def update(self, *args) -> None:
+                if not args:
+                    self.full_update_count += 1
+                super().update(*args)
+
+        block = TextBlock([0, 0, 92, 162])
+        block._bounding_rect = [0, 0, 92, 162]
+        block.translation = '테스트'
+        item = RecordingTextBlkItem(block, 0)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.select(QTextCursor.SelectionType.Document)
+        item.setTextCursor(cursor)
+        item.full_update_count = 0
+
+        item.inputMethodEvent(QInputMethodEvent('테스트', []))
+
+        self.assertEqual(
+            item.document().firstBlock().layout().preeditAreaText(),
+            '테스트',
+        )
+        self.assertGreaterEqual(item.full_update_count, 1)
+
     def test_pair_editor_paste_shortcuts_at_document_start_stay_synced(self):
         shortcuts = (
             (Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier),
