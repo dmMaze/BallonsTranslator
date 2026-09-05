@@ -531,29 +531,75 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../ui/drawingpanel.py" line="74" />
+        <location filename="../ui/drawingpanel.py" line="203" />
         <source>Thickness</source>
         <translation>Épaisseur</translation>
     </message>
     <message>
-        <location filename="../ui/drawingpanel.py" line="79" />
+        <location filename="../ui/drawingpanel.py" line="207" />
+        <source>Tool Type</source>
+        <translation>Type d'outil</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="210" />
+        <source>Circle Brush</source>
+        <translation>Pinceau circulaire</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="211" />
+        <source>Rectangle Brush</source>
+        <translation>Pinceau rectangulaire</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="212" />
+        <source>Magic Wand</source>
+        <translation>Baguette magique</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="223" />
+        <source>Selection Mode</source>
+        <translation>Mode de sélection</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="226" />
+        <source>Selection</source>
+        <translation>Sélection</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="227" />
+        <source>Selection Interior</source>
+        <translation>Intérieur de la sélection</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="228" />
+        <source>Selection + Interior</source>
+        <translation>Sélection + intérieur</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="235" />
+        <source>Tolerance</source>
+        <translation>Tolérance</translation>
+    </message>
+    <message>
+        <location filename="../ui/drawingpanel.py" line="243" />
+        <source>Range</source>
+        <translation>Étendue</translation>
+    </message>
+    <message>
         <source>Shape</source>
-        <translation>Forme</translation>
+        <translation type="vanished">Forme</translation>
     </message>
     <message>
-        <location filename="../ui/drawingpanel.py" line="81" />
         <source>Circle</source>
-        <translation>Circulaire</translation>
+        <translation type="vanished">Circulaire</translation>
     </message>
     <message>
-        <location filename="../ui/drawingpanel.py" line="81" />
         <source>Rectangle</source>
-        <translation>Rectangle</translation>
+        <translation type="vanished">Rectangle</translation>
     </message>
     <message>
-        <location filename="../ui/drawingpanel.py" line="92" />
         <source>Inpainter</source>
-        <translation>Retoucheur</translation>
+        <translation type="vanished">Retoucheur</translation>
     </message>
 </context>
 <context>

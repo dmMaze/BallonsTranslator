@@ -20,7 +20,8 @@ class ImageEditMode:
 class PenShape:
     Circle = 0
     Rectangle = 1
-    Triangle = 2
+    MagicWand = 2
+    Triangle = 3
 
 class StrokeImgItem(QGraphicsItem):
     def __init__(self, pen: QPen, point: QPointF, size: QSize, format: QImage.Format = QImage.Format.Format_ARGB32, shape=PenShape.Circle):

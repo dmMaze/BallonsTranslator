@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 import random
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 def smart_resize(src: np.ndarray, target_size, upscale_interpolation=cv2.INTER_LINEAR, downscale_interpolation=cv2.INTER_AREA):
     h, w = src.shape[:2]
@@ -422,4 +422,142 @@ def get_block_mask(xywh: List, mask_array: np.ndarray, angle: int):
             msk = mask_array[y1: y2, x1: x2]
 
     return msk, [x1, y1, x2, y2]
-        
+
+
+class MagicWandFillMode:
+    Selection = 0
+    Interior = 1
+    SelectionAndInterior = 2
+
+
+def _fill_mask_holes(selection: np.ndarray) -> np.ndarray:
+    """Fill holes enclosed by a binary mask.
+
+    Pad by one pixel so flood-fill can walk around a ring that touches the
+    image border instead of starting on the wall.
+    """
+    h, w = selection.shape[:2]
+    padded = np.zeros((h + 2, w + 2), dtype=np.uint8)
+    padded[1:-1, 1:-1] = np.where(selection > 0, 255, 0)
+    padded = np.ascontiguousarray(padded)
+    cv2.floodFill(padded, None, (0, 0), 128)
+    return np.where(padded[1:-1, 1:-1] != 128, 255, 0).astype(np.uint8)
+
+
+def magic_wand_apply_fill_mode(
+    selection: np.ndarray,
+    fill_mode: int,
+) -> np.ndarray:
+    """Keep the wand selection, its enclosed interior, or both.
+
+    Example:
+        >>> ring = np.zeros((5, 5), dtype=np.uint8)
+        >>> ring[1:4, 1:4] = 255
+        >>> ring[2, 2] = 0
+        >>> int(magic_wand_apply_fill_mode(ring, MagicWandFillMode.Interior)[2, 2])
+        255
+    """
+    if selection is None or selection.size == 0 or int(selection.max()) == 0:
+        return selection
+    if fill_mode not in (
+        MagicWandFillMode.Interior,
+        MagicWandFillMode.SelectionAndInterior,
+    ):
+        return selection
+    filled = _fill_mask_holes(selection)
+    if fill_mode == MagicWandFillMode.SelectionAndInterior:
+        return filled
+    return cv2.bitwise_and(filled, cv2.bitwise_not(selection))
+
+
+def magic_wand_mask(
+    img: np.ndarray,
+    seed_xy: Tuple[int, int],
+    tolerance: int,
+    radius: int = 0,
+    fill_mode: int = MagicWandFillMode.Selection,
+) -> np.ndarray:
+    """Flood-fill similar colors, apply fill mode, then expand or shrink.
+
+    Example:
+        >>> img = np.zeros((4, 4, 3), dtype=np.uint8)
+        >>> img[1:3, 1:3] = 255
+        >>> mask = magic_wand_mask(img, (1, 1), 0, 0)
+        >>> int(mask[1, 1]), int(mask[0, 0])
+        (255, 0)
+    """
+    if img is None or img.size == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    h, w = img.shape[:2]
+    x, y = int(seed_xy[0]), int(seed_xy[1])
+    if h <= 0 or w <= 0 or x < 0 or y < 0 or x >= w or y >= h:
+        return np.zeros((h, w), dtype=np.uint8)
+
+    if img.ndim == 3 and img.shape[2] == 4:
+        work = img[:, :, :3]
+    else:
+        work = img
+    work = np.ascontiguousarray(work)
+
+    ff_mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
+    tolerance = max(0, int(tolerance))
+    if work.ndim == 2:
+        lo_diff: Union[int, Tuple[int, int, int]] = tolerance
+        up_diff: Union[int, Tuple[int, int, int]] = tolerance
+    else:
+        lo_diff = (tolerance, tolerance, tolerance)
+        up_diff = lo_diff
+    flags = (
+        4
+        | (255 << 8)
+        | cv2.FLOODFILL_MASK_ONLY
+        | cv2.FLOODFILL_FIXED_RANGE
+    )
+    cv2.floodFill(
+        work.copy(),
+        ff_mask,
+        (x, y),
+        0,
+        loDiff=lo_diff,
+        upDiff=up_diff,
+        flags=flags,
+    )
+    result = np.where(ff_mask[1:-1, 1:-1] == 255, 255, 0).astype(np.uint8)
+    result = magic_wand_apply_fill_mode(result, fill_mode)
+
+    ksize = abs(int(radius))
+    if ksize > 0 and result is not None and result.size > 0 and int(result.max()) > 0:
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1)
+        )
+        if radius > 0:
+            result = cv2.dilate(result, kernel)
+        else:
+            result = cv2.erode(result, kernel)
+    return result
+
+
+MAGIC_WAND_PREVIEW_RGBA = (150, 210, 255, 96)
+
+
+def magic_wand_preview_overlay(
+    mask: np.ndarray,
+    color_rgba: Tuple[int, int, int, int] = MAGIC_WAND_PREVIEW_RGBA,
+) -> Optional[Tuple[np.ndarray, int, int]]:
+    """Crop a pale overlay for the selected pixels.
+
+    Example:
+        >>> overlay, x, y = magic_wand_preview_overlay(np.array([[0, 255], [0, 0]], dtype=np.uint8))
+        >>> x, y, overlay[0, 0, 0], overlay[0, 0, 3]
+        (1, 0, 150, 96)
+    """
+    if mask is None or mask.size == 0 or int(mask.max()) == 0:
+        return None
+    ys, xs = np.where(mask > 0)
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    crop = mask[y1:y2, x1:x2]
+    overlay = np.zeros((crop.shape[0], crop.shape[1], 4), dtype=np.uint8)
+    overlay[crop > 0] = color_rgba
+    return overlay, x1, y1

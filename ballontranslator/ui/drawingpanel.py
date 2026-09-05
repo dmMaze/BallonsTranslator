@@ -1,4 +1,4 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
 from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
@@ -7,10 +7,16 @@ from math import log
 import numpy as np
 import cv2
 
-from ballontranslator.utils.imgproc_utils import enlarge_window
+from ballontranslator.utils.imgproc_utils import (
+    enlarge_window,
+    magic_wand_mask,
+    magic_wand_preview_overlay,
+    MagicWandFillMode,
+)
 from ballontranslator.utils.textblock_mask import canny_flood, connected_canny_flood
 from ballontranslator.utils.logger import logger
 from ballontranslator.utils.config import pcfg
+from .cursor import magic_wand_cursor
 from .funcmaps import get_maskseg_method
 from .module_manager import ModuleManager
 from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
@@ -26,6 +32,8 @@ INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
 MAX_PEN_SIZE = 1000
 MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
+MAGICWAND_TOLERANCE_MAX = 255
+MAGICWAND_RANGE_LIMIT = 50
 
 
 class _BrushThicknessSlider(PaintQSlider):
@@ -107,6 +115,25 @@ class ToolNameLabel(QLabel):
         self.setFont(font)
 
 
+def _labeled_paint_slider(
+    parent: Widget,
+    label: str,
+    minimum: int,
+    maximum: int,
+    value: int,
+) -> tuple[Widget, PaintQSlider]:
+    row = Widget(parent)
+    layout = QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(10)
+    layout.addWidget(ToolNameLabel(100, label))
+    slider = PaintQSlider(parent=row)
+    slider.setRange(minimum, maximum)
+    slider.setValue(value)
+    layout.addWidget(slider)
+    return row, slider
+
+
 class InpainterSelectorRow(Widget):
     """An independently owned selector for the one global inpainter choice.
 
@@ -155,6 +182,8 @@ class InpainterSelectorRow(Widget):
 class InpaintPanel(Widget):
 
     thicknessChanged = Signal(int)
+    toleranceChanged = Signal(int)
+    rangeChanged = Signal(int)
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -166,33 +195,70 @@ class InpaintPanel(Widget):
         ) = _create_thickness_control(self)
         self.thicknessSlider.valueChanged.connect(self.on_thickness_changed)
         self.thicknessSpinBox.valueChanged.connect(self.on_thickness_changed)
-        
-        thickness_layout = QHBoxLayout()
+
+        self.thickness_row = Widget(self)
+        thickness_layout = QHBoxLayout(self.thickness_row)
+        thickness_layout.setContentsMargins(0, 0, 0, 0)
+        thickness_layout.setSpacing(10)
         thickness_label = ToolNameLabel(100, self.tr('Thickness'))
         thickness_layout.addWidget(thickness_label)
         thickness_layout.addLayout(thickness_control_layout, 1)
-        thickness_layout.setSpacing(10)
 
-        shape_label = ToolNameLabel(100, self.tr('Shape'))
+        shape_label = ToolNameLabel(100, self.tr('Tool Type'))
         self.shapeCombobox = QComboBox(self)
         self.shapeCombobox.addItems([
-            self.tr('Circle'),
-            self.tr('Rectangle'),
-            # self.tr('Triangle')
+            self.tr('Circle Brush'),
+            self.tr('Rectangle Brush'),
+            self.tr('Magic Wand'),
         ])
         self.shapeChanged = self.shapeCombobox.currentIndexChanged
         shape_layout = QHBoxLayout()
         shape_layout.addWidget(shape_label)
         shape_layout.addWidget(self.shapeCombobox)
 
+        self.fill_mode_row = Widget(self)
+        fill_mode_layout = QHBoxLayout(self.fill_mode_row)
+        fill_mode_layout.setContentsMargins(0, 0, 0, 0)
+        fill_mode_layout.setSpacing(10)
+        fill_mode_layout.addWidget(ToolNameLabel(100, self.tr('Selection Mode')))
+        self.fillModeCombobox = QComboBox(self.fill_mode_row)
+        self.fillModeCombobox.addItems([
+            self.tr('Selection'),
+            self.tr('Selection Interior'),
+            self.tr('Selection + Interior'),
+        ])
+        self.fillModeChanged = self.fillModeCombobox.currentIndexChanged
+        fill_mode_layout.addWidget(self.fillModeCombobox)
+
+        self.tolerance_row, self.toleranceSlider = _labeled_paint_slider(
+            self,
+            self.tr('Tolerance'),
+            0,
+            MAGICWAND_TOLERANCE_MAX,
+            32,
+        )
+        self.toleranceSlider.valueChanged.connect(self.toleranceChanged)
+        self.range_row, self.rangeSlider = _labeled_paint_slider(
+            self,
+            self.tr('Range'),
+            -MAGICWAND_RANGE_LIMIT,
+            MAGICWAND_RANGE_LIMIT,
+            0,
+        )
+        self.rangeSlider.valueChanged.connect(self.rangeChanged)
+
         self.inpainter_selector = InpainterSelectorRow(self)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.inpainter_selector)
-        layout.addLayout(thickness_layout)
+        layout.addWidget(self.thickness_row)
         layout.addLayout(shape_layout)
+        layout.addWidget(self.fill_mode_row)
+        layout.addWidget(self.tolerance_row)
+        layout.addWidget(self.range_row)
         layout.setSpacing(14)
+        self.sync_shape_controls()
 
     def on_thickness_changed(self, value: int) -> None:
         sender = self.sender()
@@ -208,6 +274,26 @@ class InpaintPanel(Widget):
     @property
     def shape(self):
         return self.shapeCombobox.currentIndex()
+
+    @property
+    def fill_mode(self) -> int:
+        return self.fillModeCombobox.currentIndex()
+
+    def set_fill_mode(self, mode: int) -> None:
+        count = self.fillModeCombobox.count()
+        if mode < 0 or mode >= count:
+            mode = MagicWandFillMode.Selection
+        self.fillModeCombobox.setCurrentIndex(mode)
+
+    def is_magic_wand(self) -> bool:
+        return self.shape == PenShape.MagicWand
+
+    def sync_shape_controls(self) -> None:
+        wand = self.is_magic_wand()
+        self.thickness_row.setVisible(not wand)
+        self.tolerance_row.setVisible(wand)
+        self.range_row.setVisible(wand)
+        self.fill_mode_row.setVisible(wand)
 
 
 class PenConfigPanel(Widget):
@@ -383,6 +469,16 @@ class DrawingPanel(Widget):
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
         self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
         self.scale_circle = QGraphicsEllipseItem()
+        self.magic_wand_preview_item = QGraphicsPixmapItem()
+        self.magic_wand_preview_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.magic_wand_preview_item.setAcceptHoverEvents(False)
+        self.magic_wand_preview_item.setZValue(20)
+        self._magic_wand_hover_pos: QPointF = None
+        self._magic_wand_hover_seed = None
+        self._magic_wand_hover_timer = QTimer(self)
+        self._magic_wand_hover_timer.setSingleShot(True)
+        self._magic_wand_hover_timer.setInterval(40)
+        self._magic_wand_hover_timer.timeout.connect(self._apply_magic_wand_hover_preview)
         
         canvas.finish_painting.connect(self.on_finish_painting)
         canvas.finish_erasing.connect(self.on_finish_erasing)
@@ -392,6 +488,9 @@ class DrawingPanel(Widget):
         canvas.end_scale_tool.connect(self.on_end_scale_tool)
         canvas.scalefactor_changed.connect(self.on_canvas_scalefactor_changed)
         canvas.end_create_rect.connect(self.on_end_create_rect)
+        canvas.magic_wand_clicked.connect(self.on_magic_wand_clicked)
+        canvas.magic_wand_hover.connect(self.on_magic_wand_hover)
+        canvas.magic_wand_hover_left.connect(self.clear_magic_wand_preview)
 
         self.currentTool: DrawToolCheckBox = None
         self.handTool = DrawToolCheckBox()
@@ -404,6 +503,9 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel = InpaintPanel()
         self.inpaintConfigPanel.thicknessChanged.connect(self.setInpaintToolWidth)
         self.inpaintConfigPanel.shapeChanged.connect(self.setInpaintShape)
+        self.inpaintConfigPanel.toleranceChanged.connect(self.on_magicwand_tolerance_changed)
+        self.inpaintConfigPanel.rangeChanged.connect(self.on_magicwand_range_changed)
+        self.inpaintConfigPanel.fillModeChanged.connect(self.on_magicwand_fill_mode_changed)
 
         self.rectTool = DrawToolCheckBox()
         self.rectTool.setObjectName("DrawRectTool")
@@ -516,9 +618,156 @@ class DrawingPanel(Widget):
             self.setInpaintCursor()
 
     def setInpaintShape(self, shape: int):
-        self.setInpaintCursor()
         pcfg.drawpanel.inpainter_shape = shape
         self.canvas.painting_shape = shape
+        self.inpaintConfigPanel.sync_shape_controls()
+        if self.currentTool is self.inpaintTool:
+            self.canvas.image_edit_mode = ImageEditMode.InpaintTool
+        if self.isVisible():
+            self.setInpaintCursor()
+        self._sync_magic_wand_hover_tracking()
+
+    def on_magicwand_tolerance_changed(self, value: int) -> None:
+        pcfg.drawpanel.magicwand_tolerance = int(value)
+        self._magic_wand_hover_seed = None
+        self._apply_magic_wand_hover_preview()
+
+    def on_magicwand_range_changed(self, value: int) -> None:
+        pcfg.drawpanel.magicwand_range = int(value)
+        self._magic_wand_hover_seed = None
+        self._apply_magic_wand_hover_preview()
+
+    def on_magicwand_fill_mode_changed(self, mode: int) -> None:
+        pcfg.drawpanel.magicwand_fill_mode = int(mode)
+        self._magic_wand_hover_seed = None
+        self._apply_magic_wand_hover_preview()
+
+    def on_magic_wand_clicked(self, scene_pos: QPointF, erasing: bool) -> None:
+        """Select similar colors at the click and inpaint or restore that region.
+
+        Example:
+            >>> DrawingPanel.on_magic_wand_clicked.__annotations__['erasing']
+            <class 'bool'>
+        """
+        if self.currentTool != self.inpaintTool or not self.inpaintConfigPanel.is_magic_wand():
+            return
+        self.clear_magic_wand_preview(clear_pos=False)
+        proj = self.canvas.imgtrans_proj
+        if not proj.img_valid:
+            return
+        pos = self.canvas.inpaintLayer.mapFromScene(scene_pos)
+        x, y = int(round(pos.x())), int(round(pos.y()))
+        img = proj.inpainted_array
+        mask = magic_wand_mask(
+            img,
+            (x, y),
+            self.inpaintConfigPanel.toleranceSlider.value(),
+            self.inpaintConfigPanel.rangeSlider.value(),
+            self.inpaintConfigPanel.fill_mode,
+        )
+        if mask is None or mask.size == 0 or int(mask.max()) == 0:
+            return
+        ys, xs = np.where(mask > 0)
+        x1, x2 = int(xs.min()), int(xs.max()) + 1
+        y1, y2 = int(ys.min()), int(ys.max()) + 1
+        crop_mask = mask[y1:y2, x1:x2]
+        inpaint_rect = [x1, y1, x2, y2]
+        if erasing:
+            origin = proj.img_array[y1:y2, x1:x2]
+            inpainted = img[y1:y2, x1:x2]
+            existing = proj.mask_array[y1:y2, x1:x2]
+            if existing.sum() == 0:
+                return
+            restore_mask = cv2.bitwise_and(crop_mask, existing)
+            if restore_mask.max() == 0:
+                return
+            blend = (restore_mask > 0)[..., None]
+            erased_img = np.where(blend, origin, inpainted)
+            self.canvas.push_undo_command(
+                InpaintUndoCommand(self.canvas, erased_img, restore_mask, inpaint_rect)
+            )
+            return
+
+        img_h, img_w = img.shape[:2]
+        rect_enlarged = enlarge_window(inpaint_rect, img_w, img_h)
+        top = y1 - rect_enlarged[1]
+        bottom = rect_enlarged[3] - y2
+        left = x1 - rect_enlarged[0]
+        right = rect_enlarged[2] - x2
+        padded = cv2.copyMakeBorder(
+            crop_mask, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0
+        )
+        inpaint_rect = rect_enlarged
+        crop_img = img[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+        self.runInpaint({
+            'img': crop_img,
+            'mask': padded,
+            'inpaint_rect': inpaint_rect,
+        })
+
+    def _sync_magic_wand_hover_tracking(self) -> None:
+        enabled = (
+            self.isVisible()
+            and self.currentTool is self.inpaintTool
+            and self.inpaintConfigPanel.is_magic_wand()
+        )
+        self.canvas.set_magic_wand_hover_tracking(enabled)
+        if not enabled:
+            self.clear_magic_wand_preview()
+
+    def on_magic_wand_hover(self, scene_pos: QPointF) -> None:
+        if not self.inpaintConfigPanel.is_magic_wand() or self.currentTool is not self.inpaintTool:
+            self.clear_magic_wand_preview()
+            return
+        self._magic_wand_hover_pos = QPointF(scene_pos)
+        self._magic_wand_hover_timer.start()
+
+    def _apply_magic_wand_hover_preview(self) -> None:
+        scene_pos = self._magic_wand_hover_pos
+        if (
+            scene_pos is None
+            or self.currentTool is not self.inpaintTool
+            or not self.inpaintConfigPanel.is_magic_wand()
+        ):
+            self.clear_magic_wand_preview()
+            return
+        proj = self.canvas.imgtrans_proj
+        if proj is None or not proj.img_valid:
+            self.clear_magic_wand_preview()
+            return
+        pos = self.canvas.inpaintLayer.mapFromScene(scene_pos)
+        x, y = int(round(pos.x())), int(round(pos.y()))
+        tolerance = self.inpaintConfigPanel.toleranceSlider.value()
+        radius = self.inpaintConfigPanel.rangeSlider.value()
+        fill_mode = self.inpaintConfigPanel.fill_mode
+        seed = (x, y, tolerance, radius, fill_mode)
+        if seed == self._magic_wand_hover_seed:
+            return
+        mask = magic_wand_mask(
+            proj.inpainted_array, (x, y), tolerance, radius, fill_mode
+        )
+        overlay = magic_wand_preview_overlay(mask)
+        self._magic_wand_hover_seed = seed
+        if overlay is None:
+            self.clear_magic_wand_preview(clear_pos=False)
+            return
+        rgba, x1, y1 = overlay
+        self.magic_wand_preview_item.setPixmap(ndarray2pixmap(rgba))
+        self.magic_wand_preview_item.setPos(x1, y1)
+        if self.magic_wand_preview_item.parentItem() is not self.canvas.baseLayer:
+            self.magic_wand_preview_item.setParentItem(self.canvas.baseLayer)
+        self.magic_wand_preview_item.show()
+
+    def clear_magic_wand_preview(self, clear_pos: bool = True) -> None:
+        self._magic_wand_hover_timer.stop()
+        self._magic_wand_hover_seed = None
+        if clear_pos:
+            self._magic_wand_hover_pos = None
+        if self.magic_wand_preview_item.scene() is not None:
+            self.magic_wand_preview_item.hide()
+            self.magic_wand_preview_item.setPixmap(QPixmap())
+            if self.magic_wand_preview_item.parentItem() is not None:
+                self.magic_wand_preview_item.setParentItem(None)
 
     def setPenToolWidth(self, width):
         self.pentool_pen.setWidthF(width)
@@ -550,6 +799,7 @@ class DrawingPanel(Widget):
         self.canvas.clear_canvas_cursor()
         self.canvas.gv.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.canvas.image_edit_mode = ImageEditMode.HandTool
+        self._sync_magic_wand_hover_tracking()
 
     def on_use_inpainttool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.inpaintTool:
@@ -564,6 +814,7 @@ class DrawingPanel(Widget):
         if self.isVisible():
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.setInpaintCursor()
+        self._sync_magic_wand_hover_tracking()
 
     def on_use_pentool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.penTool:
@@ -578,6 +829,7 @@ class DrawingPanel(Widget):
         if self.isVisible():
             self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
             self.setPenCursor()
+        self._sync_magic_wand_hover_tracking()
 
     def on_use_recttool(self) -> None:
         if self.currentTool is not None and self.currentTool != self.rectTool:
@@ -588,6 +840,7 @@ class DrawingPanel(Widget):
         self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.canvas.image_edit_mode = ImageEditMode.RectTool
         self.setCrossCursor()
+        self._sync_magic_wand_hover_tracking()
 
     def set_config(self, config: DrawPanelConfig):
         self.setPenToolWidth(config.pentool_width)
@@ -597,7 +850,19 @@ class DrawingPanel(Widget):
         
         self.setInpaintToolWidth(config.inpainter_width)
         self.inpaintConfigPanel.thicknessSlider.setValue(int(config.inpainter_width))
-        self.inpaintConfigPanel.shapeCombobox.setCurrentIndex(config.inpainter_shape)
+        shape = config.inpainter_shape
+        if shape < 0 or shape >= self.inpaintConfigPanel.shapeCombobox.count():
+            shape = PenShape.Circle
+        with QSignalBlocker(self.inpaintConfigPanel.shapeCombobox):
+            self.inpaintConfigPanel.shapeCombobox.setCurrentIndex(shape)
+        self.setInpaintShape(shape)
+        self.inpaintConfigPanel.toleranceSlider.setValue(
+            min(max(int(config.magicwand_tolerance), 0), MAGICWAND_TOLERANCE_MAX)
+        )
+        self.inpaintConfigPanel.rangeSlider.setValue(
+            min(max(int(config.magicwand_range), -MAGICWAND_RANGE_LIMIT), MAGICWAND_RANGE_LIMIT)
+        )
+        self.inpaintConfigPanel.set_fill_mode(config.magicwand_fill_mode)
         
         self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
@@ -643,6 +908,8 @@ class DrawingPanel(Widget):
                 painter.drawEllipse(shape_rect)
             elif shape == PenShape.Rectangle:
                 painter.drawRect(shape_rect)
+            elif shape == PenShape.MagicWand:
+                pass
             else:
                 raise NotImplementedError
             # elif shape == PenShape.Triangle:
@@ -683,6 +950,8 @@ class DrawingPanel(Widget):
             self.setPenToolWidth(self.penConfigPanel.thicknessSlider.value())
 
         elif self.currentTool == self.inpaintTool:
+            if self.inpaintConfigPanel.is_magic_wand():
+                return
             val = self.inpaint_pen.widthF()
             new_val = round(int(val * scale_factor))
             if scale_factor > 1:
@@ -693,10 +962,11 @@ class DrawingPanel(Widget):
             self.setInpaintToolWidth(self.inpaintConfigPanel.thicknessSlider.value())
 
     def showEvent(self, event) -> None:
+        super().showEvent(event)
         if self.currentTool is not None:
             self.currentTool.setChecked(False)
             self.currentTool.setChecked(True)
-        return super().showEvent(event)
+        self._sync_magic_wand_hover_tracking()
 
     def on_finish_painting(self, stroke_item: StrokeImgItem):
         stroke_item.finishPainting()
@@ -795,7 +1065,7 @@ class DrawingPanel(Widget):
         self.clearInpaintItems()
 
     def on_inpaint_failed(self):
-        if self.currentTool == self.inpaintTool and self.inpaint_stroke is not None:
+        if self.currentTool == self.inpaintTool:
             self.clearInpaintItems()
 
     def on_canvasctrl_released(self):
@@ -803,7 +1073,8 @@ class DrawingPanel(Widget):
             self.runInpaint()
 
     def on_begin_scale_tool(self, pos: QPointF):
-        
+        if self.currentTool == self.inpaintTool and self.inpaintConfigPanel.is_magic_wand():
+            return
         if self.currentTool == self.penTool:
             circle_pen = QPen(self.pentool_pen)
         elif self.currentTool == self.inpaintTool:
@@ -871,6 +1142,9 @@ class DrawingPanel(Widget):
 
     def setInpaintCursor(self) -> None:
         if not self.isVisible() or self.currentTool != self.inpaintTool:
+            return
+        if self.inpaintConfigPanel.is_magic_wand():
+            self.canvas.set_canvas_cursor(magic_wand_cursor())
             return
         self.canvas.set_canvas_cursor(
             self.get_pen_cursor(
@@ -972,6 +1246,8 @@ class DrawingPanel(Widget):
             self.clearInpaintItems()
 
     def hideEvent(self, e) -> None:
+        self.canvas.set_magic_wand_hover_tracking(False)
+        self.clear_magic_wand_preview()
         self.clearInpaintItems()
         return super().hideEvent(e)
 
@@ -989,8 +1265,11 @@ class DrawingPanel(Widget):
             if self.inpaint_stroke.scene() == self.canvas:
                 self.canvas.removeItem(self.inpaint_stroke)
             self.inpaint_stroke = None
-            if self.inpaintTool.isChecked():
-                self.canvas.image_edit_mode = ImageEditMode.InpaintTool
+        # Magic wand has no stroke item; still restore paint mode after inpaint.
+        if self.inpaintTool.isChecked():
+            self.canvas.image_edit_mode = ImageEditMode.InpaintTool
+        self._sync_magic_wand_hover_tracking()
 
     def handle_page_changed(self):
+        self.clear_magic_wand_preview()
         self.clearInpaintItems()

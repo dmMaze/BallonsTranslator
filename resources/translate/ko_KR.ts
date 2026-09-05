@@ -1832,24 +1832,71 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="117"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="203"/>
         <source>Thickness</source>
         <translation>두께</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="122"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="207"/>
+        <source>Tool Type</source>
+        <translation>도구 유형</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="210"/>
+        <source>Circle Brush</source>
+        <translation>원형 브러시</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="211"/>
+        <source>Rectangle Brush</source>
+        <translation>사각형 브러시</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="212"/>
+        <source>Magic Wand</source>
+        <translation>마법봉</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="223"/>
+        <source>Selection Mode</source>
+        <translation>선택 모드</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="226"/>
+        <source>Selection</source>
+        <translation>선택 영역</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="227"/>
+        <source>Selection Interior</source>
+        <translation>선택 영역 내부</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="228"/>
+        <source>Selection + Interior</source>
+        <translation>선택 영역+내부</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="235"/>
+        <source>Tolerance</source>
+        <translation>허용오차</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243"/>
+        <source>Range</source>
+        <translation>범위</translation>
+    </message>
+    <message>
         <source>Shape</source>
-        <translation>모양</translation>
+        <translation type="vanished">모양</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="125"/>
         <source>Circle</source>
-        <translation>원형</translation>
+        <translation type="vanished">원형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="126"/>
         <source>Rectangle</source>
-        <translation>사각형</translation>
+        <translation type="vanished">사각형</translation>
     </message>
     <message>
         <source>Inpainter</source>

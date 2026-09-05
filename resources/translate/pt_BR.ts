@@ -557,29 +557,75 @@
   <context>
     <name>InpaintPanel</name>
     <message>
-      <location filename="..\ui\drawingpanel.py" line="73"/>
+      <location filename="..\ui\drawingpanel.py" line="203"/>
       <source>Thickness</source>
       <translation>Espessura</translation>
     </message>
     <message>
-      <location filename="..\ui\drawingpanel.py" line="78"/>
+      <location filename="..\ui\drawingpanel.py" line="207"/>
+      <source>Tool Type</source>
+      <translation>Tipo de ferramenta</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="210"/>
+      <source>Circle Brush</source>
+      <translation>Pincel circular</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="211"/>
+      <source>Rectangle Brush</source>
+      <translation>Pincel retangular</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="212"/>
+      <source>Magic Wand</source>
+      <translation>Varinha mágica</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="223"/>
+      <source>Selection Mode</source>
+      <translation>Modo de seleção</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="226"/>
+      <source>Selection</source>
+      <translation>Seleção</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="227"/>
+      <source>Selection Interior</source>
+      <translation>Interior da seleção</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="228"/>
+      <source>Selection + Interior</source>
+      <translation>Seleção + interior</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="235"/>
+      <source>Tolerance</source>
+      <translation>Tolerância</translation>
+    </message>
+    <message>
+      <location filename="..\ui\drawingpanel.py" line="243"/>
+      <source>Range</source>
+      <translation>Intervalo</translation>
+    </message>
+    <message>
       <source>Shape</source>
-      <translation>Forma</translation>
+      <translation type="vanished">Forma</translation>
     </message>
     <message>
-      <location filename="..\ui\drawingpanel.py" line="81"/>
       <source>Circle</source>
-      <translation>Círculo</translation>
+      <translation type="vanished">Círculo</translation>
     </message>
     <message>
-      <location filename="..\ui\drawingpanel.py" line="82"/>
       <source>Rectangle</source>
-      <translation>Retângulo</translation>
+      <translation type="vanished">Retângulo</translation>
     </message>
     <message>
-      <location filename="..\ui\drawingpanel.py" line="91"/>
       <source>Inpainter</source>
-      <translation>Inpainter</translation>
+      <translation type="vanished">Inpainter</translation>
     </message>
   </context>
   <context>
