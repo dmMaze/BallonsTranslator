@@ -39,6 +39,34 @@ class FontFamilyResolutionTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_picker_does_not_open_all_fonts_on_show_or_autocomplete(self) -> None:
+        from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+
+        entries = [FontEntry(f'Family {i}', f'Family {i}', f'Family {i}', 'system')
+                   for i in range(200)]
+        registry = FontRegistry(system_entries=entries)
+        registry._font_database = object()
+        with patch.object(shared, 'FONT_REGISTRY', registry), patch(
+            'ballontranslator.utils.font_registry._system_display_family',
+            side_effect=lambda _db, family, _locale: 'Display ' + family,
+        ) as lookup:
+            combo = FontFamilyComboBox()
+            try:
+                combo.update_font_entries(entries)
+                combo.show()
+                self.app.processEvents()
+                combo.showPopup()
+                self.app.processEvents()
+                # Rendering and completion must not eagerly open the collection.
+                self.assertLess(lookup.call_count, len(entries) // 2)
+                combo.hidePopup()
+                combo.set_current_family('Family 199')
+                self.assertEqual(combo.currentText(), 'Display Family 199')
+                self.assertEqual(combo.current_storage_family(), 'Family 199')
+            finally:
+                combo.close()
+                combo.deleteLater()
+
     def test_internal_alias_round_trips_without_leaking_into_text(self):
         family = '[test-vendor]Synthetic Font'
         aliases = register_qt_font_family_aliases(

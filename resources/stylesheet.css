@@ -455,19 +455,28 @@ QComboBox#FontFamilyBox::hover {
 }
 
 QComboBox#FontWeightBox {
-    min-width: 52px;
-    max-width: 52px;
+    min-width: 72px;
+    max-width: 72px;
     height: 23px;
     font-size: 12px;
-    padding-right: 13px;
+    padding-right: 18px;
     padding-left: 5px;
 }
 
-QComboBox#FontFamilyBox::down-arrow,
-QComboBox#FontWeightBox::down-arrow {
+QComboBox#FontFamilyBox::down-arrow {
     width: 10px;
     height: 10px;
     padding-right: 12px;
+}
+
+QComboBox#FontWeightBox::drop-down {
+    width: 18px;
+}
+
+QComboBox#FontWeightBox::down-arrow {
+    width: 10px;
+    height: 10px;
+    padding: 0px;
 }
 
 SizeComboBox {
@@ -527,6 +536,10 @@ QLabel#lineSpacingLabel {
     max-height: 23px;
     min-width: 23px;
     min-height: 23px;
+}
+
+QLabel#fontSizeDragLabel {
+    image: url(resources/icons/fontfmt_size.svg);
 }
 
 QGroupBox {

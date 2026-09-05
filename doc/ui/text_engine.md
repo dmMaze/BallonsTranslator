@@ -59,6 +59,12 @@ Font weights use the CSS/Qt 6 scale from `100` to `900`. Normalize legacy Qt 5
 values only at the Qt/HTML boundary. Pass saved or UI-provided family names
 through `qfont_with_family()` so Qt-unsafe names can use runtime aliases without
 changing persisted names.
+The font registry prefers localized typographic-family labels for the picker,
+falling back to family metadata and Qt names. System labels are read from Qt's
+raw font name table on selection or display and cached; explicit display
+overrides take precedence. Autocomplete uses canonical names and already
+resolved labels without opening every system font. Display aliases
+must never replace existing saved-name mappings or change exported family names.
 
 ## Rich text and CSS extensions
 
@@ -180,6 +186,12 @@ Separate histories own separate state:
 One logical action should publish one user-visible command. Guard undo/redo
 against recursively creating commands, and never send paint-only or
 geometry-only changes to the paired editor as text changes.
+
+`formatting/size_edit_session.py` owns font-size scrubbing. Whole-item drags
+use transient transform geometry, then commit proportional rich-text sizes
+and logical bounds through one document-aware canvas command. An editing
+selection instead keeps a numeric draft until release. Typed sizes commit on
+editing completion; save, target changes, and history changes cancel held drags.
 
 Qt positions and removal lengths are UTF-16 code units. Replay Qt's
 `(position, charsRemoved, insertedText)` contract directly; do not infer ranges

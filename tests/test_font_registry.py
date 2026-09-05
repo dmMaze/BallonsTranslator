@@ -1,4 +1,6 @@
 from pathlib import Path
+import struct
+from types import SimpleNamespace
 
 from ballontranslator.utils.font_registry import (
     FontEntry,
@@ -8,11 +10,15 @@ from ballontranslator.utils.font_registry import (
     _disambiguate_duplicate_weights,
     _sfnt_offsets,
     _system_entry,
+    _parse_name_table,
+    _system_display_family,
     build_font_registry,
     collect_custom_faces,
+    choose_localized_pair,
     ensure_font_registry_overrides,
     load_custom_group_table,
     load_system_alias_table,
+    parse_font_names,
     qt_family_weights,
 )
 
@@ -90,6 +96,109 @@ def test_localized_family_is_display_only() -> None:
     assert face.display_family == '예제 산스'
     assert face.canonical_family == 'Example Sans'
     assert face.storage_family == 'Example Sans'
+
+
+def _name_table(records: list[tuple[int, int, str]]) -> bytes:
+    strings = bytearray()
+    headers = bytearray()
+    for name_id, language_id, text in records:
+        encoded = text.encode('utf-16-be')
+        headers.extend(struct.pack('>6H', 3, 1, language_id, name_id, len(encoded), len(strings)))
+        strings.extend(encoded)
+    return struct.pack('>3H', 0, len(records), 6 + len(headers)) + headers + strings
+
+
+def test_file_name_table_parser_preserves_localized_records(tmp_path: Path) -> None:
+    table = _name_table([(1, 0x0409, 'Legacy Sans'), (16, 0x0804, '示例黑体')])
+    font_path = tmp_path / 'example.otf'
+    font_path.write_bytes(
+        struct.pack('>4s4H', b'OTTO', 1, 0, 0, 0)
+        + struct.pack('>4s3I', b'name', 0, 28, len(table)) + table
+    )
+    faces = parse_font_names(font_path)
+    assert len(faces) == 1
+    assert [(name['label'], name['language'], name['value']) for name in faces[0]['names']] == [
+        ('family', 'en-US', 'Legacy Sans'),
+        ('typographic_family', 'zh-CN', '示例黑体'),
+    ]
+
+
+def test_system_metadata_localizes_only_display_names(monkeypatch) -> None:
+    from qtpy.QtGui import QRawFont
+
+    table = _name_table([
+        (1, 0x0409, 'Legacy Sans'),
+        (16, 0x0409, 'Example Sans'),
+        (16, 0x0804, '示例黑体'),
+        (6, 0x0409, 'ExampleSans-Regular'),
+    ])
+    raw = SimpleNamespace(isValid=lambda: True, fontTable=lambda _: table)
+    monkeypatch.setattr(QRawFont, 'fromFont', lambda _: raw)
+    monkeypatch.setattr(_Qt5FontDatabase, 'font', lambda *_: object(), raising=False)
+
+    for locale, display in [('zh-CN', '示例黑体'), ('en-US', 'Example Sans')]:
+        registry = build_font_registry(_Qt5FontDatabase(), [], ['Legacy Sans'], locale)
+        entry = registry.entries()[0]
+        assert registry.display_family(entry) == display
+        assert entry.storage_family_for_weight(400) == 'Legacy Sans'
+        assert registry.resolve_family('Legacy Sans', 400).qt_family == 'Legacy Sans'
+        assert registry.resolve_family(display, 400).canonical_family == 'Legacy Sans'
+        assert registry.family_for_export('Legacy Sans') == 'Legacy Sans'
+
+
+def test_system_display_falls_back_for_missing_or_truncated_metadata(monkeypatch) -> None:
+    from qtpy.QtGui import QRawFont
+
+    database = SimpleNamespace(font=lambda *_: object())
+    for table in (b'', b'\x00', _name_table([(16, 0x0804, '示例')])[:-1]):
+        assert _parse_name_table(table) == []
+        raw = SimpleNamespace(isValid=lambda: True, fontTable=lambda _: table)
+        monkeypatch.setattr(QRawFont, 'fromFont', lambda _: raw)
+        assert _system_display_family(database, 'Legacy Sans', 'zh-CN') == 'Legacy Sans'
+    table = _name_table([(1, 0x0409, 'Unrelated Fallback Font')])
+    assert _system_display_family(database, 'Legacy Sans', 'zh-CN') == 'Legacy Sans'
+
+
+def test_localized_system_labels_do_not_shadow_saved_names(monkeypatch) -> None:
+    monkeypatch.setattr(
+        'ballontranslator.utils.font_registry._system_display_family',
+        lambda _db, _family, _locale: 'Existing Family',
+    )
+    registry = build_font_registry(
+        _Qt5FontDatabase(), [], ['Existing Family', 'Other Family'], 'en-US',
+    )
+    assert registry.resolve_family('Existing Family').canonical_family == 'Existing Family'
+    assert registry.resolve_family('Other Family').canonical_family == 'Other Family'
+    other = registry.resolve_family('Other Family').entry
+    display = registry.display_family(other)
+    assert display == 'Existing Family (Other Family)'
+    assert registry.resolve_family(display).canonical_family == 'Other Family'
+
+
+def test_system_labels_are_resolved_on_demand_and_cached(monkeypatch) -> None:
+    calls = []
+    def read_label(_db, family, _locale):
+        calls.append(family)
+        return 'Display ' + family
+    monkeypatch.setattr(
+        'ballontranslator.utils.font_registry._system_display_family', read_label,
+    )
+    registry = build_font_registry(_Qt5FontDatabase(), [], ['One', 'Two'])
+    one = registry.resolve_family('One').entry
+    assert calls == []
+    assert registry.display_family(one, resolve=False) == 'One'
+    assert calls == []
+    assert registry.display_family(one) == 'Display One'
+    assert registry.display_family(one) == 'Display One'
+    assert calls == ['One']
+
+
+def test_family_fallback_prefers_unicode_records_over_legacy_mac_names() -> None:
+    records = [
+        {**_name('family', '0x0000', 'EPSON ä€ÉSÉVÉbÉNëÃÇl'), 'platform_id': 1},
+        _name('family', 'ja-JP', 'EPSON 丸ゴシック体Ｍ'),
+    ]
+    assert choose_localized_pair([], records, 'zh-CN') == 'EPSON 丸ゴシック体Ｍ'
 
 
 def test_duplicate_vendor_weights_split_only_with_distinct_styles() -> None:

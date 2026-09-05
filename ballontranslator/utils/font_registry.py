@@ -251,9 +251,33 @@ class FontRegistry:
         init=False,
         repr=False,
     )
+    _font_database: Any = field(default=None, init=False, repr=False)
+    _display_locale: str = field(default='en-US', init=False, repr=False)
+    _display_names: Dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._rebuild_index()
+
+    def display_family(self, entry: FontEntry, *, resolve: bool = True) -> str:
+        """Resolve only requested labels, keeping saved-name lookup authoritative.
+
+        >>> reg = FontRegistry()
+        >>> reg.display_family(FontEntry('A', 'Display A', 'A', 'custom'))
+        'Display A'
+        """
+        if entry.source != 'system' or entry.alias_source != 'none' or self._font_database is None:
+            return entry.display_family
+        key = normalize_key(entry.canonical_family)
+        if not resolve:
+            return self._display_names.get(key, entry.display_family)
+        if key not in self._display_names:
+            display = _system_display_family(self._font_database, entry.qt_family, self._display_locale)
+            existing = self.entries_by_key.get(normalize_key(display))
+            if existing is not None and existing is not entry:
+                display = f'{display} ({entry.canonical_family})'
+            self._display_names[key] = display
+            self.entries_by_key.setdefault(normalize_key(display), entry)
+        return self._display_names[key]
 
     def _rebuild_index(self) -> None:
         self.entries_by_key = {}
@@ -491,6 +515,56 @@ def _parse_os2_weight(data: bytes, sfnt_offset: int) -> Optional[int]:
     return None
 
 
+def _parse_name_table(data: bytes) -> List[Dict[str, Any]]:
+    """Decode one SFNT name table, ignoring incomplete records.
+
+    >>> _parse_name_table(b'')
+    []
+    """
+    if len(data) < 6:
+        return []
+    count = _read_u16(data, 2)
+    string_offset = _read_u16(data, 4)
+    names = []
+    seen = set()
+    for record_index in range(count):
+        pos = 6 + record_index * 12
+        if pos + 12 > len(data):
+            break
+        platform_id = _read_u16(data, pos)
+        encoding_id = _read_u16(data, pos + 2)
+        language_id = _read_u16(data, pos + 4)
+        name_id = _read_u16(data, pos + 6)
+        length = _read_u16(data, pos + 8)
+        offset = _read_u16(data, pos + 10)
+        if name_id not in NAME_IDS:
+            continue
+
+        raw_start = string_offset + offset
+        raw_end = raw_start + length
+        if raw_end > len(data):
+            continue
+        value = _decode_name(data[raw_start:raw_end], platform_id, encoding_id)
+        if not value:
+            continue
+        dedupe_key = (platform_id, encoding_id, language_id, name_id, value)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        names.append(
+            {
+                'label': _name_id_label(name_id),
+                'name_id': name_id,
+                'value': value,
+                'platform_id': platform_id,
+                'encoding_id': encoding_id,
+                'language_id': language_id,
+                'language': _language_label(platform_id, language_id),
+            }
+        )
+    return names
+
+
 def parse_font_names(path: Path) -> List[Dict[str, Any]]:
     data = path.read_bytes()
     faces = []
@@ -506,45 +580,7 @@ def parse_font_names(path: Path) -> List[Dict[str, Any]]:
             faces.append({'face_index': face_index, 'error': 'invalid name table', 'names': [], 'os2_weight': os2_weight})
             continue
 
-        count = _read_u16(data, name_offset + 2)
-        string_offset = name_offset + _read_u16(data, name_offset + 4)
-        names = []
-        seen = set()
-        for record_index in range(count):
-            pos = name_offset + 6 + record_index * 12
-            if pos + 12 > len(data):
-                break
-            platform_id = _read_u16(data, pos)
-            encoding_id = _read_u16(data, pos + 2)
-            language_id = _read_u16(data, pos + 4)
-            name_id = _read_u16(data, pos + 6)
-            length = _read_u16(data, pos + 8)
-            offset = _read_u16(data, pos + 10)
-            if name_id not in NAME_IDS:
-                continue
-
-            raw_start = string_offset + offset
-            raw_end = raw_start + length
-            if raw_end > len(data):
-                continue
-            value = _decode_name(data[raw_start:raw_end], platform_id, encoding_id)
-            if not value:
-                continue
-            dedupe_key = (platform_id, encoding_id, language_id, name_id, value)
-            if dedupe_key in seen:
-                continue
-            seen.add(dedupe_key)
-            names.append(
-                {
-                    'label': _name_id_label(name_id),
-                    'name_id': name_id,
-                    'value': value,
-                    'platform_id': platform_id,
-                    'encoding_id': encoding_id,
-                    'language_id': language_id,
-                    'language': _language_label(platform_id, language_id),
-                }
-            )
+        names = _parse_name_table(data[name_offset:name_offset + name_length])
         faces.append({'face_index': face_index, 'names': names, 'os2_weight': os2_weight})
     return faces
 
@@ -609,7 +645,11 @@ def choose_localized_pair(
             language = str(record.get('language', ''))
             if language.startswith(language_prefix) and record.get('value'):
                 return record['value']
-    return choose_english(primary_records) or choose_english(fallback_records) or choose_first(primary_records) or choose_first(fallback_records)
+    # With no locale/English match, prefer Unicode records over legacy Mac
+    # records, whose encoding tags are sometimes wrong in older CJK fonts.
+    return choose_english(primary_records) or choose_english(fallback_records) or choose_first(
+        sorted([*primary_records, *fallback_records], key=_name_record_platform_priority)
+    )
 
 
 def choose_first(records: Iterable[Dict[str, Any]]) -> Optional[str]:
@@ -1177,6 +1217,34 @@ def merge_system_alias_entries(entries: List[FontEntry], alias_table: Dict[str, 
     return sorted([*passthrough, *merged_entries], key=lambda entry: entry.display_family.casefold())
 
 
+def _system_display_family(qfont_db: Any, family: str, locale: str) -> str:
+    """Read a display label from Qt's selected face without changing its key.
+
+    >>> _system_display_family(None, 'Example Sans', 'zh-CN')
+    'Example Sans'
+    """
+    try:
+        font = qfont_db.font(family, '', 12)
+        from qtpy.QtGui import QRawFont
+
+        raw_font = QRawFont.fromFont(font)
+        if not raw_font.isValid():
+            return family
+        names = _parse_name_table(bytes(raw_font.fontTable('name')))
+    except (AttributeError, RuntimeError, TypeError, ValueError) as error:
+        LOGGER.warning('Unable to read display name for font %s: %s', family, error)
+        return family
+    # Qt can silently substitute a different font, especially for bracketed
+    # family names. Never label the requested family with that fallback's name.
+    if normalize_key(family) not in {normalize_key(name['value']) for name in names}:
+        return family
+    return choose_localized_pair(
+        (name for name in names if name['label'] == 'typographic_family'),
+        (name for name in names if name['label'] == 'family'),
+        locale,
+    ) or family
+
+
 def build_font_registry(
     qfont_db: Any,
     font_paths: Iterable[str],
@@ -1194,4 +1262,7 @@ def build_font_registry(
     custom_entries = build_custom_entries(custom_faces, custom_group_table)
     system_entries = [_system_entry(qfont_db, family) for family in sorted(system_families, key=str.casefold)]
     system_entries = merge_system_alias_entries(system_entries, system_alias_table)
-    return FontRegistry(custom_entries=custom_entries, system_entries=system_entries)
+    registry = FontRegistry(custom_entries=custom_entries, system_entries=system_entries)
+    registry._font_database = qfont_db
+    registry._display_locale = locale
+    return registry
