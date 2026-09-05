@@ -74,6 +74,19 @@
 
   </details>
 
+* <details>
+  <summary><i>Dịch bằng LLM với ngữ cảnh hình ảnh, tóm tắt từng trang và tóm tắt toàn bộ dự án</i></summary>
+
+  **Thị giác**
+
+  Khi bật tùy chọn này, các mô hình có khả năng xử lý hình ảnh có thể dùng hình ảnh làm ngữ cảnh cho bản dịch.
+
+  **Tóm tắt và bộ nhớ**
+
+  Mỗi bản tóm tắt trang ghi lại ngắn gọn những thông tin liên quan đến việc dịch, bao gồm nhân vật và các mối quan hệ, bối cảnh, sự kiện quan trọng, manh mối xác định người nói và những chỗ chưa xác định rõ đang nói đến ai hoặc điều gì. Bộ nhớ là bản ghi cô đọng về toàn bộ dự án, được tạo từ các bản tóm tắt trang đã tích lũy. Khi các bản tóm tắt cũ không còn vừa trong ngân sách ngữ cảnh, hoặc khi xử lý xong trang cuối cùng, chương trình gửi một yêu cầu riêng chỉ chứa văn bản để hợp nhất các bản tóm tắt đó vào bộ nhớ hiện có. Các bản dịch tiếp theo tái sử dụng bản ghi cô đọng này làm ngữ cảnh ổn định.
+
+  </details>
+
 # Cài đặt
 
 ## Trên Windows

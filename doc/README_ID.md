@@ -74,6 +74,19 @@
 
   </details>
 
+* <details>
+  <summary><i>Terjemahan LLM dengan konteks visual, ringkasan per halaman, dan ringkasan proyek</i></summary>
+
+  **Visi**
+
+  Jika diaktifkan, model dengan kemampuan visual dapat menggunakan gambar sebagai konteks untuk penerjemahan.
+
+  **Ringkasan dan memori**
+
+  Setiap ringkasan halaman mencatat secara singkat informasi yang relevan untuk penerjemahan, termasuk tokoh dan hubungan mereka, latar, peristiwa penting, petunjuk identitas penutur, serta rujukan yang belum jelas. Memori adalah catatan padat tentang seluruh proyek yang disusun dari kumpulan ringkasan halaman. Ketika ringkasan lama tidak lagi muat dalam anggaran konteks, atau setelah halaman terakhir selesai diproses, program mengirim permintaan terpisah yang hanya berisi teks untuk menggabungkan ringkasan tersebut ke dalam memori yang sudah ada. Terjemahan berikutnya menggunakan kembali catatan padat ini sebagai konteks yang stabil.
+
+  </details>
+
 # Instalasi
 
 ### Di Windows

@@ -83,6 +83,19 @@ Prend en charge l’export/import vers/depuis des documents Word
 
   </details>
 
+* <details>
+  <summary><i>Traduction LLM avec contexte visuel, résumés des pages et synthèse du projet</i></summary>
+
+  **Vision**
+
+  Lorsque cette option est activée, les modèles dotés de capacités visuelles peuvent utiliser les images comme contexte pour la traduction.
+
+  **Résumés et mémoire**
+
+  Chaque résumé de page consigne brièvement les informations utiles à la traduction : personnages et relations, cadre de la scène, événements importants, indices sur l’identité des locuteurs et références restant à clarifier. La mémoire est une synthèse de l’ensemble du projet, construite à partir des résumés de pages accumulés. Lorsque les anciens résumés ne tiennent plus dans le budget de contexte, ou lorsque le traitement de la dernière page est terminé, le programme envoie une requête distincte contenant uniquement du texte pour intégrer ces résumés à la mémoire existante. Les traductions suivantes réutilisent cette synthèse comme contexte stable.
+
+  </details>
+
 # Installation
 
 ## Sous Windows

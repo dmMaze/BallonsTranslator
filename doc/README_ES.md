@@ -77,6 +77,19 @@
 
   </details>
 
+* <details>
+  <summary><i>Traducción mediante LLM con contexto visual, resúmenes por página y un resumen del proyecto</i></summary>
+
+  **Visión**
+
+  Al activar esta opción, los modelos con capacidad visual pueden usar imágenes como contexto para la traducción.
+
+  **Resúmenes y memoria**
+
+  Cada resumen de página registra brevemente información relevante para la traducción, como los personajes y sus relaciones, el escenario, los acontecimientos importantes, las pistas sobre quién habla y las referencias aún sin resolver. La memoria es un registro condensado de todo el proyecto, elaborado a partir de los resúmenes de páginas acumulados. Cuando los resúmenes antiguos ya no caben en el presupuesto de contexto, o cuando termina el procesamiento de la última página, el programa envía una solicitud independiente de solo texto para integrar esos resúmenes en la memoria existente. Las traducciones posteriores reutilizan este registro condensado como contexto estable.
+
+  </details>
+
 ## Instalación
 
 ### En Windows

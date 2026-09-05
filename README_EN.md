@@ -83,6 +83,19 @@
 
   </details>
 
+* <details>
+  <summary><i>LLM translation with visual context, page summaries, and a project summary</i></summary>
+
+  **Vision**
+
+  When enabled, models with vision support can use images as context for translation.
+
+  **Summaries and memory**
+
+  Each page summary briefly records details relevant to translation, including characters and relationships, the setting, key events, speaker clues, and unresolved references. Memory is a condensed record of the whole project built from accumulated page summaries. When older summaries no longer fit within the context budget, or when the last page finishes processing, the program sends a separate text-only request to merge those summaries into the existing memory. Subsequent translations reuse this condensed record as stable context.
+
+  </details>
+
 # Installation
 
 ## On Windows
