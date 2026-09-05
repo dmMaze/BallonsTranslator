@@ -47,6 +47,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.ui.misc import ndarray2pixmap, pixmap2ndarray
+from .morphology import dilate_alpha_disc
 
 
 GLYPH_STROKE_FORMAT_PROPERTY = 0x100000 + 1239
@@ -722,22 +723,6 @@ def _draw_direct_fallbacks(
             painter.restore()
 
 
-def _dilate_fallback_alpha(alpha: np.ndarray, radius: int) -> np.ndarray:
-    dilated = alpha
-    remaining = max(0, int(radius))
-    # Repeated disk dilation is bounded while retaining a continuous thick
-    # silhouette; it avoids allocating a quadratic huge-stroke kernel.
-    while remaining:
-        chunk = min(remaining, 64)
-        diameter = chunk * 2 + 1
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (diameter, diameter)
-        )
-        dilated = cv2.dilate(dilated, kernel)
-        remaining -= chunk
-    return dilated
-
-
 def _native_color_glyph_image(
     fallback: FallbackGlyph,
     scale: float,
@@ -886,7 +871,7 @@ def _draw_fallbacks(
             fill_rgba = pixmap2ndarray(fill_image, keep_alpha=True)
             if fill_rgba is None:
                 raise MemoryError('unable to access pathless glyph pixels')
-            outline_alpha = _dilate_fallback_alpha(
+            outline_alpha = dilate_alpha_disc(
                 fill_rgba[..., 3], math.ceil(outline_radius * scale)
             )
 
@@ -1013,11 +998,7 @@ def _draw_dilated_path_stroke(
         if rgba is None:
             raise MemoryError('unable to access glyph stroke mask pixels')
         radius = max(1, math.ceil(outline_radius * scale))
-        diameter = radius * 2 + 1
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (diameter, diameter)
-        )
-        alpha = cv2.dilate(rgba[..., 3], kernel)
+        alpha = dilate_alpha_disc(rgba[..., 3], radius)
         color = outline.color()
         stroke = np.empty_like(rgba)
         stroke[..., 0] = color.red()

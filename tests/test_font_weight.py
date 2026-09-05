@@ -367,21 +367,18 @@ class FontWeightUiTest(unittest.TestCase):
         self.assertEqual(changes, ['Example Sans', 'Missing Legacy Font'])
         self.assertEqual(combo.currentText(), 'Missing Legacy Font')
 
-    def test_bold_shortcut_action_keeps_its_normal_bold_toggle(self):
+    def test_bold_button_does_not_change_font_weight(self):
         panel = self._make_panel()
         active = FontFormat(font_weight=FontWeight.Light)
         panel.global_format = active
         panel.set_active_format(active)
 
-        panel.toggle_bold()
+        panel.formatBtnGroup.boldBtn.click()
 
-        self.assertIs(active.font_weight, FontWeight.Bold)
-        self.assertIs(panel.fontWeightBox.weight(), FontWeight.Bold)
-
-        panel.toggle_bold()
-
-        self.assertIs(active.font_weight, FontWeight.Normal)
-        self.assertIs(panel.fontWeightBox.weight(), FontWeight.Normal)
+        self.assertIs(active.font_weight, FontWeight.Light)
+        self.assertIs(panel.fontWeightBox.weight(), FontWeight.Light)
+        self.assertEqual(active.synthetic_bold, 'ellipse')
+        self.assertEqual(active.synthetic_bold_offset, [0.01, 0.01])
 
     def test_explicit_weight_change_resolves_a_hidden_group_face(self):
         faces = [

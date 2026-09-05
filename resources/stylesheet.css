@@ -1520,7 +1520,8 @@ QFontChecker#FontUnderlineChecker::indicator:checked {
     image: url(resources/icons/fontfmt_underline_activate.svg);
 }
 
-QToolButton#FontEmphasisToolButton {
+QToolButton#FontEmphasisToolButton,
+QToolButton#FontBoldToolButton {
     min-width: 39px;
     max-width: 39px;
     min-height: 26px;
@@ -1531,14 +1532,42 @@ QToolButton#FontEmphasisToolButton {
     background-color: transparent;
 }
 
-QToolButton#FontEmphasisToolButton::menu-button {
+QToolButton#FontEmphasisToolButton::menu-button,
+QToolButton#FontBoldToolButton::menu-button {
     width: 11px;
     border: none;
     background-color: transparent;
 }
 
-QToolButton#FontEmphasisToolButton::menu-arrow {
+QToolButton#FontEmphasisToolButton::menu-arrow,
+QToolButton#FontBoldToolButton::menu-arrow {
     image: none;
+}
+
+QWidget#SyntheticBoldEditor,
+QWidget#SyntheticBoldEditor QLabel,
+QWidget#SyntheticBoldEditor QComboBox,
+QWidget#SyntheticBoldEditor QLineEdit {
+    font-size: 12px;
+    background-color: @emptyContentBackgroundColor;
+}
+
+QLabel#SyntheticBoldAxisLabel {
+    padding: 3px 4px;
+}
+
+QLabel#SyntheticBoldAxisLabel:hover {
+    color: rgb(30, 147, 229);
+}
+
+QComboBox#SyntheticBoldOffsetBox {
+    min-height: 24px;
+    max-height: 24px;
+    padding: 0px 3px;
+}
+
+QMenu#FontBoldMenu::indicator:checked {
+    image: url(resources/icons/checkbox_checked.svg);
 }
 
 QFontChecker#FontVerticalChecker::indicator {

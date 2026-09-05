@@ -111,6 +111,17 @@ during native horizontal and vertical text editing; ordinary Filters remain
 active. Editing visibility participates in cache identity so settled Image
 pixels cannot leak into the editing surface or vice versa.
 
+Stroke and Shadow/Glow radii are bounded for rendering without modifying saved
+values. The budget reserves at least half the settled 1x tile edge for its core,
+accounting for font size, Synthetic Bold, Stroke, and shadow offset/blur/spread.
+Inputs beyond the limit retain the same maximum effect in preview and export.
+Tile caches retain cores and interpolation borders rather than working halos,
+and are bounded by total bytes.
+
+Large disc dilation uses unions of horizontal spans to preserve the discrete
+kernel and alpha levels. Large blurs use the same Gaussian kernel through the
+float32 path, which can round differently from the uint8 fixed-point path.
+
 Interactive rendering may bypass an active missing optional raster, invalid
 Filter, or bounded allocation failure with a warning and compatible fallback.
 Strict export must fail rather than silently omit requested output. Empty raster

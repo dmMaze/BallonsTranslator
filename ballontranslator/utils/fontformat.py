@@ -27,6 +27,8 @@ from .text_effects import (
 )
 
 
+SYNTHETIC_BOLD_OFFSET_MAX = 0.5
+
 TEXT_TRANSFORM_SCALE_MIN = 0.1
 TEXT_TRANSFORM_SCALE_MAX = 4.0
 TEXT_TRANSFORM_PROJECTIVE_SLANT_MIN = -85.0
@@ -715,6 +717,9 @@ class FontFormat(Config):
     # weight from an explicitly saved Normal value. __post_init__ canonicalizes
     # every live instance to FontWeight.
     font_weight: FontWeight = None
+    synthetic_bold: str = 'none'
+    # Outward X/Y contour expansion as fractions of the current font size.
+    synthetic_bold_offset: Union[float, List] = 0.01
     line_spacing: float = 1.2
     letter_spacing: float = 1.15
     ligature_common: str = 'default'
@@ -861,6 +866,41 @@ class FontFormat(Config):
                 setattr(self, name, 'default')
 
         self.font_weight = coerce_font_weight(self.font_weight)
+        if self.synthetic_bold not in ('none', 'rect', 'ellipse'):
+            LOGGER.warning(
+                'Ignoring invalid synthetic bold state (%r); using disabled.',
+                self.synthetic_bold,
+            )
+            self.synthetic_bold = 'none'
+        raw_offsets = self.synthetic_bold_offset
+        if isinstance(raw_offsets, (int, float)):
+            raw_offsets = (raw_offsets, raw_offsets)
+        elif not (
+            isinstance(raw_offsets, (list, tuple))
+            and len(raw_offsets) == 2
+        ):
+            LOGGER.warning(
+                'Ignoring invalid synthetic bold offset (%r); using 1%%.',
+                raw_offsets,
+            )
+            raw_offsets = (0.01, 0.01)
+        offsets = []
+        for value in raw_offsets:
+            try:
+                value = float(value)
+            except (TypeError, ValueError):
+                LOGGER.warning(
+                    'Ignoring invalid synthetic bold offset (%r); using 0.',
+                    value,
+                )
+                value = 0.0
+            if not math.isfinite(value):
+                LOGGER.warning('Ignoring non-finite synthetic bold offset; using 0.')
+                value = 0.0
+            elif not 0.0 <= value <= SYNTHETIC_BOLD_OFFSET_MAX:
+                LOGGER.warning('Clamping synthetic bold offset (%r) to 0..0.5.', value)
+            offsets.append(min(max(value, 0.0), SYNTHETIC_BOLD_OFFSET_MAX))
+        self.synthetic_bold_offset = offsets
         if not isinstance(self.text_transform, TextTransformStack):
             if isinstance(self.text_transform, (list, tuple)):
                 transforms = []
@@ -908,6 +948,11 @@ class FontFormat(Config):
         """Return config/project data with a typed transform payload."""
         serialized = vars(self).copy()
         serialized.pop('deprecated_attributes', None)
+        x_bold, y_bold = self.synthetic_bold_offset
+        serialized['synthetic_bold_offset'] = (
+            x_bold if math.isclose(x_bold, y_bold, abs_tol=1e-12)
+            else [x_bold, y_bold]
+        )
         serialized['font_weight'] = int(FontWeight(self.font_weight))
         serialized['text_transform'] = [
             asdict(transform) for transform in self.text_transform
