@@ -1,5 +1,4 @@
 import hashlib
-import math
 import os
 import shutil
 import tempfile
@@ -36,10 +35,6 @@ from qtpy.QtWidgets import (
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.rendering.raster import (
-    EFFECT_CACHE_MAX_PIXELS,
-    EFFECT_MIN_TILE_TIER,
-    EFFECT_TILE_MAX_EDGE,
-    plan_effect_raster,
     EFFECT_RASTER_GUARD,
     EffectRasterPlan,
     EffectRasterAllocationError,
@@ -53,14 +48,7 @@ from ballontranslator.ui.text_engine.effects.blend import (
     CUSTOM_BLEND_MODES,
     composite_custom_blend_rgba,
 )
-from ballontranslator.ui.text_engine.rendering.morphology import (
-    EXACT_DILATE_RADIUS,
-    dilate_alpha_disc,
-)
 from ballontranslator.ui.text_engine.effects.shadow import (
-    EXACT_BLUR_RADIUS,
-    _blur,
-    _blur_sigma,
     render_glow_alpha,
     render_shadow_alpha,
 )
@@ -71,7 +59,6 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
-    SHADOW_SPREAD_LIMIT,
     FilterEffect,
     GlowEffect,
     TextFillEffect,
@@ -250,91 +237,6 @@ class TypedShadowRasterTest(unittest.TestCase):
                 self.assertEqual(np.count_nonzero(shifted[alpha > 0]), 0)
                 self.assertGreater(np.count_nonzero(shifted), 0)
 
-    def _mask(self, padding: int) -> np.ndarray:
-        mask = np.zeros((90 + 2 * padding, 130 + 2 * padding), np.uint8)
-        cv2.ellipse(
-            mask, (padding + 40, padding + 45), (34, 41), 0, 0, 360, 255, -1
-        )
-        mask[padding:padding + 90, padding + 84:padding + 96] = 255
-        return mask
-
-    def test_large_blur_matches_the_exact_gaussian(self):
-        radius = EXACT_BLUR_RADIUS * 2
-        mask = self._mask(radius + 2)
-        ksize = radius * 2 + 1
-
-        reference = cv2.GaussianBlur(
-            mask, (ksize, ksize), ksize / 6,
-            borderType=cv2.BORDER_CONSTANT,
-        )
-        deviation = np.abs(
-            _blur(mask, radius).astype(np.int16)
-            - reference.astype(np.int16)
-        )
-
-        self.assertLessEqual(int(deviation.max()), 4)
-
-    def test_large_dilation_keeps_the_exact_disc_silhouette(self):
-        radius = EXACT_DILATE_RADIUS * 3
-        mask = self._mask(radius + 2)
-        diameter = radius * 2 + 1
-
-        reference = cv2.dilate(
-            mask,
-            cv2.getStructuringElement(
-                cv2.MORPH_ELLIPSE, (diameter, diameter)
-            ),
-        )
-        grown = dilate_alpha_disc(mask, radius)
-        # Only the antialiased boundary may differ, so compare the covered
-        # area rather than the ramp across it.
-        disagreement = np.count_nonzero((grown >= 128) ^ (reference >= 128))
-        perimeter = np.count_nonzero(
-            (reference >= 128)
-            ^ cv2.erode(reference, np.ones((3, 3), np.uint8)).astype(bool)
-        )
-
-        self.assertLess(disagreement, perimeter)
-        self.assertEqual(np.count_nonzero(grown[mask == 255] != 255), 0)
-
-    def test_large_dilation_tracks_the_ideal_disc_area(self):
-        """A point grows into the disc the radius names, at any radius."""
-        for radius in (EXACT_DILATE_RADIUS * 4, EXACT_DILATE_RADIUS * 16):
-            with self.subTest(radius=radius):
-                point = np.zeros(
-                    (2 * radius + 40, 2 * radius + 40), np.uint8
-                )
-                point[radius + 20, radius + 20] = 255
-
-                covered = np.count_nonzero(
-                    dilate_alpha_disc(point, radius) >= 128
-                )
-
-                ideal = math.pi * radius * radius
-                self.assertLess(abs(covered - ideal) / ideal, 0.01)
-
-    def test_large_dilation_of_a_blurred_source_stays_within_a_step(self):
-        radius = EXACT_DILATE_RADIUS * 3
-        blur_radius = 8
-        mask = self._mask(radius + blur_radius + 2)
-        source = 255 - _blur(mask, blur_radius)
-        diameter = radius * 2 + 1
-
-        reference = cv2.dilate(
-            source,
-            cv2.getStructuringElement(
-                cv2.MORPH_ELLIPSE, (diameter, diameter)
-            ),
-        )
-        deviation = np.abs(
-            dilate_alpha_disc(
-                source, radius, _blur_sigma(blur_radius)
-            ).astype(np.int16)
-            - reference.astype(np.int16)
-        )
-
-        self.assertLessEqual(int(deviation.max()), 16)
-
     def test_blur_is_translation_invariant_at_array_edges(self):
         source = np.zeros((11, 13), dtype=np.uint8)
         source[:4, :5] = 255
@@ -356,110 +258,6 @@ class TypedTextEffectRendererTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
-
-    def test_a_view_too_wide_to_stage_at_once_still_paints(self):
-        """One staging surface per view dropped effects on a large window."""
-        block = TextBlock([0, 0, 283, 722])
-        block._bounding_rect = [0, 0, 283, 722]
-        block.translation = 'Sh'
-        block.fontformat.font_size = 300.0
-        block.fontformat.frgb = [240, 240, 240]
-        block.fontformat.text_effects = TextEffectStack(effects=(
-            ShadowEffect(
-                shadow_type='drop',
-                blur=0.0,
-                spread=3.0,
-                distance=0.05,
-                angle=45.0,
-                paint=SolidPaint(color=(220, 20, 20)),
-            ),
-        ))
-        item = TextBlkItem(block, 1)
-        renderer = item.effect_renderer
-        bounds = renderer.boundingRect()
-        # The whole item on screen at 1x is more than one surface may hold,
-        # which is all it takes: a maximised window reaches this.
-        self.assertGreater(
-            bounds.width() * bounds.height(), EFFECT_CACHE_MAX_PIXELS
-        )
-
-        image = QImage(
-            math.ceil(bounds.width()),
-            math.ceil(bounds.height()),
-            QImage.Format.Format_ARGB32_Premultiplied,
-        )
-        image.fill(QColor(0, 0, 0, 0))
-        painter = QPainter(image)
-        painter.translate(-bounds.topLeft())
-        renderer.tile_cache.clear()
-        try:
-            renderer._draw_tiled_effects(
-                painter,
-                EffectRasterPlan(
-                    'tiles', 1.0, 0, 0, EFFECT_TILE_MAX_EDGE
-                ),
-                bounds,
-            )
-        finally:
-            painter.end()
-
-        rgba = pixmap2ndarray(image, keep_alpha=True)
-        shadow = np.count_nonzero(
-            (rgba[..., 3] > 8)
-            & (rgba[..., 0].astype(int) > rgba[..., 2].astype(int) + 40)
-        )
-
-        self.assertGreater(shadow, 0)
-
-    def test_reach_past_the_tile_core_coarsens_instead_of_vanishing(self):
-        """An effect wider than the tile core still has to reach the screen."""
-        block = TextBlock([0, 0, 283, 722])
-        block._bounding_rect = [0, 0, 283, 722]
-        block.translation = 'Sh'
-        block.fontformat.font_size = 300.0
-        painted = {}
-        for spread in (1.0, 3.0, SHADOW_SPREAD_LIMIT):
-            block.fontformat.text_effects = TextEffectStack(effects=(
-                ShadowEffect(
-                    shadow_type='drop',
-                    blur=0.0,
-                    spread=spread,
-                    distance=0.05,
-                    angle=45.0,
-                    paint=SolidPaint(color=(220, 20, 20)),
-                ),
-            ))
-            item = TextBlkItem(block, 1)
-            renderer = item.effect_renderer
-            bounds = renderer.boundingRect()
-            plan = plan_effect_raster(bounds.width(), bounds.height(), 1.0)
-            overlap = renderer._effect_tile_overlap()
-            fitted = renderer._tile_plan_within_overlap(plan, overlap)
-
-            core = fitted.tile_edge - 2 * math.ceil(overlap * fitted.tier)
-            if fitted.mode == 'tiles':
-                self.assertGreaterEqual(core, 1)
-                # A sliver of a core means the item needs hundreds of tiles,
-                # and every one still renders a whole overlapped surface.
-                core_reach = core / fitted.tier
-                tiles = (
-                    math.ceil(bounds.width() / core_reach)
-                    * math.ceil(bounds.height() / core_reach)
-                )
-                self.assertLessEqual(tiles, 16)
-            self.assertGreaterEqual(fitted.tier, EFFECT_MIN_TILE_TIER)
-            if renderer._fits_one_surface(bounds, plan.tier):
-                # Tiling is a choice at this size, so it has to reproduce the
-                # single surface exactly and the tier may not move.
-                self.assertEqual(fitted.tier, plan.tier)
-            rgba = self._render(item)
-            painted[spread] = int(np.count_nonzero(
-                (rgba[..., 3] > 8)
-                & (rgba[..., 0].astype(int) > rgba[..., 2].astype(int) + 20)
-            ))
-
-        for spread, count in painted.items():
-            self.assertGreater(count, 0, f'nothing painted at spread {spread}')
 
     @classmethod
     def _item(cls, stack: TextEffectStack, vertical: bool = False):

@@ -16,15 +16,6 @@ EFFECT_CACHE_MAX_PIXELS = 4_194_304
 EFFECT_CACHE_MAX_DIMENSION = 8192
 EFFECT_CACHE_MAX_BYTES = 32 * 1024 * 1024
 EFFECT_TILE_MAX_EDGE = 2048
-# An effect reaching past half the tile edge has no tile core left to draw,
-# and coarsening the tier shrinks the reach in pixels. The floor is the
-# coarsest tier the rest of the raster policy expresses, since a request below
-# it is clamped back up and the surfaces stop agreeing with the plan.
-EFFECT_MIN_TILE_TIER = 0.25
-# A core smaller than this fraction of the tile edge makes the item need
-# hundreds of tiles, each still rendering a full overlapped surface. Kept as a
-# fraction so a deliberately small tile edge stays tileable.
-EFFECT_TILE_CORE_DIVISOR = 2
 
 
 class EffectRasterPlan(NamedTuple):
@@ -96,12 +87,10 @@ def plan_effect_raster(
             return EffectRasterPlan(
                 'full', tier, pixel_width, pixel_height, 0
             )
-    # A tile's surface is its edge plus whatever ceil() adds for a fractional
-    # rectangle. Without this pixel of headroom a full tile lands exactly on
-    # the surface cap, and one rounded axis fails the allocation outright.
     tile_edge = min(
         EFFECT_TILE_MAX_EDGE,
         EFFECT_CACHE_MAX_DIMENSION,
+        # 소수 좌표의 바깥쪽 반올림을 위한 여유를 남긴다.
         int(math.sqrt(EFFECT_CACHE_MAX_PIXELS)) - 1,
     )
     tile_tier = (

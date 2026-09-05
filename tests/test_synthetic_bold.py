@@ -1,4 +1,3 @@
-import math
 import os
 import unittest
 from unittest.mock import patch
@@ -16,6 +15,8 @@ from ballontranslator.ui.text_engine.formatting.panel import (
     BoldToolButton,
 )
 from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.ui.misc import pixmap2ndarray
+from ballontranslator.ui.text_engine.transforms.controls import TransformDragLabel
 from ballontranslator.utils.fontformat import FontFormat, FontWeight
 from ballontranslator.utils.textblock import TextBlock
 
@@ -43,7 +44,7 @@ class SyntheticBoldTest(unittest.TestCase):
             block.fontformat.synthetic_bold_offset = [
                 offset_ratio, offset_ratio
             ]
-        block.fontformat.synthetic_bold = offset_ratio > 0.0
+        block.fontformat.synthetic_bold = 'ellipse' if offset_ratio > 0.0 else 'none'
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()
         scene.addItem(item)
@@ -89,7 +90,7 @@ class SyntheticBoldTest(unittest.TestCase):
         block.fontformat.frgb = [255, 255, 255]
         block.fontformat.srgb = [255, 0, 0]
         block.fontformat.stroke_width = 0.08
-        block.fontformat.synthetic_bold = any(value > 0.0 for value in offsets)
+        block.fontformat.synthetic_bold = 'ellipse' if any(offsets) else 'none'
         block.fontformat.synthetic_bold_offset = list(offsets)
         item = TextBlkItem(block, 0)
         scene = QGraphicsScene()
@@ -143,16 +144,39 @@ class SyntheticBoldTest(unittest.TestCase):
             [0.01, 0.01],
         )
         font_format = FontFormat(synthetic_bold_offset=[9.0, -1.0])
-        self.assertEqual(font_format.synthetic_bold_offset, [0.2, 0.0])
+        self.assertEqual(font_format.synthetic_bold_offset, [0.5, 0.0])
+        self.assertEqual(
+            FontFormat(synthetic_bold_offset=[float('nan'), float('inf')]).synthetic_bold_offset,
+            [0.0, 0.0],
+        )
+
+    def test_live_offsets_and_direct_input_obey_fifty_percent_limit(self) -> None:
+        block = TextBlock([0, 0, 180, 100])
+        block._bounding_rect = [0, 0, 180, 100]
+        item = TextBlkItem(block, 0)
+        item.setSyntheticBoldOffset((0.8, -0.1))
+        self.assertEqual(item.fontformat.synthetic_bold_offset, [0.5, 0.0])
+        with self.assertRaises(ValueError):
+            item.setSyntheticBoldOffset((float('nan'), 0.1))
+        self.assertEqual(item.fontformat.synthetic_bold_offset, [0.5, 0.0])
+
+        button = BoldToolButton()
+        button.set_synthetic_bold('rect', (0.01, 0.02))
+        offsets = []
+        button.synthetic_bold_offset_changed.connect(offsets.append)
+        button.synthetic_bold_x_box.setCurrentText('75')
+        button.synthetic_bold_x_box.param_changed.emit('synthetic_bold_x_offset', 75.0)
+        self.assertEqual(button.synthetic_bold_x_box.value(), 50.0)
+        self.assertEqual(offsets, [(0.5, 0.02)])
 
     def test_equal_offsets_serialize_as_one_value(self) -> None:
         uniform = FontFormat(
-            synthetic_bold=True,
+            synthetic_bold='ellipse',
             synthetic_bold_offset=[0.01, 0.01],
         )
         directional = FontFormat(synthetic_bold_offset=[0.02, 0.01])
 
-        self.assertTrue(uniform.to_serializable_dict()['synthetic_bold'])
+        self.assertEqual(uniform.to_serializable_dict()['synthetic_bold'], 'ellipse')
         self.assertEqual(
             uniform.to_serializable_dict()['synthetic_bold_offset'], 0.01
         )
@@ -164,8 +188,85 @@ class SyntheticBoldTest(unittest.TestCase):
     def test_default_offset_is_one_percent_and_disabled(self) -> None:
         font_format = FontFormat()
 
-        self.assertFalse(font_format.synthetic_bold)
+        self.assertEqual(font_format.synthetic_bold, 'none')
         self.assertEqual(font_format.synthetic_bold_offset, [0.01, 0.01])
+
+    def test_modes_round_trip_without_boolean_migration(self) -> None:
+        for mode in ('none', 'rect', 'ellipse'):
+            with self.subTest(mode=mode):
+                value = FontFormat(synthetic_bold=mode)
+                restored = FontFormat(**value.to_serializable_dict())
+                self.assertEqual(restored.synthetic_bold, mode)
+        for invalid in (True, False, 'capsule', [], None):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(FontFormat(synthetic_bold=invalid).synthetic_bold, 'none')
+
+    def test_rect_and_ellipse_have_distinct_corner_coverage(self) -> None:
+        block = TextBlock([0, 0, 180, 100])
+        block._bounding_rect = [0, 0, 180, 100]
+        block.translation = 'H'
+        block.fontformat.font_size = 48
+        block.fontformat.synthetic_bold_offset = [0.1, 0.05]
+        item = TextBlkItem(block, 0)
+        source = np.zeros((41, 41), dtype=np.uint8)
+        source[20, 20] = 100
+        for mode in ('rect', 'ellipse'):
+            item.setSyntheticBold(mode)
+            grown = item.effect_renderer._dilate_synthetic_bold_alpha(source, 1.0)
+            if mode == 'rect':
+                rectangular = grown
+            else:
+                elliptical = grown
+            self.assertEqual(int(grown.max()), 100)
+        self.assertGreater(np.count_nonzero(rectangular), np.count_nonzero(elliptical))
+        self.assertTrue(np.all(elliptical <= rectangular))
+        item.setSyntheticBold('none')
+        np.testing.assert_array_equal(
+            item.effect_renderer._dilate_synthetic_bold_alpha(source, 1.0), source
+        )
+
+    def test_rectangular_passes_match_translated_source_union(self) -> None:
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                block = TextBlock([0, 0, 180, 100])
+                block._bounding_rect = [0, 0, 180, 100]
+                block.translation = 'HH'
+                block.fontformat.font_size = 48
+                block.fontformat.vertical = vertical
+                block.fontformat.synthetic_bold = 'rect'
+                block.fontformat.synthetic_bold_offset = [0.0625, 0.125]
+                item = TextBlkItem(block, 0)
+                renderer = item.effect_renderer
+                bounds = renderer.boundingRect()
+                canonical = renderer._capture_plain_effect_source(bounds, 1.0)
+                expected = renderer._new_effect_pixmap(1.0, bounds)
+                painter = QPainter(expected)
+                painter.translate(-bounds.topLeft())
+                try:
+                    for x, y in renderer._anisotropic_synthetic_bold_offsets():
+                        renderer._draw_surface_pixmap(
+                            painter, bounds.translated(x, y), canonical, 1.0
+                        )
+                finally:
+                    painter.end()
+                actual = renderer._capture_rectangular_bold_source(bounds, 1.0)
+                delta = np.abs(
+                    pixmap2ndarray(expected, keep_alpha=True).astype(np.int16)
+                    - pixmap2ndarray(actual, keep_alpha=True).astype(np.int16)
+                )
+                self.assertLessEqual(int(delta.max()), 2)
+
+    def test_mode_switch_invalidates_cached_source(self) -> None:
+        block = TextBlock([0, 0, 180, 100])
+        block._bounding_rect = [0, 0, 180, 100]
+        block.translation = 'H'
+        block.fontformat.synthetic_bold_offset = [0.1, 0.1]
+        item = TextBlkItem(block, 0)
+        keys = []
+        for mode in ('rect', 'ellipse', 'none'):
+            item.setSyntheticBold(mode)
+            keys.append(item.effect_renderer.surface_semantic_state())
+        self.assertEqual(len(set(keys)), 3)
 
     def test_uniform_offset_expands_vertical_ink_too(self) -> None:
         regular, _padding = self._render(0.0, 'uniform')
@@ -190,7 +291,7 @@ class SyntheticBoldTest(unittest.TestCase):
         block._bounding_rect = [0, 0, 180, 100]
         block.translation = 'HH'
         block.fontformat.font_size = 48
-        block.fontformat.synthetic_bold = True
+        block.fontformat.synthetic_bold = 'ellipse'
         block.fontformat.synthetic_bold_offset = [0.2, 0.0]
         item = TextBlkItem(block, 0)
         renderer = item.effect_renderer
@@ -243,73 +344,39 @@ class SyntheticBoldTest(unittest.TestCase):
             abs(emboldened_outline[3] - regular_outline[3]), 1
         )
 
-    def test_emboldened_stroke_renders_once_and_only_sweeps(self) -> None:
-        """The pen carries the disc, so only a sweep reaches the raster.
-
-        A uniform embolden is all disc and needs no raster pass at all; an
-        anisotropic one leaves exactly one axis-aligned sweep behind.
-        """
-        for offset, sweeps in (([0.05, 0.05], 0), ([0.05, 0.02], 1)):
-            with self.subTest(offset=offset):
-                block = TextBlock([0, 0, 180, 100])
-                block._bounding_rect = [0, 0, 180, 100]
-                block.translation = 'HH'
-                block.fontformat.font_size = 48
-                block.fontformat.stroke_width = 0.08
-                block.fontformat.synthetic_bold = True
-                block.fontformat.synthetic_bold_offset = offset
-                item = TextBlkItem(block, 0)
-                renderer = item.effect_renderer
-                rect = renderer.boundingRect()
-                canonical = renderer._cached_effect_source(
-                    rect, 1.0, needs_alpha=True
-                )[1]
-                renderer.release_caches()
-
-                with patch.object(
-                    renderer,
-                    '_paint_stroke_core',
-                    wraps=renderer._paint_stroke_core,
-                ) as paint_stroke_core, patch.object(
-                    renderer,
-                    '_sweep_synthetic_bold_alpha',
-                    wraps=renderer._sweep_synthetic_bold_alpha,
-                ) as sweep:
-                    renderer._positioned_stroke_coverage(
-                        rect,
-                        1.0,
-                        renderer._current_stroke(),
-                        canonical,
-                    )
-
-                self.assertEqual(paint_stroke_core.call_count, 1)
-                self.assertEqual(sweep.call_count, 1)
-
-                probe = np.zeros((9, 9), dtype=np.uint8)
-                probe[4, 4] = 255
-                carried = renderer._sweep_synthetic_bold_alpha(probe, 1.0)
-                self.assertEqual(carried is probe, not sweeps)
-
-    def test_sweep_replaces_the_quadratic_offset_grid(self) -> None:
-        """Offsets scale with the axis difference, not with their product."""
+    def test_emboldened_stroke_uses_one_render_and_one_dilation(self) -> None:
         block = TextBlock([0, 0, 180, 100])
         block._bounding_rect = [0, 0, 180, 100]
         block.translation = 'HH'
-        block.fontformat.font_size = 300
-        block.fontformat.synthetic_bold = True
-        block.fontformat.synthetic_bold_offset = [0.2, 0.1]
+        block.fontformat.font_size = 48
+        block.fontformat.stroke_width = 0.08
+        block.fontformat.synthetic_bold = 'ellipse'
+        block.fontformat.synthetic_bold_offset = [0.05, 0.05]
         item = TextBlkItem(block, 0)
         renderer = item.effect_renderer
+        rect = renderer.boundingRect()
+        canonical = renderer._cached_effect_source(
+            rect, 1.0, needs_alpha=True
+        )[1]
+        renderer.release_caches()
 
-        x_outset, y_outset = renderer._synthetic_bold_outsets()
-        offsets = renderer._synthetic_bold_offsets()
+        with patch.object(
+            renderer,
+            '_paint_stroke_core',
+            wraps=renderer._paint_stroke_core,
+        ) as paint_stroke_core, patch(
+            'ballontranslator.ui.text_engine.effects.renderer.cv2.dilate',
+            wraps=cv2.dilate,
+        ) as dilate:
+            renderer._positioned_stroke_coverage(
+                rect,
+                1.0,
+                renderer._current_stroke(),
+                canonical,
+            )
 
-        self.assertEqual(len(offsets), 2 * math.ceil(x_outset - y_outset) + 1)
-        self.assertLess(len(offsets), 200)
-        self.assertTrue(all(y_offset == 0.0 for _x, y_offset in offsets))
-        self.assertAlmostEqual(
-            renderer._synthetic_bold_pen_ratio(), 0.1
-        )
+        self.assertEqual(paint_stroke_core.call_count, 1)
+        self.assertEqual(dilate.call_count, 1)
 
     def test_xy_offsets_are_edited_independently(self) -> None:
         button = BoldToolButton()
@@ -333,7 +400,7 @@ class SyntheticBoldTest(unittest.TestCase):
         button = BoldToolButton()
         offsets = []
         button.synthetic_bold_offset_changed.connect(offsets.append)
-        button.set_synthetic_bold(True, (0.01, 0.02))
+        button.set_synthetic_bold('ellipse', (0.01, 0.02))
 
         self.assertTrue(button.isChecked())
         self.assertEqual(button.synthetic_bold_x_box.value(), 1)
@@ -348,7 +415,56 @@ class SyntheticBoldTest(unittest.TestCase):
         button.click()
         button.click()
 
-        self.assertEqual(enabled, [True, False])
+        self.assertEqual(enabled, ['ellipse', 'none'])
+
+    def test_bold_button_remembers_selected_shape_when_toggled(self) -> None:
+        button = BoldToolButton()
+        modes = []
+        button.synthetic_bold_changed.connect(modes.append)
+        rectangle = next(action for action in button.menu().actions() if action.data() == 'rect')
+        rectangle.trigger()
+        button.click()
+        button.click()
+        self.assertEqual(modes, ['rect', 'none', 'rect'])
+
+    def test_axis_drag_changes_tenths_of_a_percent_and_commits_once(self) -> None:
+        button = BoldToolButton()
+        button.set_synthetic_bold('rect', (0.01, 0.02))
+        offsets = []
+        button.synthetic_bold_offset_changed.connect(offsets.append)
+        label = next(
+            label for label in button.findChildren(TransformDragLabel)
+            if label.text() == 'X'
+        )
+        label.drag_started.emit()
+        label.size_ctrl_changed.emit(1)
+        self.assertAlmostEqual(button.synthetic_bold_x_box.value(), 1.1)
+        label.size_ctrl_changed.emit(2)
+        self.assertEqual(offsets, [])
+        label.btn_released.emit()
+        self.assertEqual(len(offsets), 1)
+        self.assertAlmostEqual(offsets[0][0], 0.013)
+        self.assertEqual(offsets[0][1], 0.02)
+
+    def test_axis_drag_cancels_and_reverses_immediately_at_limit(self) -> None:
+        button = BoldToolButton()
+        button.set_synthetic_bold('ellipse', (0.01, 0.499))
+        offsets = []
+        button.synthetic_bold_offset_changed.connect(offsets.append)
+        label = next(
+            label for label in button.findChildren(TransformDragLabel)
+            if label.text() == 'Y'
+        )
+        label.drag_started.emit()
+        label.size_ctrl_changed.emit(100)
+        self.assertEqual(button.synthetic_bold_y_box.value(), 50.0)
+        label.size_ctrl_changed.emit(-1)
+        self.assertEqual(button.synthetic_bold_y_box.value(), 49.9)
+        label.size_ctrl_changed.emit(-2)
+        label.drag_canceled.emit()
+        self.assertEqual(button.synthetic_bold_y_box.value(), 49.9)
+        label.btn_released.emit()
+        self.assertEqual(offsets, [])
 
 
 if __name__ == '__main__':

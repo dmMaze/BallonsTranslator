@@ -377,7 +377,7 @@ class FontWeightUiTest(unittest.TestCase):
 
         self.assertIs(active.font_weight, FontWeight.Light)
         self.assertIs(panel.fontWeightBox.weight(), FontWeight.Light)
-        self.assertTrue(active.synthetic_bold)
+        self.assertEqual(active.synthetic_bold, 'ellipse')
         self.assertEqual(active.synthetic_bold_offset, [0.01, 0.01])
 
     def test_explicit_weight_change_resolves_a_hidden_group_face(self):

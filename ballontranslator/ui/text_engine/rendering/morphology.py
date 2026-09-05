@@ -1,108 +1,55 @@
-"""Radius independent alpha morphology shared by text rendering."""
+"""Alpha-preserving circular dilation without an area-sized kernel."""
 
-from __future__ import annotations
+import math
 
 import cv2
 import numpy as np
 
 
-# OpenCV can only decompose rectangular structuring elements, so dilating by
-# an elliptical one costs a kernel area per pixel. Text radii are fractions of
-# the font size, so a 300px font reaches a 600px radius inside the slider
-# range and the exact kernel needs about a minute per surface. Past this
-# threshold the growth is computed from geometry instead of from a kernel.
-EXACT_DILATE_RADIUS = 16
-# Radius retained inside a reduced-resolution buffer. Well past the point
-# where a kernel is cheap, so the buffer stays small without the resampling
-# itself becoming the bottleneck.
-COARSE_DILATE_RADIUS = 16.0
-# A source blurred by less than this behaves as a hard coverage edge, which is
-# what the distance field reproduces.
-HARD_EDGE_SIGMA = 2.0
-# OpenCV's discrete ellipse covers marginally more than the disc of the same
-# radius. Biasing the distance field by this much matches the two footprints.
-DISC_EDGE_BIAS = 0.75
+def dilate_alpha_disc(alpha: np.ndarray, radius: int) -> np.ndarray:
+    """Apply OpenCV's discrete disc while preserving every alpha level.
 
+    Large discs are unions of horizontal spans. A rectangular dilation is
+    separable, so compute each distinct span once and shift its rows into the
+    result instead of scanning a two-dimensional kernel at every pixel.
 
-def disc_kernel(radius: int) -> np.ndarray:
-    diameter = radius * 2 + 1
-    return cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (diameter, diameter)
-    )
-
-
-def _hard_dilate(alpha: np.ndarray, radius: int) -> np.ndarray:
-    """Grow a hard coverage mask through its exterior distance field.
-
-    Dilating by a disc covers exactly the pixels within ``radius`` of the
-    mask, which the distance field answers in one linear pass instead of one
-    kernel area per pixel. Clipping the field keeps the boundary antialiased,
-    and against a real distance it lands on a smoother edge than a kernel
-    quantised to whole pixels can reach.
-    """
-    exterior = np.where(alpha >= 128, 0, 255).astype(np.uint8)
-    distance = cv2.distanceTransform(
-        exterior, cv2.DIST_L2, cv2.DIST_MASK_PRECISE
-    )
-    grown = np.clip(radius + DISC_EDGE_BIAS - distance, 0.0, 1.0)
-    grown *= 255.0
-    return np.maximum(alpha, grown.astype(np.uint8))
-
-
-def _coarse_dilate(
-    alpha: np.ndarray, radius: int, source_sigma: float
-) -> np.ndarray:
-    """Grow an already blurred mask inside a reduced-resolution buffer.
-
-    A source blurred by ``source_sigma`` holds no detail finer than that, so
-    subsampling below it is lossless. Max pooling is the downsample that
-    matches a dilation: it never drops coverage the full kernel would find.
-    """
-    factor = int(min(radius // COARSE_DILATE_RADIUS, source_sigma))
-    if factor < 2:
-        return cv2.dilate(alpha, disc_kernel(radius))
-    height, width = alpha.shape
-    pooled = cv2.dilate(
-        alpha, cv2.getStructuringElement(cv2.MORPH_RECT, (factor, factor))
-    )
-    small = cv2.resize(
-        pooled,
-        (max(1, width // factor), max(1, height // factor)),
-        interpolation=cv2.INTER_NEAREST,
-    )
-    # Pooling already carried one cell of coverage, so the reduced kernel is
-    # one step short of the full radius.
-    small = cv2.dilate(
-        small, disc_kernel(max(1, int(round(radius / factor)) - 1))
-    )
-    return np.maximum(
-        alpha,
-        cv2.resize(
-            small, (width, height), interpolation=cv2.INTER_LINEAR
-        ),
-    )
-
-
-def dilate_alpha_disc(
-    alpha: np.ndarray, radius: int, source_sigma: float = 0.0
-) -> np.ndarray:
-    """Grow ``alpha`` by a disc of ``radius``.
-
-    ``source_sigma`` is the deviation already blurred into ``alpha``. It only
-    selects how the growth is computed; callers pass what their pipeline
-    applied so a large radius never falls back to the quadratic kernel.
-
-    >>> source = np.zeros((5, 5), dtype=np.uint8)
-    >>> source[2, 2] = 255
-    >>> int(dilate_alpha_disc(source, 1)[2, 1])
-    255
-    >>> int(dilate_alpha_disc(source, 0)[2, 1])
-    0
+    >>> alpha = np.zeros((5, 5), dtype=np.uint8)
+    >>> alpha[2, 2] = 100
+    >>> int(dilate_alpha_disc(alpha, 1)[2, 1])
+    100
     """
     if radius <= 0:
         return alpha
-    if radius <= EXACT_DILATE_RADIUS:
-        return cv2.dilate(alpha, disc_kernel(radius))
-    if source_sigma <= HARD_EDGE_SIGMA:
-        return _hard_dilate(alpha, radius)
-    return _coarse_dilate(alpha, radius, source_sigma)
+    if radius <= 16:
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1)
+        )
+        return cv2.dilate(alpha, kernel)
+    height, width = alpha.shape
+    result = np.zeros_like(alpha)
+    x, y, ink_width, ink_height = cv2.boundingRect(alpha)
+    if ink_width == 0 or ink_height == 0:
+        return result
+    left, top = max(0, x - radius), max(0, y - radius)
+    right = min(width, x + ink_width + radius)
+    bottom = min(height, y + ink_height + radius)
+    # 패딩의 빈 영역은 제외하고, RGBA의 비연속 알파 뷰는 한 번만 복사한다.
+    source = np.ascontiguousarray(alpha[top:bottom, left:right])
+    grown = result[top:bottom, left:right]
+    height, width = source.shape
+    previous_span = -1
+    # 중심에서 바깥으로 이동하면 같은 폭이 연속되므로 한 행 필터만 유지한다.
+    for offset in range(min(radius, height - 1) + 1):
+        half_span = min(
+            width - 1,
+            round(math.sqrt(max(0, radius * radius - offset * offset))),
+        )
+        if half_span != previous_span:
+            row = cv2.dilate(source, np.ones((1, 2 * half_span + 1), np.uint8))
+            previous_span = half_span
+        if offset == 0:
+            np.maximum(grown, row, out=grown)
+        else:
+            np.maximum(grown[offset:], row[:-offset], out=grown[offset:])
+            np.maximum(grown[:-offset], row[offset:], out=grown[:-offset])
+    return result

@@ -19,7 +19,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QStyle, QStyleOptionGraphicsItem, QWidget
 
-from ballontranslator.utils.fontformat import pt2px
+from ballontranslator.utils.fontformat import SYNTHETIC_BOLD_OFFSET_MAX, pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
@@ -60,12 +60,11 @@ from .filters import (
     get_filter_registry,
 )
 from .shadow import render_glow_alpha, render_shadow_alpha
+from .limits import limit_effect_radii
 from ..rendering.morphology import dilate_alpha_disc
 from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
-    EFFECT_MIN_TILE_TIER,
-    EFFECT_TILE_CORE_DIVISOR,
     EFFECT_CACHE_MAX_PIXELS,
     EFFECT_CACHE_MAX_SCALE,
     EFFECT_RASTER_FAILURES,
@@ -196,6 +195,7 @@ class TextEffectRenderer:
             Tuple[object, RasterAssetRef]
         ] = set()
         self._filter_warnings: Set[tuple] = set()
+        self._radius_limit_cache = None
 
     def _raster_state(self) -> _EffectRasterState:
         if self._export_active:
@@ -297,6 +297,21 @@ class TextEffectRenderer:
             else self.canonical_text_effects()
         )
 
+    def _bounded_text_effects(self, stack: TextEffectStack) -> TextEffectStack:
+        """Keep at least half a tile for its core, at the settled 1x tier."""
+        if self.layout is None:
+            return stack
+        font_size = self.layout.max_font_size(to_px=True)
+        reach = max(
+            0.0,
+            (EFFECT_TILE_MAX_EDGE - 2) / 4.0
+            - EFFECT_RASTER_GUARD - self._synthetic_bold_outset(),
+        )
+        key = (stack, font_size, reach)
+        if self._radius_limit_cache is None or self._radius_limit_cache[0] != key:
+            self._radius_limit_cache = (key, limit_effect_radii(stack, font_size, reach))
+        return self._radius_limit_cache[1]
+
     def has_preview(self) -> bool:
         return self.preview is not None or self.has_text_alpha_mask_preview()
 
@@ -337,6 +352,7 @@ class TextEffectRenderer:
         """Return effect values that change completed source-surface pixels."""
         return (
             self._surface_effect_values(self.effective_text_effects()),
+            self.fontformat.synthetic_bold,
             self._synthetic_bold_ratios(),
             self._effective_mask_generation(),
         )
@@ -345,6 +361,7 @@ class TextEffectRenderer:
         self, stack: TextEffectStack
     ) -> Tuple[TextEffect, ...]:
         """Return stack values after native-edit Image suppression."""
+        stack = self._bounded_text_effects(stack)
         if not self.item.isEditing() or self.export_render:
             return stack.effects
         return tuple(
@@ -388,8 +405,8 @@ class TextEffectRenderer:
     def _effect_preview_changes_pixels(self) -> bool:
         return bool(
             self.preview is not None
-            and self.preview.effects
-            != self.canonical_text_effects().effects
+            and self._bounded_text_effects(self.preview).effects
+            != self._bounded_text_effects(self.canonical_text_effects()).effects
         )
 
     def _effective_mask_generation(self) -> int:
@@ -420,6 +437,7 @@ class TextEffectRenderer:
         self, stack: Optional[TextEffectStack] = None
     ) -> Tuple[StrokeEffect, ...]:
         active = self.effective_text_effects() if stack is None else stack
+        active = self._bounded_text_effects(active)
         return tuple(
             effect
             for effect in active.effects
@@ -471,7 +489,7 @@ class TextEffectRenderer:
         editing = self.item.isEditing() and not self.export_render
         nodes = []
         for index, effect in reversed(tuple(enumerate(
-            self.effective_text_effects().effects
+            self._bounded_text_effects(self.effective_text_effects()).effects
         ))):
             if isinstance(effect, ImageEffect):
                 if editing or effect.is_neutral():
@@ -586,7 +604,7 @@ class TextEffectRenderer:
             (
                 rect.x(), rect.y(), rect.width(), rect.height()
             ),
-            self._synthetic_bold_ratios(),
+            (self.fontformat.synthetic_bold, self._synthetic_bold_ratios()),
         )
 
     @staticmethod
@@ -775,7 +793,7 @@ class TextEffectRenderer:
             layout_render_key,
             self.geometry_controller.effective(),
             self.fontformat.vertical,
-            self._synthetic_bold_ratios(),
+            (self.fontformat.synthetic_bold, self._synthetic_bold_ratios()),
             self._native_stroke_alignment,
             (
                 logical_rect.x(), logical_rect.y(),
@@ -904,7 +922,7 @@ class TextEffectRenderer:
     def _current_stroke(self) -> Optional[StrokeEffect]:
         if self._render_stroke is not None:
             return self._render_stroke
-        return primary_stroke(self.effective_text_effects())
+        return primary_stroke(self._bounded_text_effects(self.effective_text_effects()))
 
     def _stroke_width(self) -> float:
         stroke = self._current_stroke()
@@ -913,18 +931,6 @@ class TextEffectRenderer:
         # Position clips the same historical native outline; it does not
         # redefine the saved width as an outside-only radius.
         return stroke.width
-
-    def _stroke_pen_ratio(self) -> float:
-        """Return the Stroke pen width carrying the synthetic bold disc.
-
-        A bolded stroke reaches its own radius plus the shared disc, and one
-        pen carries both. The caller applies the sweep that completes the
-        ellipse.
-        """
-        width = self._stroke_width()
-        if width <= 0.0:
-            return width
-        return width + 2.0 * self._synthetic_bold_pen_ratio()
 
     def _all_strokes_vector_compatible(
         self,
@@ -1051,6 +1057,7 @@ class TextEffectRenderer:
 
     def release_caches(self) -> None:
         """Release every item-owned raster cache before page removal."""
+        self._radius_limit_cache = None
         for state in (
             self._effect_raster_state,
             self._preview_effect_raster_state,
@@ -1211,7 +1218,10 @@ class TextEffectRenderer:
                 None if self._export_active else self._peek_raster_state()
             )
             self.preview = stack
-            effects_changed = effective_before.effects != stack.effects
+            effects_changed = (
+                self._bounded_text_effects(effective_before).effects
+                != self._bounded_text_effects(stack).effects
+            )
             if effects_changed:
                 if stack.effects != canonical.effects:
                     if not had_pixel_preview:
@@ -1255,7 +1265,10 @@ class TextEffectRenderer:
         ):
             self._apply_effective_opacity()
             return False
-        effects_changed = canonical.effects != stack.effects
+        effects_changed = (
+            self._bounded_text_effects(canonical).effects
+            != self._bounded_text_effects(stack).effects
+        )
         mask_preview_active = self._mask_preview_changes_pixels
         scratch_state = self._preview_effect_raster_state
         scratch_current = bool(
@@ -1518,7 +1531,10 @@ class TextEffectRenderer:
         preview = self.preview
         mask_preview_active = self._mask_preview_changes_pixels
         self.preview = None
-        effects_changed = preview.effects != self.canonical_text_effects().effects
+        effects_changed = (
+            self._bounded_text_effects(preview).effects
+            != self._bounded_text_effects(self.canonical_text_effects()).effects
+        )
         if effects_changed:
             self._preview_effect_raster_state = None
         elif not mask_preview_active:
@@ -1839,12 +1855,12 @@ class TextEffectRenderer:
         return context
 
     def _synthetic_bold_ratios(self) -> Tuple[float, float]:
-        if not self.fontformat.synthetic_bold:
+        if self.fontformat.synthetic_bold == 'none':
             return 0.0, 0.0
         values = self.fontformat.synthetic_bold_offset
         return (
-            min(max(float(values[0]), 0.0), 0.2),
-            min(max(float(values[1]), 0.0), 0.2),
+            min(max(float(values[0]), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
+            min(max(float(values[1]), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
         )
 
     def _synthetic_bold_outsets(self) -> Tuple[float, float]:
@@ -1855,82 +1871,80 @@ class TextEffectRenderer:
     def _synthetic_bold_outset(self) -> float:
         return max(self._synthetic_bold_outsets())
 
-    def _synthetic_bold_pen_ratio(self) -> float:
-        """Return the round expansion both axes share.
-
-        Expanding by a different amount per axis is a dilation by an ellipse,
-        and an ellipse is the smaller axis' disc swept along the longer one.
-        The disc half is an outline pen, which costs one pass and keeps each
-        fragment's own paint; only the sweep needs repeated draws.
-        """
-        return min(self._synthetic_bold_ratios())
-
-    def _synthetic_bold_offsets(self) -> Tuple[Tuple[float, float], ...]:
-        """Return the sweep that carries the shared disc along one axis.
-
-        >>> hasattr(TextEffectRenderer, '_synthetic_bold_offsets')
-        True
-        """
-        x_outset, y_outset = self._synthetic_bold_outsets()
-        reach = abs(x_outset - y_outset)
-        if reach <= 0.0:
-            return ((0.0, 0.0),)
-        steps = max(1, math.ceil(reach))
-        horizontal = x_outset > y_outset
-        return tuple(
-            (reach * step / steps, 0.0)
-            if horizontal
-            else (0.0, reach * step / steps)
-            for step in range(-steps, steps + 1)
-        )
-
-    def _sweep_synthetic_bold_alpha(
+    def _dilate_synthetic_bold_alpha(
         self,
         alpha: np.ndarray,
         render_scale: float,
     ) -> np.ndarray:
-        """Carry rasterized Stroke coverage along the synthetic bold sweep.
+        """Expand Stroke coverage on the configured synthetic-bold axes.
 
-        The pen that drew the coverage already holds the shared disc, so only
-        the sweep is left. It is axis aligned, which OpenCV decomposes into
-        two linear passes however long it is.
-
-        >>> hasattr(TextEffectRenderer, '_sweep_synthetic_bold_alpha')
+        >>> hasattr(TextEffectRenderer, '_dilate_synthetic_bold_alpha')
         True
         """
         x_outset, y_outset = self._synthetic_bold_outsets()
-        reach = math.ceil(abs(x_outset - y_outset) * render_scale)
-        if reach <= 0:
+        x_radius = math.ceil(x_outset * render_scale)
+        y_radius = math.ceil(y_outset * render_scale)
+        if x_radius <= 0 and y_radius <= 0:
             return alpha
-        size = (
-            (reach * 2 + 1, 1)
-            if x_outset > y_outset
-            else (1, reach * 2 + 1)
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE
+            if self.fontformat.synthetic_bold == 'ellipse'
+            and x_radius > 0 and y_radius > 0
+            else cv2.MORPH_RECT,
+            (x_radius * 2 + 1, y_radius * 2 + 1),
         )
-        return cv2.dilate(
-            alpha,
-            cv2.getStructuringElement(cv2.MORPH_RECT, size),
-            borderType=cv2.BORDER_CONSTANT,
+        return cv2.dilate(alpha, kernel, borderType=cv2.BORDER_CONSTANT)
+
+    def _anisotropic_synthetic_bold_offsets(
+        self,
+    ) -> Tuple[Tuple[float, float], ...]:
+        """Return translations whose union expands ink on requested axes."""
+        x_radius, y_radius = self._synthetic_bold_outsets()
+        x_steps = max(1, math.ceil(x_radius)) if x_radius > 0 else 0
+        y_steps = max(1, math.ceil(y_radius)) if y_radius > 0 else 0
+        x_offsets = (
+            tuple(
+                x_radius * step / x_steps
+                for step in range(-x_steps, x_steps + 1)
+            )
+            if x_steps else (0.0,)
         )
-
-    def _synthetic_bold_context(self):
-        """Return the layout pass carrying the shared disc, if there is one.
-
-        A zero width QPen is cosmetic in Qt and would paint a one pixel
-        outline at every scale, so a sweep with no shared disc paints plain.
-        """
-        pen_ratio = self._synthetic_bold_pen_ratio()
-        if pen_ratio <= 0.0:
-            return self._effect_paint_context()
-        return self._synthetic_bold_uniform_context(pen_ratio)
+        y_offsets = (
+            tuple(
+                y_radius * step / y_steps
+                for step in range(-y_steps, y_steps + 1)
+            )
+            if y_steps else (0.0,)
+        )
+        kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE
+            if self.fontformat.synthetic_bold == 'ellipse'
+            and x_steps > 0 and y_steps > 0
+            else cv2.MORPH_RECT,
+            (2 * x_steps + 1, 2 * y_steps + 1),
+        )
+        return tuple(
+            (x_offset, y_offset)
+            for y_index, y_offset in enumerate(y_offsets)
+            for x_index, x_offset in enumerate(x_offsets)
+            if kernel[y_index, x_index]
+        )
 
     def _paint_synthetic_bold(self, painter: QPainter) -> None:
         """Expand glyph ink without changing the selected font or metrics."""
-        offsets = self._synthetic_bold_offsets()
-        if self._synthetic_bold_pen_ratio() <= 0.0 and len(offsets) == 1:
+        x_ratio, y_ratio = self._synthetic_bold_ratios()
+        if x_ratio <= 0.0 and y_ratio <= 0.0:
             return
-        context = self._synthetic_bold_context()
-        for x_offset, y_offset in offsets:
+        if (
+            self.fontformat.synthetic_bold == 'ellipse'
+            and math.isclose(x_ratio, y_ratio, abs_tol=1e-12)
+        ):
+            self._paint_live_layout(
+                painter, self._synthetic_bold_uniform_context(x_ratio)
+            )
+            return
+        context = self._effect_paint_context()
+        for x_offset, y_offset in self._anisotropic_synthetic_bold_offsets():
             painter.save()
             try:
                 painter.translate(x_offset, y_offset)
@@ -2005,7 +2019,7 @@ class TextEffectRenderer:
 
                 pen = QPen(
                     self.stroke_qcolor,
-                    pt2px(point_size) * self._stroke_pen_ratio(),
+                    pt2px(point_size) * self._stroke_width(),
                     Qt.PenStyle.SolidLine,
                     Qt.PenCapStyle.RoundCap,
                     Qt.PenJoinStyle.RoundJoin,
@@ -2288,7 +2302,7 @@ class TextEffectRenderer:
         for position, length, char_format in fragments:
             stroke_pen.setWidthF(
                 pt2px(char_format.fontPointSize())
-                * self._stroke_pen_ratio()
+                * self._stroke_width()
             )
             cursor.setPosition(position)
             cursor.setPosition(
@@ -2411,7 +2425,7 @@ class TextEffectRenderer:
         render_scale: float = 1.0,
         surface_rect: QRectF = None,
     ) -> None:
-        for x_offset, y_offset in self._synthetic_bold_offsets():
+        for x_offset, y_offset in self._anisotropic_synthetic_bold_offsets():
             painter.save()
             try:
                 painter.translate(x_offset, y_offset)
@@ -3596,9 +3610,9 @@ class TextEffectRenderer:
             # sentinel, not visible foreground in the persistent band.
             alpha = rgba[..., 3]
             alpha[alpha <= 1] = 0
-            # Stroke geometry is already rasterized, disc included, so the
-            # sweep here replaces the grid of translated pixmap draws.
-            alpha = self._sweep_synthetic_bold_alpha(alpha, render_scale)
+            # Stroke geometry is already rasterized. Expanding its coverage
+            # here replaces the quadratic grid of translated pixmap draws.
+            alpha = self._dilate_synthetic_bold_alpha(alpha, render_scale)
             if stroke.position != 'center':
                 if canonical_alpha is None:
                     raise EffectRasterAllocationError(
@@ -3806,23 +3820,35 @@ class TextEffectRenderer:
             painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
             self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
-            offsets = self._synthetic_bold_offsets()
-            if len(offsets) > 1:
-                # The disc already sits in the captured pen pass, so the
-                # sweep replicates one surface instead of relaying out glyphs.
-                swept = self._capture_plain_effect_source(
-                    surface_rect,
-                    render_scale,
-                    self._synthetic_bold_context(),
+            x_ratio, y_ratio = self._synthetic_bold_ratios()
+            anisotropic = (
+                (x_ratio > 0.0 or y_ratio > 0.0)
+                and (
+                    self.fontformat.synthetic_bold == 'rect'
+                    or not math.isclose(x_ratio, y_ratio, abs_tol=1e-12)
                 )
-                for x_offset, y_offset in offsets:
+            )
+            if self.fontformat.synthetic_bold == 'rect' and anisotropic:
+                canonical = self._capture_rectangular_bold_source(
+                    surface_rect, render_scale
+                )
+                self._draw_surface_pixmap(
+                    painter, surface_rect, canonical, render_scale
+                )
+            elif anisotropic:
+                canonical = self._capture_plain_effect_source(
+                    surface_rect, render_scale
+                )
+                for x_offset, y_offset in (
+                    self._anisotropic_synthetic_bold_offsets()
+                ):
                     painter.save()
                     try:
                         painter.translate(x_offset, y_offset)
                         self._draw_surface_pixmap(
                             painter,
                             surface_rect,
-                            swept,
+                            canonical,
                             render_scale,
                         )
                     finally:
@@ -3854,13 +3880,44 @@ class TextEffectRenderer:
                 ) from end_error
         return source
 
+    def _capture_rectangular_bold_source(
+        self, surface_rect: QRectF, render_scale: float
+    ) -> QPixmap:
+        """Expand rectangular ink in two separable passes.
+
+        >>> callable(TextEffectRenderer._capture_rectangular_bold_source)
+        True
+        """
+        source = self._capture_plain_effect_source(surface_rect, render_scale)
+        for axis, radius in enumerate(self._synthetic_bold_outsets()):
+            if radius <= 0.0:
+                continue
+            expanded = self._new_effect_pixmap(render_scale, surface_rect)
+            painter = QPainter(expanded)
+            if not painter.isActive():
+                raise EffectRasterAllocationError('unable to expand bold source')
+            try:
+                self._prepare_effect_surface_painter(painter, render_scale)
+                painter.translate(-surface_rect.topLeft())
+                steps = max(1, math.ceil(radius))
+                for step in range(-steps, steps + 1):
+                    offset = radius * step / steps
+                    target = surface_rect.translated(
+                        offset if axis == 0 else 0.0,
+                        offset if axis == 1 else 0.0,
+                    )
+                    self._draw_surface_pixmap(painter, target, source, render_scale)
+            finally:
+                painter.end()
+            source = expanded
+        return source
+
     def _capture_plain_effect_source(
         self,
         surface_rect: QRectF,
         render_scale: float,
-        context=None,
     ) -> QPixmap:
-        """Capture one glyph layout pass for cheap sweep replication."""
+        """Capture one glyph layout pass for cheap anisotropic replication."""
         source = self._new_effect_pixmap(render_scale, surface_rect)
         painter = QPainter(source)
         if not painter.isActive():
@@ -3871,10 +3928,7 @@ class TextEffectRenderer:
             painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
             self._prepare_effect_surface_painter(painter, render_scale)
             painter.translate(-surface_rect.topLeft())
-            self._paint_live_layout(
-                painter,
-                self._effect_paint_context() if context is None else context,
-            )
+            self._paint_live_layout(painter, self._effect_paint_context())
         finally:
             painter.end()
         return source
@@ -4272,7 +4326,7 @@ class TextEffectRenderer:
         >>> hasattr(TextEffectRenderer, '_ordered_exterior_source_alphas')
         True
         """
-        active_effects = self.effective_text_effects().effects
+        active_effects = self._bounded_text_effects(self.effective_text_effects()).effects
         ordered_strokes = tuple(
             (index, effect)
             for index, effect in reversed(tuple(enumerate(active_effects)))
@@ -4624,121 +4678,6 @@ class TextEffectRenderer:
                 visible = visible.intersected(clip)
         return visible
 
-    def _tile_plan_within_overlap(
-        self,
-        plan: EffectRasterPlan,
-        target_overlap: float,
-    ) -> EffectRasterPlan:
-        """Coarsen the tile tier until the overlap leaves a core to draw.
-
-        Overlap is the effect's own reach and it eats the tile from both
-        sides, so a reach near half the tile edge left a sliver of a core and
-        the item needed hundreds of them; past half it left none at all and
-        every effect on the item disappeared without a trace. Reaching that
-        far also means the result holds no detail the finer tier would have
-        shown, so on screen the surface is coarsened until a core is worth
-        drawing. Overlap and core shrink together, so one or two steps are
-        always enough. An export says nothing silently: it keeps raising,
-        because a settled deliverable should not quietly drop to a fraction
-        of its resolution.
-
-        >>> hasattr(TextEffectRenderer, '_tile_plan_within_overlap')
-        True
-        """
-        if plan.mode != 'tiles' or self.export_render:
-            return plan
-        if self._fits_one_surface(self.boundingRect(), plan.tier):
-            # The surface fits whole at the tier asked for, so tiling is a
-            # choice here and has to reproduce it exactly. Coarsening cannot.
-            return plan
-        usable = max(1, plan.tile_edge // EFFECT_TILE_CORE_DIVISOR)
-        tier = plan.tier
-        while (
-            tier > EFFECT_MIN_TILE_TIER
-            and plan.tile_edge - 2 * math.ceil(target_overlap * tier)
-            < usable
-        ):
-            tier /= 2.0
-        return plan if tier == plan.tier else plan._replace(tier=tier)
-
-    @staticmethod
-    def _fits_one_surface(bounds: QRectF, tier: float) -> bool:
-        """Report whether ``bounds`` is allocatable as a single surface.
-
-        Mirrors the policy :meth:`_new_effect_pixmap` enforces, so a caller
-        can tell a chosen tiling from a forced one.
-
-        >>> TextEffectRenderer._fits_one_surface(QRectF(0, 0, 64, 64), 1.0)
-        True
-        >>> TextEffectRenderer._fits_one_surface(QRectF(0, 0, 9000, 9000), 1.0)
-        False
-        """
-        width = max(1, math.ceil(bounds.width() * tier))
-        height = max(1, math.ceil(bounds.height() * tier))
-        pixels = width * height
-        return (
-            width <= EFFECT_CACHE_MAX_DIMENSION
-            and height <= EFFECT_CACHE_MAX_DIMENSION
-            and pixels <= EFFECT_CACHE_MAX_PIXELS
-            and pixels * 4 <= EFFECT_CACHE_MAX_BYTES
-        )
-
-    def _draw_effect_core(
-        self,
-        painter: QPainter,
-        core: QRectF,
-        visible: QRectF,
-        cached: Tuple[QRectF, QPixmap],
-        tier: float,
-    ) -> None:
-        """Blit one finished tile core through its own staging surface.
-
-        A core is a complete surface region, so it is source-copied to keep
-        the premultiplied pixels its tile produced rather than blending them
-        into the canvas. Staging a single core bounds that copy by the tile
-        edge; a staging surface spanning the whole visible rectangle instead
-        dropped every effect on the item once the view grew past the raster
-        policy, which is reachable simply by opening a large window.
-
-        >>> hasattr(TextEffectRenderer, '_draw_effect_core')
-        True
-        """
-        exposed = core.intersected(visible)
-        if exposed.isEmpty():
-            return
-        if self.export_render:
-            painter.save()
-            try:
-                painter.setClipRect(core, Qt.ClipOperation.IntersectClip)
-                self._draw_surface_pixmap(
-                    painter, cached[0], cached[1], tier
-                )
-            finally:
-                painter.restore()
-            return
-        staging = self._new_effect_pixmap(tier, exposed)
-        staging_painter = QPainter(staging)
-        if not staging_painter.isActive():
-            raise EffectRasterAllocationError(
-                'unable to begin effect core staging painter'
-            )
-        try:
-            self._prepare_effect_surface_painter(staging_painter, tier)
-            staging_painter.translate(-exposed.topLeft())
-            staging_painter.setCompositionMode(
-                QPainter.CompositionMode.CompositionMode_Source
-            )
-            staging_painter.setRenderHint(
-                QPainter.RenderHint.SmoothPixmapTransform
-            )
-            self._draw_surface_pixmap(
-                staging_painter, cached[0], cached[1], tier
-            )
-        finally:
-            if staging_painter.isActive():
-                staging_painter.end()
-        self._draw_surface_pixmap(painter, exposed, staging, tier)
-
     def _draw_tiled_effects(
         self,
         painter: QPainter,
@@ -4792,7 +4731,6 @@ class TextEffectRenderer:
             )
             self.force_tiles = False
             return
-        plan = self._tile_plan_within_overlap(plan, target_overlap)
         included_filters = self._retained_filter_indices(nodes)
         filter_plan = self._filter_execution_plan(
             plan.tier, included_filters=included_filters
@@ -4861,9 +4799,42 @@ class TextEffectRenderer:
         )
 
         active_keys = set()
+        cached_bytes = sum(
+            pixmap.width() * pixmap.height() * 4
+            for _rect, pixmap in self.tile_cache.values()
+        )
+        staging_pixmap = None
+        staging_painter = None
+        tile_painter = painter
         raster_failure = None
         try:
-            painter.setRenderHint(
+            if not self.export_render:
+                staging_plan = plan_effect_raster(
+                    visible.width(), visible.height(), plan.tier
+                )
+                if (
+                    staging_plan.mode == 'full'
+                    and staging_plan.tier == plan.tier
+                ):
+                    staging_pixmap = self._new_effect_pixmap(
+                        plan.tier, visible
+                    )
+                    staging_painter = QPainter(staging_pixmap)
+                    if not staging_painter.isActive():
+                        raise EffectRasterAllocationError(
+                            'unable to begin visible effect staging painter'
+                        )
+                    self._prepare_effect_surface_painter(
+                        staging_painter, plan.tier
+                    )
+                    staging_painter.translate(-visible.topLeft())
+                    staging_painter.setCompositionMode(
+                        QPainter.CompositionMode.CompositionMode_Source
+                    )
+                    tile_painter = staging_painter
+                # 큰 뷰포트는 export와 같은 타일별 클립 경로로 직접 그린다.
+                # 타일용 메모리를 제한한 뒤 전체 화면을 재할당하지 않는다.
+            tile_painter.setRenderHint(
                 QPainter.RenderHint.SmoothPixmapTransform
             )
             for tile_y in range(first_y, last_y + 1):
@@ -4906,9 +4877,28 @@ class TextEffectRenderer:
                             nodes=nodes,
                             image_rasters=image_rasters,
                         )
-                        cached = (QRectF(surface), pixmap)
+                        # 겹침 영역은 계산할 때만 필요하다. 보간용 한 픽셀과
+                        # 표시 영역만 저장하면 같은 메모리로 뷰포트를 유지한다.
+                        scale_x = plan.tier if plan.tier >= 1.0 else pixmap.width() / surface.width()
+                        scale_y = plan.tier if plan.tier >= 1.0 else pixmap.height() / surface.height()
+                        crop = QRectF(
+                            (core.left() - surface.left()) * scale_x - 1,
+                            (core.top() - surface.top()) * scale_y - 1,
+                            core.width() * scale_x + 2,
+                            core.height() * scale_y + 2,
+                        ).toAlignedRect().intersected(pixmap.rect())
+                        kept = pixmap.copy(crop)
+                        if kept.isNull():
+                            raise EffectRasterAllocationError('unable to retain effect tile core')
+                        cached = (QRectF(
+                            surface.left() + crop.x() / scale_x,
+                            surface.top() + crop.y() / scale_y,
+                            crop.width() / scale_x,
+                            crop.height() / scale_y,
+                        ), kept)
                         self.tile_cache[key] = cached
-                        while len(self.tile_cache) > 2:
+                        cached_bytes += kept.width() * kept.height() * 4
+                        while cached_bytes > EFFECT_CACHE_MAX_BYTES and len(self.tile_cache) > 1:
                             oldest = next(iter(self.tile_cache))
                             if oldest == key and len(self.tile_cache) > 1:
                                 oldest = next(
@@ -4916,10 +4906,18 @@ class TextEffectRenderer:
                                     for candidate in self.tile_cache
                                     if candidate != key
                                 )
-                            self.tile_cache.pop(oldest, None)
-                    self._draw_effect_core(
-                        painter, core, visible, cached, plan.tier
-                    )
+                            _old_rect, old_pixmap = self.tile_cache.pop(oldest)
+                            cached_bytes -= old_pixmap.width() * old_pixmap.height() * 4
+                    tile_painter.save()
+                    try:
+                        tile_painter.setClipRect(
+                            core, Qt.ClipOperation.IntersectClip
+                        )
+                        self._draw_surface_pixmap(
+                            tile_painter, cached[0], cached[1], plan.tier
+                        )
+                    finally:
+                        tile_painter.restore()
         except RASTER_BOUNDARY_FAILURES as error:
             raster_failure = (
                 error
@@ -4930,6 +4928,17 @@ class TextEffectRenderer:
             )
             if raster_failure is not error:
                 raster_failure.__cause__ = error
+        finally:
+            if staging_painter is not None:
+                try:
+                    if staging_painter.isActive():
+                        staging_painter.end()
+                except RASTER_BOUNDARY_FAILURES as error:
+                    if raster_failure is None:
+                        raster_failure = EffectRasterAllocationError(
+                            'unable to finish tiled effect painter'
+                        )
+                        raster_failure.__cause__ = error
 
         if raster_failure is not None:
             self.tile_cache.clear()
@@ -4943,6 +4952,12 @@ class TextEffectRenderer:
                 return
             self._warn_effect_allocation_once(raster_failure)
             return
+
+        if staging_pixmap is not None:
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            self._draw_surface_pixmap(
+                painter, visible, staging_pixmap, plan.tier
+            )
 
         # Retain no cache from a viewport that is no longer exposed.
         for key in list(self.tile_cache):

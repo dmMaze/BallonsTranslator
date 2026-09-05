@@ -1533,16 +1533,28 @@ QToolButton#FontBoldToolButton::menu-arrow {
 
 QWidget#SyntheticBoldEditor,
 QWidget#SyntheticBoldEditor QLabel,
-QWidget#SyntheticBoldEditor QCheckBox,
 QWidget#SyntheticBoldEditor QComboBox,
 QWidget#SyntheticBoldEditor QLineEdit {
-    font-size: 10px;
+    font-size: 12px;
+    background-color: @emptyContentBackgroundColor;
+}
+
+QLabel#SyntheticBoldAxisLabel {
+    padding: 3px 4px;
+}
+
+QLabel#SyntheticBoldAxisLabel:hover {
+    color: rgb(30, 147, 229);
 }
 
 QComboBox#SyntheticBoldOffsetBox {
-    min-height: 20px;
-    max-height: 20px;
+    min-height: 24px;
+    max-height: 24px;
     padding: 0px 3px;
+}
+
+QMenu#FontBoldMenu::indicator:checked {
+    image: url(resources/icons/checkbox_checked.svg);
 }
 
 QFontChecker#FontVerticalChecker::indicator {

@@ -33,6 +33,7 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     FontWeight,
     LineSpacingType,
+    SYNTHETIC_BOLD_OFFSET_MAX,
     TextTransformStack,
     font_weight_from_qt,
     font_weight_to_qt,
@@ -223,7 +224,13 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
-        self.initTextBlock(blk, set_format=set_format)
+        # 초기 서식과 문서 내용이 모두 정착한 뒤 효과를 한 번 계산한다.
+        self.repainting = True
+        try:
+            self.initTextBlock(blk, set_format=set_format)
+        finally:
+            self.repainting = False
+        self.repaint_background()
         self.setBoundingRegionGranularity(0)
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -1482,6 +1489,7 @@ class TextBlkItem(QGraphicsTextItem):
         set_char_format=False,
         set_stroke_width=True,
     ) -> None:
+        was_repainting = self.repainting
         self.repainting = True
         if self.fontformat.vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
@@ -1576,7 +1584,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_text_transform(ffmat.text_transform)
         self.fontformat.merge(ffmat)
 
-        self.repainting = False
+        self.repainting = was_repainting
         if set_stroke_width:
             self.repaint_background()
 
@@ -2064,20 +2072,23 @@ class TextBlkItem(QGraphicsTextItem):
         """Set em-relative canonical glyph contour offsets."""
         x_offset, y_offset = offsets
         target = [
-            min(max(float(x_offset), 0.0), 0.2),
-            min(max(float(y_offset), 0.0), 0.2),
+            min(max(float(x_offset), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
+            min(max(float(y_offset), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
         ]
+        if not all(np.isfinite(value) for value in (x_offset, y_offset)):
+            raise ValueError('synthetic bold offsets must be finite')
         if self.fontformat.synthetic_bold_offset == target:
             return
         self.fontformat.synthetic_bold_offset = target
         self.effect_renderer.synthetic_bold_changed()
 
-    def setSyntheticBold(self, enabled: bool) -> None:
-        """Enable or disable the configured synthetic-bold contour."""
-        enabled = bool(enabled)
-        if self.fontformat.synthetic_bold == enabled:
+    def setSyntheticBold(self, mode: str) -> None:
+        """Select the synthetic-bold contour shape."""
+        if mode not in ('none', 'rect', 'ellipse'):
+            raise ValueError('unsupported synthetic bold mode')
+        if self.fontformat.synthetic_bold == mode:
             return
-        self.fontformat.synthetic_bold = enabled
+        self.fontformat.synthetic_bold = mode
         self.effect_renderer.synthetic_bold_changed()
 
     def setRelFontSize(

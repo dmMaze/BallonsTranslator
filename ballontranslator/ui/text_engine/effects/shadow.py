@@ -8,70 +8,22 @@ import numpy as np
 from ..rendering.morphology import dilate_alpha_disc
 
 
-# Blur is radius limited rather than area limited: OpenCV blurs separably, so
-# its Gaussian costs O(radius) per pixel. Effect radii are a fraction of the
-# font size, so a 200px font already reaches a 2000px radius at the slider
-# limit and the exact kernel stalls the UI for minutes. Past the threshold
-# here the blur carries the same geometry for a linear cost, and dilation does
-# the same through the shared alpha morphology.
-EXACT_BLUR_RADIUS = 24
-# Deviation retained inside a reduced-resolution buffer, far above the point
-# where the kernel is cheap so the buffer stays small without the resampling
-# itself becoming the bottleneck.
-COARSE_BLUR_SIGMA = 12.0
-
-
-def _blur_sigma(radius: int) -> float:
-    """Return the deviation :func:`_blur` applies at ``radius``.
-
-    >>> _blur_sigma(0)
-    0.0
-    >>> _blur_sigma(4)
-    1.5
-    """
-    return 0.0 if radius <= 0 else (radius * 2 + 1) / 6
-
-
-def _coarse_blur(mask: np.ndarray, sigma: float) -> np.ndarray:
-    """Blur inside a buffer small enough for the kernel to be cheap.
-
-    The result is band limited by ``sigma``, so it survives the round trip
-    through a buffer subsampled well below it. ``resize`` rounds each axis
-    independently, so the deviation is rescaled by the ratio it really used.
-    """
-    height, width = mask.shape
-    factor = max(2, int(sigma // COARSE_BLUR_SIGMA))
-    small_height = max(1, height // factor)
-    small_width = max(1, width // factor)
-    small = cv2.resize(
-        mask,
-        (small_width, small_height),
-        interpolation=cv2.INTER_AREA,
-    )
-    small = cv2.GaussianBlur(
-        small,
-        (0, 0),
-        sigma * small_width / width,
-        sigmaY=sigma * small_height / height,
-        borderType=cv2.BORDER_CONSTANT,
-    )
-    return cv2.resize(
-        small, (width, height), interpolation=cv2.INTER_LINEAR
-    )
-
-
 def _blur(mask: np.ndarray, radius: int) -> np.ndarray:
     if radius <= 0:
         return mask
-    if radius <= EXACT_BLUR_RADIUS:
-        ksize = radius * 2 + 1
-        return cv2.GaussianBlur(
-            mask,
-            (ksize, ksize),
-            ksize / 6,
-            borderType=cv2.BORDER_CONSTANT,
-        )
-    return _coarse_blur(mask, _blur_sigma(radius))
+    ksize = radius * 2 + 1
+    # 큰 uint8 커널의 고정소수점 경로보다 float32 분리 필터가 빠르다.
+    source = mask.astype(np.float32) if radius > 24 else mask
+    blurred = cv2.GaussianBlur(
+        source,
+        (ksize, ksize),
+        ksize / 6,
+        borderType=cv2.BORDER_CONSTANT,
+    )
+    return (
+        np.rint(blurred).clip(0, 255).astype(np.uint8)
+        if radius > 24 else blurred
+    )
 
 
 def _translate(mask: np.ndarray, offset: Tuple[float, float]) -> np.ndarray:
@@ -141,10 +93,7 @@ def render_glow_alpha(
     if glow_type == 'inner':
         edge = 255 - _blur(source_alpha, size_radius)
         return _alpha_intersection(
-            dilate_alpha_disc(
-                edge, spread_radius, _blur_sigma(size_radius)
-            ),
-            source_alpha,
+            dilate_alpha_disc(edge, spread_radius), source_alpha
         )
     raise ValueError('unsupported glow type')
 
@@ -187,9 +136,7 @@ def render_shadow_alpha(
     elif shadow_type == 'inner':
         shifted = _translate(_blur(source_alpha, blur_radius), offset)
         mask = cv2.subtract(255, shifted)
-        mask = dilate_alpha_disc(
-            mask, spread_radius, _blur_sigma(blur_radius)
-        )
+        mask = dilate_alpha_disc(mask, spread_radius)
         mask = _alpha_intersection(mask, source_alpha)
     else:
         raise ValueError('unsupported shadow type')

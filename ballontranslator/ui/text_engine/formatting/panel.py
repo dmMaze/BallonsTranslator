@@ -39,6 +39,7 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     FontWeight,
     LineSpacingType,
+    SYNTHETIC_BOLD_OFFSET_MAX,
     coerce_font_weight,
     font_weight_to_qt,
 )
@@ -55,6 +56,7 @@ from ...custom_widget import (
 )
 from ...icon_rendering import render_svg_pixmap
 from ..item import TextBlkItem
+from ..transforms.controls import TransformDragLabel
 from ..font_family import qfont_with_family
 from ..annotations import (
     DEFAULT_EMPHASIS_POSITION,
@@ -367,7 +369,7 @@ class EmphasisToolButton(QToolButton):
 class BoldToolButton(QToolButton):
     """Toggle and edit the canonical synthetic-bold contour."""
 
-    synthetic_bold_changed = Signal(bool)
+    synthetic_bold_changed = Signal(str)
     synthetic_bold_offset_changed = Signal(object)
 
     def __init__(self, parent=None) -> None:
@@ -386,37 +388,54 @@ class BoldToolButton(QToolButton):
         header_font.setBold(True)
         header.setFont(header_font)
 
+        self._bold_mode = 'ellipse'
+        self._drag_offsets: Optional[tuple[float, float]] = None
+        self._shape_group = QActionGroup(self)
+        self._shape_group.setExclusive(True)
+        self._shape_actions = []
+        for mode, label in (
+            ('none', self.tr('None')),
+            ('rect', self.tr('Rectangle')),
+            ('ellipse', self.tr('Ellipse')),
+        ):
+            action = self._menu.addAction(label)
+            action.setData(mode)
+            action.setCheckable(True)
+            action.setChecked(mode == 'none')
+            self._shape_group.addAction(action)
+            action.triggered.connect(self._on_shape_triggered)
+            self._shape_actions.append(action)
+        self._menu.addSeparator()
+
         offset_row = QWidget(self._menu)
         offset_row.setObjectName('SyntheticBoldEditor')
-        offset_layout = QVBoxLayout(offset_row)
-        offset_layout.setContentsMargins(8, 1, 6, 3)
-        offset_layout.setSpacing(1)
+        offset_layout = QHBoxLayout(offset_row)
+        offset_layout.setContentsMargins(8, 3, 6, 5)
+        offset_layout.setSpacing(4)
         self.synthetic_bold_x_box = self._new_offset_box(
             'synthetic_bold_x_offset', offset_row
         )
         self.synthetic_bold_y_box = self._new_offset_box(
             'synthetic_bold_y_offset', offset_row
         )
-        self._separate_offset_row = QWidget(offset_row)
-        separate_layout = QHBoxLayout(self._separate_offset_row)
-        separate_layout.setContentsMargins(0, 0, 0, 0)
-        separate_layout.setSpacing(4)
-        separate_layout.addWidget(QLabel('X', self._separate_offset_row))
-        separate_layout.addWidget(self.synthetic_bold_x_box)
-        separate_layout.addSpacing(4)
-        separate_layout.addWidget(QLabel('Y', self._separate_offset_row))
-        separate_layout.addWidget(self.synthetic_bold_y_box)
-        offset_layout.addWidget(self._separate_offset_row)
+        offset_layout.addWidget(self._new_offset_label('X', 0, offset_row))
+        offset_layout.addWidget(self.synthetic_bold_x_box)
+        offset_layout.addWidget(QLabel('%', offset_row))
+        offset_layout.addSpacing(8)
+        offset_layout.addWidget(self._new_offset_label('Y', 1, offset_row))
+        offset_layout.addWidget(self.synthetic_bold_y_box)
+        offset_layout.addWidget(QLabel('%', offset_row))
 
         self.synthetic_bold_x_box.param_changed.connect(
-            self._on_separate_offset_changed
+            self._on_offset_changed
         )
         self.synthetic_bold_y_box.param_changed.connect(
-            self._on_separate_offset_changed
+            self._on_offset_changed
         )
         offset_action = QWidgetAction(self._menu)
         offset_action.setDefaultWidget(offset_row)
         self._menu.addAction(offset_action)
+        self._menu.aboutToHide.connect(self._cancel_offset_drag)
         self.setMenu(self._menu)
 
         icons = Path(shared.PROGRAM_PATH) / 'resources' / 'icons'
@@ -424,10 +443,12 @@ class BoldToolButton(QToolButton):
         self._active_icon_path = str(icons / 'fontfmt_bold_activate.svg')
 
     def _new_offset_box(self, param_name: str, parent: QWidget) -> SizeComboBox:
-        box = SizeComboBox([0.0, 20.0], param_name, parent)
+        box = SizeComboBox(
+            [0.0, SYNTHETIC_BOLD_OFFSET_MAX * 100.0], param_name, parent
+        )
         box.setObjectName('SyntheticBoldOffsetBox')
-        box.addItems(['0', '1', '2', '3', '4', '5'])
-        box.setFixedSize(50, 20)
+        box.addItems(['0', '1', '2', '5', '10', '25', '50'])
+        box.setFixedSize(60, 24)
         box.setToolTip(
             self.tr(
                 'Outward contour expansion as a percentage of font size; '
@@ -436,30 +457,89 @@ class BoldToolButton(QToolButton):
         )
         return box
 
-    def _on_main_clicked(self, checked: bool = False) -> None:
-        self.synthetic_bold_changed.emit(checked)
+    def _new_offset_label(
+        self, text: str, axis: int, parent: QWidget
+    ) -> TransformDragLabel:
+        label = TransformDragLabel(parent, text=text)
+        label.setObjectName('SyntheticBoldAxisLabel')
+        label.setProperty('axis', axis)
+        label.setToolTip(self.tr('Drag left or right to adjust by 0.1%'))
+        label.drag_started.connect(self._start_offset_drag)
+        label.size_ctrl_changed.connect(self._move_offset_drag)
+        label.btn_released.connect(self._finish_offset_drag)
+        label.drag_canceled.connect(self._cancel_offset_drag)
+        return label
 
-    def _on_separate_offset_changed(
+    def _start_offset_drag(self) -> None:
+        self._drag_offsets = (
+            self.synthetic_bold_x_box.value(), self.synthetic_bold_y_box.value()
+        )
+
+    def _move_offset_drag(self, delta: int) -> None:
+        if self._drag_offsets is None:
+            return
+        box = (self.synthetic_bold_x_box, self.synthetic_bold_y_box)[
+            self.sender().property('axis')
+        ]
+        with QSignalBlocker(box):
+            box.changeByDelta(delta, multiplier=0.1)
+
+    def _finish_offset_drag(self) -> None:
+        before = self._drag_offsets
+        self._drag_offsets = None
+        if before is not None and before != (
+            self.synthetic_bold_x_box.value(), self.synthetic_bold_y_box.value()
+        ):
+            # 드래그 중에는 숫자만 갱신하고 놓을 때 undo 명령 하나를 만든다.
+            self._on_offset_changed('', 0.0)
+
+    def _cancel_offset_drag(self) -> None:
+        if self._drag_offsets is None:
+            return
+        for box, value in zip(
+            (self.synthetic_bold_x_box, self.synthetic_bold_y_box),
+            self._drag_offsets,
+        ):
+            with QSignalBlocker(box):
+                box.setValue(value)
+        self._drag_offsets = None
+
+    def _on_main_clicked(self, checked: bool = False) -> None:
+        self._select_mode(self._bold_mode if checked else 'none')
+
+    def _on_shape_triggered(self, _checked: bool = False) -> None:
+        self._select_mode(self.sender().data())
+
+    def _select_mode(self, mode: str) -> None:
+        if mode != 'none':
+            self._bold_mode = mode
+        self.setChecked(mode != 'none')
+        for action in self._shape_actions:
+            action.setChecked(action.data() == mode)
+        self.synthetic_bold_changed.emit(mode)
+
+    def _on_offset_changed(
         self, _param_name: str, _value: float
     ) -> None:
-        offsets = (
-            self.synthetic_bold_x_box.value() / 100.0,
-            self.synthetic_bold_y_box.value() / 100.0,
-        )
-        enabled = any(value > 0.0 for value in offsets)
-        changed = self.isChecked() != enabled
-        with QSignalBlocker(self):
-            self.setChecked(enabled)
-        self.synthetic_bold_offset_changed.emit(offsets)
-        if changed:
-            self.synthetic_bold_changed.emit(enabled)
+        offsets = []
+        for box in (self.synthetic_bold_x_box, self.synthetic_bold_y_box):
+            value = min(max(box.value(), 0.0), SYNTHETIC_BOLD_OFFSET_MAX * 100.0)
+            if value != box.value():
+                with QSignalBlocker(box):
+                    box.setValue(value)
+            offsets.append(value / 100.0)
+        self.synthetic_bold_offset_changed.emit(tuple(offsets))
 
     def set_synthetic_bold(
-        self, enabled: bool, offsets: Iterable[float]
+        self, mode: str, offsets: Iterable[float]
     ) -> None:
         x_offset, y_offset = (float(value) for value in offsets)
         with QSignalBlocker(self):
-            self.setChecked(enabled and (x_offset > 0.0 or y_offset > 0.0))
+            self.setChecked(mode != 'none')
+        if mode != 'none':
+            self._bold_mode = mode
+        for action in self._shape_actions:
+            action.setChecked(action.data() == mode)
         for editor, value in (
             (self.synthetic_bold_x_box, x_offset),
             (self.synthetic_bold_y_box, y_offset),
@@ -510,7 +590,7 @@ class BoldToolButton(QToolButton):
 
 class FormatGroupBtn(QFrame):
     param_changed = Signal(str, bool)
-    synthetic_bold_changed = Signal(bool)
+    synthetic_bold_changed = Signal(str)
     synthetic_bold_offset_changed = Signal(object)
 
     def __init__(self, *args, **kwargs) -> None:
@@ -1093,9 +1173,9 @@ class FontFormatPanel(Widget):
         self._apply_font_weight(coerce_font_weight(int(weight)))
 
     def on_synthetic_bold_changed(
-        self, enabled: bool
+        self, mode: str
     ) -> None:
-        self.on_param_changed('synthetic_bold', enabled)
+        self.on_param_changed('synthetic_bold', mode)
 
     def on_synthetic_bold_offset_changed(
         self, offsets: tuple[float, float]
