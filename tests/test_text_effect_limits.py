@@ -51,6 +51,21 @@ class EffectRadiusTest(unittest.TestCase):
             self.assertLessEqual(int(np.abs(actual.astype(int) - expected.astype(int)).max()), 2)
             self.assertLessEqual(int(actual.max()), 100)
 
+    def test_disc_preserves_clipped_spans_and_strided_alpha(self) -> None:
+        random = np.random.default_rng(71)
+        for height, width in ((1, 63), (57, 1), (91, 127), (240, 320)):
+            rgba = np.zeros((height, width, 4), dtype=np.uint8)
+            alpha = rgba[..., 3]
+            # 서로 다른 알파와 경계의 잉크는 반복 최대 필터의 클리핑을 검증한다.
+            for y, x in ((0, 0), (height - 1, width - 1), (height // 2, width // 2)):
+                alpha[y:y + 3, x:x + 5] = random.integers(1, 128)
+            for radius in (17, 43, 160, 300):
+                with self.subTest(shape=alpha.shape, radius=radius):
+                    expected = cv2.dilate(alpha, cv2.getStructuringElement(
+                        cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1)
+                    ))
+                    np.testing.assert_array_equal(dilate_alpha_disc(alpha, radius), expected)
+
     def test_spread_saturates_without_changing_saved_values_or_offset(self) -> None:
         stack = TextEffectStack(effects=(ShadowEffect(
             distance=0.2, blur=0.1, spread=10.0,

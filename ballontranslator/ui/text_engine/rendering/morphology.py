@@ -9,9 +9,9 @@ import numpy as np
 def dilate_alpha_disc(alpha: np.ndarray, radius: int) -> np.ndarray:
     """Apply OpenCV's discrete disc while preserving every alpha level.
 
-    Large discs are unions of horizontal spans. A rectangular dilation is
-    separable, so compute each distinct span once and shift its rows into the
-    result instead of scanning a two-dimensional kernel at every pixel.
+    Large discs are unions of horizontal spans. Grow each span incrementally
+    on ink-bearing rows and shift it into the result, preserving the discrete
+    kernel and every alpha level without filtering transparent padding.
 
     >>> alpha = np.zeros((5, 5), dtype=np.uint8)
     >>> alpha[2, 2] = 100
@@ -30,26 +30,31 @@ def dilate_alpha_disc(alpha: np.ndarray, radius: int) -> np.ndarray:
     x, y, ink_width, ink_height = cv2.boundingRect(alpha)
     if ink_width == 0 or ink_height == 0:
         return result
-    left, top = max(0, x - radius), max(0, y - radius)
+    left = max(0, x - radius)
     right = min(width, x + ink_width + radius)
-    bottom = min(height, y + ink_height + radius)
-    # 패딩의 빈 영역은 제외하고, RGBA의 비연속 알파 뷰는 한 번만 복사한다.
-    source = np.ascontiguousarray(alpha[top:bottom, left:right])
-    grown = result[top:bottom, left:right]
-    height, width = source.shape
-    previous_span = -1
-    # 중심에서 바깥으로 이동하면 같은 폭이 연속되므로 한 행 필터만 유지한다.
-    for offset in range(min(radius, height - 1) + 1):
+    # 수평 필터는 잉크가 있는 행만 계산한다. 세로 확장은 아래 행 이동이 맡는다.
+    source = np.ascontiguousarray(alpha[y:y + ink_height, left:right])
+    width = source.shape[1]
+    previous_span = 0
+    row = source
+    # 바깥에서 중심으로 폭을 늘리면 이전 최대 필터에 증가분만 적용해도 같다.
+    for offset in range(min(radius, height - 1), -1, -1):
         half_span = min(
             width - 1,
             round(math.sqrt(max(0, radius * radius - offset * offset))),
         )
         if half_span != previous_span:
-            row = cv2.dilate(source, np.ones((1, 2 * half_span + 1), np.uint8))
+            increase = half_span - previous_span
+            row = cv2.dilate(row, np.ones((1, 2 * increase + 1), np.uint8))
             previous_span = half_span
-        if offset == 0:
-            np.maximum(grown, row, out=grown)
-        else:
-            np.maximum(grown[offset:], row[:-offset], out=grown[offset:])
-            np.maximum(grown[:-offset], row[offset:], out=grown[:-offset])
+        for shift in ((0,) if offset == 0 else (-offset, offset)):
+            top = max(0, y + shift)
+            bottom = min(height, y + ink_height + shift)
+            if top >= bottom:
+                continue
+            source_top = top - y - shift
+            grown = result[top:bottom, left:right]
+            np.maximum(
+                grown, row[source_top:source_top + bottom - top], out=grown
+            )
     return result
