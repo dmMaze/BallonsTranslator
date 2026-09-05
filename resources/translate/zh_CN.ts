@@ -2114,24 +2114,71 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="171"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="203"/>
         <source>Thickness</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="176"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="207"/>
+        <source>Tool Type</source>
+        <translation>工具类型</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="210"/>
+        <source>Circle Brush</source>
+        <translation>圆形笔刷</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="211"/>
+        <source>Rectangle Brush</source>
+        <translation>方形笔刷</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="212"/>
+        <source>Magic Wand</source>
+        <translation>魔法棒</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="223"/>
+        <source>Selection Mode</source>
+        <translation>选区模式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="226"/>
+        <source>Selection</source>
+        <translation>选区</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="227"/>
+        <source>Selection Interior</source>
+        <translation>选区内部</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="228"/>
+        <source>Selection + Interior</source>
+        <translation>选区+选区内部</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="235"/>
+        <source>Tolerance</source>
+        <translation>容差</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243"/>
+        <source>Range</source>
+        <translation>范围</translation>
+    </message>
+    <message>
         <source>Shape</source>
-        <translation>形状</translation>
+        <translation type="vanished">形状</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="179"/>
         <source>Circle</source>
-        <translation>圆形</translation>
+        <translation type="vanished">圆形</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="180"/>
         <source>Rectangle</source>
-        <translation>方形</translation>
+        <translation type="vanished">方形</translation>
     </message>
     <message>
         <source>Inpainter</source>
