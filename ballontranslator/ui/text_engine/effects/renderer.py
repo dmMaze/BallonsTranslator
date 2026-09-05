@@ -327,7 +327,6 @@ class TextEffectRenderer:
         return self.effective_text_effects().has_active_effects
 
     def has_synthetic_bold(self) -> bool:
-        """Return whether the canonical glyph contour is expanded."""
         return any(value > 0.0 for value in self._synthetic_bold_ratios())
 
     def has_raster_effects(self) -> bool:
@@ -1182,7 +1181,6 @@ class TextEffectRenderer:
         self.item.update()
 
     def synthetic_bold_changed(self) -> None:
-        """Invalidate canonical glyph surfaces after contour expansion."""
         self._invalidate_raster_state(self._effect_raster_state)
         self._invalidate_raster_state(self._preview_effect_raster_state)
         self._invalidate_raster_state(self._export_effect_raster_state)
@@ -4832,8 +4830,7 @@ class TextEffectRenderer:
                         QPainter.CompositionMode.CompositionMode_Source
                     )
                     tile_painter = staging_painter
-                # 큰 뷰포트는 export와 같은 타일별 클립 경로로 직접 그린다.
-                # 타일용 메모리를 제한한 뒤 전체 화면을 재할당하지 않는다.
+                # Oversized views use per-tile clips without a full staging allocation.
             tile_painter.setRenderHint(
                 QPainter.RenderHint.SmoothPixmapTransform
             )
@@ -4877,8 +4874,7 @@ class TextEffectRenderer:
                             nodes=nodes,
                             image_rasters=image_rasters,
                         )
-                        # 겹침 영역은 계산할 때만 필요하다. 보간용 한 픽셀과
-                        # 표시 영역만 저장하면 같은 메모리로 뷰포트를 유지한다.
+                        # Cache only the core and interpolation border; halos are temporary.
                         scale_x = plan.tier if plan.tier >= 1.0 else pixmap.width() / surface.width()
                         scale_y = plan.tier if plan.tier >= 1.0 else pixmap.height() / surface.height()
                         crop = QRectF(

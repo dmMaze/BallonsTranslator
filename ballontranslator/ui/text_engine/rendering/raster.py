@@ -90,7 +90,7 @@ def plan_effect_raster(
     tile_edge = min(
         EFFECT_TILE_MAX_EDGE,
         EFFECT_CACHE_MAX_DIMENSION,
-        # 소수 좌표의 바깥쪽 반올림을 위한 여유를 남긴다.
+        # Reserve a pixel for outward rounding at fractional coordinates.
         int(math.sqrt(EFFECT_CACHE_MAX_PIXELS)) - 1,
     )
     tile_tier = (

@@ -490,7 +490,7 @@ class BoldToolButton(QToolButton):
         if before is not None and before != (
             self.synthetic_bold_x_box.value(), self.synthetic_bold_y_box.value()
         ):
-            # 드래그 중에는 숫자만 갱신하고 놓을 때 undo 명령 하나를 만든다.
+            # Commit one undo command on release, rather than on every drag step.
             self._on_offset_changed('', 0.0)
 
     def _cancel_offset_drag(self) -> None:

@@ -60,13 +60,12 @@ values only at the Qt/HTML boundary. Pass saved or UI-provided family names
 through `qfont_with_family()` so Qt-unsafe names can use runtime aliases without
 changing persisted names.
 
-합성 굵기는 효과 카드가 아닌 `FontFormat.synthetic_bold`로 관리한다.
-`none`, `rect`, `ellipse` 중 하나를 선택하고 `synthetic_bold_offset`으로
-X/Y 확장량을 각각 글자 크기의 0~50%로 지정한다. 직사각형은 두 축을 분리해
-확장하고, 타원은 타원형 범위를 사용한다. 두 축의 확장량이 같은 타원 모드는
-원형 외곽선을 사용한다.
-확장은 Stroke, Shadow, Glow, Filter, 마스크와 변환보다 먼저 정규 글리프
-윤곽에 적용하며 레이아웃 치수와 선택한 글꼴은 바꾸지 않는다.
+Synthetic Bold belongs to `FontFormat.synthetic_bold`, not the effect stack.
+Its `none`, `rect`, and `ellipse` modes use `synthetic_bold_offset` for independent
+X/Y expansion from 0% to 50% of the font size. Rectangle uses separate axis
+passes; Ellipse uses an elliptical footprint, with a circular outline for equal
+offsets. Expansion applies to canonical glyph contours before Stroke, Shadow,
+Glow, Filter, masks, and transforms, preserving layout metrics and font family.
 
 ## Rich text and CSS extensions
 

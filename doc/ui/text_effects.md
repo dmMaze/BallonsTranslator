@@ -111,16 +111,16 @@ during native horizontal and vertical text editing; ordinary Filters remain
 active. Editing visibility participates in cache identity so settled Image
 pixels cannot leak into the editing surface or vice versa.
 
-Stroke와 Shadow/Glow의 생성 반경은 저장값과 렌더링값을 분리한다. 렌더러는
-정착된 1x 타일의 절반 이상을 표시 영역으로 남기는 범위에서 반경을 제한한다.
-글자 크기, 합성 굵기, Stroke와 그림자의 이동·블러·확장을 함께 계산하며,
-상한을 넘긴 입력은 같은 최대 결과를 유지한다. 저장된 요청값은 변경하지 않고
-미리보기와 export에도 같은 제한을 적용한다. 타일 캐시는 큰 계산용 겹침 영역
-대신 표시 영역과 보간 여유만 보관하며 총 바이트 수로 제한한다.
+Stroke and Shadow/Glow radii are bounded for rendering without modifying saved
+values. The budget reserves at least half the settled 1x tile edge for its core,
+accounting for font size, Synthetic Bold, Stroke, and shadow offset/blur/spread.
+Inputs beyond the limit retain the same maximum effect in preview and export.
+Tile caches retain cores and interpolation borders rather than working halos,
+and are bounded by total bytes.
 
-큰 원형 확장은 가로 구간의 합집합으로 계산해 기존 이산 원형 커널과 알파값을
-보존한다. 큰 블러는 같은 Gaussian 커널의 float32 경로를 사용하며 uint8
-고정소수점 경로와 반올림 차이가 생길 수 있다.
+Large disc dilation uses unions of horizontal spans to preserve the discrete
+kernel and alpha levels. Large blurs use the same Gaussian kernel through the
+float32 path, which can round differently from the uint8 fixed-point path.
 
 Interactive rendering may bypass an active missing optional raster, invalid
 Filter, or bounded allocation failure with a warning and compatible fallback.

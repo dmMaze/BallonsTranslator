@@ -12,7 +12,7 @@ def _blur(mask: np.ndarray, radius: int) -> np.ndarray:
     if radius <= 0:
         return mask
     ksize = radius * 2 + 1
-    # 큰 uint8 커널의 고정소수점 경로보다 float32 분리 필터가 빠르다.
+    # Avoid the slower uint8 fixed-point path for large kernels.
     source = mask.astype(np.float32) if radius > 24 else mask
     blurred = cv2.GaussianBlur(
         source,

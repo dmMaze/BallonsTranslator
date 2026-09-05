@@ -32,12 +32,11 @@ def dilate_alpha_disc(alpha: np.ndarray, radius: int) -> np.ndarray:
         return result
     left = max(0, x - radius)
     right = min(width, x + ink_width + radius)
-    # 수평 필터는 잉크가 있는 행만 계산한다. 세로 확장은 아래 행 이동이 맡는다.
     source = np.ascontiguousarray(alpha[y:y + ink_height, left:right])
     width = source.shape[1]
     previous_span = 0
     row = source
-    # 바깥에서 중심으로 폭을 늘리면 이전 최대 필터에 증가분만 적용해도 같다.
+    # Successive 1D max filters compose by adding their radii.
     for offset in range(min(radius, height - 1), -1, -1):
         half_span = min(
             width - 1,

@@ -224,7 +224,7 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
-        # 초기 서식과 문서 내용이 모두 정착한 뒤 효과를 한 번 계산한다.
+        # Render effects once both the initial format and document are settled.
         self.repainting = True
         try:
             self.initTextBlock(blk, set_format=set_format)
@@ -2083,7 +2083,6 @@ class TextBlkItem(QGraphicsTextItem):
         self.effect_renderer.synthetic_bold_changed()
 
     def setSyntheticBold(self, mode: str) -> None:
-        """Select the synthetic-bold contour shape."""
         if mode not in ('none', 'rect', 'ellipse'):
             raise ValueError('unsupported synthetic bold mode')
         if self.fontformat.synthetic_bold == mode:
