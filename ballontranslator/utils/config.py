@@ -252,10 +252,63 @@ class DrawPanelConfig(Config):
     pentool_shape: int = 0
     inpainter_width: float = 30.
     inpainter_shape: int = 0
+    magicwand_tolerance: int = 32
+    magicwand_range: int = 0
+    magicwand_fill_mode: int = 0
     current_tool: int = 0
     rectool_auto: bool = False
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
+
+    def __post_init__(self) -> None:
+        if self.inpainter_shape not in (0, 1, 2):
+            LOGGER.warning(
+                'Discard invalid drawpanel.inpainter_shape %r.',
+                self.inpainter_shape,
+            )
+            self.inpainter_shape = 0
+        try:
+            self.magicwand_tolerance = int(self.magicwand_tolerance)
+        except (TypeError, ValueError):
+            LOGGER.warning(
+                'Discard invalid drawpanel.magicwand_tolerance %r.',
+                self.magicwand_tolerance,
+            )
+            self.magicwand_tolerance = 32
+        if self.magicwand_tolerance < 0 or self.magicwand_tolerance > 255:
+            LOGGER.warning(
+                'Discard out-of-range drawpanel.magicwand_tolerance %r.',
+                self.magicwand_tolerance,
+            )
+            self.magicwand_tolerance = min(max(self.magicwand_tolerance, 0), 255)
+        try:
+            self.magicwand_range = int(self.magicwand_range)
+        except (TypeError, ValueError):
+            LOGGER.warning(
+                'Discard invalid drawpanel.magicwand_range %r.',
+                self.magicwand_range,
+            )
+            self.magicwand_range = 0
+        if self.magicwand_range < -50 or self.magicwand_range > 50:
+            LOGGER.warning(
+                'Discard out-of-range drawpanel.magicwand_range %r.',
+                self.magicwand_range,
+            )
+            self.magicwand_range = min(max(self.magicwand_range, -50), 50)
+        try:
+            self.magicwand_fill_mode = int(self.magicwand_fill_mode)
+        except (TypeError, ValueError):
+            LOGGER.warning(
+                'Discard invalid drawpanel.magicwand_fill_mode %r.',
+                self.magicwand_fill_mode,
+            )
+            self.magicwand_fill_mode = 0
+        if self.magicwand_fill_mode not in (0, 1, 2):
+            LOGGER.warning(
+                'Discard invalid drawpanel.magicwand_fill_mode %r.',
+                self.magicwand_fill_mode,
+            )
+            self.magicwand_fill_mode = 0
 
 @nested_dataclass
 class PackageManagerConfig(Config):
