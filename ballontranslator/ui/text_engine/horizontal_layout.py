@@ -1,8 +1,9 @@
-from typing import List, Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple
 
 from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
+    QFont,
     QPainter,
     QPalette,
     QTextBlock,
@@ -46,6 +47,17 @@ from .rendering.ruby import (
     ruby_side_margins,
 )
 
+
+class _PlainLineLayout(NamedTuple):
+    """Retain placement inputs, never a QTextLine that Qt may invalidate."""
+
+    key: tuple
+    height: float
+    dy: float
+    advance: float
+    width: float
+
+
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def __init__(self, doc: QTextDocument, fontformat: FontFormat):
@@ -60,6 +72,78 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self._cursor_update_rect = QRectF()
         self._ruby_metrics: List[RubyBlockMetrics] = []
         self._annotation_ink_bounds = QRectF()
+        self._plain_line_cache: dict[int, _PlainLineLayout] = {}
+        self._plain_line_context: Optional[tuple] = None
+
+    def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
+        # Qt can discard a changed block's native lines before this callback.
+        # A paragraph boundary also owns the following insertion format.
+        if charsRemoved != charsAdded:
+            self._plain_line_cache.clear()
+        elif self._plain_line_cache:
+            doc = self.document()
+            first = doc.findBlock(max(0, position - 1)).blockNumber()
+            end = min(position + charsAdded, max(0, doc.characterCount() - 1))
+            last = doc.findBlock(end).blockNumber()
+            for number in range(max(0, first), last + 1):
+                self._plain_line_cache.pop(number, None)
+        super().documentChanged(position, charsRemoved, charsAdded)
+
+    def _plain_line_key(self, block: QTextBlock, text: str) -> tuple:
+        number = block.blockNumber()
+        return (
+            QTextBlock(block), block.revision(), text,
+            block.blockFormat(), block.charFormat(),
+            QFont(block.layout().font()),
+            tuple(self.block_qcharfmt_lst[number]),
+            tuple(self._block_fragment_ends[number]),
+        )
+
+    def _reuse_plain_line(
+        self, block: QTextBlock, text: str, text_length: int,
+    ) -> bool:
+        """Reposition an unchanged native line with the original arithmetic.
+
+        >>> callable(HorizontalTextDocumentLayout._reuse_plain_line)
+        True
+        """
+        cached = self._plain_line_cache.get(block.blockNumber())
+        if cached is None or self.render_delegate is not None:
+            return False
+        layout = block.layout()
+        if (
+            layout.lineCount() != 1 or layout.preeditAreaText()
+            or layout.formats() or cached.key != self._plain_line_key(block, text)
+        ):
+            return False
+        line = layout.lineAt(0)
+        if not line.isValid() or line.textStart() != 0 or line.textLength() != text_length:
+            return False
+
+        self._ruby_metrics.append(RubyBlockMetrics.empty())
+        self._space_rows.append([])
+        self._relocated_spaces.append({})
+        margin = self._effect_padding
+        if block == self.document().firstBlock():
+            self.x_offset_lst = []
+            self.y_offset_lst = []
+            y_offset = margin
+        else:
+            y_offset = self.y_offset_lst[-1]
+            if self._last_row_advance is not None:
+                y_offset += cached.advance - self._last_row_advance
+        # Do not translate the previous position: repeated fractional offsets
+        # would accumulate Qt's fixed-point rounding across document changes.
+        line.setPosition(QPointF(margin, y_offset + cached.dy))
+        self.shrink_height = max(
+            cached.height + y_offset - margin, self.shrink_height,
+        )
+        if block.blockNumber() == self.document().blockCount() - 1:
+            self.text_padding = max(self.text_padding, cached.height / 2)
+        self.y_offset_lst.append(y_offset + cached.advance)
+        self._last_row_advance = cached.advance
+        self.shrink_width = max(cached.width, self.shrink_width)
+        return True
 
     @staticmethod
     def _cursor_x(line: QTextLine, position: int) -> float:
@@ -804,6 +888,23 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
     def reLayout(self) -> None:
         self._begin_layout_generation()
         doc = self.document()
+        option = doc.defaultTextOption()
+        device = self.paintDevice()
+        device_metrics = (
+            None if device is None else
+            (device, device.logicalDpiX(), device.logicalDpiY(), device.devicePixelRatioF())
+        )
+        context = (
+            doc.blockCount(), QFont(doc.defaultFont()), self.available_width,
+            self.line_spacing, self.linespacing_type, self.letter_spacing,
+            option.alignment(), option.textDirection(), option.flags(),
+            option.useDesignMetrics(), option.tabStopDistance(),
+            tuple((tab.position, tab.type, tab.delimiter) for tab in option.tabs()),
+            device_metrics,
+        )
+        if context != self._plain_line_context:
+            self._plain_line_cache.clear()
+            self._plain_line_context = context
         doc_margin = self._effect_padding
         self.text_padding = 0
         self.shrink_height = 0
@@ -919,12 +1020,15 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def layoutBlock(self, block: QTextBlock) -> int:
         doc = self.document()
-        block.clearLayout()
-        tl = block.layout()
         # A single immutable snapshot avoids copying/hashing the full Qt block
         # again for every wrapped line. It lives only for this layout pass.
         block_text = block.text()
         block_text_length = _utf16_length(block_text)
+        if self._reuse_plain_line(block, block_text, block_text_length):
+            return 1
+        self._plain_line_cache.pop(block.blockNumber(), None)
+        block.clearLayout()
+        tl = block.layout()
 
         ruby_metrics = prepare_horizontal_ruby_layout(block)
         self._ruby_metrics.append(ruby_metrics)
@@ -1113,6 +1217,20 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self.y_offset_lst.append(y_offset)
         self._last_row_advance = last_row_advance
         self.shrink_width = max(shrink_width, self.shrink_width)
+        if (
+            self.render_delegate is None and block_text
+            and not block_text[-1].isspace()
+            and tl.lineCount() == 1 and not tl.preeditAreaText()
+            and not tl.formats() and not ruby_metrics
+            and emphasis_over == 0.0 and emphasis_under == 0.0
+            and not relocated_spaces
+            and tl.lineAt(0).textStart() == 0
+            and tl.lineAt(0).textLength() == block_text_length
+        ):
+            self._plain_line_cache[blk_no] = _PlainLineLayout(
+                self._plain_line_key(block, block_text),
+                idea_height, dy, line_advance, shrink_width,
+            )
         return 1
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:

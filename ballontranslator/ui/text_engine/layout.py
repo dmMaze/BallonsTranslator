@@ -382,6 +382,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.block_ideal_width = []
         self.block_ideal_height = []
         self._block_fragment_ends = []
+        # Qt interns formats within a document. Reuse their read-only metrics
+        # only in this rebuild, so font and layout changes cannot leave stale
+        # measurements behind across generations.
+        format_metrics = {}
         while block.isValid():
             charfmt_lst, qcharfmt_lst, ideal_width, char_idx = [], [], -1, 0
             ideal_height = 0
@@ -389,22 +393,31 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             it = block.begin()
             while not it.atEnd():
                 fragment = it.fragment()
-                fcmt = fragment.charFormat()
-                cfmt = CharFontFormat(fcmt, self.letter_spacing)
+                format_index = fragment.charFormatIndex()
+                metrics = format_metrics.get(format_index)
+                if metrics is None:
+                    fcmt = fragment.charFormat()
+                    cfmt = CharFontFormat(fcmt, self.letter_spacing)
+                    width = cfmt.br.width() if self.need_ideal_width else -1
+                    height = (
+                        cfmt.punc_rect('木fg')[0].height()
+                        if self.need_ideal_height else 0
+                    )
+                    metrics = cfmt, QTextCharFormat(fcmt), cfmt.size, width, height
+                    format_metrics[format_index] = metrics
+                cfmt, qfmt, size, width, height = metrics
                 charfmt_lst.append(cfmt)
-                qcharfmt_lst.append(QTextCharFormat(fcmt))
-                if cfmt.size > self._max_font_size:
-                    self._max_font_size = cfmt.size
+                qcharfmt_lst.append(qfmt)
+                if size > self._max_font_size:
+                    self._max_font_size = size
 
                 if self.need_ideal_width:
-                    w_ = cfmt.br.width()
-                    if ideal_width < w_:
-                        ideal_width = w_
+                    if ideal_width < width:
+                        ideal_width = width
 
                 if self.need_ideal_height:
-                    h_ = cfmt.punc_rect('木fg')[0].height()
-                    if ideal_height < h_:
-                        ideal_height = h_
+                    if ideal_height < height:
+                        ideal_height = height
 
                 # Qt fragment lengths are UTF-16 units, not Python characters.
                 # Store one exclusive end per format run, not one dict entry
