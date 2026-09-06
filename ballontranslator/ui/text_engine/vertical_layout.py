@@ -2,14 +2,16 @@ import re
 import unicodedata
 from bisect import bisect_right
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple, Union
 
 from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QBrush,
+    QColor,
     QFont,
     QPainter,
+    QPen,
     QTextBlock,
     QTextCharFormat,
     QTextDocument,
@@ -24,6 +26,7 @@ from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
 from .annotations import (
     FONT_FEATURES_AVAILABLE,
+    emphasis_values,
     letter_spacing_value,
     text_combine_upright_ranges,
 )
@@ -39,7 +42,11 @@ from .rendering.emphasis import (
     emphasis_ink_bounds,
     emphasis_margins,
 )
-from .rendering.glyph import draw_slanted_line, glyph_geometry
+from .rendering.glyph import (
+    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY,
+    draw_slanted_line,
+    glyph_geometry,
+)
 from .rendering.indexing import (
     _grapheme_count,
     _grapheme_ranges,
@@ -302,6 +309,20 @@ def _line_ink_bounds(
     return QRectF(cached)
 
 
+class _PlainColumnLayout(NamedTuple):
+    """Keep scalar placement inputs, never native QTextLine/QTextLayout handles."""
+
+    key: tuple
+    line_ranges: Tuple[Tuple[int, int], ...]
+    line_y: Tuple[float, ...]
+    advance: float
+    shrink_height: float
+    char_offsets: Tuple[Tuple[float, ...], ...]
+    line_spaces: Tuple[Tuple[int, int, Tuple[float, ...], int], ...]
+    char_records: Tuple[Tuple[int, Tuple[Tuple[str, Union[float, str]], ...]], ...]
+    draw_offsets: Optional[Tuple[Tuple[float, float], ...]] = None
+
+
 class VerticalTextDocumentLayout(SceneTextLayout):
     def __init__(self, doc: QTextDocument, fontformat: FontFormat):
         super().__init__(doc, fontformat)
@@ -322,6 +343,107 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
         self._selection_geometry_cache = {}
+        self._plain_column_cache: dict[int, _PlainColumnLayout] = {}
+        self._plain_column_context: Optional[tuple] = None
+        self._plain_column_reused: set[int] = set()
+        self._plain_column_stroke_format = QTextCharFormat()
+        self._plain_column_stroke_format.setProperty(
+            STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True,
+        )
+        self._plain_column_stroke_format.setTextOutline(QPen(
+            QColor(0, 0, 0, 0), 0.0, Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin,
+        ))
+
+    def _plain_column_formats(self, layout: QTextLayout) -> Optional[tuple]:
+        formats = layout.formats()
+        if not formats:
+            return ()
+        # The renderer's transparent alignment outline changes raster policy,
+        # not column flow. Every other transient format keeps full Qt layout.
+        if len(formats) != 1:
+            return None
+        entry = formats[0]
+        if (
+            entry.start != 0 or entry.length != 0x7FFFFFFF
+            or entry.format != self._plain_column_stroke_format
+        ):
+            return None
+        return ((entry.start, entry.length, QTextCharFormat(entry.format)),)
+
+    def _plain_column_key(
+        self, block: QTextBlock, text: str, additional_formats: tuple,
+    ) -> tuple:
+        number = block.blockNumber()
+        return (
+            QTextBlock(block), block.revision(), text,
+            block.blockFormat(), block.charFormat(),
+            QFont(block.layout().font()),
+            tuple(self.block_qcharfmt_lst[number]),
+            tuple(self._block_fragment_ends[number]),
+            additional_formats,
+        )
+
+    def _reuse_plain_column(self, block: QTextBlock, text: str) -> bool:
+        """Place an unchanged single column from its original scalar inputs.
+
+        >>> callable(VerticalTextDocumentLayout._reuse_plain_column)
+        True
+        """
+        cached = self._plain_column_cache.get(block.blockNumber())
+        if cached is None or self.render_delegate is not None:
+            return False
+        # Transient outline ranges can make Qt announce a whole-document edit
+        # for one changed character. Validate actual block inputs and live lines
+        # rather than discarding the unchanged columns in that reported range.
+        layout = block.layout()
+        additional_formats = self._plain_column_formats(layout)
+        if (
+            layout.preeditAreaText() or additional_formats is None
+            or layout.lineCount() != len(cached.line_ranges)
+            or cached.key != self._plain_column_key(block, text, additional_formats)
+        ):
+            return False
+        for number, (start, length) in enumerate(cached.line_ranges):
+            line = layout.lineAt(number)
+            if (
+                not line.isValid() or line.textStart() != start
+                or line.textLength() != length
+            ):
+                return False
+
+        margin = self._effect_padding
+        if block == self.document().firstBlock():
+            self.x_offset_lst = [self.max_width - margin]
+            self.y_offset_lst = []
+        x_offset = self.x_offset_lst[-1]
+        x_offset -= cached.advance
+        # Reset absolute positions before the normal alignment/growth pass.
+        # Translating old positions would accumulate Qt's fixed-point rounding.
+        for number, ypos in enumerate(cached.line_y):
+            layout.lineAt(number).setPosition(QPointF(x_offset, ypos))
+
+        self.text_combine_ranges.append(())
+        self._ruby_metrics.append(RubyBlockMetrics.empty())
+        self.layout_left = x_offset
+        self.shrink_width = max(
+            self.max_width - self.layout_left - margin + 0.01,
+            self.shrink_width,
+        )
+        self.shrink_height = max(
+            cached.shrink_height + 0.01 - margin, self.shrink_height,
+        )
+        self.x_offset_lst.append(x_offset)
+        self.y_offset_lst.append([list(offsets) for offsets in cached.char_offsets])
+        self.line_spaces_lst.append([
+            [trailing, leading, list(offsets), position]
+            for trailing, leading, offsets, position in cached.line_spaces
+        ])
+        self.per_char_records.append({
+            position: dict(record) for position, record in cached.char_records
+        })
+        self._plain_column_reused.add(block.blockNumber())
+        return True
 
     def needs_vertical_rotation(self, char: str) -> bool:
         rotation_chars = (
@@ -522,8 +644,30 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         # Match minSize()'s guard against Qt's fractional metric rounding.
         return 0.0 if growth <= 1e-6 else growth + 0.01
 
-    def reLayout(self):
+    def reLayout(self) -> None:
         self._begin_layout_generation()
+        doc = self.document()
+        option = doc.defaultTextOption()
+        device = self.paintDevice()
+        device_metrics = (
+            None if device is None else
+            (device, device.logicalDpiX(), device.logicalDpiY(), device.devicePixelRatioF())
+        )
+        context = (
+            doc.blockCount(), QFont(doc.defaultFont()),
+            self.available_height, self._effect_padding,
+            self.line_spacing, self.linespacing_type, self.letter_spacing,
+            self.fontformat.standard_vertical_roman_alignment,
+            pcfg.compact_vertical_punctuation_spacing,
+            option.alignment(), option.textDirection(), option.flags(),
+            option.useDesignMetrics(), option.tabStopDistance(),
+            tuple((tab.position, tab.type, tab.delimiter) for tab in option.tabs()),
+            device_metrics,
+        )
+        if context != self._plain_column_context:
+            self._plain_column_cache.clear()
+            self._plain_column_context = context
+        self._plain_column_reused.clear()
         self._selection_geometry_cache.clear()
         self.min_height = 0
         self.layout_left = 0
@@ -534,7 +678,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.shrink_height = 0
         self.shrink_width = 0
         self.text_padding = 0
-        doc = self.document()
         doc_margin = self._effect_padding
         block = doc.firstBlock()
         while block.isValid():
@@ -604,6 +747,18 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
         while block.isValid():
             blk_no = block.blockNumber()
+            cached = self._plain_column_cache.get(blk_no)
+            if (
+                not custom_rendering and blk_no in self._plain_column_reused
+                and cached is not None and cached.draw_offsets is not None
+            ):
+                # Normalized ink/font offsets are independent of the column's
+                # final x coordinate. Only this pass's validated reuse qualifies.
+                self._draw_offset.append([
+                    list(offsets) for offsets in cached.draw_offsets
+                ])
+                block = block.next()
+                continue
             _draw_offsets = []
             self._draw_offset.append(_draw_offsets)
 
@@ -780,6 +935,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         yoff += space_shift
 
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
+            if cached is not None and not custom_rendering:
+                self._plain_column_cache[blk_no] = cached._replace(
+                    draw_offsets=tuple(tuple(offsets) for offsets in _draw_offsets),
+                )
             block = block.next()
 
     def _line_record(
@@ -1920,6 +2079,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         doc = self.document()
         compact_punctuation = pcfg.compact_vertical_punctuation_spacing
 
+        blk_text = block.text()
+        if self._reuse_plain_column(block, blk_text):
+            return
+        self._plain_column_cache.pop(block.blockNumber(), None)
         block.clearLayout()
         clear_horizontal_ruby_layout(block)
         doc_margin = self._effect_padding
@@ -1928,7 +2091,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         blk_line_spaces = []
 
         block_no = block.blockNumber()
-        blk_text = block.text()
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
         self.text_combine_ranges.append(text_combine_ranges)
@@ -2002,6 +2164,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         char_records = {}
         line_char_ids = []
         active_ruby_metric = None
+        column_overflow = False
+        column_advance = 0.0
 
         while True:
             inseparable_run_range = None
@@ -2280,6 +2444,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 )
             )
             if out_of_vspace:
+                column_overflow = True
                 # switch to next line
                 if char_idx == 0 and layout_first_block:
                     self.min_height = doc_margin + tbr_h
@@ -2373,11 +2538,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     })
                 line_char_ids = []
 
-                x_offset -= self.calculate_line_spacing(
+                column_advance = self.calculate_line_spacing(
                     idea_line_width,
                     line_spacing,
                     block_line_spacing_type,
                 )
+                x_offset -= column_advance
 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
                     line.setPosition(QPointF(x_offset, ypos))
@@ -2448,3 +2614,35 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
         self.per_char_records.append(char_records)
+        if (
+            not custom_rendering and 0 < blk_text_len <= 128
+            and '\ufffc' not in blk_text
+            and not column_overflow and not text_combine_ranges
+            and not ruby_metrics and not tl.preeditAreaText()
+            and 0 < tl.lineCount() == len(ypos_list)
+            and all(
+                emphasis_values(char_format)[0] == 'none'
+                for char_format in self.block_qcharfmt_lst[block_no]
+            )
+            and tl.lineAt(0).textStart() == 0
+            and tl.lineAt(tl.lineCount() - 1).textStart()
+            + tl.lineAt(tl.lineCount() - 1).textLength() == blk_text_len
+        ):
+            additional_formats = self._plain_column_formats(tl)
+            if additional_formats is None:
+                return
+            self._plain_column_cache[block_no] = _PlainColumnLayout(
+                self._plain_column_key(block, blk_text, additional_formats),
+                tuple(
+                    (tl.lineAt(number).textStart(), tl.lineAt(number).textLength())
+                    for number in range(tl.lineCount())
+                ),
+                tuple(ypos_list), column_advance, shrink_height,
+                tuple(tuple(offsets) for offsets in blk_char_yoffset),
+                tuple(
+                    (trailing, leading, tuple(offsets), position)
+                    for trailing, leading, offsets, position in blk_line_spaces
+                ),
+                tuple((position, tuple(record.items()))
+                      for position, record in char_records.items()),
+            )

@@ -1414,9 +1414,17 @@ class TextBlkItem(QGraphicsTextItem):
         )
 
     def load_rich_text_html(self, html: str) -> None:
-        """Restore ordinary Qt HTML plus application-owned annotations."""
+        """Restore HTML and annotations before painting their completed effects.
+
+        >>> callable(TextBlkItem.load_rich_text_html)
+        True
+        """
         block_change_signal = self.block_change_signal
+        was_repainting = self.repainting
         self.block_change_signal = True
+        # Annotation restoration writes several formats per paragraph. Keep
+        # layout and geometry signals live, but do not rasterize each step.
+        self.repainting = True
         try:
             load_rich_text_html(
                 self.document(),
@@ -1426,6 +1434,8 @@ class TextBlkItem(QGraphicsTextItem):
             )
         finally:
             self.block_change_signal = block_change_signal
+            self.repainting = was_repainting
+        self.repaint_background()
 
     def insert_from_mime_data(self, mime: QMimeData) -> bool:
         cursor = self.textCursor()

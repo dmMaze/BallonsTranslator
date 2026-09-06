@@ -53,6 +53,7 @@ from ..rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
+    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY,
 )
 from .filters import (
     FilterContext,
@@ -76,7 +77,6 @@ from ..rendering.raster import (
 )
 
 
-STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1241
 _STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 # Glyph Slant writes vector paths into effect pixmaps, not native text.
 _VECTOR_EFFECT_RENDER_HINTS = (
