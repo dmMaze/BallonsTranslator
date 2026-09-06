@@ -464,7 +464,7 @@ class TextBlkItem(QGraphicsTextItem):
         if not self._update_effect_padding():
             self.geometry_controller.sync_origin()
 
-    def initTextBlock(self, blk: TextBlock = None, set_format=True):
+    def initTextBlock(self, blk: TextBlock = None, set_format: bool = True) -> None:
         self.blk = blk
         self.fontformat = blk.fontformat
         if blk is None:
@@ -494,19 +494,28 @@ class TextBlkItem(QGraphicsTextItem):
                 set_stroke_width=False,
             )
 
-        if not blk.rich_text:
-            if blk.translation:
-                self.setPlainText(blk.translation)
-        else:
-            self.load_rich_text_html(blk.rich_text)
-            cursor = self.textCursor()
-            cursor.clearSelection()
-            cursor.movePosition(QTextCursor.MoveOperation.Start)
-            cfmt = cursor.charFormat()
-            cursor.setCharFormat(cfmt)
-            cursor.setBlockCharFormat(cfmt)
-            self.setTextCursor(cursor)
-        self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
+        # Import restores HTML, annotation formats, and the initial cursor in
+        # several synchronous document changes. Keep layout/signals live, but
+        # rasterize effects only after the complete saved text is restored.
+        # Preserve a caller's existing repaint guard when this load is nested.
+        was_repainting = self.repainting
+        self.repainting = True
+        try:
+            if not blk.rich_text:
+                if blk.translation:
+                    self.setPlainText(blk.translation)
+            else:
+                self.load_rich_text_html(blk.rich_text)
+                cursor = self.textCursor()
+                cursor.clearSelection()
+                cursor.movePosition(QTextCursor.MoveOperation.Start)
+                cfmt = cursor.charFormat()
+                cursor.setCharFormat(cfmt)
+                cursor.setBlockCharFormat(cfmt)
+                self.setTextCursor(cursor)
+            self.setStrokeWidth(font_fmt.stroke_width, repaint_background=False)
+        finally:
+            self.repainting = was_repainting
         self.repaint_background()
 
     def _effective_text_transform(self) -> TextTransformStack:
