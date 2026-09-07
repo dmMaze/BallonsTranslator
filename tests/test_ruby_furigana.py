@@ -22,7 +22,7 @@ from qtpy.QtGui import (
     QTextDocument,
     QTextLayout,
 )
-from qtpy.QtWidgets import QApplication, QGraphicsScene
+from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
 
 from ballontranslator.ui.text_engine import horizontal_layout
 from ballontranslator.ui.misc import pixmap2ndarray
@@ -471,6 +471,11 @@ class RubyFuriganaTest(unittest.TestCase):
         item.setTextCursor(cursor)
         event = QInputMethodEvent()
         event.setCommitString('A', -1, 1)
+        view = QGraphicsView(scene)
+        view.show()
+        view.setFocus()
+        self.app.processEvents()
+        self.addCleanup(view.close)
         item.inputMethodEvent(event)
 
         containers = ruby_containers(item.document())
@@ -553,6 +558,14 @@ class RubyFuriganaTest(unittest.TestCase):
         self.assertEqual(ruby_containers(paste_item.document()), ())
 
         ime_item = grouped_item()
+        scene = QGraphicsScene()
+        scene.addItem(ime_item)
+        view = QGraphicsView(scene)
+        view.show()
+        ime_item.startEdit()
+        view.setFocus()
+        self.app.processEvents()
+        self.addCleanup(view.close)
         ime_event = QInputMethodEvent()
         ime_event.setCommitString('\n')
         ime_item.inputMethodEvent(ime_event)

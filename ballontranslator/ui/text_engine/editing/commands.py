@@ -60,9 +60,16 @@ def propagate_user_edit(
         )
     if isinstance(target_edit, TextBlkItem):
         prepare_ruby_insertion(cursor, added_text)
-    cursor.insertText(added_text)
-    cursor.endEditBlock()
-    target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
+    # During focus loss the paired editor may already have focus. Replaying
+    # the edit must not publish it again as a new user action.
+    in_redo_undo = target_edit.in_redo_undo
+    target_edit.in_redo_undo = True
+    try:
+        cursor.insertText(added_text)
+        cursor.endEditBlock()
+        target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
+    finally:
+        target_edit.in_redo_undo = in_redo_undo
 
 
 def _replace_changed_text(

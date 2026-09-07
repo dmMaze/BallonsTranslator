@@ -197,6 +197,8 @@ Qt positions and removal lengths are UTF-16 code units. Replay Qt's
 `(position, charsRemoved, insertedText)` contract directly; do not infer ranges
 from Python string length or glyph count. IME preedit remains transient until
 Qt commits it.
+Focus loss and editing shutdown reset native composition before detaching the
+paired editor.
 
 ## Invalidation and performance
 
