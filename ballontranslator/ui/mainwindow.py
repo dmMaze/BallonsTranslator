@@ -51,6 +51,8 @@ from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .menu_style import install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
+from .font_change_detection import FontChangeDetector
+from .font_refresh import FontRefreshController
 from .update_dialog import UpdateReleaseDialog
 from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import ScrollBar, Widget, ViewWidget
@@ -553,6 +555,22 @@ class MainWindow(mainwindow_cls):
             self.apply_auto_tate_chu_yoko_to_project
         )
         self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+        self.font_refresh = FontRefreshController(self)
+        self.font_change_detector = None
+        if self.font_refresh.enabled:
+            self.font_change_detector = FontChangeDetector(self)
+            self.font_change_detector.system_fonts_changed.connect(
+                self.font_refresh.request_system_refresh
+            )
+            self.font_change_detector.qt_database_changed.connect(
+                self.font_refresh.request_database_sync
+            )
+        self.font_refresh.refreshed.connect(self.on_fonts_refreshed)
+        self.font_refresh.busy_changed.connect(self.on_font_refresh_busy)
+        self.font_refresh.status_changed.connect(self.on_font_refresh_status)
+        self.textPanel.formatpanel.reload_fonts_requested.connect(
+            self.font_refresh.request_manual_refresh
+        )
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -727,6 +745,19 @@ class MainWindow(mainwindow_cls):
             pcfg.text_styles_path = text_style_path
             save_text_styles()
 
+    def on_fonts_refreshed(self) -> None:
+        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+
+    def on_font_refresh_status(self, label: str, detail: str) -> None:
+        button = self.textPanel.formatpanel.reloadFontsButton
+        if button is not None:
+            button.setToolTip(detail)
+
+    def on_font_refresh_busy(self, busy: bool) -> None:
+        button = self.textPanel.formatpanel.reloadFontsButton
+        if button is not None:
+            button.set_busy(busy)
+
     def on_show_only_custom_font(self, only_custom: bool) -> None:
         registry = shared.FONT_REGISTRY
         entries = registry.entries(only_custom, pcfg.excluded_fonts)
@@ -840,6 +871,9 @@ class MainWindow(mainwindow_cls):
         save_config()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self.font_change_detector is not None:
+            self.font_change_detector.stop()
+        self.font_refresh.shutdown()
         # Pending numeric edits are not dirty until they commit. Resolve them
         # before the close-time dirty check and final config snapshot.
         self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
