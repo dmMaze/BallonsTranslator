@@ -1,6 +1,6 @@
 from dataclasses import replace
 import traceback
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import cv2
 import numpy as np
@@ -17,6 +17,7 @@ from ..context.history import (
     ContextAction,
     ContextDiagnostic,
     ContextReason,
+    HISTORY_LOW_WATER_RATIO,
     HistoryPage,
     HistoryWindow,
     HistoryWindowKey,
@@ -37,8 +38,6 @@ from ..context.translation_context import (
     memory_message_content,
     memory_window_signature,
     page_summary_context_token_count,
-    parse_memory_response,
-    plan_page_summary_context,
     recover_context_length,
     saved_page_summary_text,
     snapshot_page_summaries,
@@ -85,6 +84,7 @@ from ballontranslator.utils.proj_imgtrans import (
     LLM_VISUAL_SUMMARY_VERSION,
     ProjImgTrans,
 )
+from ballontranslator.utils.textblock import TextBlock
 
 
 MAX_PAGE_LONG_SIDE = 1536
@@ -271,14 +271,40 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             failure_message=f'Failed to encode page image: {page_key}',
         )
 
+    def translate_textblk_lst(
+        self,
+        textblk_lst: List[TextBlock],
+        *,
+        project: Optional[ProjImgTrans] = None,
+        page_key: Optional[str] = None,
+        full_page: bool = False,
+    ) -> None:
+        # The shared wrapper skips empty sources; a full page can still supply
+        # visual context. Keep block finalization on the normal base path.
+        if full_page and not any(
+            block.get_text().strip() for block in textblk_lst
+        ):
+            self.translate(
+                [],
+                project=project,
+                page_key=page_key,
+                commit_history_window=True,
+            )
+        super().translate_textblk_lst(
+            textblk_lst,
+            project=project,
+            page_key=page_key,
+            full_page=full_page,
+        )
+
     def translate(
         self,
-        text,
+        text: Optional[Union[str, List[str]]],
         *,
         project: Optional[ProjImgTrans] = None,
         page_key: Optional[str] = None,
         commit_history_window: bool = False,
-    ):
+    ) -> Optional[Union[str, List[str]]]:
         """Translate one request with an immutable project-context snapshot.
 
         The override mirrors the relevant ``BaseTranslator`` behavior while
@@ -288,14 +314,21 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         >>> LLMTranslator('日本語', '简体中文').translate([])
         []
         """
-        if text_is_empty(text):
+        vision_enabled = bool(pcfg.module.llm_translate_vision)
+        summary_memory_enabled = bool(pcfg.module.llm_translate_summary_memory)
+        empty_page_summary = (
+            text == []
+            and commit_history_window
+            and vision_enabled
+            and summary_memory_enabled
+            and project is not None
+            and page_key in project.pages
+        )
+        if text_is_empty(text) and not empty_page_summary:
             return text
-        if not self.all_model_loaded():
-            self.load_model()
 
         is_list = isinstance(text, List)
         queries = tuple(text) if is_list else (text,)
-        profile = self.profile
         source_language = str(self.lang_source)
         target_language = str(self.lang_target)
         history_enabled = (
@@ -307,10 +340,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         glossary_path = str(pcfg.module.llm_glossary_path or '')
         glossary_mode = pcfg.module.llm_glossary_mode
-        vision_enabled = bool(pcfg.module.llm_translate_vision)
-        summary_memory_enabled = bool(
-            pcfg.module.llm_translate_summary_memory
-        )
         overwrite_existing_summary = summary_memory_enabled and bool(
             pcfg.module.llm_translate_overwrite_summary
         )
@@ -324,6 +353,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         request_summary = summary_memory_enabled and (
             overwrite_existing_summary or existing_summary is None
         )
+        if empty_page_summary and not request_summary:
+            return []
+        if not self.all_model_loaded():
+            self.load_model()
+        profile = self.profile
         target_language_name = self._translated_lang(target_language)
         prompt_spec = TranslationPromptSpec(
             source_language=self._translated_lang(source_language),
@@ -380,7 +414,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         elif not is_list:
             text_trans = text_trans[0]
 
-        if is_list:
+        if is_list and not empty_page_summary:
             try:
                 assert len(text_trans) == len(text)
             except Exception:
@@ -604,10 +638,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 else ContextAction.EMPTY
             ),
             page_count=0,
-            token_count=(
-                (memory.token_count if memory is not None else 0)
-                + current_summary_tokens
-            ),
+            token_count=current_summary_tokens,
             token_budget=history_budget,
             rebuild_reason=(
                 ContextReason.HISTORY_DISABLED
@@ -686,11 +717,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     model,
                     prompt_spec,
                 ),
-                reserved_tokens=(
-                    memory.token_count
-                    if memory is not None
-                    else 0
-                ) + current_summary_tokens,
+                reserved_tokens=current_summary_tokens,
             )
 
         missing_history_summaries = tuple(
@@ -705,8 +732,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 'their assistant examples contain an empty page_summary.'
             )
 
-        # Saved summaries absent from selected bilingual history stay in the
-        # volatile suffix, so completion state cannot hide user-owned context.
+        # Retired summaries stay saved, but must not refill the prompt after
+        # successful compaction. The current page's summary remains required.
+        covered_pages = set(memory.covered_page_keys if memory else ())
+        required_page_key = str(page_key) if page_key is not None else None
+        uncompacted_summaries = tuple(
+            summary for summary in saved_summaries
+            if summary.page_key == required_page_key
+            or summary.page_key not in covered_pages
+        )
         represented_summary_pages = {
             page.page_key
             for page in history
@@ -714,41 +748,85 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         }
         summary_candidates = tuple(
             summary
-            for summary in saved_summaries
+            for summary in uncompacted_summaries
             if summary.page_key not in represented_summary_pages
         )
         history_token_count = sum(page.token_count for page in history)
+        evicting_context = diagnostic.action == ContextAction.EVICT
+        retained_keys = {page.page_key for page in history}
+        evicted_keys = {
+            page.page_key for page in self._history_window.history
+            if page.page_key not in retained_keys
+        } if evicting_context and self._history_window is not None else set()
+        if (
+            not evicting_context
+            and len(summary_candidates) > len(current_summaries)
+            and history_token_count + page_summary_context_token_count(
+                summary_candidates, model,
+            ) > history_budget
+        ):
+            # Saved summaries can overflow while bilingual history still fits,
+            # including on rebuild. Retire both against the same low-water target.
+            evicting_context = True
+            history_list = list(history)
+            low_water = int(history_budget * HISTORY_LOW_WATER_RATIO)
+            evicted = 0
+            # Preserve the newest indivisible page, including a pending append.
+            while len(history_list) > 1 and (
+                history_token_count + current_summary_tokens > low_water
+            ):
+                retired = history_list.pop(0)
+                history_token_count -= retired.token_count
+                evicted_keys.add(retired.page_key)
+                evicted += 1
+            history = tuple(history_list)
+            represented_summary_pages.difference_update(evicted_keys)
+            summary_candidates = tuple(
+                summary for summary in uncompacted_summaries
+                if summary.page_key not in represented_summary_pages
+            )
+            diagnostic = replace(
+                diagnostic,
+                action=ContextAction.EVICT,
+                page_count=len(history),
+                evicted=diagnostic.evicted + evicted,
+                rebuild_reason=diagnostic.rebuild_reason if use_history else None,
+            )
+        context_limit = (
+            int(history_budget * HISTORY_LOW_WATER_RATIO)
+            if evicting_context
+            else history_budget
+        )
         summary_budget = max(
             0,
-            history_budget
-            - history_token_count
-            - (memory.token_count if memory is not None else 0),
+            context_limit - history_token_count,
         )
-        required_page_key = str(page_key) if page_key is not None else None
+        page_summaries = fit_page_summaries(
+            tuple(
+                summary for summary in summary_candidates
+                if summary.page_key not in evicted_keys
+            ),
+            model,
+            summary_budget,
+            required_page_key=required_page_key,
+        )
         compaction_summaries = ()
-        if memory_enabled:
-            page_summaries, compaction_summaries = plan_page_summary_context(
-                summary_candidates,
-                model,
-                summary_budget,
-                required_page_key=required_page_key,
-                covered_page_keys=(
-                    memory.covered_page_keys
-                    if memory is not None
-                    else ()
-                ),
+        if evicting_context and memory_enabled:
+            selected_keys = {summary.page_key for summary in page_summaries}
+            compaction_summaries = tuple(
+                summary for summary in summary_candidates
+                if summary.page_key not in selected_keys
+                and summary.page_key != required_page_key
             )
-        else:
-            page_summaries = fit_page_summaries(
-                summary_candidates,
-                model,
-                summary_budget,
-                required_page_key=required_page_key,
-            )
+            if compaction_summaries:
+                diagnostic = replace(
+                    diagnostic,
+                    summaries_evicted=len(compaction_summaries),
+                )
 
         if compaction_summaries and allow_compaction:
-            # Retire an older low-water batch only at summary overflow, so the
-            # cacheable memory prefix remains stable across several pages.
+            # Selection above is only a plan. Complete compaction before sending
+            # reduced context; a failure leaves the committed window unchanged.
             previous_memory = memory
             candidate_memory = self._compact_summary_batch(
                 previous=memory,
@@ -791,36 +869,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     )
                 self._persist_memory_checkpoint(project, candidate_memory)
                 memory = candidate_memory
-                # The compaction request has its own provider limits. Only its
-                # actual result participates in translation-context packing.
-                history_list = list(history)
-                memory_evicted = 0
-                while history_list and (
-                    history_token_count
-                    + memory.token_count
-                    + current_summary_tokens
-                    > history_budget
-                ):
-                    history_token_count -= history_list.pop(0).token_count
-                    memory_evicted += 1
-                if memory_evicted:
-                    history = tuple(history_list)
-                    diagnostic = replace(
-                        diagnostic,
-                        action=ContextAction.EVICT,
-                        page_count=len(history),
-                        evicted=diagnostic.evicted + memory_evicted,
-                    )
-                    represented_summary_pages = {
-                        page.page_key
-                        for page in history
-                        if page.snapshot.summary
-                    }
-                    summary_candidates = tuple(
-                        summary
-                        for summary in saved_summaries
-                        if summary.page_key not in represented_summary_pages
-                    )
+                # Memory is outside the history/summary budget; compaction
+                # changes the prefix identity without displacing selected pages.
                 if window_key is not None:
                     window_key = replace(
                         window_key,
@@ -834,32 +884,20 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                             for name, value in window_key.settings
                         ),
                     )
-            summary_budget = max(
-                0,
-                history_budget
-                - history_token_count
-                - (memory.token_count if memory is not None else 0),
-            )
-            page_summaries = fit_page_summaries(
-                summary_candidates,
-                model,
-                summary_budget,
-                required_page_key=required_page_key,
-            )
         summary_token_count = page_summary_context_token_count(
             page_summaries,
             model,
         )
         diagnostic = replace(
             diagnostic,
-            token_count=(
-                history_token_count
-                + (memory.token_count if memory is not None else 0)
-                + summary_token_count
-            ),
+            token_count=history_token_count + summary_token_count,
         )
 
-        self.logger.debug(str(diagnostic))
+        self.logger.debug(
+            '%s, memory_tokens=%d',
+            diagnostic,
+            memory.token_count if memory is not None else 0,
+        )
         return RequestContext(
             history=history,
             glossary=glossary,
@@ -913,15 +951,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 # Page chunks are indivisible; never seed a partially translated page.
                 return None
             translations.append(str(translation))
-        if not translations:
+        summary = (
+            saved_page_summary_text(project, page_key) if summary_enabled else ''
+        )
+        if not translations and not summary:
             return None
         _, sources, _ = BaseTranslator._prepare_textblock_sources(
             self,
             blocks,
         )
-        summary = ''
-        if summary_enabled:
-            summary = saved_page_summary_text(project, page_key)
         return HistoryPage(
             page_key=str(page_key),
             sources=tuple(sources),
@@ -964,16 +1002,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         # Compaction is always a text request, independently of Vision.
         api_args = self._api_args(profile, messages)
-        api_args['response_format'] = openai_json_response_format(
-            profile,
-            'translation_memory',
-            {
-                'type': 'object',
-                'properties': {'memory': {'type': 'string'}},
-                'required': ['memory'],
-                'additionalProperties': False,
-            },
-        )
+        api_args.pop('response_format')
         attempts = max(1, int(self.get_param_value('retry attempts')))
         for attempt in range(1, attempts + 1):
             if self.stop_event is not None and self.stop_event.is_set():
@@ -981,7 +1010,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             try:
                 result = self.request_chat_completion(profile, api_args)
                 self._log_token_usage(result, page_key='memory-compaction')
-                memory_text = parse_memory_response(result.content)
+                memory_text = result.content.strip()
+                if not memory_text:
+                    raise ValueError('Memory compaction returned no memory text.')
                 break
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
@@ -1144,7 +1175,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         []
         """
         queries = tuple(src_list)
-        if not queries:
+        if not queries and not (
+            prompt_spec.summary_enabled and vision_request is not None
+        ):
             return []
         if profile is None:
             profile = self.profile

@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
-HISTORY_LOW_WATER_RATIO = 0.60
+HISTORY_LOW_WATER_RATIO = 0.50
 
 
 class ContextAction(Enum):
@@ -166,7 +166,7 @@ def eligible_history_for_request(
     leaving room for adjacent requests to extend the provider-cache prefix.
 
     >>> int(10 * HISTORY_LOW_WATER_RATIO)
-    6
+    5
     """
 
     if rebuild_reason is not None:
@@ -264,11 +264,10 @@ def eligible_history_for_request(
         int(token_budget * HISTORY_LOW_WATER_RATIO) - reserved_tokens,
     )
     evicted = 0
-    # Bulk eviction creates headroom for several later appends instead of
-    # invalidating the provider cache on every following page.
+    # Reserve the incoming page's cost before eviction, then append it below.
+    # An indivisible page above the soft target still gets one turn as history.
     while history and (
-        token_count > low_water
-        or token_count + rendered_previous_page.token_count > history_limit
+        token_count + rendered_previous_page.token_count > low_water
     ):
         token_count -= history.pop(0).token_count
         evicted += 1

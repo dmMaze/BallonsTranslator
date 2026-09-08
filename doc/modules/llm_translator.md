@@ -21,7 +21,7 @@ GUI and headless translation share this path:
 
 ```text
 worker
-  -> BaseTranslator.translate_textblk_lst(...)
+  -> LLMTranslator.translate_textblk_lst(...)
      -> preprocess non-empty sources and decide page coverage
      -> LLMTranslator.translate(...)
         -> freeze profile, project context, and optional page image
@@ -45,15 +45,23 @@ one-based item in the current JSON array. The ordinary response is:
 {"1":"Translated text"}
 ```
 
-When the request asks for a page summary, the response is:
+When the request asks for a page summary, it requests that field first:
 
 ```json
-{"translations":{"1":"Translated text"},"page_summary":"Concise page memory"}
+{"page_summary":"Short factual page summary","translations":{"1":"Translated text"}}
 ```
 
-`parse_translation_response()` owns compatibility response shapes, but every
-accepted response must contain exactly IDs `1..N`. A missing or malformed
+`parse_translation_response()` owns compatibility response shapes. For text
+pages, accepted responses must contain exactly IDs `1..N`. A missing or malformed
 summary never discards an otherwise complete translation map.
+Parsing accepts either field order for compatibility; the prompt, schema, and
+history examples put `page_summary` before `translations`.
+
+With both Vision and Summary enabled, full-page calls also request summaries
+for pages without source text. They use the same prompt, context, and image
+suffix as normal pages, with an empty input array. Only a usable `page_summary`
+is required; translation payload formatting and IDs are ignored. Missing or
+blank summaries are retried. Existing-summary and overwrite rules still apply.
 
 Messages are assembled in cache-friendly prefix order:
 
@@ -88,8 +96,10 @@ encoded image. Provider-facing input cannot change midway through one request.
   user/assistant pairs.
 
 A prior page is eligible when it precedes the current page, has
-`FIN_TRANSLATE`, contains at least one source-bearing block, and every such
-block has a stored translation. Explicit `translation_target` metadata must
+`FIN_TRANSLATE`, and every source-bearing block has a stored translation.
+Pages without source text are eligible when the summary response contract is
+active and they have a saved summary; their history pairs use an empty input
+array and translation map. Explicit `translation_target` metadata must
 match the active target; missing metadata remains accepted for older projects.
 Snapshots contain immutable strings after configured source preprocessing and
 use the finalized translations stored in the project.
@@ -111,9 +121,9 @@ page jump, model/language/prompt/budget change, compact-memory edit, changed
 page snapshot, or incomplete previous page causes a rebuild from a recent
 eligible suffix.
 
-History pages are indivisible. Rebuild and eviction use
-`HISTORY_LOW_WATER_RATIO = 0.60` to create room for several adjacent appends.
-An oversized previous page is skipped rather than split.
+History pages are indivisible. A budget overflow removes oldest retained pages
+before appending the just-completed page; eviction planning reserves space for
+that append. A page larger than the available full budget is skipped.
 
 ## Page summaries and compact memory
 
@@ -121,10 +131,19 @@ An oversized previous page is skipped rather than split.
 through the current page can guide translation even when their pages are
 incomplete or history is disabled.
 
+The prompt first requests a factual summary of the current page's key events
+or new information useful for understanding the current and later dialogue,
+grounded in its text or image and using established character names. It then
+instructs the model to use that newly written summary, saved summaries, compact
+memory, and any attached image as context for translating each line. Both
+fields are generated in one response. The summary's 500-word ceiling is prompt
+guidance; accepted summary text is not truncated.
+
 Unless overwrite is enabled, the current page summary is retained as required
 input. Older summaries already represented by selected bilingual history are
-not repeated; remaining summaries form the newest chronological suffix that
-fits the shared context budget.
+not repeated. Summaries covered by compact memory are omitted from the raw
+summary suffix; their saved project records remain intact. Remaining summaries
+form the newest chronological suffix that fits the shared context budget.
 
 The translation request asks for a new target-language summary only when the
 current page has none. `Overwrite Existing Summary` instead omits the raw
@@ -142,16 +161,22 @@ Vision, model changes, target changes, or recorded coverage.
 Automatic compaction is a separate text-only request using the selected
 Translator model:
 
-- before translation, older uncovered summaries are compacted when they no
-  longer fit the shared budget;
+- before translation, overflowing the combined history and raw-summary budget
+  compacts uncovered summaries immediately before bulk eviction; this also
+  applies when rebuilding history or when only saved summaries are available;
 - after the last project page finalizes, remaining uncovered summaries are
   compacted even if they still fit.
 
 The request merges previous memory with an oldest summary batch and returns the
-complete memory body in the active target language. Compaction has the selected
-profile's provider/output limits but is not capped by the translation context
-budget. A successful pre-translation compaction is saved before assembling the
-translation request, allowing a retried page to reuse the new memory prefix.
+complete memory body as plain text in the active target language. Empty output
+is retried. Its prompt retains supported identities, relationships, and essential
+ongoing plot context, pruning duplicate, incidental, and superseded material.
+It requests at most 600 words; this is a prompt instruction, not a validated
+length limit. Compaction has the
+selected profile's provider/output limits but is not capped by the translation
+context budget. A successful pre-translation compaction is saved before
+assembling the translation request, allowing a retried page to reuse the new
+memory prefix.
 If memory or an input summary changed in flight, the generated result is not
 written. An exhausted compaction failure stops the run rather than being
 retried again by every later page.
@@ -164,15 +189,24 @@ explicit review and correction boundary.
 
 The context token budget covers:
 
-- compact memory;
 - current and prior saved summaries;
 - bilingual history pairs.
 
-Memory and the current-page summary are retained even when they consume the
-budget; optional older summaries and history receive only the remaining space.
+The current-page summary is retained even when it consumes the budget; optional
+older summaries and history receive only the remaining space. Compact memory
+is retained separately and never reduces this allowance or evicts history.
 The current translation batch, system contract, glossary, image, and output are
-outside this budget. Known models use `tiktoken`; unknown models use the
-deterministic fallback estimator.
+also outside this budget. The provider's actual context limit still applies to
+the full request. Known models use `tiktoken`; unknown models use the
+deterministic fallback estimator. Context diagnostics report history and saved
+summaries as `tokens=used/budget`, with `memory_tokens` reported separately.
+Eviction reports `action=evict` and `summaries_evicted` for the retired summary batch.
+
+Budget-driven eviction targets `HISTORY_LOW_WATER_RATIO = 0.50` of the budget
+for the next request's combined history and raw summaries, including the newly
+appended history page. Rebuilds also select history toward this target. The
+current-page summary remains required, and one indivisible history page may
+exceed the soft target if it fits the available full budget.
 
 There is no application-managed provider cache. Adjacent `+history` prompts are
 arranged so each normally extends the previous prefix:
