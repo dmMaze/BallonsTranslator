@@ -19,3 +19,6 @@ include = ["ballontranslator*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.setuptools.package-data]
+ballontranslator = ["assets/font_refresh/*"]
