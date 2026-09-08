@@ -18,14 +18,12 @@ Important areas:
 - Preserve behavior unless explicitly asked to change it.
 - Prefer small, reviewable refactors over broad rewrites.
 - Treat all pre-existing modified, untracked, and ignored files as user-owned. Never delete, overwrite, move, clean, or restore them unless the user explicitly authorizes that operation for the exact paths involved, this applies especially to `config/`, backup files, credentials, projects, models, and other user-generated state.
-- Do not change public project JSON shape without migration/backward compatibility.
 - Keep passive config and project loading permissive for optional feature data. Unknown, removed, renamed, malformed, or out-of-range fields and entries must log a warning, discard only the invalid portion, and continue loading the rest; they must not abort loading or cause an existing config/project to be replaced with an empty or template file. Keep strict validation for live runtime values and explicit write/export boundaries.
 - Be careful with Qt signal/thread behavior in `ballontranslator/ui/module_manager.py`.
 - Do not rename registered module keys unless compatibility aliases are added.
 - Keep model-loading lazy/eager behavior intact.
 - Keep module selection lazy/config-only. Data needed by the config UI before module initialization must come from lazy metadata or `SafeEval`-compatible pure helpers, not from `__init__`, `_setup_*`, `update_*`, `flush`, model loading, downloads, or network calls.
 - Prefer the app's real construction path over test-only knobs. Do not keep constructor arguments, wrappers, helper functions, or public APIs only because tests use them; tests can patch small instance attributes or call narrower internals when needed.
-- Prefer one generic lookup path plus small named boundary helpers over parallel field-specific methods.
 - Let the owning module be the integration point. Prefer registering a translator, cache, or helper in the module that owns the feature over threading it through unrelated shared utilities.
 - When a simplification removes an indirection, remove the surrounding leftovers in the same pass: stale shared hooks, unused helpers, compatibility shims, redundant wrappers, and tests that only preserve the old shape.
 - Avoid adding dependencies unless approved.
@@ -39,11 +37,8 @@ Important areas:
 - Keep UI work responsive. Long-running OCR, translation, inpainting, IO, downloads, and model loading must not block the Qt main thread.
 - Respect headless mode. If a feature affects the translation pipeline, make sure it works or safely no-ops under `--headless`.
 - Avoid mandatory new dependencies. Optional integrations should fail gracefully with a clear error or setup message.
-- Keep model/download behavior explicit. Do not download large files or contact online services without an existing module/config path or user action.
-- Add focused tests or import checks for non-UI logic. For UI-heavy changes, document the manual verification performed.
 - Keep user data safe. Do not overwrite source images, existing translations, masks, or project JSON without following existing save/backup behavior.
 - Preserve localization. New visible UI strings should use Qt translation patterns already used in the surrounding code.
-- Prefer incremental delivery. Large features should be split into domain/config, pipeline, UI, and persistence changes where practical.
 
 ## Maintainability Rules
 
@@ -75,12 +70,11 @@ Important areas:
 - Keep control and list typography consistent with the application UI. Do not assign content fonts to selector rows merely to preview them; use a dedicated preview when the content font itself must be shown.
 - Keep config-panel styling scoped. Prefer object names and section-specific selectors such as `ConfigContentScrollContent`, profile-card object names, or spell-check object names over broad `QWidget`, `QLabel`, `QCheckBox`, or `QListWidget` rules that can leak into unrelated panels.
 - Use existing theme tokens from `resources/themes.json` and `resources/stylesheet.css` instead of hard-coded colors, except for established project accent values such as `rgb(30, 147, 229)`.
-- When swapping or aligning panel colors, treat background ownership explicitly: the left section list, config content panel, cards, labels, titles, inline rows, and item views may each paint their own background. Make labels and title widgets match their local container, and avoid changing push-button colors unless that is specifically requested.
 - For config rows that contain buttons or custom widgets, set an object name and `WA_StyledBackground` on the row container when its empty space must match the surrounding panel.
 - For checkbox styling, do not add broad `QCheckBox::indicator` rules. Scope normal config checkboxes with object names, and leave icon-based checkboxes such as toolbar, titlebar, alignment, font, and leftbar checkers under their existing rules.
 - Remember that `QListWidget` check indicators are item-view indicators, not child `QCheckBox` widgets. Style `QListWidget::indicator`, selected, hover, and disabled item states separately, and verify selected items stay readable in both light and dark themes.
 - Match widget structure before fighting fonts or spacing. If two checkbox rows need to align, use the same construction pattern, for example a bare checkbox plus `ParamNameLabel`, rather than mixing `QCheckBox(text=...)` with a separate label.
-- Render runtime chevrons and other manually painted SVG pixmaps through `ballontranslator/ui/icon_rendering.py`.
+- Render manually painted SVG pixmaps through `ballontranslator/ui/icon_rendering.py`.
 - Do not change a widget's style machinery while handling `QEvent.Polish`, `QEvent.StyleChange`, or `QEvent.Paint`: avoid `setStyle()`, `setStyleSheet()`, explicit `polish()`/`unpolish()`, `ensurePolished()`, and item-delegate replacement in those callbacks. These operations can re-enter Qt's native style code and crash on platform-specific bindings. Prefer scoped stylesheet subcontrols such as `QMenu::right-arrow` and `QComboBox::down-arrow`, construction-time setup, or idempotent setup from safe show/input events before painting.
 - For UI-heavy changes, run at least `python -m py_compile` on touched Python files, `git diff --check`, and an offscreen Qt smoke check when practical. State when visual polish still needs a real themed-app pass.
 
