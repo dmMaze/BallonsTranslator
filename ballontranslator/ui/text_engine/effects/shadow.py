@@ -1,30 +1,33 @@
 from __future__ import annotations
 
+import math
 from typing import Optional, Tuple
 
 import cv2
 import numpy as np
 
-
-def _dilate(mask: np.ndarray, radius: int) -> np.ndarray:
-    if radius <= 0:
-        return mask
-    diameter = radius * 2 + 1
-    kernel = cv2.getStructuringElement(
-        cv2.MORPH_ELLIPSE, (diameter, diameter)
-    )
-    return cv2.dilate(mask, kernel)
+from ..rendering.morphology import dilate_alpha_disc
 
 
 def _blur(mask: np.ndarray, radius: int) -> np.ndarray:
     if radius <= 0:
         return mask
     ksize = radius * 2 + 1
-    return cv2.GaussianBlur(
-        mask,
+    # The uint8 path parallelizes well on larger masks. Reserve float32 for
+    # kernels wide enough to repay conversion and its weaker parallel scaling.
+    float_blur = radius > max(
+        32.0, math.sqrt(mask.size * max(1, cv2.getNumThreads())) / 32.0
+    )
+    source = mask.astype(np.float32) if float_blur else mask
+    blurred = cv2.GaussianBlur(
+        source,
         (ksize, ksize),
         ksize / 6,
         borderType=cv2.BORDER_CONSTANT,
+    )
+    return (
+        np.rint(blurred).clip(0, 255).astype(np.uint8)
+        if float_blur else blurred
     )
 
 
@@ -89,13 +92,13 @@ def render_glow_alpha(
     """
     if glow_type == 'outer':
         expanded = _blur(
-            _dilate(source_alpha, spread_radius), size_radius
+            dilate_alpha_disc(source_alpha, spread_radius), size_radius
         )
         return _alpha_intersection(expanded, 255 - source_alpha)
     if glow_type == 'inner':
         edge = 255 - _blur(source_alpha, size_radius)
         return _alpha_intersection(
-            _dilate(edge, spread_radius), source_alpha
+            dilate_alpha_disc(edge, spread_radius), source_alpha
         )
     raise ValueError('unsupported glow type')
 
@@ -132,13 +135,13 @@ def render_shadow_alpha(
         )
     elif shadow_type == 'drop':
         mask = _translate(
-            _blur(_dilate(source_alpha, spread_radius), blur_radius),
+            _blur(dilate_alpha_disc(source_alpha, spread_radius), blur_radius),
             offset,
         )
     elif shadow_type == 'inner':
         shifted = _translate(_blur(source_alpha, blur_radius), offset)
         mask = cv2.subtract(255, shifted)
-        mask = _dilate(mask, spread_radius)
+        mask = dilate_alpha_disc(mask, spread_radius)
         mask = _alpha_intersection(mask, source_alpha)
     else:
         raise ValueError('unsupported shadow type')

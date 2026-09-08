@@ -8,7 +8,7 @@ authoritative for individual controls and raster algorithms.
 
 ```text
 QTextDocument + settled SceneTextLayout
-  -> canonical glyph source, including Glyph Slant
+  -> canonical glyph source with source-stage modifiers
   -> canonical foreground or the Gradient/Texture foreground group
   -> movable Image / Stroke / Shadow / Glow / Filter cards in panel order
   -> TextBlock alpha mask (Eraser)
@@ -21,8 +21,8 @@ QTextDocument + settled SceneTextLayout
 The panel is an application-order projection, not an arbitrary layer graph.
 Its first movable card runs first and a newly appended card runs last. The
 persisted tuple remains topmost-first for compatibility, so renderer traversal
-is reversed. Gradient and Texture form a separate structural foreground group;
-Hollow, Eraser, and Opacity are fixed controls rather than movable cards.
+is reversed. Source modifiers and foreground paints have fixed phases outside
+the movable group. Hollow, Eraser, and Opacity are fixed controls.
 
 Effects compose inside the isolated text-item surface, never against the page
 backdrop. Filters transform all pixels accumulated before their card. Generated
@@ -52,21 +52,21 @@ model, renderer, or edit session.
 
 ## Values, order, and sources
 
-`FontFormat.text_effects` is one immutable `TextEffectStack`. Stroke, Shadow,
-Glow, Gradient, Texture, Image, and Filter are repeatable; Hollow is unique.
-`overall_opacity` applies after the completed stack. Neutral or disabled values
-remain persisted and visible but must not allocate surfaces when they cannot
-change output.
+`FontFormat.text_effects` is one immutable `TextEffectStack`. Its typed entries
+share persistence, preview, and undo ownership. `overall_opacity` applies after
+the completed stack. Neutral or disabled values remain persisted and visible
+but must not allocate surfaces when they cannot change output.
 
 | Effect | Source and composition contract |
 | --- | --- |
+| Synthetic Bold | One source modifier that expands glyph coverage before other effects, preserving layout metrics and inline formatting. |
 | Gradient / Texture | Repeatable paints composed in their own visible order, clipped once by canonical glyph coverage, and used in place of rich foreground. If none can render, rich foreground remains. An enabled transparent Gradient can intentionally erase the face; an Empty or missing Texture is neutral interactively. |
 | Stroke | Canonical glyph alpha. Width retains the historical native-outline meaning; Center splits it across the edge, while Outside and Inside clip that same width to one side. New and legacy-flat strokes default to Outside. |
 | Drop / Long Shadow | Canonical glyph alpha plus enabled Stroke cards already applied. Output is clipped outside the canonical face. |
 | Inner Shadow | Canonical glyph alpha only; suppressed by Hollow. |
 | Outer Glow | Canonical glyph alpha plus enabled Stroke cards already applied. |
 | Inner Glow | Canonical glyph alpha only; suppressed by Hollow. |
-| Hollow | Suppresses the canonical face, foreground-paint group, and interior effects while retaining Stroke and exterior output. |
+| Hollow | One toggle that suppresses the canonical face, foreground-paint group, and interior effects while retaining Stroke and exterior output. |
 | Image | Repeatable project raster. In Front uses source-over; Behind uses destination-over. It does not become a generated-effect source. Empty is neutral. |
 | Filter | Transforms the accumulated RGBA result at its position. Alpha is non-expanding unless the plug-in declares and bounds expansion. |
 | Eraser | Multiplies the completed stack by the item-owned alpha mask. It is not reusable `FontFormat` data. |
@@ -110,6 +110,10 @@ and Eraser cannot alter editing feedback. Image layers are intentionally omitted
 during native horizontal and vertical text editing; ordinary Filters remain
 active. Editing visibility participates in cache identity so settled Image
 pixels cannot leak into the editing surface or vice versa.
+
+The shared raster allocation policy bounds memory while retaining requested
+effect radii. Tile overlap includes source expansion and each effect's reach;
+cached tiles retain cores and interpolation borders rather than working halos.
 
 Interactive rendering may bypass an active missing optional raster, invalid
 Filter, or bounded allocation failure with a warning and compatible fallback.
@@ -170,9 +174,9 @@ multi-selection it derives an occurrence map by effect identity and occurrence
 number, intersecting the available count across all targets; it never builds a
 merged stack or Mixed values. Matched cards receive the selection border and
 preview/commit fan out through one command. Unmatched and Image cards edit only
-the primary item. A newly added non-Image effect is inserted after the common
-occurrences in every target so it is immediately matched. Reorder fans out only
-when the relevant structural sequences align.
+the primary item. Adding repeatable effects aligns the new occurrence across
+targets; adding a unique effect fills only missing entries. Reorder fans out
+only when the relevant structural sequences align.
 
 The Eraser remains single-item and stores immutable stroke history on
 `TextBlock`. Activation inserts an empty enabled mask as its own undo step; a

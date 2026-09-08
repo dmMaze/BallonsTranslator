@@ -1087,7 +1087,7 @@ class MainWindow(mainwindow_cls):
                 if self.drawingPanel.currentTool == self.drawingPanel.rectTool:
                     self.drawingPanel.rectPanel.inpaint_btn.click()
 
-    def shortcutBold(self):
+    def shortcutBold(self) -> None:
         if self.textPanel.formatpanel.isVisible():
             self.textPanel.formatpanel.toggle_bold()
 

@@ -1,4 +1,3 @@
-from dataclasses import replace
 from typing import Iterable, Optional
 
 from qtpy.QtWidgets import (
@@ -382,10 +381,10 @@ class FormatGroupBtn(QFrame):
         hlayout.setSpacing(0)
         hlayout.setContentsMargins(8, 8, 8, 8)
 
-    def setItalic(self):
+    def setItalic(self) -> None:
         self.param_changed.emit('italic', self.italicBtn.isChecked())
 
-    def setUnderline(self):
+    def setUnderline(self) -> None:
         self.param_changed.emit('underline', self.underlineBtn.isChecked())
     
 

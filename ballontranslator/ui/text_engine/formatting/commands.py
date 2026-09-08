@@ -162,6 +162,7 @@ def ffmt_change_font_family_and_weight(
     if set_focus:
         restore_canvas_view_focus()
 
+
 @font_formating()
 def ffmt_change_letter_spacing(param_name: str, values: str, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     for blkitem, value in zip(blkitems, values):

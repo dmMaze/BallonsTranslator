@@ -94,7 +94,10 @@ def colorize_effect_paint_rgba(
     if not math.isfinite(render_scale) or render_scale <= 0.0:
         raise ValueError('effect paint raster scale must be positive')
     if isinstance(paint, SolidPaint):
-        rgba[..., :3] = paint.color
+        # Scalar channel fills avoid the slower strided RGB broadcast.
+        rgba[..., 0] = paint.color[0]
+        rgba[..., 1] = paint.color[1]
+        rgba[..., 2] = paint.color[2]
         return rgba
     if not isinstance(paint, LinearGradientPaint):
         raise TypeError('generated effect paint requires Solid or Gradient')

@@ -1,6 +1,7 @@
 """Immutable typed text-effect values and stack editing helpers."""
 
 from dataclasses import dataclass, field, replace
+from functools import cached_property
 import math
 from numbers import Integral, Real
 from typing import Iterator, Mapping, Optional, Sequence, Tuple, Union
@@ -12,6 +13,7 @@ from .raster_assets import RasterAssetRef, coerce_raster_asset_ref
 SHADOW_DISTANCE_LIMIT = 10.0
 SHADOW_BLUR_LIMIT = 10.0
 SHADOW_SPREAD_LIMIT = 10.0
+SYNTHETIC_BOLD_OFFSET_MAX = 0.5
 TEXT_EFFECT_BLEND_MODES = (
     'normal',
     'darken', 'multiply', 'color_burn', 'linear_burn', 'darker_color',
@@ -719,7 +721,45 @@ class FilterEffect:
         return not self.enabled
 
 
+@dataclass(frozen=True)
+class SyntheticBoldEffect:
+    """Expand glyph coverage before fills and generated effects.
+
+    >>> SyntheticBoldEffect(x=0.0, y=0.0).is_neutral()
+    True
+    """
+
+    enabled: bool = True
+    shape: str = 'ellipse'
+    x: float = 0.01
+    y: float = 0.01
+    effect_type: str = field(init=False, default='synthetic_bold')
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError('synthetic bold enabled must be a bool')
+        if self.shape not in ('rect', 'ellipse'):
+            raise ValueError('unsupported synthetic bold shape')
+        for name in ('x', 'y'):
+            object.__setattr__(self, name, _float_in_range(
+                name, getattr(self, name), 0.0, SYNTHETIC_BOLD_OFFSET_MAX
+            ))
+
+    def is_neutral(self) -> bool:
+        return not self.enabled or self.x == self.y == 0.0
+
+    def to_serializable_dict(self) -> dict:
+        return {
+            'effect_type': self.effect_type,
+            'enabled': self.enabled,
+            'shape': self.shape,
+            'x': self.x,
+            'y': self.y,
+        }
+
+
 TextEffect = Union[
+    SyntheticBoldEffect,
     StrokeEffect,
     ShadowEffect,
     GlowEffect,
@@ -736,6 +776,8 @@ def effect_phase(effect: TextEffect) -> str:
     >>> effect_phase(ShadowEffect(shadow_type='inner'))
     'interior'
     """
+    if isinstance(effect, SyntheticBoldEffect):
+        return 'source'
     if isinstance(effect, ShadowEffect):
         return (
             'interior'
@@ -776,7 +818,8 @@ class TextEffectStack:
 
     ``effects`` preserves the renderer's topmost-first layer order; the panel
     projects it in bottom-to-top application order. Overall opacity applies
-    to the completed item rather than an individual effect.
+    to the completed item rather than an individual effect. Synthetic Bold
+    expands the canonical glyph source before the layers run.
 
     >>> stack = with_primary_stroke(TextEffectStack(), width=0.25)
     >>> (len(stack), stack[0].width)
@@ -799,6 +842,7 @@ class TextEffectStack:
             not isinstance(
                 effect,
                 (
+                    SyntheticBoldEffect,
                     StrokeEffect,
                     ShadowEffect,
                     GlowEffect,
@@ -811,9 +855,20 @@ class TextEffectStack:
             for effect in effects
         ):
             raise TypeError('text effect stack requires typed effect values')
-        if sum(isinstance(effect, HollowEffect) for effect in effects) > 1:
-            raise ValueError('text effect stack accepts at most one Hollow')
+        for unique_type in (HollowEffect, SyntheticBoldEffect):
+            if sum(isinstance(effect, unique_type) for effect in effects) > 1:
+                raise ValueError(
+                    f'text effect stack accepts at most one {unique_type.__name__}'
+                )
         object.__setattr__(self, 'effects', effects)
+
+    @cached_property
+    def synthetic_bold(self) -> Optional[SyntheticBoldEffect]:
+        """Resolve the source effect once per immutable stack."""
+        return next((
+            effect for effect in self.effects
+            if isinstance(effect, SyntheticBoldEffect)
+        ), None)
 
     def __iter__(self) -> Iterator[TextEffect]:
         return iter(self.effects)
@@ -826,10 +881,20 @@ class TextEffectStack:
 
     @property
     def has_active_effects(self) -> bool:
-        return any(not effect.is_neutral() for effect in self.effects)
+        """Return whether any layer is active, apart from source/opacity controls."""
+        return any(
+            not effect.is_neutral()
+            for effect in self.effects
+            if not isinstance(effect, SyntheticBoldEffect)
+        )
 
     def is_neutral(self) -> bool:
-        return self.overall_opacity == 1.0 and not self.has_active_effects
+        return (
+            self.overall_opacity == 1.0 and not self.has_active_effects
+            and (
+                self.synthetic_bold is None or self.synthetic_bold.is_neutral()
+            )
+        )
 
     def to_serializable_dict(self) -> dict:
         return {
@@ -951,6 +1016,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
     if isinstance(
         value,
         (
+            SyntheticBoldEffect,
             StrokeEffect,
             ShadowEffect,
             GlowEffect,
@@ -965,6 +1031,13 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
         raise ValueError('text effect must be a value or typed payload')
     payload = dict(value)
     effect_type = payload.get('effect_type')
+    if effect_type == 'synthetic_bold':
+        _unexpected_fields(
+            payload, ('effect_type', 'enabled', 'shape', 'x', 'y'),
+            'Synthetic Bold effect',
+        )
+        payload.pop('effect_type')
+        return SyntheticBoldEffect(**payload)
     if effect_type == 'stroke':
         _unexpected_fields(
             payload,
@@ -1195,11 +1268,25 @@ def _coerce_image_effect_passive(
 
 
 def _coerce_text_effect_passive(value: object) -> TextEffect:
-    """Recover an invalid persisted blend mode without losing the effect."""
+    """Recover optional source fields and blend modes independently."""
     if not isinstance(value, Mapping):
         return coerce_text_effect(value)
     payload = dict(value)
     effect_type = payload.get('effect_type')
+    if effect_type == 'synthetic_bold':
+        effect = SyntheticBoldEffect()
+        for name, parameter in payload.items():
+            if name == 'effect_type':
+                continue
+            try:
+                if name not in {'enabled', 'shape', 'x', 'y'}:
+                    raise ValueError('unsupported field')
+                effect = replace(effect, **{name: parameter})
+            except (TypeError, ValueError) as error:
+                LOGGER.warning(
+                    'Ignoring invalid Synthetic Bold %s (%s).', name, error
+                )
+        return effect
     if (
         isinstance(effect_type, str)
         and effect_type in {
@@ -1249,16 +1336,13 @@ def coerce_text_effect_stack(
             sorted(unknown),
         )
 
-    overall_opacity = payload.get('overall_opacity', 1.0)
     try:
-        overall_opacity = _float_in_range(
-            'overall opacity', overall_opacity, 0.0, 1.0
+        opacity = _float_in_range(
+            'overall opacity', payload.get('overall_opacity', 1.0), 0.0, 1.0
         )
     except (TypeError, ValueError) as error:
-        LOGGER.warning(
-            'Ignoring invalid overall text opacity (%s); using 1.0.', error
-        )
-        overall_opacity = 1.0
+        LOGGER.warning('Ignoring invalid overall opacity (%s); using 1.0.', error)
+        opacity = 1.0
 
     raw_effects = payload.get('effects', ())
     if not isinstance(raw_effects, (list, tuple)):
@@ -1268,7 +1352,7 @@ def coerce_text_effect_stack(
         )
         raw_effects = ()
     effects = []
-    hollow_loaded = False
+    unique_types = set()
     for index, raw_effect in enumerate(raw_effects):
         try:
             effect = (
@@ -1280,10 +1364,10 @@ def coerce_text_effect_stack(
                 and raw_effect.get('effect_type') == 'image'
                 else _coerce_text_effect_passive(raw_effect)
             )
-            if isinstance(effect, HollowEffect):
-                if hollow_loaded:
-                    raise ValueError('text effect stack accepts at most one Hollow')
-                hollow_loaded = True
+            if isinstance(effect, (HollowEffect, SyntheticBoldEffect)):
+                if type(effect) in unique_types:
+                    raise ValueError(f'duplicate {type(effect).__name__}')
+                unique_types.add(type(effect))
             effects.append(effect)
         except (TypeError, ValueError) as error:
             LOGGER.warning(
@@ -1291,7 +1375,7 @@ def coerce_text_effect_stack(
                 index,
                 error,
             )
-    return TextEffectStack(overall_opacity, tuple(effects))
+    return TextEffectStack(effects=tuple(effects), overall_opacity=opacity)
 
 
 def primary_stroke(stack: TextEffectStack) -> Optional[StrokeEffect]:
@@ -1327,7 +1411,7 @@ def generated_effect_insertion_index(
     """
     insertion = len(effects)
     while insertion > 0 and isinstance(
-        effects[insertion - 1], (HollowEffect, TextFillEffect)
+        effects[insertion - 1], (HollowEffect, TextFillEffect, SyntheticBoldEffect)
     ):
         insertion -= 1
     return insertion

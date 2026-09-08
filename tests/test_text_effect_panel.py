@@ -20,7 +20,7 @@ from qtpy.QtCore import (
     QTranslator,
     Qt,
 )
-from qtpy.QtGui import QColor, QFocusEvent, QKeyEvent, QKeySequence, QMouseEvent
+from qtpy.QtGui import QColor, QFocusEvent, QKeyEvent, QKeySequence, QMouseEvent, QTextCursor
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication,
@@ -53,6 +53,7 @@ from ballontranslator.ui.text_engine.effects.cards import (
     ImageEffectCard,
     ShadowEffectCard,
     StrokeEffectCard,
+    SyntheticBoldEffectCard,
     TextFillEffectCard,
 )
 from ballontranslator.ui.text_engine.effects.panel import TextEffectPanel
@@ -82,6 +83,7 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
+    SyntheticBoldEffect,
     FilterEffect,
     GlowEffect,
     TextFillEffect,
@@ -188,6 +190,156 @@ class TextEffectPanelTest(unittest.TestCase):
             time.sleep(0.005)
         self.app.processEvents()
         return bool(predicate())
+
+    def test_synthetic_card_add_toggle_shape_delete_and_undo(self) -> None:
+        before = self._stack(StrokeEffect(width=0.2), ShadowEffect())
+        item = self._item(before)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        self.panel.set_textblk_item(item)
+        html = item.document().toHtml()
+        document_undo = item.document().availableUndoSteps()
+        controls = self.panel.texteffect_panel
+        add = controls.add_effect_actions['synthetic_bold']
+        self.assertTrue(add.isEnabled())
+        add.trigger()
+        added = item.blk.fontformat.text_effects
+        self.assertEqual(added.synthetic_bold, SyntheticBoldEffect())
+        self.assertEqual(added.effects[:-1], before.effects)
+        self.assertEqual(item.document().toHtml(), html)
+        self.assertEqual(item.document().availableUndoSteps(), document_undo)
+        self.assertEqual(item.textCursor().selectedText(), 'Ef')
+        self.assertFalse(add.isEnabled())
+        self.assertFalse(self.panel.text_effect_session.add_effect('synthetic_bold'))
+        self.assertEqual(self.canvas.stack.count(), 1)
+        card = self._cards(SyntheticBoldEffectCard)[0]
+        self.assertFalse(self.panel.text_effect_session.move_effect(card.index, 1))
+        card.shape_selector.setCurrentIndex(card.shape_selector.findData('rect'))
+        shaped = item.blk.fontformat.text_effects
+        self.assertEqual(shaped.synthetic_bold, SyntheticBoldEffect(shape='rect'))
+        card.visibility_button.visibility_requested.emit(False)
+        disabled = item.blk.fontformat.text_effects
+        self.assertEqual(disabled.synthetic_bold, replace(shaped.synthetic_bold, enabled=False))
+        self.assertFalse(add.isEnabled())
+        card.delete_button.click()
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertEqual(self._cards(SyntheticBoldEffectCard), [])
+        self.assertTrue(add.isEnabled())
+        self.assertEqual(self.canvas.stack.count(), 4)
+        self.panel.set_textblk_item(None)
+        for expected in (disabled, shaped, added, before):
+            self.canvas.stack.undo()
+            self.assertEqual(item.blk.fontformat.text_effects, expected)
+        for expected in (added, shaped, disabled, before):
+            self.canvas.stack.redo()
+            self.assertEqual(item.blk.fontformat.text_effects, expected)
+        self.assertEqual(self.panel.global_format.text_effects, TextEffectStack())
+
+    def test_synthetic_add_fills_missing_items_without_replacing_existing_card(self) -> None:
+        existing = self._stack(SyntheticBoldEffect(enabled=False, shape='rect', x=0.3, y=0.2))
+        missing = self._stack(GlowEffect())
+        for ordered in ((existing, missing), (missing, existing)):
+            with self.subTest(ordered=ordered):
+                items = [self._item(stack) for stack in ordered]
+                self.canvas.selected = items
+                self.panel.set_textblk_item(None, multi_select=True)
+                add = self.panel.texteffect_panel.add_effect_actions['synthetic_bold']
+                self.assertTrue(add.isEnabled())
+                count = self.canvas.stack.index()
+                add.trigger()
+                self.assertEqual(self.canvas.stack.index(), count + 1)
+                self.assertFalse(add.isEnabled())
+                self.assertEqual(len(self._cards(SyntheticBoldEffectCard)), 1)
+                for item, before in zip(items, ordered):
+                    after = item.blk.fontformat.text_effects
+                    if before.synthetic_bold is not None:
+                        self.assertEqual(after, before)
+                    else:
+                        self.assertEqual(after.effects, (*before.effects, SyntheticBoldEffect()))
+                self.canvas.stack.undo()
+                self.assertEqual([item.blk.fontformat.text_effects for item in items], list(ordered))
+
+    def test_synthetic_axes_preview_commit_cancel_and_validate(self) -> None:
+        before = TextEffectStack(effects=(SyntheticBoldEffect(shape='rect', x=0.01, y=0.2),))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        x_control, y_control = self._cards(SyntheticBoldEffectCard)[0].iter_controls()
+        x_control.editor.setText('12.0%')
+        x_control.editor.textEdited.emit('12.0%')
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+        self.assertEqual(item.effective_text_effects().synthetic_bold.x, 0.12)
+        self.assertTrue(item.effect_renderer.uses_preview_surface())
+        self.assertEqual(self.canvas.stack.count(), 0)
+        x_control.editor.returnPressed.emit()
+        after = replace(before, effects=(replace(before.synthetic_bold, x=0.12),))
+        self.assertEqual(item.blk.fontformat.text_effects, after)
+        self.assertEqual(self.canvas.stack.count(), 1)
+
+        y_control.editor.setText('40.0%')
+        y_control.editor.textEdited.emit('40.0%')
+        QApplication.sendEvent(y_control.editor, QKeyEvent(
+            QEvent.Type.KeyPress, Qt.Key.Key_Escape, Qt.KeyboardModifier.NoModifier
+        ))
+        self.assertEqual(item.effective_text_effects(), after)
+        self.assertFalse(item.effect_renderer.has_preview())
+        for invalid in ('75%', '-1%', 'nan', 'oops'):
+            y_control.editor.setText(invalid)
+            y_control.editor.textEdited.emit(invalid)
+            y_control.editor.returnPressed.emit()
+            self.assertEqual(item.effective_text_effects(), after)
+            self.assertEqual(self.canvas.stack.count(), 1)
+        self.canvas.stack.undo()
+        self.assertEqual(item.blk.fontformat.text_effects, before)
+
+    def test_synthetic_axis_drag_preserves_mixed_values_and_commits_once(self) -> None:
+        first = TextEffectStack(effects=(SyntheticBoldEffect(shape='rect', x=0.1, y=0.2),))
+        second = TextEffectStack(effects=(SyntheticBoldEffect(shape='ellipse', x=0.3, y=0.4),))
+        items = [self._item(first), self._item(second)]
+        self.canvas.selected = items
+        self.panel.set_textblk_item(None, multi_select=True)
+        x_control, y_control = self._cards(SyntheticBoldEffectCard)[0].iter_controls()
+        self.assertEqual(x_control.model_value, second.synthetic_bold.x)
+        self.assertEqual(y_control.model_value, second.synthetic_bold.y)
+        x_control.label.drag_started.emit()
+        x_control.label.size_ctrl_changed.emit(1)
+        x_control.label.size_ctrl_changed.emit(2)
+        self.assertEqual(self.canvas.stack.count(), 0)
+        for item, before in zip(items, (first, second)):
+            self.assertEqual(item.blk.fontformat.text_effects, before)
+            preview = item.effective_text_effects()
+            self.assertAlmostEqual(preview.synthetic_bold.x, before.synthetic_bold.x + 0.003)
+            self.assertEqual(preview.synthetic_bold.y, before.synthetic_bold.y)
+            self.assertEqual(preview.synthetic_bold.shape, before.synthetic_bold.shape)
+        x_control.label.btn_released.emit()
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.canvas.stack.undo()
+        self.assertEqual([item.blk.fontformat.text_effects for item in items], [first, second])
+
+        x_control.editor.setText('25%')
+        x_control.editor.textEdited.emit('25%')
+        x_control.editor.returnPressed.emit()
+        for item, before in zip(items, (first, second)):
+            self.assertEqual(item.blk.fontformat.text_effects, replace(before, effects=(replace(before.synthetic_bold, x=0.25),)))
+        self.assertEqual(y_control.model_value, second.synthetic_bold.y)
+
+    def test_synthetic_axis_drag_cancels_and_reverses_at_limit(self) -> None:
+        before = TextEffectStack(effects=(SyntheticBoldEffect(shape='ellipse', y=0.499),))
+        item = self._item(before)
+        self.panel.set_textblk_item(item)
+        control = self._cards(SyntheticBoldEffectCard)[0].iter_controls()[1]
+        control.label.drag_started.emit()
+        control.label.size_ctrl_changed.emit(100)
+        self.assertEqual(item.effective_text_effects().synthetic_bold.y, 0.5)
+        control.label.size_ctrl_changed.emit(-1)
+        self.assertAlmostEqual(item.effective_text_effects().synthetic_bold.y, 0.499)
+        control.label.size_ctrl_changed.emit(-2)
+        control.label.drag_canceled.emit()
+        control.label.btn_released.emit()
+        self.assertEqual(item.effective_text_effects(), before)
+        self.assertEqual(self.canvas.stack.count(), 0)
 
     def test_item_typed_preview_commit_escape_and_one_undo(self):
         before = self._stack(
@@ -4057,6 +4209,7 @@ class TextEffectPanelTest(unittest.TestCase):
         for name in (
             'shadow_radius', 'shadow_strength',
             'shadow_color', 'shadow_offset',
+            'synthetic_bold', 'synthetic_bold_offset',
         ):
             self.assertNotIn(name, handle_ffmt_change)
         self.assertFalse(

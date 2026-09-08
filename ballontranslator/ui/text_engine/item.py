@@ -224,7 +224,13 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
-        self.initTextBlock(blk, set_format=set_format)
+        # Render effects once both the initial format and document are settled.
+        self.repainting = True
+        try:
+            self.initTextBlock(blk, set_format=set_format)
+        finally:
+            self.repainting = False
+        self.repaint_background()
         self.setBoundingRegionGranularity(0)
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -1535,6 +1541,7 @@ class TextBlkItem(QGraphicsTextItem):
         set_char_format=False,
         set_stroke_width=True,
     ) -> None:
+        was_repainting = self.repainting
         self.repainting = True
         if self.fontformat.vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
@@ -1629,7 +1636,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_text_transform(ffmat.text_transform)
         self.fontformat.merge(ffmat)
 
-        self.repainting = False
+        self.repainting = was_repainting
         if set_stroke_width:
             self.repaint_background()
 

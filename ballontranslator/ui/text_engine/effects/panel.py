@@ -41,6 +41,7 @@ from .cards import (
     ImageEffectCard,
     ShadowEffectCard,
     StrokeEffectCard,
+    SyntheticBoldEffectCard,
     TextFillEffectCard,
     _choose_project_raster,
     _filter_ui_text,
@@ -58,7 +59,7 @@ if TYPE_CHECKING:
 
 
 class TextEffectPanel(PanelArea):
-    """Own Overall Opacity and typed effect cards.
+    """Project source controls, Overall Opacity, and typed effect cards.
 
     >>> TextEffectPanel.__name__
     'TextEffectPanel'
@@ -122,24 +123,14 @@ class TextEffectPanel(PanelArea):
         )
         self.overall_opacity_control.label.setToolTip(overall_opacity_hint)
         self.overall_opacity_control.editor.setToolTip(overall_opacity_hint)
-        self.overall_opacity_control.commit_requested.connect(
-            self._on_overall_commit
-        )
-        self.overall_opacity_control.value_preview_requested.connect(
-            self._on_overall_value_preview
-        )
-        self.overall_opacity_control.preview_requested.connect(
-            self._on_overall_parameter_preview
-        )
-        self.overall_opacity_control.drag_commit_requested.connect(
-            self._on_overall_parameter_commit
-        )
-        self.overall_opacity_control.preview_canceled.connect(
-            self._on_overall_preview_canceled
-        )
-        self.overall_opacity_control.value_preview_canceled.connect(
-            self._on_overall_preview_canceled
-        )
+
+        control = self.overall_opacity_control
+        control.commit_requested.connect(self._on_overall_commit)
+        control.value_preview_requested.connect(self._on_overall_value_preview)
+        control.preview_requested.connect(self._on_overall_parameter_preview)
+        control.drag_commit_requested.connect(self._on_overall_parameter_commit)
+        control.preview_canceled.connect(self._on_overall_preview_canceled)
+        control.value_preview_canceled.connect(self._on_overall_preview_canceled)
 
         self.mask_brush_button = QToolButton(self.scrollContent)
         self.mask_brush_button.setObjectName('TextEffectBrushButton')
@@ -190,6 +181,7 @@ class TextEffectPanel(PanelArea):
         add_menu.setObjectName('TextEffectAddMenu')
         self.add_effect_actions = {}
         for label, effect_type, icon_name in (
+            (self.tr('Synthetic Bold'), 'synthetic_bold', 'fontfmt_bold.svg'),
             (self.tr('Stroke'), 'stroke', 'text-effect-stroke.svg'),
             (self.tr('Shadow'), 'shadow', 'text-effect-shadow.svg'),
             (self.tr('Glow'), 'glow', 'text-effect-glow.svg'),
@@ -401,7 +393,7 @@ class TextEffectPanel(PanelArea):
         for card in self.effect_cards:
             (
                 self.base_card_layout
-                if isinstance(card, TextFillEffectCard)
+                if isinstance(card, (TextFillEffectCard, SyntheticBoldEffectCard))
                 else self.cards_layout
             ).removeWidget(card)
             card.setParent(None)
@@ -431,7 +423,9 @@ class TextEffectPanel(PanelArea):
                 if isinstance(effect_key, tuple)
                 else effect_key
             )
-            if effect_type == 'stroke':
+            if effect_type == 'synthetic_bold':
+                card = SyntheticBoldEffectCard(index, self.scrollContent)
+            elif effect_type == 'stroke':
                 card = StrokeEffectCard(index, self.scrollContent)
             elif effect_type == 'shadow':
                 card = ShadowEffectCard(index, self.scrollContent)
@@ -496,6 +490,7 @@ class TextEffectPanel(PanelArea):
             if isinstance(
                 card,
                 (
+                    SyntheticBoldEffectCard,
                     StrokeEffectCard,
                     ShadowEffectCard,
                     GlowEffectCard,
@@ -538,11 +533,12 @@ class TextEffectPanel(PanelArea):
             ):
                 card.move_requested.connect(self._move_visual_effect)
             card.remove_requested.connect(self.remove_effect_requested.emit)
-            (
-                self.base_card_layout
-                if isinstance(card, TextFillEffectCard)
-                else self.cards_layout
-            ).addWidget(card)
+            if isinstance(card, SyntheticBoldEffectCard):
+                self.base_card_layout.insertWidget(0, card)
+            elif isinstance(card, TextFillEffectCard):
+                self.base_card_layout.addWidget(card)
+            else:
+                self.cards_layout.addWidget(card)
             card.show()
             self.effect_cards.append(card)
 
@@ -564,14 +560,11 @@ class TextEffectPanel(PanelArea):
         ):
             raise TypeError('effect panel requires TextEffectStack values')
 
-        opacity_values = [state.overall_opacity for state in states]
-        common_opacity = (
-            opacity_values[0]
-            if all(value == opacity_values[0] for value in opacity_values)
-            else None
-        )
-        self.overall_opacity_control.set_model_value(
-            common_opacity, opacity_values
+        values = [state.overall_opacity for state in states]
+        common = values[0] if all(value == values[0] for value in values) else None
+        self.overall_opacity_control.set_model_value(common, values)
+        self.add_effect_actions['synthetic_bold'].setEnabled(
+            any(state.synthetic_bold is None for state in states)
         )
 
         hollow_values = [
@@ -901,16 +894,16 @@ class TextEffectPanel(PanelArea):
         ))
         return hint
 
-    def _on_overall_commit(self, name: str, value) -> None:
+    def _on_overall_commit(self, name: str, value: object) -> None:
         self.value_commit_requested.emit(-1, name, value)
 
-    def _on_overall_value_preview(self, name: str, value) -> None:
+    def _on_overall_value_preview(self, name: str, value: object) -> None:
         self.value_preview_requested.emit(-1, name, value)
 
-    def _on_overall_parameter_preview(self, name: str, delta) -> None:
+    def _on_overall_parameter_preview(self, name: str, delta: object) -> None:
         self.parameter_preview_requested.emit(-1, name, delta)
 
-    def _on_overall_parameter_commit(self, name: str, delta) -> None:
+    def _on_overall_parameter_commit(self, name: str, delta: object) -> None:
         self.parameter_commit_requested.emit(-1, name, delta)
 
     def _on_overall_preview_canceled(self, name: str) -> None:
@@ -920,7 +913,7 @@ class TextEffectPanel(PanelArea):
         action = self.sender()
         if action is not None and action.data() in {
             'stroke', 'shadow', 'glow', 'gradient',
-            'texture', 'image',
+            'texture', 'image', 'synthetic_bold',
         }:
             self.add_effect_requested.emit(action.data())
 
