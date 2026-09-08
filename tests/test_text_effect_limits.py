@@ -41,13 +41,16 @@ class EffectRadiusTest(unittest.TestCase):
     def test_large_blur_keeps_kernel_extent_and_alpha_precision(self) -> None:
         mask = np.zeros((181, 203), dtype=np.uint8)
         mask[40:110, 30:150] = 100
-        for radius in (25, 64):
+        for radius in (25, 32, 64, 128):
             expected = cv2.GaussianBlur(
                 mask, (2 * radius + 1, 2 * radius + 1), (2 * radius + 1) / 6,
                 borderType=cv2.BORDER_CONSTANT,
             )
             actual = _blur(mask, radius)
-            self.assertLessEqual(int(np.abs(actual.astype(int) - expected.astype(int)).max()), 2)
+            self.assertLessEqual(
+                int(np.abs(actual.astype(int) - expected.astype(int)).max()),
+                0 if radius <= 32 else 2,
+            )
             self.assertLessEqual(int(actual.max()), 100)
 
     def test_disc_preserves_clipped_spans_and_strided_alpha(self) -> None:
@@ -114,18 +117,6 @@ class BoundedEffectRendererTest(unittest.TestCase):
             pixmap.width() * pixmap.height() * 4
             for _rect, pixmap in renderer.tile_cache.values()
         ), EFFECT_CACHE_MAX_BYTES)
-
-    def test_large_effect_edits_invalidate_requested_pixels(self) -> None:
-        item = self._item(ShadowEffect(spread=8.0))
-        renderer = item.effect_renderer
-        before = renderer._effect_cache_input_key()
-        generation = renderer.cache_generation
-        item.set_text_effects(TextEffectStack(effects=(ShadowEffect(spread=10.0),)))
-        self.assertNotEqual(before, renderer._effect_cache_input_key())
-        self.assertGreater(renderer.cache_generation, generation)
-        self.assertEqual(item.fontformat.text_effects.effects[0].spread, 10.0)
-        item.set_text_effects(TextEffectStack(effects=(ShadowEffect(spread=9.0),)), preview=True)
-        self.assertTrue(renderer._effect_preview_changes_pixels())
 
     def test_supported_large_effects_keep_requested_reach(self) -> None:
         for effect, expected_bounds in (

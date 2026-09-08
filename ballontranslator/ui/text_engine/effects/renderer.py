@@ -60,7 +60,7 @@ from .filters import (
     get_filter_registry,
 )
 from .shadow import render_glow_alpha, render_shadow_alpha
-from ..rendering.morphology import dilate_alpha_disc, dilate_rgba
+from ..rendering.morphology import dilate_alpha_disc, dilate_ellipse, dilate_rgba
 from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
@@ -1782,6 +1782,8 @@ class TextEffectRenderer:
         """Build per-fragment outlines that preserve rich foreground paint."""
         context = self._effect_paint_context()
         doc = self.document()
+        # Use the same item-wide radius as unequal-axis and Stroke expansion.
+        width = self.layout.max_font_size(to_px=True) * offset_ratio * 2.0
         selections = []
         block = doc.firstBlock()
         while block.isValid():
@@ -1789,14 +1791,9 @@ class TextEffectRenderer:
             while not it.atEnd():
                 fragment = it.fragment()
                 char_format = fragment.charFormat()
-                point_size = char_format.fontPointSize()
-                if point_size <= 0:
-                    point_size = char_format.font().pointSizeF()
-                if point_size <= 0:
-                    point_size = doc.defaultFont().pointSizeF()
                 pen = QPen(
                     char_format.foreground(),
-                    pt2px(point_size) * offset_ratio * 2.0,
+                    width,
                     Qt.PenStyle.SolidLine,
                     Qt.PenCapStyle.RoundCap,
                     Qt.PenJoinStyle.RoundJoin,
@@ -1849,11 +1846,10 @@ class TextEffectRenderer:
         y_radius = math.ceil(y_outset * render_scale)
         if x_radius <= 0 and y_radius <= 0:
             return alpha
+        if self.effective_text_effects().synthetic_bold.shape == 'ellipse':
+            return dilate_ellipse(alpha, x_radius, y_radius)
         kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE
-            if self.effective_text_effects().synthetic_bold.shape == 'ellipse'
-            and x_radius > 0 and y_radius > 0
-            else cv2.MORPH_RECT,
+            cv2.MORPH_RECT,
             (x_radius * 2 + 1, y_radius * 2 + 1),
         )
         return cv2.dilate(alpha, kernel, borderType=cv2.BORDER_CONSTANT)

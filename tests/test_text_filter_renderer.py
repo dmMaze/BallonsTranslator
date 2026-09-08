@@ -134,10 +134,7 @@ class TextFilterRendererTest(unittest.TestCase):
         ):
             item = self._item(canonical)
             renderer = item.effect_renderer
-            self._public_pixels(item)
-            previous_key = renderer._effect_cache_key_before_bottom_filter(
-                renderer._effect_cache_input_key()
-            )
+            before = self._public_pixels(item)
             for shape, x, y in (
                 ('rect', 0.2, 0.05), ('ellipse', 0.2, 0.05),
                 ('ellipse', 0.2, 0.2),
@@ -147,18 +144,14 @@ class TextFilterRendererTest(unittest.TestCase):
                         SyntheticBoldEffect(shape=shape, x=x, y=y)),
                 )
                 item.set_text_effects(target, preview=True)
-                current_key = renderer._effect_cache_key_before_bottom_filter(
-                    renderer._effect_cache_input_key()
-                )
-                self.assertNotEqual(current_key, previous_key)
                 preview = self._public_pixels(item)
+                self.assertFalse(np.array_equal(preview, before))
                 fresh = self._item(target)
                 np.testing.assert_array_equal(preview, self._public_pixels(fresh))
                 fresh.effect_renderer.release_caches()
                 fresh.deleteLater()
-                previous_key = current_key
             item.clear_text_effect_preview()
-            self.assertEqual(item.blk.fontformat.text_effects, canonical)
+            np.testing.assert_array_equal(self._public_pixels(item), before)
             renderer.release_caches()
             item.deleteLater()
 

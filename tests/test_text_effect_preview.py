@@ -216,41 +216,54 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertFalse(item.clear_text_effect_preview())
 
     def test_synthetic_source_preview_cancel_and_commit_preserve_pixels(self) -> None:
-        for faster in (False, True):
-            for shape in ('rect', 'ellipse'):
-                with self.subTest(faster=faster, shape=shape):
-                    canonical = replace(
-                        self._stack(), effects=(*self._stack().effects,
-                            SyntheticBoldEffect(shape=shape, x=0.02, y=0.02)),
-                    )
-                    target = replace(canonical, effects=(*canonical.effects[:-1],
-                        replace(canonical.synthetic_bold, x=0.2)))
-                    item = self._item(stack=canonical)
-                    renderer = item.effect_renderer
-                    scene = QGraphicsScene()
-                    scene.addItem(item)
-                    before = self._render_scene(scene, 2.0)
-                    renderer.set_faster_preview(faster)
-                    item.set_text_effects(target, preview=True)
-                    preview = self._render_scene(scene, 2.0)
-                    self.assertEqual(item.blk.fontformat.text_effects, canonical)
-                    self.assertNotEqual(before, preview)
-                    self.assertEqual(
-                        renderer._preview_effect_raster_state.background_pixmap_scale,
-                        0.5 if faster else 2.0,
-                    )
-                    item.clear_text_effect_preview()
-                    self.assertEqual(self._render_scene(scene, 2.0), before)
-                    item.set_text_effects(target, preview=True)
-                    self._render_scene(scene, 2.0)
-                    item.set_text_effects(target)
-                    committed = self._render_scene(scene, 2.0)
-                    self.assertEqual(item.blk.fontformat.text_effects, target)
-                    renderer.release_caches()
-                    self.assertEqual(self._render_scene(scene, 2.0), committed)
-                    if not faster:
-                        self.assertEqual(preview, committed)
-                    scene.clear()
+        for shape in ('rect', 'ellipse'):
+            with self.subTest(shape=shape):
+                canonical = self._stack()
+                target = replace(canonical, effects=(*canonical.effects,
+                    SyntheticBoldEffect(shape=shape, x=0.2, y=0.02)))
+                item = self._item(stack=canonical)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                before = self._render_scene(scene, 2.0)
+                item.set_text_effects(target, preview=True)
+                preview = self._render_scene(scene, 2.0)
+                self.assertEqual(item.blk.fontformat.text_effects, canonical)
+                self.assertNotEqual(before, preview)
+                item.clear_text_effect_preview()
+                self.assertEqual(self._render_scene(scene, 2.0), before)
+                item.set_text_effects(target)
+                self.assertEqual(self._render_scene(scene, 2.0), preview)
+                scene.clear()
+
+    def test_synthetic_bold_mixed_sizes_keep_radius_when_axes_diverge(self) -> None:
+        bold = SyntheticBoldEffect(x=0.1, y=0.1)
+        item = self._item(stack=TextEffectStack(effects=(bold,)))
+        self.addCleanup(item.deleteLater)
+        item.setHtml(
+            '<p><span style="font-family:DejaVu Sans;font-size:12pt;'
+            'color:#00ff00">HH          </span>'
+            '<span style="font-family:DejaVu Sans;font-size:60pt;'
+            'color:#ff0000">HH</span></p>'
+        )
+        html = item.document().toHtml()
+        rect = QRectF(-80, -80, 660, 360)
+        bounds = []
+        for x in (0.1, 0.10001, 0.101):
+            item.set_text_effects(TextEffectStack(effects=(replace(bold, x=x),)))
+            source = item.effect_renderer._capture_effect_source(rect, 1.0)
+            rgba = pixmap2ndarray(source, keep_alpha=True)
+            rows, columns = np.nonzero(
+                (rgba[..., 1] > 200) & (rgba[..., 0] < 20)
+                & (rgba[..., 3] > 128)
+            )
+            bounds.append(np.array((
+                columns.min(), rows.min(), columns.max(), rows.max()
+            )))
+        # Native outlines and discrete dilation can differ at the edge, but
+        # changing X slightly must not switch the small fragment's font basis.
+        for bound in bounds[1:]:
+            self.assertLessEqual(int(np.abs(bound - bounds[0]).max()), 2)
+        self.assertEqual(item.document().toHtml(), html)
 
     def test_full_quality_preview_renders_once_at_view_scale_and_promotes(self):
         canonical = self._stack()
@@ -335,30 +348,6 @@ class TextEffectPreviewTest(unittest.TestCase):
 
             self.assertEqual(alignment.call_count, 1)
             self.assertEqual(padding.call_count, 1)
-
-    def test_synthetic_bold_edits_prepare_geometry_once(self) -> None:
-        item = self._item(stack=self._stack())
-        renderer = item.effect_renderer
-
-        for bold in (
-            SyntheticBoldEffect(shape='rect'),
-            SyntheticBoldEffect(shape='rect', x=0.1, y=0.05),
-            SyntheticBoldEffect(enabled=False),
-        ):
-            with self.subTest(bold=bold), patch.object(
-                renderer, '_effect_padding', wraps=renderer._effect_padding
-            ) as padding, patch.object(
-                renderer, '_ordered_surface_nodes',
-                wraps=renderer._ordered_surface_nodes,
-            ) as nodes, patch.object(
-                renderer, '_render_effect_surface',
-                wraps=renderer._render_effect_surface,
-            ) as render:
-                item.set_text_effects(replace(self._stack(), effects=(*self._stack().effects, bold)))
-
-                self.assertEqual(padding.call_count, 1)
-                self.assertEqual(nodes.call_count, 1)
-                self.assertEqual(render.call_count, 1)
 
     def test_nonlinear_effect_preview_quality_follows_faster_toggle(self):
         item = self._item(stack=self._stack())

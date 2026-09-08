@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Optional, Tuple
 
 import cv2
@@ -12,8 +13,12 @@ def _blur(mask: np.ndarray, radius: int) -> np.ndarray:
     if radius <= 0:
         return mask
     ksize = radius * 2 + 1
-    # Avoid the slower uint8 fixed-point path for large kernels.
-    source = mask.astype(np.float32) if radius > 24 else mask
+    # The uint8 path parallelizes well on larger masks. Reserve float32 for
+    # kernels wide enough to repay conversion and its weaker parallel scaling.
+    float_blur = radius > max(
+        32.0, math.sqrt(mask.size * max(1, cv2.getNumThreads())) / 32.0
+    )
+    source = mask.astype(np.float32) if float_blur else mask
     blurred = cv2.GaussianBlur(
         source,
         (ksize, ksize),
@@ -22,7 +27,7 @@ def _blur(mask: np.ndarray, radius: int) -> np.ndarray:
     )
     return (
         np.rint(blurred).clip(0, 255).astype(np.uint8)
-        if radius > 24 else blurred
+        if float_blur else blurred
     )
 
 

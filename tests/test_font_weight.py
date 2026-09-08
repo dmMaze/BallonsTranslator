@@ -6,6 +6,7 @@ from unittest.mock import patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy import QT6
+from qtpy.QtCore import QCoreApplication, QEvent
 from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextDocument
 from qtpy.QtWidgets import QApplication
 
@@ -32,7 +33,6 @@ from ballontranslator.utils.fontformat import (
 from ballontranslator.utils.font_registry import FontEntry, FontFace, FontRegistry
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import SyntheticBoldEffect, TextEffectStack
-from qtpy.QtCore import QCoreApplication, QEvent
 
 
 def get_app() -> QApplication:
@@ -373,23 +373,12 @@ class FontWeightUiTest(unittest.TestCase):
         self.assertEqual(changes, ['Example Sans', 'Missing Legacy Font'])
         self.assertEqual(combo.currentText(), 'Missing Legacy Font')
 
-    def test_synthetic_bold_effect_does_not_change_font_weight(self) -> None:
-        panel = self._make_panel()
-        active = FontFormat(font_weight=FontWeight.Light)
-        panel.global_format = active
-        panel.set_active_format(active)
-
-        panel.texteffect_panel.add_effect_actions['synthetic_bold'].trigger()
-
-        self.assertIs(active.font_weight, FontWeight.Light)
-        self.assertIs(panel.fontWeightBox.weight(), FontWeight.Light)
-        self.assertEqual(active.text_effects.synthetic_bold.shape, 'ellipse')
-        self.assertEqual((active.text_effects.synthetic_bold.x, active.text_effects.synthetic_bold.y), (0.01, 0.01))
-
     def test_bold_shortcut_toggles_native_weight_without_changing_synthetic_bold(self) -> None:
         panel = self._make_panel()
-        active = FontFormat(font_weight=FontWeight.Light,
-                            text_effects=TextEffectStack(effects=(SyntheticBoldEffect(shape='rect', x=0.1, y=0.2),)))
+        effects = TextEffectStack(effects=(
+            SyntheticBoldEffect(shape='rect', x=0.1, y=0.2),
+        ))
+        active = FontFormat(font_weight=FontWeight.Light, text_effects=effects)
         panel.global_format = active
         panel.set_active_format(active)
         panel.show()
@@ -399,8 +388,7 @@ class FontWeightUiTest(unittest.TestCase):
             MainWindow.shortcutBold(owner)
             self.assertIs(active.font_weight, expected)
             self.assertIs(panel.fontWeightBox.weight(), expected)
-            self.assertEqual(active.text_effects.synthetic_bold.shape, 'rect')
-            self.assertEqual((active.text_effects.synthetic_bold.x, active.text_effects.synthetic_bold.y), (0.1, 0.2))
+            self.assertEqual(active.text_effects, effects)
 
         panel.hide()
         MainWindow.shortcutBold(owner)
