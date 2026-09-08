@@ -3,6 +3,7 @@ import math
 import os
 import unittest
 import weakref
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -42,6 +43,7 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    SyntheticBoldEffect,
     FilterEffect,
     GlowEffect,
     HollowEffect,
@@ -213,6 +215,43 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertEqual(renderer.background_pixmap.cacheKey(), committed_key)
         self.assertFalse(item.clear_text_effect_preview())
 
+    def test_synthetic_source_preview_cancel_and_commit_preserve_pixels(self) -> None:
+        for faster in (False, True):
+            for shape in ('rect', 'ellipse'):
+                with self.subTest(faster=faster, shape=shape):
+                    canonical = replace(
+                        self._stack(), effects=(*self._stack().effects,
+                            SyntheticBoldEffect(shape=shape, x=0.02, y=0.02)),
+                    )
+                    target = replace(canonical, effects=(*canonical.effects[:-1],
+                        replace(canonical.synthetic_bold, x=0.2)))
+                    item = self._item(stack=canonical)
+                    renderer = item.effect_renderer
+                    scene = QGraphicsScene()
+                    scene.addItem(item)
+                    before = self._render_scene(scene, 2.0)
+                    renderer.set_faster_preview(faster)
+                    item.set_text_effects(target, preview=True)
+                    preview = self._render_scene(scene, 2.0)
+                    self.assertEqual(item.blk.fontformat.text_effects, canonical)
+                    self.assertNotEqual(before, preview)
+                    self.assertEqual(
+                        renderer._preview_effect_raster_state.background_pixmap_scale,
+                        0.5 if faster else 2.0,
+                    )
+                    item.clear_text_effect_preview()
+                    self.assertEqual(self._render_scene(scene, 2.0), before)
+                    item.set_text_effects(target, preview=True)
+                    self._render_scene(scene, 2.0)
+                    item.set_text_effects(target)
+                    committed = self._render_scene(scene, 2.0)
+                    self.assertEqual(item.blk.fontformat.text_effects, target)
+                    renderer.release_caches()
+                    self.assertEqual(self._render_scene(scene, 2.0), committed)
+                    if not faster:
+                        self.assertEqual(preview, committed)
+                    scene.clear()
+
     def test_full_quality_preview_renders_once_at_view_scale_and_promotes(self):
         canonical = self._stack()
         target = self._stack(0.24, (70, 80, 90), position='outside')
@@ -296,6 +335,30 @@ class TextEffectPreviewTest(unittest.TestCase):
 
             self.assertEqual(alignment.call_count, 1)
             self.assertEqual(padding.call_count, 1)
+
+    def test_synthetic_bold_edits_prepare_geometry_once(self) -> None:
+        item = self._item(stack=self._stack())
+        renderer = item.effect_renderer
+
+        for bold in (
+            SyntheticBoldEffect(shape='rect'),
+            SyntheticBoldEffect(shape='rect', x=0.1, y=0.05),
+            SyntheticBoldEffect(enabled=False),
+        ):
+            with self.subTest(bold=bold), patch.object(
+                renderer, '_effect_padding', wraps=renderer._effect_padding
+            ) as padding, patch.object(
+                renderer, '_ordered_surface_nodes',
+                wraps=renderer._ordered_surface_nodes,
+            ) as nodes, patch.object(
+                renderer, '_render_effect_surface',
+                wraps=renderer._render_effect_surface,
+            ) as render:
+                item.set_text_effects(replace(self._stack(), effects=(*self._stack().effects, bold)))
+
+                self.assertEqual(padding.call_count, 1)
+                self.assertEqual(nodes.call_count, 1)
+                self.assertEqual(render.call_count, 1)
 
     def test_nonlinear_effect_preview_quality_follows_faster_toggle(self):
         item = self._item(stack=self._stack())

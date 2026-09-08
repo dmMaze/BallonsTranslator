@@ -19,7 +19,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import QStyle, QStyleOptionGraphicsItem, QWidget
 
-from ballontranslator.utils.fontformat import SYNTHETIC_BOLD_OFFSET_MAX, pt2px
+from ballontranslator.utils.fontformat import pt2px
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
@@ -60,8 +60,7 @@ from .filters import (
     get_filter_registry,
 )
 from .shadow import render_glow_alpha, render_shadow_alpha
-from .limits import limit_effect_radii
-from ..rendering.morphology import dilate_alpha_disc
+from ..rendering.morphology import dilate_alpha_disc, dilate_rgba
 from ..rendering.raster import (
     EFFECT_CACHE_MAX_BYTES,
     EFFECT_CACHE_MAX_DIMENSION,
@@ -195,7 +194,6 @@ class TextEffectRenderer:
             Tuple[object, RasterAssetRef]
         ] = set()
         self._filter_warnings: Set[tuple] = set()
-        self._radius_limit_cache = None
 
     def _raster_state(self) -> _EffectRasterState:
         if self._export_active:
@@ -297,21 +295,6 @@ class TextEffectRenderer:
             else self.canonical_text_effects()
         )
 
-    def _bounded_text_effects(self, stack: TextEffectStack) -> TextEffectStack:
-        """Keep at least half a tile for its core, at the settled 1x tier."""
-        if self.layout is None:
-            return stack
-        font_size = self.layout.max_font_size(to_px=True)
-        reach = max(
-            0.0,
-            (EFFECT_TILE_MAX_EDGE - 2) / 4.0
-            - EFFECT_RASTER_GUARD - self._synthetic_bold_outset(),
-        )
-        key = (stack, font_size, reach)
-        if self._radius_limit_cache is None or self._radius_limit_cache[0] != key:
-            self._radius_limit_cache = (key, limit_effect_radii(stack, font_size, reach))
-        return self._radius_limit_cache[1]
-
     def has_preview(self) -> bool:
         return self.preview is not None or self.has_text_alpha_mask_preview()
 
@@ -332,7 +315,8 @@ class TextEffectRenderer:
     def has_raster_effects(self) -> bool:
         """Return whether strict export must own the complete effect output."""
         return (
-            any(self._effect_flags())
+            self.has_synthetic_bold()
+            or any(self._effect_flags())
             or self._renders_completed_foreground()
             or bool(self._active_image_effects(
                 self.canonical_text_effects(), suppress_editing=False
@@ -350,24 +334,19 @@ class TextEffectRenderer:
     def surface_semantic_state(self) -> tuple:
         """Return effect values that change completed source-surface pixels."""
         return (
-            self._surface_effect_values(self.effective_text_effects()),
-            self.fontformat.synthetic_bold,
-            self._synthetic_bold_ratios(),
+            *self._surface_effect_key(self.effective_text_effects()),
             self._effective_mask_generation(),
         )
 
-    def _surface_effect_values(
-        self, stack: TextEffectStack
-    ) -> Tuple[TextEffect, ...]:
-        """Return stack values after native-edit Image suppression."""
-        stack = self._bounded_text_effects(stack)
-        if not self.item.isEditing() or self.export_render:
-            return stack.effects
-        return tuple(
-            effect
-            for effect in stack.effects
-            if not isinstance(effect, ImageEffect)
-        )
+    def _surface_effect_key(self, stack: TextEffectStack) -> tuple:
+        """Return pixel inputs, excluding opacity and suppressed Image layers."""
+        effects = stack.effects
+        if self.item.isEditing() and not self.export_render:
+            effects = tuple(
+                effect for effect in effects
+                if not isinstance(effect, ImageEffect)
+            )
+        return effects, stack.synthetic_bold, self._synthetic_bold_ratios(stack)
 
     def _active_image_effects(
         self,
@@ -404,8 +383,8 @@ class TextEffectRenderer:
     def _effect_preview_changes_pixels(self) -> bool:
         return bool(
             self.preview is not None
-            and self._bounded_text_effects(self.preview).effects
-            != self._bounded_text_effects(self.canonical_text_effects()).effects
+            and self._surface_effect_key(self.preview)
+            != self._surface_effect_key(self.canonical_text_effects())
         )
 
     def _effective_mask_generation(self) -> int:
@@ -436,7 +415,6 @@ class TextEffectRenderer:
         self, stack: Optional[TextEffectStack] = None
     ) -> Tuple[StrokeEffect, ...]:
         active = self.effective_text_effects() if stack is None else stack
-        active = self._bounded_text_effects(active)
         return tuple(
             effect
             for effect in active.effects
@@ -467,7 +445,6 @@ class TextEffectRenderer:
     def _ordered_surface_nodes(
         self,
         *,
-        target_stroke: bool = True,
         image_rasters: Optional[
             Dict[RasterAssetRef, Optional[np.ndarray]]
         ] = None,
@@ -488,7 +465,7 @@ class TextEffectRenderer:
         editing = self.item.isEditing() and not self.export_render
         nodes = []
         for index, effect in reversed(tuple(enumerate(
-            self._bounded_text_effects(self.effective_text_effects()).effects
+            self.effective_text_effects().effects
         ))):
             if isinstance(effect, ImageEffect):
                 if editing or effect.is_neutral():
@@ -500,10 +477,7 @@ class TextEffectRenderer:
                     nodes.append((index, effect))
                 continue
             if isinstance(effect, StrokeEffect):
-                if (
-                    target_stroke
-                    and not effect.is_neutral()
-                ):
+                if not effect.is_neutral():
                     nodes.append((index, effect))
                 continue
             if isinstance(effect, (ShadowEffect, GlowEffect)):
@@ -585,6 +559,7 @@ class TextEffectRenderer:
         self, stack: Optional[TextEffectStack] = None
     ) -> tuple:
         active = self.effective_text_effects() if stack is None else stack
+        effects, bold, bold_offsets = self._surface_effect_key(active)
         rect = self.boundingRect()
         layout_generation = getattr(self.layout, 'layout_generation', 0)
         layout_render_key = (
@@ -593,7 +568,8 @@ class TextEffectRenderer:
             else self.geometry_controller.layout_renderer.render_cache_key()
         )
         return (
-            self._surface_effect_values(active),
+            # Prefix caches project the layer tuple separately from source inputs.
+            effects,
             self._effective_mask_generation(),
             self.document().revision(),
             layout_generation,
@@ -603,7 +579,7 @@ class TextEffectRenderer:
             (
                 rect.x(), rect.y(), rect.width(), rect.height()
             ),
-            (self.fontformat.synthetic_bold, self._synthetic_bold_ratios()),
+            (bold, bold_offsets),
         )
 
     @staticmethod
@@ -731,7 +707,6 @@ class TextEffectRenderer:
         self,
         surface_rect: QRectF,
         render_scale: float,
-        target_stroke: bool,
         nodes: Tuple[Tuple[int, TextEffect], ...],
     ) -> tuple:
         return (
@@ -743,14 +718,12 @@ class TextEffectRenderer:
             round(surface_rect.top(), 6),
             round(surface_rect.width(), 6),
             round(surface_rect.height(), 6),
-            bool(target_stroke),
         )
 
     def _pre_mask_cache_key(
         self,
         surface_rect: QRectF,
         render_scale: float,
-        target_stroke: bool,
         skipped_filters: frozenset[int],
     ) -> tuple:
         return (
@@ -762,7 +735,6 @@ class TextEffectRenderer:
             round(surface_rect.top(), 6),
             round(surface_rect.width(), 6),
             round(surface_rect.height(), 6),
-            bool(target_stroke),
             tuple(sorted(skipped_filters)),
         )
 
@@ -792,7 +764,7 @@ class TextEffectRenderer:
             layout_render_key,
             self.geometry_controller.effective(),
             self.fontformat.vertical,
-            (self.fontformat.synthetic_bold, self._synthetic_bold_ratios()),
+            (self.effective_text_effects().synthetic_bold, self._synthetic_bold_ratios()),
             self._native_stroke_alignment,
             (
                 logical_rect.x(), logical_rect.y(),
@@ -921,7 +893,7 @@ class TextEffectRenderer:
     def _current_stroke(self) -> Optional[StrokeEffect]:
         if self._render_stroke is not None:
             return self._render_stroke
-        return primary_stroke(self._bounded_text_effects(self.effective_text_effects()))
+        return primary_stroke(self.effective_text_effects())
 
     def _stroke_width(self) -> float:
         stroke = self._current_stroke()
@@ -1056,7 +1028,6 @@ class TextEffectRenderer:
 
     def release_caches(self) -> None:
         """Release every item-owned raster cache before page removal."""
-        self._radius_limit_cache = None
         for state in (
             self._effect_raster_state,
             self._preview_effect_raster_state,
@@ -1180,18 +1151,6 @@ class TextEffectRenderer:
             )
         self.item.update()
 
-    def synthetic_bold_changed(self) -> None:
-        self._invalidate_raster_state(self._effect_raster_state)
-        self._invalidate_raster_state(self._preview_effect_raster_state)
-        self._invalidate_raster_state(self._export_effect_raster_state)
-        self._update_effect_padding()
-        if (
-            self.has_active_effects()
-            or self._active_text_alpha_mask() is not None
-        ):
-            self.repaint_background()
-        self.item.update()
-
     def set_text_effects(
         self, stack: TextEffectStack, preview: bool = False
     ) -> bool:
@@ -1217,11 +1176,11 @@ class TextEffectRenderer:
             )
             self.preview = stack
             effects_changed = (
-                self._bounded_text_effects(effective_before).effects
-                != self._bounded_text_effects(stack).effects
+                self._surface_effect_key(effective_before)
+                != self._surface_effect_key(stack)
             )
             if effects_changed:
-                if stack.effects != canonical.effects:
+                if self._surface_effect_key(stack) != self._surface_effect_key(canonical):
                     if not had_pixel_preview:
                         preview_state = _EffectRasterState()
                         self._copy_source_caches(
@@ -1264,8 +1223,7 @@ class TextEffectRenderer:
             self._apply_effective_opacity()
             return False
         effects_changed = (
-            self._bounded_text_effects(canonical).effects
-            != self._bounded_text_effects(stack).effects
+            self._surface_effect_key(canonical) != self._surface_effect_key(stack)
         )
         mask_preview_active = self._mask_preview_changes_pixels
         scratch_state = self._preview_effect_raster_state
@@ -1530,8 +1488,8 @@ class TextEffectRenderer:
         mask_preview_active = self._mask_preview_changes_pixels
         self.preview = None
         effects_changed = (
-            self._bounded_text_effects(preview).effects
-            != self._bounded_text_effects(self.canonical_text_effects()).effects
+            self._surface_effect_key(preview)
+            != self._surface_effect_key(self.canonical_text_effects())
         )
         if effects_changed:
             self._preview_effect_raster_state = None
@@ -1596,12 +1554,19 @@ class TextEffectRenderer:
         ):
             if self.has_synthetic_bold():
                 interaction_option = QStyleOptionGraphicsItem(option)
-                if self._draw_cached_synthetic_bold(painter):
-                    self._paint_effect_interaction(
-                        painter, interaction_option, widget, base_paint
-                    )
-                    return
-                self._paint_synthetic_bold(painter)
+                was_in_graphics_paint = self.in_graphics_paint
+                self.in_graphics_paint = True
+                try:
+                    if (
+                        self._draw_cached_synthetic_bold(painter)
+                        or self._paint_uniform_synthetic_bold(painter)
+                    ):
+                        self._paint_effect_interaction(
+                            painter, interaction_option, widget, base_paint
+                        )
+                        return
+                finally:
+                    self.in_graphics_paint = was_in_graphics_paint
             option.state = QStyle.State_None
             base_paint(painter, option, widget)
             return
@@ -1852,14 +1817,14 @@ class TextEffectRenderer:
         context.selections = selections
         return context
 
-    def _synthetic_bold_ratios(self) -> Tuple[float, float]:
-        if self.fontformat.synthetic_bold == 'none':
+    def _synthetic_bold_ratios(
+        self, stack: Optional[TextEffectStack] = None,
+    ) -> Tuple[float, float]:
+        active = self.effective_text_effects() if stack is None else stack
+        bold = active.synthetic_bold
+        if bold is None or not bold.enabled:
             return 0.0, 0.0
-        values = self.fontformat.synthetic_bold_offset
-        return (
-            min(max(float(values[0]), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
-            min(max(float(values[1]), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
-        )
+        return bold.x, bold.y
 
     def _synthetic_bold_outsets(self) -> Tuple[float, float]:
         x_ratio, y_ratio = self._synthetic_bold_ratios()
@@ -1886,69 +1851,66 @@ class TextEffectRenderer:
             return alpha
         kernel = cv2.getStructuringElement(
             cv2.MORPH_ELLIPSE
-            if self.fontformat.synthetic_bold == 'ellipse'
+            if self.effective_text_effects().synthetic_bold.shape == 'ellipse'
             and x_radius > 0 and y_radius > 0
             else cv2.MORPH_RECT,
             (x_radius * 2 + 1, y_radius * 2 + 1),
         )
         return cv2.dilate(alpha, kernel, borderType=cv2.BORDER_CONSTANT)
 
-    def _anisotropic_synthetic_bold_offsets(
-        self,
-    ) -> Tuple[Tuple[float, float], ...]:
-        """Return translations whose union expands ink on requested axes."""
-        x_radius, y_radius = self._synthetic_bold_outsets()
-        x_steps = max(1, math.ceil(x_radius)) if x_radius > 0 else 0
-        y_steps = max(1, math.ceil(y_radius)) if y_radius > 0 else 0
-        x_offsets = (
-            tuple(
-                x_radius * step / x_steps
-                for step in range(-x_steps, x_steps + 1)
-            )
-            if x_steps else (0.0,)
-        )
-        y_offsets = (
-            tuple(
-                y_radius * step / y_steps
-                for step in range(-y_steps, y_steps + 1)
-            )
-            if y_steps else (0.0,)
-        )
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE
-            if self.fontformat.synthetic_bold == 'ellipse'
-            and x_steps > 0 and y_steps > 0
-            else cv2.MORPH_RECT,
-            (2 * x_steps + 1, 2 * y_steps + 1),
-        )
-        return tuple(
-            (x_offset, y_offset)
-            for y_index, y_offset in enumerate(y_offsets)
-            for x_index, x_offset in enumerate(x_offsets)
-            if kernel[y_index, x_index]
-        )
+    def _paint_uniform_synthetic_bold(self, painter: QPainter) -> bool:
+        """Paint one native outlined fill for equal-axis elliptical expansion.
 
-    def _paint_synthetic_bold(self, painter: QPainter) -> None:
-        """Expand glyph ink without changing the selected font or metrics."""
+        >>> callable(TextEffectRenderer._paint_uniform_synthetic_bold)
+        True
+        """
         x_ratio, y_ratio = self._synthetic_bold_ratios()
         if x_ratio <= 0.0 and y_ratio <= 0.0:
-            return
+            return False
         if (
-            self.fontformat.synthetic_bold == 'ellipse'
+            self.effective_text_effects().synthetic_bold.shape == 'ellipse'
             and math.isclose(x_ratio, y_ratio, abs_tol=1e-12)
         ):
-            self._paint_live_layout(
-                painter, self._synthetic_bold_uniform_context(x_ratio)
-            )
-            return
-        context = self._effect_paint_context()
-        for x_offset, y_offset in self._anisotropic_synthetic_bold_offsets():
-            painter.save()
-            try:
-                painter.translate(x_offset, y_offset)
+            context = self._synthetic_bold_uniform_context(x_ratio)
+            if self.capturing_surface and any(
+                selection.format.textOutline().color().alpha() < 255
+                for selection in context.selections
+            ):
+                # Only isolated glyph captures replace coverage; painting over
+                # the scene must retain ordinary source-over composition.
+                painter.setCompositionMode(
+                    QPainter.CompositionMode.CompositionMode_Source
+                )
+            if (
+                isinstance(self.layout, HorizontalTextDocumentLayout)
+                and not self._has_layout_distortion()
+            ):
+                # QTextLayout selections clip large outlines to the selection
+                # cell. A native clone carries the same formats without that
+                # clip, while leaving the editable document and undo untouched.
+                doc = self.document().clone()
+                doc.setUndoRedoEnabled(False)
+                doc.setDocumentMargin(self.layout.effectPadding())
+                cursor = QTextCursor(doc)
+                for selection in context.selections:
+                    cursor.setPosition(selection.cursor.selectionStart())
+                    cursor.setPosition(
+                        selection.cursor.selectionEnd(),
+                        QTextCursor.MoveMode.KeepAnchor,
+                    )
+                    cursor.mergeCharFormat(selection.format)
+                layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+                layout._draw_offset = self.layout._draw_offset
+                layout.setMaxSize(
+                    self.layout.max_width, self.layout.max_height, False
+                )
+                doc.setDocumentLayout(layout)
+                layout.relayout_on_changed = False
+                doc.drawContents(painter)
+            else:
                 self._paint_live_layout(painter, context)
-            finally:
-                painter.restore()
+            return True
+        return False
 
     def _draw_cached_synthetic_bold(self, painter: QPainter) -> bool:
         """Draw a tight cached glyph surface without rasterizing its text box."""
@@ -1965,9 +1927,10 @@ class TextEffectRenderer:
             surface_rect.height(),
             self._raster_request(requested_scale),
         )
-        if plan.mode != 'full':
-            return False
         try:
+            if plan.mode == 'tiles':
+                self._draw_tiled_effects(painter, plan, surface_rect, nodes=())
+                return self._completed_foreground_ready()
             pixmap, _alpha = self._cached_effect_source(
                 surface_rect, plan.tier, needs_alpha=False
             )
@@ -1975,6 +1938,8 @@ class TextEffectRenderer:
                 painter, surface_rect, pixmap, plan.tier
             )
         except EFFECT_RASTER_FAILURES as error:
+            if self._raise_or_defer_export_effect_error(error):
+                return False
             self._warn_effect_allocation_once(error)
             return False
         return True
@@ -2421,23 +2386,7 @@ class TextEffectRenderer:
         self,
         painter: QPainter,
         render_scale: float = 1.0,
-        surface_rect: QRectF = None,
-    ) -> None:
-        for x_offset, y_offset in self._anisotropic_synthetic_bold_offsets():
-            painter.save()
-            try:
-                painter.translate(x_offset, y_offset)
-                self._paint_stroke_core(
-                    painter, render_scale, surface_rect
-                )
-            finally:
-                painter.restore()
-
-    def _paint_stroke_core(
-        self,
-        painter: QPainter,
-        render_scale: float = 1.0,
-        surface_rect: QRectF = None,
+        surface_rect: Optional[QRectF] = None,
     ) -> None:
         if self._text_transform_is_neutral():
             self._paint_cloned_document_stroke(painter)
@@ -2790,7 +2739,8 @@ class TextEffectRenderer:
                 overlap,
                 reach + source_reach + EFFECT_RASTER_GUARD,
             )
-        return overlap
+        # Bold captures and Stroke dilation both sample beyond the plain glyphs.
+        return overlap + self._synthetic_bold_outset()
 
     def _warn_effect_allocation_once(self, error: Exception):
         if self.allocation_warning_generation == self.cache_generation:
@@ -3007,7 +2957,6 @@ class TextEffectRenderer:
         surface_rect: QRectF,
         render_scale: float,
         *,
-        target_stroke: bool = True,
         skipped_filters: frozenset[int] = frozenset(),
         filter_plan: Optional[_FilterExecutionPlan] = None,
         nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
@@ -3022,14 +2971,13 @@ class TextEffectRenderer:
         """
         state = self._raster_state()
         pre_mask_key = self._pre_mask_cache_key(
-            surface_rect, render_scale, target_stroke, skipped_filters
+            surface_rect, render_scale, skipped_filters
         )
         target_map = state.pre_mask_cache.get(pre_mask_key)
         if target_map is None:
             target_map = self._render_pre_mask_effect_surface(
                 surface_rect,
                 render_scale,
-                target_stroke=target_stroke,
                 skipped_filters=skipped_filters,
                 filter_plan=filter_plan,
                 nodes=nodes,
@@ -3086,7 +3034,6 @@ class TextEffectRenderer:
         surface_rect: QRectF,
         render_scale: float,
         *,
-        target_stroke: bool = True,
         skipped_filters: frozenset[int] = frozenset(),
         filter_plan: Optional[_FilterExecutionPlan] = None,
         nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
@@ -3102,7 +3049,6 @@ class TextEffectRenderer:
         image_rasters = {} if image_rasters is None else image_rasters
         if nodes is None:
             nodes = self._ordered_surface_nodes(
-                target_stroke=target_stroke,
                 image_rasters=image_rasters,
             )
         first_filter = next(
@@ -3117,20 +3063,18 @@ class TextEffectRenderer:
             return self._render_pre_filter_effect_surface(
                 surface_rect,
                 render_scale,
-                target_stroke=target_stroke,
                 nodes=nodes,
                 image_rasters=image_rasters,
             )
         state = self._raster_state()
         key = self._pre_filter_cache_key(
-            surface_rect, render_scale, target_stroke, nodes
+            surface_rect, render_scale, nodes
         )
         upstream = state.pre_filter_cache.get(key)
         if upstream is None:
             upstream = self._render_pre_filter_effect_surface(
                 surface_rect,
                 render_scale,
-                target_stroke=target_stroke,
                 nodes=nodes,
                 image_rasters=image_rasters,
             )
@@ -3152,7 +3096,6 @@ class TextEffectRenderer:
         surface_rect: QRectF,
         render_scale: float,
         *,
-        target_stroke: bool = True,
         nodes: Optional[Tuple[Tuple[int, TextEffect], ...]] = None,
         image_rasters: Optional[
             Dict[RasterAssetRef, Optional[np.ndarray]]
@@ -3166,7 +3109,6 @@ class TextEffectRenderer:
         if nodes is None:
             image_rasters = {} if image_rasters is None else image_rasters
             nodes = self._ordered_surface_nodes(
-                target_stroke=target_stroke,
                 image_rasters=image_rasters,
             )
         first_filter = next(
@@ -3591,7 +3533,7 @@ class TextEffectRenderer:
                 layer_painter.translate(-surface_rect.topLeft())
                 layer_painter.save()
                 try:
-                    self._paint_stroke_core(
+                    self.paint_stroke(
                         layer_painter, render_scale, surface_rect
                     )
                 finally:
@@ -3797,65 +3739,33 @@ class TextEffectRenderer:
         >>> hasattr(TextEffectRenderer, '_capture_effect_source')
         True
         """
-        source = self._new_effect_pixmap(render_scale, surface_rect)
-        try:
-            painter = QPainter(source)
-            if not painter.isActive():
-                raise EffectRasterAllocationError(
-                    'unable to begin effect source painter'
-                )
-        except RASTER_BOUNDARY_FAILURES as error:
-            if isinstance(error, EffectRasterAllocationError):
-                raise
-            raise EffectRasterAllocationError(
-                'unable to begin effect source painter'
-            ) from error
+        painter: Optional[QPainter] = None
         previous_capture = self.capturing_surface
         previous_raster_error = self.surface_raster_error
         self.capturing_surface = True
         self.surface_raster_error = None
         try:
-            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
-            self._prepare_effect_surface_painter(painter, render_scale)
-            painter.translate(-surface_rect.topLeft())
             x_ratio, y_ratio = self._synthetic_bold_ratios()
             anisotropic = (
                 (x_ratio > 0.0 or y_ratio > 0.0)
                 and (
-                    self.fontformat.synthetic_bold == 'rect'
+                    self.effective_text_effects().synthetic_bold.shape == 'rect'
                     or not math.isclose(x_ratio, y_ratio, abs_tol=1e-12)
                 )
             )
-            if self.fontformat.synthetic_bold == 'rect' and anisotropic:
-                canonical = self._capture_rectangular_bold_source(
+            if anisotropic:
+                source = self._capture_expanded_effect_source(
                     surface_rect, render_scale
                 )
-                self._draw_surface_pixmap(
-                    painter, surface_rect, canonical, render_scale
-                )
-            elif anisotropic:
-                canonical = self._capture_plain_effect_source(
-                    surface_rect, render_scale
-                )
-                for x_offset, y_offset in (
-                    self._anisotropic_synthetic_bold_offsets()
-                ):
-                    painter.save()
-                    try:
-                        painter.translate(x_offset, y_offset)
-                        self._draw_surface_pixmap(
-                            painter,
-                            surface_rect,
-                            canonical,
-                            render_scale,
-                        )
-                    finally:
-                        painter.restore()
             else:
-                self._paint_synthetic_bold(painter)
-                self._paint_live_layout(
-                    painter, self._effect_paint_context()
+                source = self._new_effect_pixmap(render_scale, surface_rect)
+                painter = self._begin_effect_layer_painter(
+                    source, surface_rect, render_scale
                 )
+                # The outlined layout already includes its fill. Repainting
+                # the face compounds coverage along the antialiased edge.
+                if not self._paint_uniform_synthetic_bold(painter):
+                    self._paint_live_layout(painter, self._effect_paint_context())
             if self.surface_raster_error is not None:
                 raise self.surface_raster_error
         except RASTER_BOUNDARY_FAILURES as error:
@@ -3867,7 +3777,8 @@ class TextEffectRenderer:
         finally:
             end_error = None
             try:
-                painter.end()
+                if painter is not None and painter.isActive():
+                    painter.end()
             except RASTER_BOUNDARY_FAILURES as error:
                 end_error = error
             self.capturing_surface = previous_capture
@@ -3878,54 +3789,42 @@ class TextEffectRenderer:
                 ) from end_error
         return source
 
-    def _capture_rectangular_bold_source(
+    def _capture_expanded_effect_source(
         self, surface_rect: QRectF, render_scale: float
     ) -> QPixmap:
-        """Expand rectangular ink in two separable passes.
+        """Expand one canonical capture without accumulating its alpha.
 
-        >>> callable(TextEffectRenderer._capture_rectangular_bold_source)
+        >>> callable(TextEffectRenderer._capture_expanded_effect_source)
         True
         """
         source = self._capture_plain_effect_source(surface_rect, render_scale)
-        for axis, radius in enumerate(self._synthetic_bold_outsets()):
-            if radius <= 0.0:
-                continue
-            expanded = self._new_effect_pixmap(render_scale, surface_rect)
-            painter = QPainter(expanded)
-            if not painter.isActive():
-                raise EffectRasterAllocationError('unable to expand bold source')
-            try:
-                self._prepare_effect_surface_painter(painter, render_scale)
-                painter.translate(-surface_rect.topLeft())
-                steps = max(1, math.ceil(radius))
-                for step in range(-steps, steps + 1):
-                    offset = radius * step / steps
-                    target = surface_rect.translated(
-                        offset if axis == 0 else 0.0,
-                        offset if axis == 1 else 0.0,
-                    )
-                    self._draw_surface_pixmap(painter, target, source, render_scale)
-            finally:
-                painter.end()
-            source = expanded
-        return source
+        rgba = pixmap2ndarray(source, keep_alpha=True)
+        if rgba is None:
+            raise EffectRasterAllocationError('unable to access bold source')
+        x_radius, y_radius = self._synthetic_bold_outsets()
+        expanded = ndarray2pixmap(dilate_rgba(
+            rgba,
+            x_radius * render_scale,
+            y_radius * render_scale,
+            ellipse=self.effective_text_effects().synthetic_bold.shape == 'ellipse',
+        ))
+        if expanded is None or expanded.isNull():
+            raise EffectRasterAllocationError('unable to expand bold source')
+        if render_scale >= 1.0:
+            expanded.setDevicePixelRatio(render_scale)
+        return expanded
 
     def _capture_plain_effect_source(
         self,
         surface_rect: QRectF,
         render_scale: float,
     ) -> QPixmap:
-        """Capture one glyph layout pass for cheap anisotropic replication."""
+        """Capture one glyph layout pass for coverage-preserving expansion."""
         source = self._new_effect_pixmap(render_scale, surface_rect)
-        painter = QPainter(source)
-        if not painter.isActive():
-            raise EffectRasterAllocationError(
-                'unable to begin plain effect source painter'
-            )
+        painter = self._begin_effect_layer_painter(
+            source, surface_rect, render_scale
+        )
         try:
-            painter.setRenderHints(_VECTOR_EFFECT_RENDER_HINTS)
-            self._prepare_effect_surface_painter(painter, render_scale)
-            painter.translate(-surface_rect.topLeft())
             self._paint_live_layout(painter, self._effect_paint_context())
         finally:
             painter.end()
@@ -4324,7 +4223,7 @@ class TextEffectRenderer:
         >>> hasattr(TextEffectRenderer, '_ordered_exterior_source_alphas')
         True
         """
-        active_effects = self._bounded_text_effects(self.effective_text_effects()).effects
+        active_effects = self.effective_text_effects().effects
         ordered_strokes = tuple(
             (index, effect)
             for index, effect in reversed(tuple(enumerate(active_effects)))
@@ -4709,15 +4608,11 @@ class TextEffectRenderer:
             paint_stroke
             and not paint_non_stroke
             and self._all_strokes_vector_compatible(retained_strokes)
+            and not self.has_synthetic_bold()
             # The vector fallback cannot apply the block-wide alpha mask.
             and self._active_text_alpha_mask() is None
             and 2 * math.ceil(stroke_overlap * plan.tier)
             >= plan.tile_edge
-        )
-        target_overlap = (
-            EFFECT_RASTER_GUARD
-            if vector_stroke_direct
-            else self._effect_tile_overlap(nodes)
         )
         if vector_stroke_direct:
             self.tile_cache.clear()
@@ -4729,6 +4624,7 @@ class TextEffectRenderer:
             )
             self.force_tiles = False
             return
+        target_overlap = self._effect_tile_overlap(nodes)
         included_filters = self._retained_filter_indices(nodes)
         filter_plan = self._filter_execution_plan(
             plan.tier, included_filters=included_filters
@@ -4859,7 +4755,6 @@ class TextEffectRenderer:
                         round(surface.top(), 6),
                         round(surface.width(), 6),
                         round(surface.height(), 6),
-                        vector_stroke_direct,
                         tuple(sorted(skipped_filters)),
                     )
                     active_keys.add(key)
@@ -4868,7 +4763,6 @@ class TextEffectRenderer:
                         pixmap = self._render_effect_surface(
                             surface,
                             plan.tier,
-                            target_stroke=not vector_stroke_direct,
                             skipped_filters=skipped_filters,
                             filter_plan=filter_plan,
                             nodes=nodes,
@@ -4960,7 +4854,7 @@ class TextEffectRenderer:
             if key not in active_keys:
                 self.tile_cache.pop(key, None)
 
-        self.direct_stroke = vector_stroke_direct
+        self.direct_stroke = False
         self.cache_dirty = False
         self.cache_rendered_generation = self.cache_generation
         self._raster_state().cache_input_key = (

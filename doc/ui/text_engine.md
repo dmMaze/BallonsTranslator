@@ -60,13 +60,6 @@ values only at the Qt/HTML boundary. Pass saved or UI-provided family names
 through `qfont_with_family()` so Qt-unsafe names can use runtime aliases without
 changing persisted names.
 
-Synthetic Bold belongs to `FontFormat.synthetic_bold`, not the effect stack.
-Its `none`, `rect`, and `ellipse` modes use `synthetic_bold_offset` for independent
-X/Y expansion from 0% to 50% of the font size. Rectangle uses separate axis
-passes; Ellipse uses an elliptical footprint, with a circular outline for equal
-offsets. Expansion applies to canonical glyph contours before Stroke, Shadow,
-Glow, Filter, masks, and transforms, preserving layout metrics and font family.
-
 ## Rich text and CSS extensions
 
 This layer extends `QTextDocument` rich text; it is not Qt Style Sheets (QSS)
@@ -142,33 +135,16 @@ Never write a source or visual bounding box back into the model. Layout-owned
 placement must be shared by fill, effects, annotations, cursor, selection, and
 hit testing; adapting only one consumer creates visible drift or broken editing.
 
-`FontFormat.text_effects` owns one immutable effect stack;
-`TextBlock.text_alpha_mask` separately owns the item-specific Eraser. The effect
-renderer builds the structural Gradient/Texture foreground, walks movable
-Image/generated/Filter cards in panel application order around one canonical
-glyph source, then applies Eraser and overall Opacity before handing one padded
-surface to the geometry owner. Effects compose inside the item surface, never
-against the page backdrop.
-
-Project-only Texture and Image values share immutable `RasterAssetRef` data and
-the `ProjImgTrans` import, validation, resolution, and bounded decode cache.
-Passive loading preserves valid-but-missing references; interactive rendering
-warns and bypasses them, while strict export fails rather than silently omitting
-output. Global formatting and reusable presets strip project-only raster values
-because they have no project asset registry.
+The effect renderer composes glyphs, paints, effects, and the item-owned alpha
+mask into one padded surface for the geometry owner. Composition is isolated
+from the page backdrop. See [Text effects](text_effects.md) for source phases,
+ordering, raster assets, preview/undo, caches, and strict export; see
+[Text filters](text_filters.md) for plug-in and tile contracts.
 
 Effect padding expands source paint bounds only. Ordinary hit testing stays on
 the logical box plus layout-owned ink overhang. Qt remains authoritative for
 shaping and editing feedback; selection and the deferred caret paint after
-effects. Image is suppressed during native editing in both writing modes, while
-ordinary Filters remain active.
-
-Committed, preview, and export raster namespaces are separate, bounded derived
-state. Requested-quality previews may promote on commit; Faster Preview uses a
-non-promotable 0.5x scratch surface. Reshape omits effects during pointer motion
-and rebuilds once settled. See [Text effects](text_effects.md) for ordering,
-sources, persistence, preview/undo, mask editing, assets, caches, and extension
-rules; see [Text filters](text_filters.md) for plug-in and tile contracts.
+effects.
 
 `TextItemGeometryController` owns the relationship among logical, source, and
 visual geometry, installed transforms, input mapping, caches, and render
@@ -201,9 +177,7 @@ Refresh from the first owner whose input changed:
 | --- | --- |
 | Text, character format, paragraph format | Document and layout |
 | Metrics, spacing, writing mode | Layout |
-| Typed effect stack, paint, Image, or Overall Opacity | Effect renderer |
-| Filter-only parameter preview | Effect renderer below-filter prefix and retained canonical/Stroke coverage |
-| TextBlock alpha-mask replacement | Effect renderer mask generation |
+| Effect stack or alpha mask | Effect renderer |
 | Effect extent or logical rectangle | Geometry controller after layout/effect update |
 | Visual transform parameters | Geometry controller |
 | Item/page lifetime | Every item-owned cache |
@@ -214,14 +188,8 @@ native and cheap. Batch previews and transient formatting so they refresh once
 when settled. Optional acceleration must preserve the working fallback's
 coordinates, rounding, and output, and must not compile on the Qt thread.
 
-Dynamic Text Effect and Text Transform cards keep their natural height inside
-`PanelArea.scrollContent`. Their panels may advertise a capped, content-driven
-preferred height, but must not raise their minimum height with that content;
-the containing window's current allocation takes precedence and overflow
-scrolls. Mark newly inserted cards visible before measuring them, then use the
-shared scroll-content height synchronizer so a constrained viewport neither
-flattens cards nor enlarges the main window. Leave horizontal sizing to the
-resizable scroll area so cards follow the viewport when a splitter moves.
+Dynamic effect and transform cards use `PanelArea`'s shared sizing path. Content
+must scroll within the available viewport rather than enlarge the main window.
 
 Formatting ownership includes ordinary child controls and the parent chain of
 their top-level Qt popups, such as nested `QMenu` and combo-box dropdowns.
@@ -229,11 +197,9 @@ Transient canvas-selection signals while those widgets are active must retain
 the current text item and its card-local drafts; an actual target change still
 settles pending edits and projects the new item's persisted state.
 
-Multi-item Text Effect projection uses one explicit primary selection anchor
-without reordering Transform targets. Matching is derived from committed stacks,
-never persisted as a merged stack or Mixed values; preview and commit still
-replace complete per-item stacks through one canvas undo command. See
-[Text effects](text_effects.md) for the occurrence-matching contract.
+Multi-item panels project the primary selection and derive matching targets
+without merging persisted state or reordering Transform targets. The effect
+guide owns the matching and commit contract.
 
 ## Change workflow
 

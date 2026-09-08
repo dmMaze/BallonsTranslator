@@ -10,6 +10,7 @@ from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextDocument
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui import shared_widget as SW
+from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.text_engine.annotations import (
     load_rich_text_html,
     to_rich_text_html,
@@ -30,6 +31,8 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.font_registry import FontEntry, FontFace, FontRegistry
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.text_effects import SyntheticBoldEffect, TextEffectStack
+from qtpy.QtCore import QCoreApplication, QEvent
 
 
 def get_app() -> QApplication:
@@ -148,6 +151,9 @@ class FontWeightUiTest(unittest.TestCase):
         SW.canvas = SimpleNamespace(selected_text_items=lambda: [])
 
     def tearDown(self) -> None:
+        # Destroy transient panels before another test replaces formatting globals.
+        self.doCleanups()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         C.active_format = self.old_active_format
         SW.canvas = self.old_canvas
         shared.FONT_REGISTRY = self.old_font_registry
@@ -367,18 +373,71 @@ class FontWeightUiTest(unittest.TestCase):
         self.assertEqual(changes, ['Example Sans', 'Missing Legacy Font'])
         self.assertEqual(combo.currentText(), 'Missing Legacy Font')
 
-    def test_bold_button_does_not_change_font_weight(self):
+    def test_synthetic_bold_effect_does_not_change_font_weight(self) -> None:
         panel = self._make_panel()
         active = FontFormat(font_weight=FontWeight.Light)
         panel.global_format = active
         panel.set_active_format(active)
 
-        panel.formatBtnGroup.boldBtn.click()
+        panel.texteffect_panel.add_effect_actions['synthetic_bold'].trigger()
 
         self.assertIs(active.font_weight, FontWeight.Light)
         self.assertIs(panel.fontWeightBox.weight(), FontWeight.Light)
-        self.assertEqual(active.synthetic_bold, 'ellipse')
-        self.assertEqual(active.synthetic_bold_offset, [0.01, 0.01])
+        self.assertEqual(active.text_effects.synthetic_bold.shape, 'ellipse')
+        self.assertEqual((active.text_effects.synthetic_bold.x, active.text_effects.synthetic_bold.y), (0.01, 0.01))
+
+    def test_bold_shortcut_toggles_native_weight_without_changing_synthetic_bold(self) -> None:
+        panel = self._make_panel()
+        active = FontFormat(font_weight=FontWeight.Light,
+                            text_effects=TextEffectStack(effects=(SyntheticBoldEffect(shape='rect', x=0.1, y=0.2),)))
+        panel.global_format = active
+        panel.set_active_format(active)
+        panel.show()
+        owner = SimpleNamespace(textPanel=SimpleNamespace(formatpanel=panel))
+
+        for expected in (FontWeight.Bold, FontWeight.Normal):
+            MainWindow.shortcutBold(owner)
+            self.assertIs(active.font_weight, expected)
+            self.assertIs(panel.fontWeightBox.weight(), expected)
+            self.assertEqual(active.text_effects.synthetic_bold.shape, 'rect')
+            self.assertEqual((active.text_effects.synthetic_bold.x, active.text_effects.synthetic_bold.y), (0.1, 0.2))
+
+        panel.hide()
+        MainWindow.shortcutBold(owner)
+        self.assertIs(active.font_weight, FontWeight.Normal)
+
+    def test_bold_toggle_preserves_text_selection_and_native_undo(self) -> None:
+        block = TextBlock([0, 0, 300, 100], translation='AB')
+        block._bounding_rect = [0, 0, 300, 100]
+        block.fontformat.text_effects = TextEffectStack(effects=(SyntheticBoldEffect(shape='ellipse'),))
+        item = TextBlkItem(block)
+        self.addCleanup(item.deleteLater)
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(0)
+        cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        panel = self._make_panel()
+        panel.global_format = FontFormat()
+        panel.set_textblk_item(item)
+
+        with patch('ballontranslator.ui.text_engine.formatting.commands.restore_canvas_view_focus'):
+            panel.toggle_bold()
+
+        self.assertEqual(item.textCursor().selectedText(), 'A')
+        self.assertIs(font_weight_from_qt(item.textCursor().charFormat().fontWeight()), FontWeight.Bold)
+        second = QTextCursor(item.document())
+        second.setPosition(1)
+        second.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        self.assertIs(font_weight_from_qt(second.charFormat().fontWeight()), FontWeight.Normal)
+        self.assertEqual(item.fontformat.text_effects.synthetic_bold.shape, 'ellipse')
+        item.document().undo()
+        first = QTextCursor(item.document())
+        first.setPosition(0)
+        first.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+        self.assertIs(font_weight_from_qt(first.charFormat().fontWeight()), FontWeight.Normal)
+        item.document().redo()
+        self.assertIs(font_weight_from_qt(first.charFormat().fontWeight()), FontWeight.Bold)
 
     def test_explicit_weight_change_resolves_a_hidden_group_face(self):
         faces = [

@@ -33,7 +33,6 @@ from ballontranslator.utils.fontformat import (
     FontFormat,
     FontWeight,
     LineSpacingType,
-    SYNTHETIC_BOLD_OFFSET_MAX,
     TextTransformStack,
     font_weight_from_qt,
     font_weight_to_qt,
@@ -2065,30 +2064,6 @@ class TextBlkItem(QGraphicsTextItem):
         self._after_set_ffmt(
             cursor, False, restore_cursor, **after_kwargs
         )
-
-    def setSyntheticBoldOffset(
-        self, offsets: Tuple[float, float]
-    ) -> None:
-        """Set em-relative canonical glyph contour offsets."""
-        x_offset, y_offset = offsets
-        target = [
-            min(max(float(x_offset), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
-            min(max(float(y_offset), 0.0), SYNTHETIC_BOLD_OFFSET_MAX),
-        ]
-        if not all(np.isfinite(value) for value in (x_offset, y_offset)):
-            raise ValueError('synthetic bold offsets must be finite')
-        if self.fontformat.synthetic_bold_offset == target:
-            return
-        self.fontformat.synthetic_bold_offset = target
-        self.effect_renderer.synthetic_bold_changed()
-
-    def setSyntheticBold(self, mode: str) -> None:
-        if mode not in ('none', 'rect', 'ellipse'):
-            raise ValueError('unsupported synthetic bold mode')
-        if self.fontformat.synthetic_bold == mode:
-            return
-        self.fontformat.synthetic_bold = mode
-        self.effect_renderer.synthetic_bold_changed()
 
     def setRelFontSize(
         self,

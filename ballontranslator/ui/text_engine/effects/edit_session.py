@@ -20,6 +20,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    SyntheticBoldEffect,
     TextFillEffect,
     TextEffect,
     TextEffectStack,
@@ -248,13 +249,17 @@ class TextEffectEditSession:
     ) -> TextEffectStack:
         if index == OVERALL_OPACITY_INDEX:
             if param_name != 'overall_opacity':
-                raise ValueError('unknown overall text effect field')
-            return replace(state, overall_opacity=value)
+                raise ValueError('unknown text effect stack field')
+            return replace(state, **{param_name: value})
         if index < 0 or index >= len(state.effects):
             raise IndexError('text effect index is no longer current')
         effect = state.effects[index]
         parameters = {}
-        if isinstance(effect, StrokeEffect):
+        if isinstance(effect, SyntheticBoldEffect):
+            if param_name not in {'enabled', 'shape', 'x', 'y'}:
+                raise ValueError('unknown Synthetic Bold field')
+            parameters[param_name] = value
+        elif isinstance(effect, StrokeEffect):
             if param_name not in {
                 'enabled', 'width', 'opacity', 'paint', 'paint_type',
                 'position', 'blend_mode',
@@ -366,8 +371,8 @@ class TextEffectEditSession:
     ):
         if index == OVERALL_OPACITY_INDEX:
             if param_name != 'overall_opacity':
-                raise ValueError('unknown overall text effect field')
-            return state.overall_opacity
+                raise ValueError('unknown text effect stack field')
+            return getattr(state, param_name)
         if index < 0 or index >= len(state.effects):
             raise IndexError('text effect index is no longer current')
         effect = state.effects[index]
@@ -642,7 +647,7 @@ class TextEffectEditSession:
     def _insertion_index(
         state: TextEffectStack, effect: TextEffect
     ) -> int:
-        if isinstance(effect, HollowEffect):
+        if isinstance(effect, (HollowEffect, SyntheticBoldEffect)):
             return len(state.effects)
         # Raw order is topmost-first. New movable effects and structural Fills
         # therefore land at zero so reverse/application order appends them.
@@ -695,11 +700,17 @@ class TextEffectEditSession:
         """
         common_budget = (
             self._common_occurrence_budget(before, effect)
-            if len(before) > 1 else None
+            if len(before) > 1 and not isinstance(effect, SyntheticBoldEffect)
+            else None
         )
         after = []
         primary_insert_index: Optional[int] = None
         for state in before:
+            if isinstance(effect, SyntheticBoldEffect) and state.synthetic_bold is not None:
+                if primary_insert_index is None:
+                    primary_insert_index = state.effects.index(state.synthetic_bold)
+                after.append(state)
+                continue
             effects = list(state.effects)
             insert_index = (
                 self._insertion_index(state, effect)
@@ -725,6 +736,7 @@ class TextEffectEditSession:
         self._prepare_structure_change()
         before = self._current_states()
         constructors = {
+            'synthetic_bold': SyntheticBoldEffect,
             'stroke': StrokeEffect,
             'shadow': ShadowEffect,
             'glow': GlowEffect,
