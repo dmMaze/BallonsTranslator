@@ -37,7 +37,17 @@ THINKING_LEVEL_OPTIONS = [
     "high",
     "xhigh",
 ]
+# model/list plus live-verified none support; selectors never launch Codex.
+CODEX_REASONING_EFFORTS = ('none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')
+CODEX_MODEL_REASONING_EFFORTS = {
+    'gpt-6-astra': CODEX_REASONING_EFFORTS[1:],
+    'gpt-5.6-sol': CODEX_REASONING_EFFORTS,
+    'gpt-5.6-terra': CODEX_REASONING_EFFORTS,
+    'gpt-5.6-luna': CODEX_REASONING_EFFORTS[:-1],
+    'gpt-5.5': CODEX_REASONING_EFFORTS[:-2],
+}
 VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
+LLM_TRANSPORT_OPTIONS = ['OpenAI-compatible', 'Codex App Server']
 PROVIDER_ALIASES = {
     "Google": "Gemini",
 }
@@ -129,6 +139,19 @@ PROVIDER_DEFAULTS = {
         "model_options": ["llama3.1", "qwen2.5", "mistral"],
         "vision_model_options": ["llama3.1", "qwen2.5", "mistral"],
     },
+    "Codex": {
+        "id": "codex",
+        "transport": "Codex App Server",
+        "require_api_key": False,
+        "thinking_level": "none",
+        "vision_thinking_level": "none",
+        "model": "gpt-5.6-sol",
+        "model_options": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+        "support_vision": True,
+        "vision_model": "gpt-5.6-sol",
+        "vision_model_options": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+        "json_schema_response_format": True,
+    },
 }
 
 DEFAULT_TRANSLATION_PROMPT = (
@@ -182,6 +205,10 @@ class LLMProfile(Config):
     profile_type = "llm"
     name: str = ""
     built_in: bool = False
+    transport: str = 'OpenAI-compatible'
+    codex_executable: str = 'codex'
+    codex_timeout: int = 180
+    codex_save_sessions: bool = False
     base_url: str = ""
     api_key: Any = ""
     require_api_key: bool = True
@@ -199,6 +226,7 @@ class LLMProfile(Config):
     image_model_options: List[str] = field(default_factory=list)
     thinking_level: str = THINKING_AUTO
     thinking_level_options: List[str] = field(default_factory=lambda: list(THINKING_LEVEL_OPTIONS))
+    vision_thinking_level: str = ""
     prompt: str = DEFAULT_TRANSLATION_PROMPT
     vision_prompt: str = DEFAULT_OCR_PROMPT
     image_prompt: str = DEFAULT_INPAINT_PROMPT
@@ -238,6 +266,36 @@ def normalize_thinking_level(value: Any) -> str:
     return level
 
 
+def profile_thinking_level_options(profile: LLMProfile, *, vision: bool = False) -> List[str]:
+    """Return efforts supported by the selected text or vision model.
+
+    >>> profile_thinking_level_options(default_profile('Codex'))
+    ['none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra']
+    """
+    if profile.transport != 'Codex App Server':
+        return list(profile.thinking_level_options)
+    model = profile.vision_model if vision else profile.model
+    return list(CODEX_MODEL_REASONING_EFFORTS.get(model, ())) if isinstance(model, str) else []
+
+
+def normalize_codex_thinking_level(profile: LLMProfile) -> None:
+    if profile.transport != 'Codex App Server':
+        return
+    # Old profiles shared one effort; copy it once when the vision field is absent.
+    if profile.vision_thinking_level == '':
+        profile.vision_thinking_level = profile.thinking_level
+    for key in ('thinking_level', 'vision_thinking_level'):
+        options = profile_thinking_level_options(profile, vision=key == 'vision_thinking_level')
+        raw_level = getattr(profile, key)
+        level = raw_level.strip().lower() if isinstance(raw_level, str) else ''
+        if level not in options:
+            level = 'none' if 'none' in options else 'medium' if options else ''
+        if raw_level != level:
+            LOGGER.warning('Reset unsupported Codex %s %r to %r for %s.',
+                           key, raw_level, level, profile.id)
+            setattr(profile, key, level)
+
+
 def _normalize_profile_thinking(profile: LLMProfile) -> LLMProfile:
     """Migrate legacy reasoning settings without dropping custom options.
 
@@ -255,7 +313,10 @@ def _normalize_profile_thinking(profile: LLMProfile) -> LLMProfile:
             'Discard invalid LLM profile thinking_level for %s.',
             profile.id or profile.name or '<unnamed>',
         )
-    profile.thinking_level = normalize_thinking_level(raw_level)
+    if profile.transport == 'Codex App Server':
+        normalize_codex_thinking_level(profile)
+    else:
+        profile.thinking_level = normalize_thinking_level(raw_level)
 
     raw_options = profile.thinking_level_options
     if not isinstance(raw_options, list):
@@ -278,7 +339,7 @@ def _normalize_profile_thinking(profile: LLMProfile) -> LLMProfile:
         option = normalize_thinking_level(option)
         if option not in normalized_options:
             normalized_options.append(option)
-    if profile.thinking_level not in normalized_options:
+    if profile.transport != 'Codex App Server' and profile.thinking_level not in normalized_options:
         normalized_options.append(profile.thinking_level)
     profile.thinking_level_options = normalized_options
     return profile
@@ -291,6 +352,17 @@ def profile_from_config(profile: Any) -> LLMProfile:
         loaded = LLMProfile(**copy.deepcopy(dict(profile)))
     else:
         raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
+    for key, valid, default in (
+        ('transport', loaded.transport in LLM_TRANSPORT_OPTIONS, 'OpenAI-compatible'),
+        ('codex_executable', isinstance(loaded.codex_executable, str)
+         and bool(loaded.codex_executable.strip()), 'codex'),
+        ('codex_timeout', type(loaded.codex_timeout) is int
+         and 1 <= loaded.codex_timeout <= 86400, 180),
+        ('codex_save_sessions', type(loaded.codex_save_sessions) is bool, False),
+    ):
+        if not valid:
+            LOGGER.warning('Discard invalid LLM profile %s for %s.', key, loaded.id)
+            setattr(loaded, key, default)
     return _normalize_profile_thinking(loaded)
 
 
@@ -693,7 +765,7 @@ def profile_from_old_settings(old_key: str, params: Dict, secret_store: SecretSt
 
 
 def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = None) -> Dict:
-    """Migrate old LLM translator settings in a raw module config dict.
+    """Migrate legacy translators and add the Codex preset once on upgrade.
 
     Example:
         >>> migrated = migrate_module_llm_profiles(
@@ -746,5 +818,13 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     elif profiles_were_missing:
         profiles = default_profiles()
 
+    codex_migrated = module_cfg.get('llm_codex_profile_migrated', False)
+    if type(codex_migrated) is not bool:
+        LOGGER.warning('Discard invalid module.llm_codex_profile_migrated: expected a boolean.')
+        codex_migrated = False
+    # Persist the upgrade marker so a later user deletion stays deleted.
+    if not codex_migrated and profile_by_id(profiles, 'codex') is None:
+        profiles.append(default_profile('Codex'))
+    module_cfg['llm_codex_profile_migrated'] = True
     module_cfg["llm_profiles"] = profiles
     return module_cfg

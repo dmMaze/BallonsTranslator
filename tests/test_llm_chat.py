@@ -199,6 +199,9 @@ class LLMChatRequesterTest(unittest.TestCase):
         self.assertEqual(result.content, 'hello')
         self.assertIs(result.usage, usage)
         self.assertEqual(result.finish_reason, 'stop')
+        self.assertEqual(self.requester.usage_totals.requests, 1)
+        self.assertEqual(self.requester.usage_totals.total_tokens, 3)
+        self.assertEqual(self.requester.usage_totals.priced_requests, 0)
 
     def test_request_raises_actionable_output_limit(self):
         self.profile.max_tokens = 1234
@@ -238,6 +241,9 @@ class LLMChatRequesterTest(unittest.TestCase):
                     self.profile,
                     {'model': 'demo-model', 'messages': []},
                 )
+
+        self.assertEqual(self.requester.usage_totals.requests, 1)
+        self.assertEqual(self.requester.usage_totals.total_tokens, 1244)
 
     def test_request_normalizes_authentication_and_status_errors(self):
         def client_for(error: Exception):

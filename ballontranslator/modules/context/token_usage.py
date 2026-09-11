@@ -1,8 +1,10 @@
 """Prompt-token estimation and provider-usage formatting for LLM requests."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from decimal import Decimal
 from functools import lru_cache
-from typing import Dict, List
+from typing import Dict, List, Optional, Sequence
 
 
 MESSAGE_TOKEN_OVERHEAD = 4
@@ -93,14 +95,11 @@ def _usage_count(container, *names):
     return count if count >= 0 else None
 
 
-def format_token_usage(usage) -> str:
-    """Format available provider token fields without requiring a fixed schema.
+def token_usage_counts(usage) -> Dict[str, int]:
+    """Normalize available provider counts, keeping missing fields absent.
 
-    >>> format_token_usage({
-    ...     'prompt_tokens': 10, 'completion_tokens': 2, 'total_tokens': 12,
-    ...     'prompt_cache_hit_tokens': 8,
-    ... })
-    'prompt=10, completion=2, total=12, cache_hit=8'
+    >>> token_usage_counts({'input_tokens': 10, 'output_tokens': 2})
+    {'prompt': 10, 'completion': 2, 'total': 12}
     """
     prompt = _usage_count(usage, 'prompt_tokens', 'input_tokens')
     completion = _usage_count(usage, 'completion_tokens', 'output_tokens')
@@ -165,12 +164,94 @@ def format_token_usage(usage) -> str:
         ('cache_miss', cache_miss),
         ('cache_write', cache_write),
     )
-    return ', '.join(
-        f'{name}={value}'
-        for name, value in fields
-        if value is not None
-    )
+    return {name: value for name, value in fields if value is not None}
+
+
+def format_token_usage(usage) -> str:
+    return ', '.join(f'{name}={value}' for name, value in token_usage_counts(usage).items())
 
 
 def format_completion_token_usage(completion) -> str:
     return format_token_usage(_usage_member(completion, 'usage'))
+
+
+# USD per million tokens, verified 2026-09-11; Standard API equivalents, not
+# subscription charges. https://developers.openai.com/api/docs/pricing
+# GPT-5.5: https://developers.openai.com/api/docs/models/gpt-5.5
+OPENAI_STANDARD_PRICES = {
+    # Input, cached input, output. Cache writes for 5.6/Astra cost 1.25x input.
+    'gpt-6-astra': ('10', '1', '50'),
+    'gpt-5.6-sol': ('4', '0.4', '20'),
+    'gpt-5.6-terra': ('2', '0.2', '12'),
+    'gpt-5.6-luna': ('0.2', '0.02', '1.2'),
+    'gpt-5.5': ('5', '0.5', '30'),
+}
+
+
+def estimated_token_cost(model: str, counts: Dict[str, int]) -> Optional[Decimal]:
+    """Estimate Standard API value; reasoning/cache counts are already in totals.
+
+    >>> estimated_token_cost('gpt-5.6-sol', {'prompt': 1000, 'completion': 100, 'cache_hit': 500})
+    Decimal('0.0042')
+    """
+    prices = OPENAI_STANDARD_PRICES.get(model)
+    prompt, output = counts.get('prompt'), counts.get('completion')
+    cached, written = counts.get('cache_hit', 0), counts.get('cache_write', 0)
+    if prices is None or prompt is None or output is None or cached + written > prompt:
+        return None
+    if model == 'gpt-5.5' and written:
+        return None  # No verified cache-write price for this model.
+    input_rate, cached_rate, output_rate = map(Decimal, prices)
+    # Apply long-context rates per response, never to the whole batch total.
+    if prompt > 272_000:
+        input_rate *= 2
+        cached_rate *= 2
+        output_rate *= Decimal('1.5')
+    return ((prompt - cached - written) * input_rate + cached * cached_rate
+            + written * input_rate * Decimal('1.25') + output * output_rate) / 1_000_000
+
+
+@dataclass
+class LLMUsageTotals:
+    """One requester's run counters; each module has a single worker writer.
+
+    >>> totals = LLMUsageTotals(requests=1)
+    >>> totals.add('gpt-5.6-sol', {'input_tokens': 1000, 'output_tokens': 100})
+    >>> totals.total_tokens
+    1100
+    """
+
+    requests: int = 0
+    usage_reports: int = 0
+    priced_requests: int = 0
+    total_tokens: int = 0
+    cost_usd: Decimal = Decimal(0)
+
+    def add(self, model: str, usage) -> None:
+        counts = token_usage_counts(usage)
+        if 'total' in counts:
+            self.usage_reports += 1
+            self.total_tokens += counts['total']
+        cost = estimated_token_cost(model, counts)
+        if cost is not None:
+            self.priced_requests += 1
+            self.cost_usd += cost
+
+
+def format_run_token_usage(totals: Sequence[LLMUsageTotals]) -> str:
+    """Combine finished workers without inventing zero usage for missing reports.
+
+    >>> 'total_tokens=12' in format_run_token_usage([LLMUsageTotals(total_tokens=12)])
+    True
+    """
+    requests = sum(item.requests for item in totals)
+    reported = sum(item.usage_reports for item in totals)
+    priced = sum(item.priced_requests for item in totals)
+    tokens = sum(item.total_tokens for item in totals)
+    cost = sum((item.cost_usd for item in totals), Decimal(0))
+    cost_text = f'{cost:.6f}' if priced == requests else 'unavailable'
+    return (f'requests={requests}, total_tokens={tokens}, '
+            f'missing_usage_requests={requests - reported}, '
+            f'estimated_cost_usd={cost_text}, priced_subtotal_usd={cost:.6f}, '
+            f'unpriced_requests={requests - priced}, '
+            'price_basis=OpenAI Standard API equivalent (not a bill), rates_date=2026-09-11')

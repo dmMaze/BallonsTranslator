@@ -16,7 +16,9 @@ from ballontranslator.utils.llm_profiles import (
     copy_profile,
     default_profile,
     profile_by_id,
+    profile_thinking_level_options,
     load_profiles,
+    migrate_module_llm_profiles,
     profile_to_dict,
     profile_to_export_dict,
     profiles_from_json,
@@ -27,6 +29,58 @@ from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_codex_upgrade_preserves_profiles_and_selection_without_duplicates(self) -> None:
+        cockpit = LLMProfile(
+            id='cockpit', name='Cockpit 本機', base_url='http://localhost:1234/v1',
+            api_key='saved-key', model='saved-model', model_options=['saved-model'],
+            support_vision=True, vision_model='saved-vision',
+            vision_model_options=['saved-vision'], prompt='Keep my prompt',
+        )
+        raw = {'llm_profiles': [cockpit.to_dict()], 'translator_llm_id': 'cockpit',
+               'ocr_llm_id': 'cockpit', 'inpaint_llm_id': 'cockpit'}
+        migrated = migrate_module_llm_profiles(raw)
+        self.assertEqual([p.id for p in migrated['llm_profiles']], ['cockpit', 'codex'])
+        self.assertEqual(migrated['llm_profiles'][0].to_dict(), cockpit.to_dict())
+        self.assertTrue(migrated['llm_codex_profile_migrated'])
+        for key in ('translator_llm_id', 'ocr_llm_id', 'inpaint_llm_id'):
+            self.assertEqual(migrated[key], 'cockpit')
+        second = migrate_module_llm_profiles(migrated)
+        self.assertEqual([p.id for p in second['llm_profiles']], ['cockpit', 'codex'])
+
+    def test_codex_migration_marker_survives_save_and_respects_later_deletion(self) -> None:
+        migrated = migrate_module_llm_profiles({'llm_profiles': [default_profile('OpenAI').to_dict()]})
+        cfg = ProgramConfig(module=ModuleConfig(**migrated))
+        cfg.module.llm_profiles = [p for p in cfg.module.llm_profiles if p.id != 'codex']
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'config.json')
+            with open(path, 'w', encoding='utf-8') as stream:
+                stream.write(json_dump_program_config(cfg))
+            loaded = ProgramConfig.load(path)
+        self.assertTrue(loaded.module.llm_codex_profile_migrated)
+        self.assertEqual([p.id for p in loaded.module.llm_profiles], ['openai'])
+
+    def test_codex_upgrade_keeps_existing_codex_settings(self) -> None:
+        codex = default_profile('Codex')
+        codex.codex_executable = 'C:/custom/codex.exe'
+        codex.codex_timeout = 300
+        codex.model = 'my-model'
+        codex.model_options = ['my-model']
+        migrated = migrate_module_llm_profiles({'llm_profiles': [codex.to_dict()]})
+        self.assertEqual(len(migrated['llm_profiles']), 1)
+        self.assertEqual(migrated['llm_profiles'][0].codex_executable, codex.codex_executable)
+        self.assertEqual(migrated['llm_profiles'][0].codex_timeout, 300)
+        self.assertEqual(migrated['llm_profiles'][0].model, 'my-model')
+
+    def test_codex_upgrade_discards_an_invalid_migration_marker(self) -> None:
+        for invalid in ('yes', 1, None, [], {}):
+            with self.subTest(marker=invalid):
+                migrated = migrate_module_llm_profiles({
+                    'llm_profiles': [LLMProfile(id='keep').to_dict()],
+                    'llm_codex_profile_migrated': invalid,
+                })
+                self.assertEqual([p.id for p in migrated['llm_profiles']], ['keep', 'codex'])
+                self.assertIs(migrated['llm_codex_profile_migrated'], True)
+
     def test_runtime_profile_selects_falls_back_and_returns_a_copy(self):
         first = default_profile('OpenAI')
         second = default_profile('Ollama')
@@ -73,6 +127,24 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(loaded.vision_model, 'saved-vision-model')
         self.assertEqual(loaded.image_model, 'saved-image-model')
 
+    def test_saved_codex_profile_receives_new_choices_without_changing_selections(self) -> None:
+        saved = default_profile('Codex')
+        saved.model_options = ['gpt-5.5', 'custom-model']
+        saved.vision_model_options = ['gpt-5.5']
+        saved.vision_model = 'gpt-5.5'
+        saved.model = 'custom-model'
+        loaded = load_profiles([saved.to_dict()])[0]
+
+        for model in ('gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
+            self.assertIn(model, loaded.model_options)
+            self.assertIn(model, loaded.vision_model_options)
+        self.assertNotIn('gpt-5.6', loaded.model_options)
+        self.assertNotIn('gpt-5.6', loaded.vision_model_options)
+        self.assertEqual(loaded.model, 'custom-model')
+        self.assertEqual(loaded.vision_model, 'gpt-5.5')
+        self.assertIn('custom-model', loaded.model_options)
+        self.assertEqual(profile_to_dict(load_profiles([loaded])[0]), profile_to_dict(loaded))
+
     def test_load_profiles_is_idempotent_and_preserves_builtin_fields(self):
         profile = default_profile('OpenAI')
         profile.name = 'Saved OpenAI'
@@ -89,6 +161,56 @@ class LLMProfileMigrationTest(unittest.TestCase):
         self.assertEqual(first.base_url, 'https://saved.example/v1')
         self.assertEqual(first.image_base_url, 'https://saved.example/image-edit')
         self.assertEqual(first.api_key, 'saved-key')
+
+    def test_codex_saved_unsupported_thinking_falls_back_without_losing_settings(self) -> None:
+        for level in ('Auto', 'auto', 'None', '', 'Disabled', 'minimal', 'max', 'ultra', 'future-effort'):
+            with self.subTest(level=level):
+                saved = default_profile('Codex')
+                saved.model = 'gpt-5.5'
+                saved.thinking_level = level
+                saved.prompt = 'Keep my translation prompt'
+                with tempfile.TemporaryDirectory() as directory:
+                    path = os.path.join(directory, 'config.json')
+                    with open(path, 'w', encoding='utf-8') as stream:
+                        json.dump({'module': {'llm_profiles': [saved.to_dict()]}}, stream)
+                    loaded = ProgramConfig.load(path).module.llm_profiles[0]
+                self.assertEqual(loaded.thinking_level, 'none')
+                self.assertEqual(loaded.prompt, saved.prompt)
+                self.assertEqual(loaded.model, 'gpt-5.5')
+                self.assertEqual(profile_thinking_level_options(loaded),
+                                 ['none', 'low', 'medium', 'high', 'xhigh'])
+
+    def test_codex_none_defaults_and_independent_vision_effort_survive_reload(self) -> None:
+        profile = default_profile('Codex')
+        self.assertEqual((profile.model, profile.vision_model), ('gpt-5.6-sol', 'gpt-5.6-sol'))
+        self.assertEqual((profile.thinking_level, profile.vision_thinking_level), ('none', 'none'))
+        legacy = profile.to_dict()
+        legacy.pop('vision_thinking_level')
+        legacy['thinking_level'] = 'high'
+        loaded = load_profiles([legacy])[0]
+        self.assertEqual((loaded.thinking_level, loaded.vision_thinking_level), ('high', 'high'))
+        loaded.vision_thinking_level = 'none'
+        restored = load_profiles([profile_to_dict(loaded)])[0]
+        self.assertEqual((restored.thinking_level, restored.vision_thinking_level), ('high', 'none'))
+        self.assertEqual(profile_to_dict(restored), profile_to_dict(loaded))
+        malformed = restored.to_dict()
+        malformed['vision_thinking_level'] = ['invalid']
+        malformed['thinking_level_options'] = None
+        repaired = load_profiles([malformed])[0]
+        self.assertEqual((repaired.thinking_level, repaired.vision_thinking_level), ('high', 'none'))
+        self.assertIsInstance(repaired.thinking_level_options, list)
+
+    def test_codex_unknown_model_has_no_efforts_and_preserves_http_choices(self) -> None:
+        profile = default_profile('Codex')
+        for model in ('custom-model', [], {}, None):
+            with self.subTest(model=model):
+                profile.model = model
+                loaded = load_profiles([profile.to_dict()])[0]
+                self.assertEqual(profile_thinking_level_options(loaded), [])
+                self.assertEqual(loaded.thinking_level, '')
+        profile.transport = 'OpenAI-compatible'
+        profile.thinking_level_options = ['Auto', 'Disabled', 'minimal', 'custom']
+        self.assertEqual(profile_thinking_level_options(profile), profile.thinking_level_options)
 
     def test_load_profiles_migrates_legacy_none_thinking_to_auto(self):
         profile = default_profile('OpenAI')
@@ -123,10 +245,10 @@ class LLMProfileMigrationTest(unittest.TestCase):
         raw = json.loads(json_dump_program_config(cfg))
         raw['module']['llm_profiles'][0]['model_options'] = ['legacy-model']
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             json.dump(raw, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, 'openai')
         self.assertIn('legacy-model', selected.model_options)
@@ -386,10 +508,10 @@ class SecretStoreTest(unittest.TestCase):
         cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='openai'))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             temp.write(saved)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.translator_llm_id)
         self.assertIsNotNone(selected)
@@ -412,10 +534,10 @@ class SecretStoreTest(unittest.TestCase):
         ))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             temp.write(saved)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.ocr_llm_id)
         self.assertEqual(loaded.module.ocr_llm_id, 'openai')
@@ -453,10 +575,10 @@ class SecretStoreTest(unittest.TestCase):
         ))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             temp.write(saved)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.inpaint_llm_id)
         self.assertEqual(loaded.module.inpaint_llm_id, 'openrouter')

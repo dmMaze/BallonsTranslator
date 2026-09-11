@@ -1101,24 +1101,20 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         page_key: Optional[str] = None,
         attempt: Optional[int] = None,
     ) -> None:
-        summary = format_completion_token_usage(completion)
+        summary = format_completion_token_usage(completion) or 'usage=unavailable'
         finish_reason = str(completion.finish_reason or '').replace(
             '\r', ' '
         ).replace('\n', ' ')
         if finish_reason:
-            summary = ', '.join(
-                part for part in (summary, f'finish_reason={finish_reason}')
-                if part
-            )
-        if summary:
-            details = []
-            if page_key is not None:
-                safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
-                details.append(f'page={safe_page_key or "-"}')
-            if attempt is not None:
-                details.append(f'attempt={attempt}')
-            details.append(summary)
-            self.logger.debug(f'LLM token usage: {", ".join(details)}')
+            summary += f', finish_reason={finish_reason}'
+        details = []
+        if page_key is not None:
+            safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+            details.append(f'page={safe_page_key or "-"}')
+        if attempt is not None:
+            details.append(f'attempt={attempt}')
+        details.append(summary)
+        self.logger.info(f'LLM token usage: {", ".join(details)}')
 
     def _request_translation(
         self,
