@@ -196,9 +196,11 @@ history examples put `page_summary` before `translations`.
 
 With both Vision and Summary enabled, full-page calls also request summaries
 for pages without source text. They use the same prompt, context, and image
-suffix as normal pages, with an empty input array. Only a usable `page_summary`
-is required; translation payload formatting and IDs are ignored. Missing or
-blank summaries are retried. Existing-summary and overwrite rules still apply.
+suffix as normal pages, with an empty input array. A usable `page_summary` is
+accepted regardless of translation payload formatting or IDs. An explicit empty
+`translations` map with a blank string summary is also accepted, so genuinely
+blank pages do not exhaust retries. Other missing or malformed summaries are
+retried. Existing-summary and overwrite rules still apply.
 
 Messages are assembled in cache-friendly prefix order:
 
