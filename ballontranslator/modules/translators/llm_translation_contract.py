@@ -332,8 +332,8 @@ def parse_translation_response(
     """Parse legacy and summary-aware response shapes.
 
     A malformed or missing summary is discarded without sacrificing a
-    complete translation map. With no input items, only a usable summary is
-    required; translation payload formatting and IDs are ignored.
+    complete translation map. With no input items, a usable summary or an
+    explicit empty translation map with a blank string summary is accepted.
 
     >>> parsed = parse_translation_response(
     ...     '{"translations":{"1":"x"},"page_summary":" scene "}', 1)
@@ -360,7 +360,13 @@ def parse_translation_response(
         if isinstance(summary_value, str):
             page_summary = ' '.join(summary_value.split()).strip()
     if expected == 0:
-        if not page_summary:
+        # A genuinely blank page can have neither text nor a visual summary.
+        blank_page = (
+            isinstance(data, dict)
+            and data.get('translations') == {}
+            and isinstance(data.get('page_summary'), str)
+        )
+        if not page_summary and not blank_page:
             raise ValueError('Response contains no usable page_summary.')
         return ParsedTranslation(translations=(), page_summary=page_summary)
     if isinstance(data, dict) and "translations" in data:

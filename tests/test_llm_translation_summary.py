@@ -135,7 +135,7 @@ class LLMTranslationSummaryTest(
         ), mock.patch.object(
             self.translator, 'request_chat_completion',
             side_effect=[
-                LLMChatResult('{"translations":{},"page_summary":" "}'),
+                LLMChatResult('{"translations":{},"page_summary":null}'),
                 LLMChatResult('{"page_summary":"The train arrives."}'),
             ],
         ) as request:
@@ -148,6 +148,27 @@ class LLMTranslationSummaryTest(
         self._complete(project, '001.png')
         self.translator.on_page_translation_finished(project, '001.png')
         self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'The train arrives.')
+
+    def test_blank_page_completes_without_retrying_an_empty_summary(self) -> None:
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary_memory = True
+        project = self._project(1)
+        project.pages['001.png'] = []
+        project.read_img = mock.Mock(return_value=np.zeros((32, 24, 3), dtype=np.uint8))
+        with mock.patch.object(
+            type(self.translator), 'profile',
+            new_callable=mock.PropertyMock, return_value=self.profile,
+        ), mock.patch.object(
+            self.translator, 'request_chat_completion',
+            return_value=LLMChatResult('{"translations":{},"page_summary":""}'),
+        ) as request:
+            self.translator.translate_textblk_lst(
+                [], project=project, page_key='001.png', full_page=True,
+            )
+        request.assert_called_once()
+        self._complete(project, '001.png')
+        self.translator.on_page_translation_finished(project, '001.png')
+        self.assertIsNone(project.get_llm_visual_summary('001.png'))
 
     def test_empty_page_overwrite_replaces_existing_summary(self) -> None:
         pcfg.module.llm_translate_vision = True
