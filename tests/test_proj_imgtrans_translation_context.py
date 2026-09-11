@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -24,19 +25,19 @@ def _module_config(**kwargs):
 class LLMContextConfigTest(unittest.TestCase):
 
     def test_legacy_translate_context_is_migrated_without_manual_cleanup(self):
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             json.dump({'module': {'translate_by_textblock': True}}, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         self.assertEqual(loaded.module.translate_context, 'textblock')
         self.assertFalse(hasattr(loaded.module, 'translate_by_textblock'))
 
     def test_llm_context_defaults_and_invalid_values_are_safe(self):
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             json.dump({'module': {}}, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         self.assertEqual(
             (
@@ -124,10 +125,10 @@ class LLMContextConfigTest(unittest.TestCase):
             },
         )
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             json.dump(raw, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         self.assertEqual(
             loaded.module.llm_translate_context,

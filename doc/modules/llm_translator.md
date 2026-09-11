@@ -10,6 +10,7 @@ translation. The code and focused tests remain authoritative.
 | Translation prompt, message order, JSON schema, and response parsing | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
 | Request snapshots, retries, history orchestration, summaries, and compaction | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
 | Provider clients, throttling, endpoint quirks, and completion normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
+| Official Codex App Server stdio transport and owned process lifecycle | [`llm_codex.py`](../../ballontranslator/modules/llm_codex.py) |
 | Image encoding shared by LLM modules | [`llm_vision.py`](../../ballontranslator/modules/llm_vision.py) |
 | History, saved-context packing, glossary parsing, and token estimates | [`context/`](../../ballontranslator/modules/context) |
 | Text-block preprocessing, finalization, and page-coverage decisions | [`base.py`](../../ballontranslator/modules/translators/base.py) |
@@ -35,6 +36,142 @@ worker
 
 `ProjImgTrans` is authoritative. `_history_window` and every `RequestContext`
 are disposable runtime snapshots; neither replaces project state.
+
+## Codex subscription backend
+
+Install the official Codex CLI and run `codex login` with ChatGPT. In an LLM
+profile, select **Translation / OCR Backend → Codex App Server**, or select
+**Codex** directly from the translator or OCR menu. The built-in profile is
+included in fresh configurations and added once when loading older configurations.
+The migration preserves existing profiles and selections; its saved marker keeps
+later user deletions from being undone at startup.
+Set the text and vision model to a model available to the signed-in account.
+Both menus include `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, and
+`gpt-5.6-luna`, alongside `gpt-5.5`. Astra requires a recent Codex client;
+an upgrade-required error means updating the CLI or pointing **Codex Executable**
+to a newer installed official client. Use the explicit Sol
+name: the `gpt-5.6` alias is not accepted by the tested ChatGPT-backed App Server.
+Loading a saved built-in profile merges new choices without changing its
+selected models or custom choices.
+The text and vision defaults are both `gpt-5.6-sol`; account/client availability follows the
+[official Codex model catalog](https://learn.chatgpt.com/docs/models).
+
+If `codex` is not on the application's PATH, set **Codex Executable** to its full
+path. Run `codex login status` to check authentication, or `codex login` to open
+ChatGPT sign-in in a browser. Use the same executable, OS user, and `CODEX_HOME`
+as the application. This backend requires ChatGPT login, not API-key login.
+Codex reads its existing credentials from `CODEX_HOME/auth.json` (by default
+`~/.codex/auth.json`, or `%USERPROFILE%\.codex\auth.json` on Windows) or the OS
+credential store, according to `cli_auth_credentials_store`. Authentication
+and token refresh remain owned by Codex; BallonsTranslator never reads or
+stores ChatGPT tokens, and needs no API key in its Codex profile. See
+[official authentication guidance](https://learn.chatgpt.com/docs/auth).
+
+Codex thinking choices use an offline snapshot of `model/list`, supplemented
+by live-verified `none` support. The profile editor, shortcut menus, and request
+validation use the same capability table in `llm_profiles.py`. Sol, Terra,
+Luna, and GPT-5.5 accept `none`; Astra rejects it. The model catalog does not
+advertise `none`, although the App Server accepts it and the
+[Sol model documentation](https://developers.openai.com/api/docs/models/gpt-5.6-sol)
+lists it. Astra, Sol, and Terra offer reasoning through `ultra`; Luna stops at
+`max`, and GPT-5.5 at `xhigh`. `Auto`, `Disabled`, and `minimal` are not offered.
+
+Codex profiles save text `thinking_level` and OCR `vision_thinking_level`
+independently, both defaulting to `none`. Each selector follows its own model;
+the request carries the corresponding effort even when both models have the
+same name. Translation (including its optional image context and summaries)
+uses the text setting. Old profiles without a vision effort copy the previous
+shared setting once. Unsupported settings reset with a warning to `none`, or
+`medium` for Astra. Unknown models have no selectable efforts and require a
+supported model before a request can run. HTTP profiles retain their existing
+shared thinking behavior and legacy `None`/`Auto` interpretation.
+
+Both `LLMTranslator` (including Vision, history, and summaries) and `LLMOCR`
+(crop and full-page OCR) use this backend. Existing profiles default to the
+OpenAI-compatible HTTP backend. Image generation/inpainting remains a separate
+HTTP integration and still requires its image endpoint and credentials.
+
+Each request launches a hidden local `codex app-server --listen stdio://` process
+in a temporary directory and creates a fresh thread, ephemeral by default. Prior
+messages retain their roles through `thread/inject_items`; the current image is passed directly
+as an image input. JSON Schema and reasoning effort are forwarded. Codex chooses
+its output limit and sampling settings; the HTTP Max Tokens, temperature,
+top-p, penalties, image detail, and proxy settings do not control Codex calls.
+Its existing CLI/network environment applies. No listening HTTP port or adapter
+service is required. Tool integrations and workspace access are disabled for
+these translation/OCR requests.
+
+The profile editor hides unsupported HTTP controls for Codex; the translation
+and OCR module parameter dialogs also omit Proxy without erasing its saved HTTP
+value. Vision, Summary, Overwrite Summary, history, and the prior-context token
+budget remain available: they work with Codex. Vision adds image input, history
+adds prior-page text, and summaries add output and may require compaction calls.
+They can improve quality and consistency, so they are not disabled automatically.
+OCR page batching, masking, and reading order remain available as well.
+
+**Save Codex Sessions (token monitors)** opts into official session persistence
+(`thread/start.ephemeral=false`). Codex writes its standard JSONL under
+`$CODEX_HOME/sessions` (default `~/.codex/sessions`), readable by tools such as
+[token-monitor](https://github.com/Javis603/token-monitor) through Tokscale.
+Use the same Codex home in both applications. This saves conversation content,
+including prompts and images, as well as token usage. The switch defaults off;
+disabling it only affects future requests and does not delete saved sessions.
+Requests still start fresh, without resuming a saved thread. Past ephemeral
+requests cannot be recovered by enabling this option.
+
+Completed translation, summary-compaction, and OCR responses log token usage
+at INFO level in the application's `logs/*.log`: `LLM token usage` for
+translation/summaries and `LLM OCR token usage` for OCR. Available fields include
+`prompt`, `completion`, `reasoning`, `total`, `cache_hit`, and `cache_write`;
+reasoning and cache details are already included in the totals. OCR also logs
+its module-lifetime `cumulative_total`. Missing reports say `usage=unavailable`.
+Codex uses the latest thread-total snapshot for its fresh request,
+so repeated updates are not added together and intermediate model calls are
+included. These response logs are not account-wide billing or quota records.
+
+Full-page batches (including headless runs) and selected-block tasks log each
+enabled LLM stage separately as `LLM OCR run usage` and `LLM translation run usage`,
+followed by `LLM run usage` for the combined total, once after their LLM workers
+finish. Each line includes tokens and estimated cost. Counters reset per task;
+summary compaction belongs to translation, and completed retry/output-limit
+responses belong to their requesting stage. `total_tokens` includes only reported
+usage; `missing_usage_requests`
+identifies requests without a usable report, including failed or cancelled calls.
+Session persistence is not required for these in-memory counters.
+
+`estimated_cost_usd` is the Standard OpenAI API equivalent, not subscription
+billing. Rates in `context/token_usage.py` were verified on 2026-09-11 against
+[OpenAI pricing](https://developers.openai.com/api/docs/pricing) and the
+[GPT-5.5 model page](https://developers.openai.com/api/docs/models/gpt-5.5).
+The five built-in Codex models are covered. Estimates account for cached input,
+reported cache writes (Astra/5.6), and the >272K input long-context tier per
+response; reasoning is already included in output. They exclude Fast mode,
+regional surcharges, and third-party provider pricing. Codex thread totals can
+combine internal model calls, so their long-context estimate is approximate.
+Unknown prices or incomplete usage produce `estimated_cost_usd=unavailable`
+with a `priced_subtotal_usd` and `unpriced_requests`, not a guessed zero bill.
+
+**Codex Timeout** bounds the entire request (default 180 seconds). Cancellation
+requests `turn/interrupt` when the turn ID is known; cleanup always closes the
+owned server. Missing CLI/login, quota exhaustion, protocol failures, and
+uncertain completion stop the run without application-level resubmission.
+Explicit context-window rejection uses the existing context recovery path;
+completed but invalid model output follows existing parsing/retry rules.
+Completed pages and project saves keep their existing ownership and resume rules.
+
+Use a current CLI with the App Server `thread/inject_items` and `environments`
+fields; experimental protocol access is negotiated during initialization.
+See the [official App Server documentation](https://learn.chatgpt.com/docs/app-server).
+The transport tests run without login. An opt-in test exercises real crop/full-page
+OCR, two-page vision translation with history, and project save/reload:
+
+```powershell
+$env:BALLONTRANSLATOR_CODEX_LIVE = '1'
+python -m pytest -q -s tests/test_llm_codex.py -k CodexLiveTest
+```
+
+This test uses subscription quota and only generated test images. Set
+`BALLONTRANSLATOR_CODEX_EXECUTABLE` if the CLI is outside PATH.
 
 ## Request contract
 
@@ -257,8 +394,9 @@ fails explicitly.
   Debug response content can contain project or glossary text.
 - `_history_window` is cleared on unload and can always rebuild from project
   state after restart.
-- An in-flight synchronous provider call cannot be interrupted; the stop event
-  prevents subsequent attempts and interrupts waits.
+- An in-flight synchronous HTTP provider call cannot be interrupted; the stop
+  event prevents subsequent attempts and interrupts waits. Codex requests also
+  interrupt the active turn and close their owned server.
 
 A healthy contiguous `+history` run usually reports
 `empty/rebuild -> grow ... -> evict -> grow`. Missing provider cache fields mean

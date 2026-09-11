@@ -1,7 +1,7 @@
 import copy
 import json
 import uuid
-from typing import get_type_hints
+from typing import List, Tuple, get_type_hints
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -46,7 +46,10 @@ from ballontranslator.utils.llm_profiles import (
     LLM_INPAINT_KEY,
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
+    LLM_TRANSPORT_OPTIONS,
     LLMProfile,
+    normalize_codex_thinking_level,
+    profile_thinking_level_options,
     copy_profile,
     profile_by_id,
     profile_to_export_dict,
@@ -58,6 +61,10 @@ from ballontranslator.utils.llm_profiles import (
 
 
 PROFILE_COMMON_PARAM_DEFS = [
+    ('transport', 'selector'),
+    ('codex_executable', 'line_editor'),
+    ('codex_timeout', 'line_editor'),
+    ('codex_save_sessions', 'checkbox'),
     ('require_api_key', 'checkbox'),
     ('base_url', 'line_editor'),
     ('max_tokens', 'line_editor'),
@@ -74,6 +81,7 @@ PROFILE_MODALITY_PARAM_DEFS = {
         ('prompt', 'editor'),
     ],
     'vision': [
+        ('vision_thinking_level', 'selector'),
         ('vision_detail_level', 'selector'),
         ('vision_prompt', 'editor'),
     ],
@@ -383,6 +391,10 @@ class ProfileCardWidget(QGroupBox):
         self._previous_image_model_text = ''
         self._action_buttons_visible = False
         self.profile_param_display_names = {
+            'transport': self.tr('Translation / OCR Backend'),
+            'codex_executable': self.tr('Codex Executable'),
+            'codex_timeout': self.tr('Codex Timeout (seconds)'),
+            'codex_save_sessions': self.tr('Save Codex Sessions (token monitors)'),
             'base_url': self.tr('Base URL'),
             'image_base_url': self.tr('Image Base URL'),
             'require_api_key': self.tr('Require API Key'),
@@ -390,6 +402,7 @@ class ProfileCardWidget(QGroupBox):
             'image_model': self.tr('Image Model'),
             'vision_detail_level': self.tr('Vision Detail Level'),
             'thinking_level': self.tr('Thinking Level'),
+            'vision_thinking_level': self.tr('Thinking Level'),
             'max_tokens': self.tr('Max Tokens'),
             'temperature': self.tr('Temperature'),
             'top_p': self.tr('Top P'),
@@ -402,6 +415,10 @@ class ProfileCardWidget(QGroupBox):
             'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
+            'transport': self.tr('Codex App Server uses the official Codex CLI ChatGPT login for translation and OCR.'),
+            'codex_executable': self.tr('Codex executable name or full path. Run codex login first; no API key is needed.'),
+            'codex_timeout': self.tr('Stop a Codex request after this many seconds (1-86400). Timed-out requests are not automatically resubmitted.'),
+            'codex_save_sessions': self.tr('Let Codex save sessions for tools such as token-monitor. Saves token usage AND conversation content, including prompts and images, under CODEX_HOME/sessions (default: ~/.codex/sessions). Off by default; disabling affects future requests and does not delete saved sessions.'),
             'base_url': self.tr('OpenAI-compatible API base URL.'),
             'image_base_url': self.tr('OpenAI-compatible image API base URL used only by LLMInpaint.'),
             'require_api_key': self.tr('Require API key before running this LLM task.'),
@@ -409,8 +426,8 @@ class ProfileCardWidget(QGroupBox):
             'image_model': self.tr('Model used by LLMInpaint for image cleanup.'),
             'vision_detail_level': self.tr('Image detail level sent to vision-capable providers.'),
             'thinking_level': self.tr(
-                'Auto uses the provider default. Disabled requests no '
-                'reasoning; explicit levels set the reasoning effort.'
+                'Available reasoning levels depend '
+                'on the backend and selected model.'
             ),
             'prompt': self.tr('Additional translation instructions for style and wording.'),
             'vision_prompt': self.tr('Instructions sent to the vision model for OCR.'),
@@ -707,7 +724,7 @@ class ProfileCardWidget(QGroupBox):
             editor.scrollbar_v = ScrollBar(Qt.Orientation.Vertical, editor, fadeout=False, hover_style=True)
             editor.scrollbar_h = ScrollBar(Qt.Orientation.Horizontal, editor, fadeout=False, hover_style=True)
 
-    def syncFromProfile(self):
+    def syncFromProfile(self) -> None:
         self._syncComboBox(self.model_combo, self.profile.model_options, self.profile.model)
         self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
         self._syncComboBox(self.image_model_combo, self.profile.image_model_options, self.profile.image_model)
@@ -718,9 +735,6 @@ class ProfileCardWidget(QGroupBox):
                 self.profile.vision_detail_level_options,
                 self.profile.vision_detail_level,
             )
-        thinking_combo = self.details.param_widgets.get('thinking_level')
-        if isinstance(thinking_combo, ParamComboBox):
-            self._syncComboBox(thinking_combo, self.profile.thinking_level_options, self.profile.thinking_level)
         for key in ('prompt', 'vision_prompt', 'image_prompt'):
             editor = self.details.param_widgets.get(key)
             if isinstance(editor, QPlainTextEdit):
@@ -731,6 +745,15 @@ class ProfileCardWidget(QGroupBox):
         self.refreshVisionBadge()
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
+
+    def _syncThinkingLevel(self) -> None:
+        normalize_codex_thinking_level(self.profile)
+        for key in ('thinking_level', 'vision_thinking_level'):
+            thinking_combo = self.details.param_widgets.get(key)
+            if isinstance(thinking_combo, ParamComboBox):
+                options = profile_thinking_level_options(self.profile, vision=key == 'vision_thinking_level')
+                self._syncComboBox(thinking_combo, options, getattr(self.profile, key))
+                thinking_combo.setEnabled(bool(options))
 
     def _syncComboBox(self, combo: ParamComboBox, options, value: str):
         combo.blockSignals(True)
@@ -745,14 +768,16 @@ class ProfileCardWidget(QGroupBox):
         combo.setCurrentText(value)
         combo.blockSignals(False)
 
-    def _detail_params(self, param_defs):
+    def _detail_params(self, param_defs: List[Tuple[str, str]]) -> dict:
         params = {}
         for key, widget_type in param_defs:
             value = getattr(self.profile, key)
             display_name = self.profile_param_display_names.get(key, key)
             description = self.profile_param_descriptions.get(key, '')
-            if key == 'thinking_level':
-                options = self.profile.thinking_level_options
+            if key == 'transport':
+                options = LLM_TRANSPORT_OPTIONS
+            elif key in ('thinking_level', 'vision_thinking_level'):
+                options = profile_thinking_level_options(self.profile, vision=key == 'vision_thinking_level')
             elif key == 'vision_detail_level':
                 options = self.profile.vision_detail_level_options
             else:
@@ -1086,23 +1111,25 @@ class ProfileCardWidget(QGroupBox):
             return
         return super().mouseDoubleClickEvent(event)
 
-    def on_model_edited(self, param_key, value):
+    def on_model_edited(self, param_key: str, value: str) -> None:
         if self._model_editing:
             return
         self.profile.model = value
         options = self.profile.model_options
         if value and value not in options:
             options.append(value)
+        self._syncThinkingLevel()
         self.profile_changed.emit()
         self.profile_summary_changed.emit()
 
-    def on_vision_model_edited(self, param_key, value):
+    def on_vision_model_edited(self, param_key: str, value: str) -> None:
         if self._vision_model_editing:
             return
         self.profile.vision_model = value
         options = self.profile.vision_model_options
         if value and value not in options:
             options.append(value)
+        self._syncThinkingLevel()
         self.profile_changed.emit()
         self.profile_summary_changed.emit()
 
@@ -1173,11 +1200,12 @@ class ProfileCardWidget(QGroupBox):
         self.model_combo.blockSignals(False)
         self._setModelText(next_model, emit_changed=True)
 
-    def _setModelText(self, text: str, emit_changed: bool):
+    def _setModelText(self, text: str, emit_changed: bool) -> None:
         self.model_combo.blockSignals(True)
         self.model_combo.setCurrentText(text)
         self.model_combo.blockSignals(False)
         self.profile.model = text
+        self._syncThinkingLevel()
         if emit_changed:
             self.profile_changed.emit()
             self.profile_summary_changed.emit()
@@ -1246,11 +1274,12 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.blockSignals(False)
         self._setVisionModelText(next_model, emit_changed=True)
 
-    def _setVisionModelText(self, text: str, emit_changed: bool):
+    def _setVisionModelText(self, text: str, emit_changed: bool) -> None:
         self.vision_model_combo.blockSignals(True)
         self.vision_model_combo.setCurrentText(text)
         self.vision_model_combo.blockSignals(False)
         self.profile.vision_model = text
+        self._syncThinkingLevel()
         if emit_changed:
             self.profile_changed.emit()
             self.profile_summary_changed.emit()
@@ -1338,7 +1367,7 @@ class ProfileCardWidget(QGroupBox):
         self._api_key_editor_is_empty = is_empty
         self.refreshKeyStatus()
 
-    def on_detail_edited(self, param_key, param_content):
+    def on_detail_edited(self, param_key: str, param_content: dict) -> None:
         content = param_content.get('content')
         profile_type = PROFILE_FIELD_TYPES.get(param_key)
         if profile_type is int:
@@ -1351,14 +1380,17 @@ class ProfileCardWidget(QGroupBox):
                 content = float(str(content).strip())
             except (TypeError, ValueError):
                 return
+        if param_key == 'codex_timeout' and not 1 <= content <= 86400:
+            self.details.param_widgets[param_key].setText(str(self.profile.codex_timeout))
+            return
         setattr(self.profile, param_key, content)
-        if param_key == 'require_api_key':
+        if param_key in ('require_api_key', 'transport'):
             self.refreshConditionalVisibility()
             self.refreshKeyStatus()
         elif param_key == 'vision_detail_level':
             self.profile_summary_changed.emit()
         self.profile_changed.emit()
-        if param_key == 'thinking_level':
+        if param_key in ('thinking_level', 'vision_thinking_level'):
             self.profile_summary_changed.emit()
 
     def toggleVisionSupport(self):
@@ -1458,8 +1490,10 @@ class ProfileCardWidget(QGroupBox):
         self.image_badge.setAccessibleDescription(tooltip)
         self._setModalityLabelState(self.image_model_label, active, tooltip)
 
-    def refreshConditionalVisibility(self):
-        require_key = bool(self.profile.require_api_key)
+    def refreshConditionalVisibility(self) -> None:
+        self._syncThinkingLevel()
+        codex = self.profile.transport == 'Codex App Server'
+        require_key = bool(self.profile.require_api_key) and (not codex or self.profile.support_image)
         support_text = bool(self.profile.support_text)
         support_vision = bool(self.profile.support_vision)
         support_image = bool(self.profile.support_image)
@@ -1471,7 +1505,14 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.setVisible(support_vision)
         self.image_model_combo.setVisible(support_image)
         self.setActionButtonsVisible(self._action_buttons_visible)
-        self.details.setParamVisible('low_vram_mode', not require_key)
+        for key in ('codex_executable', 'codex_timeout', 'codex_save_sessions'):
+            self.details.setParamVisible(key, codex)
+        self.details.setParamVisible('require_api_key', not codex or support_image)
+        self.details.setParamVisible('vision_detail_level', not codex)
+        self.details.setParamVisible('vision_thinking_level', codex)
+        for key in ('base_url', 'max_tokens', 'temperature',
+                    'top_p', 'frequency_penalty', 'presence_penalty', 'low_vram_mode'):
+            self.details.setParamVisible(key, not codex and (key != 'low_vram_mode' or not require_key))
         self.details.setSectionVisible('text', support_text)
         self.details.setSectionVisible('vision', support_vision)
         self.details.setSectionVisible('image', support_image)
@@ -1479,8 +1520,10 @@ class ProfileCardWidget(QGroupBox):
         self._sync_summary_grid()
         self._sync_minimum_width_with_content()
 
-    def refreshKeyStatus(self):
-        require_key = bool(self.profile.require_api_key)
+    def refreshKeyStatus(self) -> None:
+        require_key = bool(self.profile.require_api_key) and (
+            self.profile.transport != 'Codex App Server' or self.profile.support_image
+        )
         self.key_status_icon.setVisible(require_key)
         if not require_key:
             return
