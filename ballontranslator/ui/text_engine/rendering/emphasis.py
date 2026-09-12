@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from typing import Iterable, Iterator, NamedTuple, Optional
 
 from qtpy.QtCore import QPointF, QRectF, Qt
@@ -194,21 +195,37 @@ def _iter_emphasis_marks(
     orientation: QTransform = QTransform(),
     side_offsets: tuple[float, float] = (0.0, 0.0),
 ) -> Iterator[EmphasisMark]:
-    """Yield exact mark geometry for painting and effect-bound queries."""
+    """Yield exact mark geometry for painting and effect-bound queries.
+
+    >>> callable(_iter_emphasis_marks)
+    True
+    """
     line_start = line.textStart()
     line_end = line_start + line.textLength()
-    graphemes = tuple(
-        (start, end)
-        for start, end in _grapheme_ranges(block.text())
-        if start < line_end and end > line_start
-    )
-    if not graphemes:
-        return
     spans = (
         resolve_paint_spans(block, line, tuple(block.layout().formats()))
         if context is None
         else _effect_spans(block, line, context)
     )
+    emphasis_spans: list[tuple[PaintSpan, str, str]] = []
+    for span in spans:
+        style, position = emphasis_values(span.char_format)
+        if style != 'none':
+            emphasis_spans.append((span, style, position))
+    if not emphasis_spans:
+        return
+
+    block_text = block.text()
+    block_graphemes = _grapheme_ranges(block_text)
+    # Grapheme ends and starts are ordered. Include a cluster crossing either
+    # line boundary without rescanning the whole paragraph for every line.
+    first = max(0, bisect_left(block_graphemes, (line_start,)) - 1)
+    if first < len(block_graphemes) and block_graphemes[first][1] <= line_start:
+        first += 1
+    last = bisect_left(block_graphemes, (line_end,))
+    graphemes = block_graphemes[first:last]
+    if not graphemes:
+        return
     combined_unit = vertical and any(
         span.start <= line_start < span.start + span.length
         and text_combine_upright_values(span.char_format)[0]
@@ -220,10 +237,7 @@ def _iter_emphasis_marks(
         # If fragment styles differ, the first emphasized fragment owns its
         # single mark while every base glyph keeps its own normal formatting.
         graphemes = ((line_start, line_end),)
-    for span in spans:
-        style, position = emphasis_values(span.char_format)
-        if style == 'none':
-            continue
+    for span, style, position in emphasis_spans:
         source = _mark_document(style, span.char_format)
         span_end = span.start + span.length
         for start, end in graphemes:
@@ -234,7 +248,7 @@ def _iter_emphasis_marks(
             )
             if not owns_mark:
                 continue
-            text = _utf16_slice(block.text(), start, end - start)
+            text = _utf16_slice(block_text, start, end - start)
             if not text or text.isspace():
                 continue
             cell = logical_span_rect(

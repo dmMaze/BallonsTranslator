@@ -1,8 +1,9 @@
-from typing import List, Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple
 
 from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
+    QFont,
     QPainter,
     QPalette,
     QTextBlock,
@@ -34,6 +35,7 @@ from .rendering.indexing import (
     _utf16_slice,
 )
 from .rendering.glyph import draw_slanted_line
+from .rendering.native_paint import draw_native_layout
 from .rendering.ruby import (
     RubyBlockMetrics,
     RubyPlacement,
@@ -44,6 +46,17 @@ from .rendering.ruby import (
     ruby_placement,
     ruby_side_margins,
 )
+
+
+class _PlainLineLayout(NamedTuple):
+    """Retain placement inputs, never a QTextLine that Qt may invalidate."""
+
+    key: tuple
+    height: float
+    dy: float
+    advance: float
+    width: float
+
 
 class HorizontalTextDocumentLayout(SceneTextLayout):
 
@@ -59,6 +72,69 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self._cursor_update_rect = QRectF()
         self._ruby_metrics: List[RubyBlockMetrics] = []
         self._annotation_ink_bounds = QRectF()
+        self._plain_line_cache: dict[int, _PlainLineLayout] = {}
+        self._plain_line_context: Optional[tuple] = None
+
+    def _plain_line_key(self, block: QTextBlock, text: str) -> tuple:
+        number = block.blockNumber()
+        return (
+            QTextBlock(block), block.revision(), text,
+            block.blockFormat(), block.charFormat(),
+            QFont(block.layout().font()),
+            tuple(self.block_qcharfmt_lst[number]),
+            tuple(self._block_fragment_ends[number]),
+        )
+
+    def invalidate_native_metrics(self) -> None:
+        """Discard placement retained before a native font metric change."""
+        self._plain_line_cache.clear()
+        self.reLayoutEverything()
+
+    def _reuse_plain_line(
+        self, block: QTextBlock, text: str, text_length: int,
+    ) -> bool:
+        """Reposition an unchanged native line with the original arithmetic.
+
+        >>> callable(HorizontalTextDocumentLayout._reuse_plain_line)
+        True
+        """
+        cached = self._plain_line_cache.get(block.blockNumber())
+        if cached is None or self.render_delegate is not None:
+            return False
+        layout = block.layout()
+        if (
+            layout.lineCount() != 1 or layout.preeditAreaText()
+            or layout.formats() or cached.key != self._plain_line_key(block, text)
+        ):
+            return False
+        line = layout.lineAt(0)
+        if not line.isValid() or line.textStart() != 0 or line.textLength() != text_length:
+            return False
+
+        self._ruby_metrics.append(RubyBlockMetrics.empty())
+        self._space_rows.append([])
+        self._relocated_spaces.append({})
+        margin = self._effect_padding
+        if block == self.document().firstBlock():
+            self.x_offset_lst = []
+            self.y_offset_lst = []
+            y_offset = margin
+        else:
+            y_offset = self.y_offset_lst[-1]
+            if self._last_row_advance is not None:
+                y_offset += cached.advance - self._last_row_advance
+        # Do not translate the previous position: repeated fractional offsets
+        # would accumulate Qt's fixed-point rounding across document changes.
+        line.setPosition(QPointF(margin, y_offset + cached.dy))
+        self.shrink_height = max(
+            cached.height + y_offset - margin, self.shrink_height,
+        )
+        if block.blockNumber() == self.document().blockCount() - 1:
+            self.text_padding = max(self.text_padding, cached.height / 2)
+        self.y_offset_lst.append(y_offset + cached.advance)
+        self._last_row_advance = cached.advance
+        self.shrink_width = max(cached.width, self.shrink_width)
+        return True
 
     @staticmethod
     def _cursor_x(line: QTextLine, position: int) -> float:
@@ -111,6 +187,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self,
         block: QTextBlock,
         line: QTextLine,
+        text: str,
     ) -> Tuple[int, List[Tuple[int, float]]]:
         """Return the content end and trailing spaces that need relocation.
 
@@ -122,7 +199,6 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         >>> callable(HorizontalTextDocumentLayout._trailing_space_layout)
         True
         """
-        text = block.text()
         line_start = line.textStart()
         line_length = line.textLength()
         line_end = line_start + line_length
@@ -468,11 +544,16 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         block: QTextBlock,
         line: QTextLine,
         metrics: RubyBlockMetrics,
+        text: Optional[str] = None,
     ) -> None:
         """Fit complete Ruby cells without retrying QTextLine widths."""
+        if not metrics:
+            return
+        if text is None:
+            text = block.text()
         line_start = line.textStart()
         line_end = min(
-            line_start + line.textLength(), _utf16_length(block.text())
+            line_start + line.textLength(), _utf16_length(text)
         )
         line_metrics = metrics.overlapping(
             block.position() + line_start,
@@ -483,7 +564,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         candidate_ends = tuple(
             line_start + end
             for _start, end in _grapheme_ranges(_utf16_slice(
-                block.text(), line_start, line_end - line_start
+                text, line_start, line_end - line_start
             ))
         )
         left = right = self._cursor_x(line, line_start)
@@ -798,6 +879,23 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
     def reLayout(self) -> None:
         self._begin_layout_generation()
         doc = self.document()
+        option = doc.defaultTextOption()
+        device = self.paintDevice()
+        device_metrics = (
+            None if device is None else
+            (device, device.logicalDpiX(), device.logicalDpiY(), device.devicePixelRatioF())
+        )
+        context = (
+            doc.blockCount(), QFont(doc.defaultFont()), self.available_width,
+            self.line_spacing, self.linespacing_type, self.letter_spacing,
+            option.alignment(), option.textDirection(), option.flags(),
+            option.useDesignMetrics(), option.tabStopDistance(),
+            tuple((tab.position, tab.type, tab.delimiter) for tab in option.tabs()),
+            device_metrics,
+        )
+        if context != self._plain_line_context:
+            self._plain_line_cache.clear()
+            self._plain_line_context = context
         doc_margin = self._effect_padding
         self.text_padding = 0
         self.shrink_height = 0
@@ -913,6 +1011,13 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
     def layoutBlock(self, block: QTextBlock) -> int:
         doc = self.document()
+        # A single immutable snapshot avoids copying/hashing the full Qt block
+        # again for every wrapped line. It lives only for this layout pass.
+        block_text = block.text()
+        block_text_length = _utf16_length(block_text)
+        if self._reuse_plain_line(block, block_text, block_text_length):
+            return 1
+        self._plain_line_cache.pop(block.blockNumber(), None)
         block.clearLayout()
         tl = block.layout()
 
@@ -978,22 +1083,17 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                 shared_space_row = None
                 line.setLineWidth(self.available_width)
             protect_horizontal_ruby_wrap(block, line, ruby_metrics)
-            self._settle_horizontal_ruby_wrap(block, line, ruby_metrics)
+            self._settle_horizontal_ruby_wrap(
+                block, line, ruby_metrics, block_text
+            )
             nchar = line.textLength()
 
             dy = 0
             idea_height = -1
             if nchar > 0:
-                tgt_cfmt = None
-                tgt_size = -1
-                for ii in range(nchar):
-                    cfmt = self.get_char_fontfmt(blk_no, char_idx + ii)
-                    if cfmt is None:
-                        break
-                    sz = cfmt.font.pointSizeF()
-                    if sz > tgt_size:
-                        tgt_size = sz
-                        tgt_cfmt = cfmt
+                tgt_cfmt = self.largest_font_format(
+                    blk_no, char_idx, char_idx + nchar
+                )
                 if tgt_cfmt is not None:
                     font = tgt_cfmt.font
                     tbr, br = get_punc_rect('木fg', font.family(), font.pointSizeF(), font.weight(), font.italic())
@@ -1027,7 +1127,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             line_y_offset += over_margin
             line.setPosition(QPointF(doc_margin, line_y_offset + dy))
             relocated_start, relocated_spaces = self._trailing_space_layout(
-                block, line
+                block, line, block_text
             )
             if shared_space_row is not None:
                 self._merge_line_into_space_row(
@@ -1081,7 +1181,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             last_row_advance = line_advance
             if (
                 relocated_spaces
-                and char_idx + nchar < _utf16_length(block.text())
+                and char_idx + nchar < block_text_length
             ):
                 # At a soft-wrap boundary Qt owns the shared cursor position
                 # before the following visible glyph. Intermediate spaces and
@@ -1108,6 +1208,20 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self.y_offset_lst.append(y_offset)
         self._last_row_advance = last_row_advance
         self.shrink_width = max(shrink_width, self.shrink_width)
+        if (
+            self.render_delegate is None and block_text
+            and not block_text[-1].isspace()
+            and tl.lineCount() == 1 and not tl.preeditAreaText()
+            and not tl.formats() and not ruby_metrics
+            and emphasis_over == 0.0 and emphasis_under == 0.0
+            and not relocated_spaces
+            and tl.lineAt(0).textStart() == 0
+            and tl.lineAt(0).textLength() == block_text_length
+        ):
+            self._plain_line_cache[blk_no] = _PlainLineLayout(
+                self._plain_line_key(block, block_text),
+                idea_height, dy, line_advance, shrink_width,
+            )
         return 1
 
     def draw(self, painter: QPainter, context: QAbstractTextDocumentLayout.PaintContext) -> None:
@@ -1181,7 +1295,24 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
                             ruby_context,
                         )
                 else:
-                    layout.draw(painter, QPointF(0, 0), selections, clip)
+                    native_outline = bllen >= 128 and (
+                        self._is_painting_stroke
+                        or any(
+                            entry.format.textOutline().style() != Qt.PenStyle.NoPen
+                            for entry in layout.formats()
+                        )
+                    )
+                    # Short wrapped lines already rasterize cheaply. Forwarding
+                    # an entire long paragraph through the path engine adds
+                    # overhead unless a shaped line itself contains many units.
+                    long_native_line = native_outline and any(
+                        layout.lineAt(index).textLength() >= 128
+                        for index in range(layout.lineCount())
+                    )
+                    if long_native_line:
+                        draw_native_layout(layout, painter, selections, clip)
+                    else:
+                        layout.draw(painter, QPointF(), selections, clip)
             else:
                 if context.clip.isValid():
                     painter.save()

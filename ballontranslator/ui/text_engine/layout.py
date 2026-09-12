@@ -1,3 +1,4 @@
+from bisect import bisect_right
 from functools import cached_property, lru_cache
 from typing import Callable, List, Optional, Sequence, Tuple
 
@@ -214,7 +215,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.need_ideal_width = False
         self.block_ideal_height = []
         self.need_ideal_height = False
-        self._map_charidx2frag = []
+        self._block_fragment_ends: List[List[int]] = []
         self._max_font_size = -1
 
         self.foreground_pixmap: QPixmap = None
@@ -368,51 +369,68 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             return
         self.reLayoutEverything()
         
-    def reLayoutEverything(self):
+    def reLayoutEverything(self) -> None:
+        """Rebuild format metrics and their UTF-16 index before placing text.
+
+        >>> callable(SceneTextLayout.reLayoutEverything)
+        True
+        """
         self._max_font_size = -1
         block = self.document().firstBlock()
         self.block_charfmt_lst = []
         self.block_qcharfmt_lst = []
         self.block_ideal_width = []
         self.block_ideal_height = []
-        self._map_charidx2frag = []
+        self._block_fragment_ends = []
+        # Qt interns formats within a document. Reuse their read-only metrics
+        # only in this rebuild, so font and layout changes cannot leave stale
+        # measurements behind across generations.
+        format_metrics = {}
         while block.isValid():
             charfmt_lst, qcharfmt_lst, ideal_width, char_idx = [], [], -1, 0
             ideal_height = 0
-            charidx_map = {}
+            fragment_ends = []
             it = block.begin()
-            frag_idx = 0
             while not it.atEnd():
                 fragment = it.fragment()
-                fcmt = fragment.charFormat()
-                cfmt = CharFontFormat(fcmt, self.letter_spacing)
+                format_index = fragment.charFormatIndex()
+                metrics = format_metrics.get(format_index)
+                if metrics is None:
+                    fcmt = fragment.charFormat()
+                    cfmt = CharFontFormat(fcmt, self.letter_spacing)
+                    width = cfmt.br.width() if self.need_ideal_width else -1
+                    height = (
+                        cfmt.punc_rect('木fg')[0].height()
+                        if self.need_ideal_height else 0
+                    )
+                    metrics = cfmt, QTextCharFormat(fcmt), cfmt.size, width, height
+                    format_metrics[format_index] = metrics
+                cfmt, qfmt, size, width, height = metrics
                 charfmt_lst.append(cfmt)
-                qcharfmt_lst.append(QTextCharFormat(fcmt))
-                if cfmt.size > self._max_font_size:
-                    self._max_font_size = cfmt.size
+                qcharfmt_lst.append(qfmt)
+                if size > self._max_font_size:
+                    self._max_font_size = size
 
                 if self.need_ideal_width:
-                    w_ = cfmt.br.width()
-                    if ideal_width < w_:
-                        ideal_width = w_
+                    if ideal_width < width:
+                        ideal_width = width
 
                 if self.need_ideal_height:
-                    h_ = cfmt.punc_rect('木fg')[0].height()
-                    if ideal_height < h_:
-                        ideal_height = h_
+                    if ideal_height < height:
+                        ideal_height = height
 
-                text_len = fragment.length()
-                for _ in range(text_len):
-                    charidx_map[char_idx] = frag_idx
-                    char_idx += 1
+                # Qt fragment lengths are UTF-16 units, not Python characters.
+                # Store one exclusive end per format run, not one dict entry
+                # per unit. Rebuild with the metrics for this generation.
+                char_idx += fragment.length()
+                fragment_ends.append(char_idx)
                 it += 1
-                frag_idx += 1
 
             self.block_charfmt_lst.append(charfmt_lst)
             self.block_qcharfmt_lst.append(qcharfmt_lst)
             self.block_ideal_width.append(ideal_width)
             self.block_ideal_height.append(ideal_height)
-            self._map_charidx2frag.append(charidx_map)
+            self._block_fragment_ends.append(fragment_ends)
             block = block.next()
         self.reLayout()
 
@@ -425,14 +443,54 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def minSize(self):
         return (self.shrink_height + self.text_padding, self.shrink_width + self.text_padding)
     
-    def get_char_fontfmt(self, block_number: int, char_idx: int) -> CharFontFormat:
-        charidx2frag_map = self._map_charidx2frag[block_number]
-        if len(charidx2frag_map) == 0:
+    def get_char_fontfmt(
+        self, block_number: int, char_idx: int
+    ) -> Optional[CharFontFormat]:
+        ends = self._block_fragment_ends[block_number]
+        if not ends or ends[-1] == 0:
             return None
-        if char_idx not in charidx2frag_map:    # caused by inputmethod
-            char_idx = len(charidx2frag_map) - 1
-        frag_idx = charidx2frag_map[char_idx]
+        if char_idx < 0 or char_idx >= ends[-1]:
+            # Preserve the existing last-character fallback during IME preedit.
+            char_idx = ends[-1] - 1
+        frag_idx = bisect_right(ends, char_idx)
         return self.block_charfmt_lst[block_number][frag_idx]
+
+    def largest_font_format(
+        self, block_number: int, start: int, end: int
+    ) -> Optional[CharFontFormat]:
+        """Find the first largest font in a line without visiting each unit.
+
+        Seed the unclipped start so IME fallback wins equal-size ties. The strict
+        size comparison also preserves the fallback for fonts without point sizes.
+
+        >>> callable(SceneTextLayout.largest_font_format)
+        True
+        """
+        if end <= start:
+            return None
+        first = self.get_char_fontfmt(block_number, start)
+        if first is None:
+            return None
+        best = None
+        best_size = -1
+        first_size = first.size
+        if first_size > best_size:
+            best, best_size = first, first_size
+        ends = self._block_fragment_ends[block_number]
+        position = max(0, start)
+        limit = min(end, ends[-1])
+        index = bisect_right(ends, position)
+        formats = self.block_charfmt_lst[block_number]
+        while position < limit:
+            run_end = ends[index]
+            if run_end > position:
+                candidate = formats[index]
+                size = candidate.size
+                if size > best_size:
+                    best, best_size = candidate, size
+                position = run_end
+            index += 1
+        return best
 
     def fragment_format_ranges(
         self,
@@ -440,31 +498,28 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         start: int,
         end: int,
     ) -> Tuple[Tuple[int, int, QTextCharFormat], ...]:
-        """Return indexed QTextCharFormat runs intersecting one block range."""
-        position_map = self._map_charidx2frag[block_number]
-        if not position_map or end <= start:
+        """Return intersecting formats by run, independent of character count.
+
+        Lookup takes O(log F + K) for F runs and K overlapping runs.
+
+        >>> callable(SceneTextLayout.fragment_format_ranges)
+        True
+        """
+        ends = self._block_fragment_ends[block_number]
+        if not ends or end <= start:
             return ()
         start = max(0, start)
-        end = min(end, len(position_map))
+        end = min(end, ends[-1])
         if end <= start:
             return ()
         ranges = []
-        range_start = start
-        fragment_index = position_map[start]
-        for position in range(start + 1, end):
-            candidate = position_map[position]
-            if candidate == fragment_index:
-                continue
-            ranges.append((
-                range_start,
-                position,
-                self.block_qcharfmt_lst[block_number][fragment_index],
-            ))
-            range_start = position
-            fragment_index = candidate
-        ranges.append((
-            range_start,
-            end,
-            self.block_qcharfmt_lst[block_number][fragment_index],
-        ))
+        fragment_index = bisect_right(ends, start)
+        formats = self.block_qcharfmt_lst[block_number]
+        while ends[fragment_index] < end:
+            run_end = ends[fragment_index]
+            if run_end > start:
+                ranges.append((start, run_end, formats[fragment_index]))
+                start = run_end
+            fragment_index += 1
+        ranges.append((start, end, formats[fragment_index]))
         return tuple(ranges)

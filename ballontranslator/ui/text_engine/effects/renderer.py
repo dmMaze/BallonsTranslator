@@ -53,6 +53,9 @@ from ..rendering.glyph import (
     GLYPH_DILATED_STROKE_FORMAT_PROPERTY,
     GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
+    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY,
+    STROKE_ALIGNMENT_RANGE_LENGTH,
+    stroke_alignment_format,
 )
 from .filters import (
     FilterContext,
@@ -77,8 +80,6 @@ from ..rendering.raster import (
 )
 
 
-STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1241
-_STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 # Glyph Slant writes vector paths into effect pixmaps, not native text.
 _VECTOR_EFFECT_RENDER_HINTS = (
     QPainter.RenderHint.Antialiasing
@@ -189,6 +190,7 @@ class TextEffectRenderer:
         self._render_stroke = None
         self._outline_only_stroke = False
         self._native_stroke_alignment = False
+        self._native_stroke_metrics_changed = False
         self.refreshing_effect_padding = False
         self._verified_export_assets: Set[
             Tuple[object, RasterAssetRef]
@@ -2086,22 +2088,10 @@ class TextEffectRenderer:
             ]
             if enabled:
                 if alignment_format is None:
-                    alignment_format = QTextCharFormat()
-                    alignment_format.setProperty(
-                        STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True
-                    )
-                    # A styled outline selects Qt's path-backed glyph
-                    # rasterizer; transparent zero width paints no pixels.
-                    alignment_format.setTextOutline(QPen(
-                        QColor(0, 0, 0, 0),
-                        0.0,
-                        Qt.PenStyle.SolidLine,
-                        Qt.PenCapStyle.RoundCap,
-                        Qt.PenJoinStyle.RoundJoin,
-                    ))
+                    alignment_format = stroke_alignment_format()
                 entry = QTextLayout.FormatRange()
                 entry.start = 0
-                entry.length = _STROKE_ALIGNMENT_RANGE_LENGTH
+                entry.length = STROKE_ALIGNMENT_RANGE_LENGTH
                 entry.format = alignment_format
                 formats.append(entry)
             layout.setFormats(formats)
@@ -2291,6 +2281,22 @@ class TextEffectRenderer:
         doc.setDocumentLayout(layout)
         layout.relayout_on_changed = False
         doc.drawContents(painter)
+
+        if isinstance(self.layout, HorizontalTextDocumentLayout):
+            live = self.document().firstBlock()
+            copied = doc.firstBlock()
+            while live.isValid():
+                native = live.layout()
+                if (
+                    not native.preeditAreaText()
+                    and native.maximumWidth() != copied.layout().maximumWidth()
+                ):
+                    # Bitmap fallback fonts can change advances on first
+                    # outline paint, leaving Qt's live line widths stale.
+                    self._native_stroke_metrics_changed = True
+                    break
+                live = live.next()
+                copied = copied.next()
 
     def _paint_vertical_stroke(
         self,
@@ -2966,22 +2972,34 @@ class TextEffectRenderer:
         True
         """
         state = self._raster_state()
-        pre_mask_key = self._pre_mask_cache_key(
-            surface_rect, render_scale, skipped_filters
-        )
-        target_map = state.pre_mask_cache.get(pre_mask_key)
-        if target_map is None:
-            target_map = self._render_pre_mask_effect_surface(
-                surface_rect,
-                render_scale,
-                skipped_filters=skipped_filters,
-                filter_plan=filter_plan,
-                nodes=nodes,
-                image_rasters=image_rasters,
+        for attempt in range(2):
+            pre_mask_key = self._pre_mask_cache_key(
+                surface_rect, render_scale, skipped_filters
             )
-            state.pre_mask_cache[pre_mask_key] = target_map
-            while len(state.pre_mask_cache) > 2:
-                state.pre_mask_cache.pop(next(iter(state.pre_mask_cache)))
+            target_map = state.pre_mask_cache.get(pre_mask_key)
+            self._native_stroke_metrics_changed = False
+            if target_map is None:
+                target_map = self._render_pre_mask_effect_surface(
+                    surface_rect,
+                    render_scale,
+                    skipped_filters=skipped_filters,
+                    filter_plan=filter_plan,
+                    nodes=nodes,
+                    image_rasters=image_rasters,
+                )
+            if not self._native_stroke_metrics_changed or attempt:
+                state.pre_mask_cache[pre_mask_key] = target_map
+                while len(state.pre_mask_cache) > 2:
+                    state.pre_mask_cache.pop(next(iter(state.pre_mask_cache)))
+                break
+            # All source painters have ended. Settle the shared layout and
+            # render once with its new generation, without reentrant repaint.
+            was_repainting = self.repainting
+            self.repainting = True
+            try:
+                self.layout.invalidate_native_metrics()
+            finally:
+                self.repainting = was_repainting
 
         alpha_mask = self._active_text_alpha_mask()
         if alpha_mask is None:

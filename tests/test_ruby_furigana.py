@@ -897,6 +897,137 @@ class RubyFuriganaTest(unittest.TestCase):
                     (0, 1, 2) if ruby_type == 'group' else (0, 1),
                 )
 
+    def test_vertical_ruby_cells_include_only_selected_whitespace(self) -> None:
+        for prefix, suffix in (('   ', ''), ('', '   '), ('   ', '   ')):
+            text = prefix + '木木木' + suffix
+            plain = self._item(vertical=True, text=text, bounds=(0, 0, 360, 520))
+            self.addCleanup(plain.deleteLater)
+            for ruby_type in ('group', 'mono'):
+                for include_spaces in (False, True):
+                    with self.subTest(
+                        prefix=prefix, suffix=suffix,
+                        ruby_type=ruby_type, include_spaces=include_spaces,
+                    ):
+                        item = self._item(
+                            vertical=True, text=text, bounds=(0, 0, 360, 520),
+                        )
+                        self.addCleanup(item.deleteLater)
+                        start = 0 if include_spaces else len(prefix)
+                        end = len(text) if include_spaces else start + 3
+                        reading = 'き' if ruby_type == 'group' else ' '.join(
+                            ['き'] * (end - start)
+                        )
+                        apply_ruby(_select(item.document(), start, end), ruby_type, reading)
+                        item.layout.reLayoutEverything()
+                        placements = item.layout._vertical_ruby_placements(
+                            item.document().firstBlock()
+                        )
+                        self.assertEqual(len(placements), 1 if ruby_type == 'group' else end - start)
+                        for placement in placements:
+                            self.assertAlmostEqual(
+                                placement.cell.top(),
+                                plain.layout.source_cursor_rect(placement.unit.start).top(),
+                                delta=0.02,
+                            )
+                            self.assertAlmostEqual(
+                                placement.cell.bottom(),
+                                plain.layout.source_cursor_rect(placement.unit.end).top(),
+                                delta=0.02,
+                            )
+
+        text = '   木木木   尾'
+        plain = self._item(vertical=True, text=text, bounds=(0, 0, 360, 520))
+        self.addCleanup(plain.deleteLater)
+        space_advance = (
+            plain.layout.source_cursor_rect(1).top()
+            - plain.layout.source_cursor_rect(0).top()
+        )
+        for ruby_type in ('group', 'mono'):
+            for reading in ('き', 'き' * 8):
+                for height in (90, 520):
+                    with self.subTest(ruby_type=ruby_type, reading=reading, height=height):
+                        item = self._item(vertical=True, text=text, bounds=(0, 0, 360, height))
+                        self.addCleanup(item.deleteLater)
+                        apply_ruby(
+                            _select(item.document(), 3, 6), ruby_type,
+                            reading if ruby_type == 'group' else ' '.join([reading] * 3),
+                        )
+                        item.layout.reLayoutEverything()
+                        block = item.document().firstBlock()
+                        layout = block.layout()
+                        placements = item.layout._vertical_ruby_placements(block)
+                        self.assertEqual((placements[0].unit.start, placements[-1].unit.end), (3, 6))
+                        for placement, metric in zip(placements, item.layout._ruby_metrics[0]):
+                            self.assertAlmostEqual(placement.cell.height(), metric.extent, delta=0.02)
+                        columns = {layout.lineForTextPosition(pos).x() for pos in range(3, 6)}
+                        if ruby_type == 'group':
+                            self.assertEqual(len(columns), 1)
+                        elif height == 90:
+                            self.assertGreater(len(columns), 1)
+                        last = layout.lineForTextPosition(5)
+                        for start, end, top, bottom, is_space in item.layout._vertical_line_cells(block, last.lineNumber()):
+                            if is_space:
+                                self.assertAlmostEqual(bottom - top, space_advance, delta=0.02)
+                        following = layout.lineForTextPosition(9)
+                        if following.x() == last.x():
+                            self.assertAlmostEqual(
+                                following.y(), placements[-1].cell.bottom() + 3 * space_advance,
+                                delta=0.02,
+                            )
+
+    def test_vertical_ruby_keeps_horizontal_alignment_after_space_insertion(self) -> None:
+        for base in ('木', '木木木'):
+            for ruby_type in ('group', 'mono'):
+                for position in ('over', 'under'):
+                    for reading in ('测试', '测试注音测试注音'):
+                        with self.subTest(
+                            base=base, ruby_type=ruby_type,
+                            position=position, reading=reading,
+                        ):
+                            item = self._item(
+                                vertical=True, text=base + '   ',
+                                bounds=(0, 0, 360, 800),
+                            )
+                            self.addCleanup(item.deleteLater)
+                            item.startEdit()
+                            item.setTextCursor(_select(
+                                item.document(), 0, len(base),
+                            ))
+                            item.setRuby(
+                                ruby_type,
+                                reading if ruby_type == 'group'
+                                else ' '.join([reading] * len(base)),
+                                position,
+                            )
+                            block = item.document().firstBlock()
+                            expected = [
+                                (QRectF(p.cell), QRectF(p.ink_bounds))
+                                for p in item.layout._vertical_ruby_placements(block)
+                            ]
+                            for prefix_length, spaces in ((1, ' '), (3, '  ')):
+                                cursor = item.textCursor()
+                                cursor.setPosition(0)
+                                item.setTextCursor(cursor)
+                                item.insert_plain_text_at_cursor(spaces)
+                                placements = item.layout._vertical_ruby_placements(block)
+                                self.assertEqual(len(placements), len(expected))
+                                self.assertEqual(
+                                    (placements[0].unit.start, placements[-1].unit.end),
+                                    (prefix_length, prefix_length + len(base)),
+                                )
+                                for placement, bounds, metric in zip(
+                                    placements, expected, item.layout._ruby_metrics[0]
+                                ):
+                                    for actual, reference in zip(
+                                        (placement.cell, placement.ink_bounds),
+                                        bounds,
+                                    ):
+                                        self.assertAlmostEqual(actual.x(), reference.x(), delta=0.02)
+                                        self.assertAlmostEqual(actual.width(), reference.width(), delta=0.02)
+                                    self.assertAlmostEqual(
+                                        placement.cell.height(), metric.extent, delta=0.02,
+                                    )
+
     def test_space_around_expands_latin_and_mixed_but_not_bopomofo(self):
         def group_item(vertical: bool, reading: str) -> TextBlkItem:
             item = self._item(
@@ -1369,6 +1500,45 @@ class RubyFuriganaTest(unittest.TestCase):
             )
             sides[position] = placement.ink_bounds.center().x()
         self.assertGreater(sides['over'], sides['under'])
+
+    def test_wrapped_ruby_keeps_its_font_width_and_side_margins(self) -> None:
+        for prefix, suffix in (('前', ''), ('前   ', ''), ('前', '後'), ('前   ', '後')):
+            for position in ('over', 'under'):
+                for emphasis in (False, True):
+                    with self.subTest(prefix=prefix, suffix=suffix, position=position, emphasis=emphasis):
+                        item = self._item(
+                            vertical=True, text=prefix + '木' + suffix,
+                            bounds=(0, 0, 240, 200),
+                        )
+                        self.addCleanup(item.deleteLater)
+                        item.setFontFamily('Noto Sans CJK SC')
+                        cursor = _select(item.document(), len(prefix), len(prefix) + 1)
+                        char_format = QTextCharFormat()
+                        char_format.setFontPointSize(48)
+                        cursor.mergeCharFormat(char_format)
+                        if emphasis:
+                            apply_emphasis(
+                                cursor, 'filled sesame',
+                                'over right' if position == 'over' else 'under left',
+                            )
+                        item.setTextCursor(cursor)
+                        item.setRuby('group', '测试注音测试注音', position)
+
+                        block = item.document().firstBlock()
+                        first_line = block.layout().lineForTextPosition(0)
+                        ruby_line = block.layout().lineForTextPosition(len(prefix))
+                        placements = item.layout._vertical_ruby_placements(block)
+                        self.assertEqual(len(placements), 1)
+                        placement = placements[0]
+                        occupied = placement.cell.united(placement.ink_bounds)
+                        self.assertLess(ruby_line.x(), first_line.x())
+                        self.assertGreaterEqual(occupied.left(), ruby_line.x() - 0.02)
+                        self.assertLessEqual(occupied.right(), first_line.x() + 0.02)
+                        self.assertAlmostEqual(
+                            placement.cell.width(),
+                            item.layout.get_char_fontfmt(0, len(prefix)).tbr.width(),
+                            delta=0.02,
+                        )
 
     def test_ruby_and_emphasis_accumulate_same_side_margin(self):
         plain = self._item(text='東京')

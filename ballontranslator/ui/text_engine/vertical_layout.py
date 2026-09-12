@@ -2,7 +2,7 @@ import re
 import unicodedata
 from bisect import bisect_right
 from functools import lru_cache
-from typing import List, Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple, Union
 
 from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
@@ -24,6 +24,7 @@ from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.fontformat import FontFormat, TextAlignment
 from .annotations import (
     FONT_FEATURES_AVAILABLE,
+    emphasis_values,
     letter_spacing_value,
     text_combine_upright_ranges,
 )
@@ -39,7 +40,12 @@ from .rendering.emphasis import (
     emphasis_ink_bounds,
     emphasis_margins,
 )
-from .rendering.glyph import draw_slanted_line, glyph_geometry
+from .rendering.glyph import (
+    STROKE_ALIGNMENT_RANGE_LENGTH,
+    draw_slanted_line,
+    glyph_geometry,
+    stroke_alignment_format,
+)
 from .rendering.indexing import (
     _grapheme_count,
     _grapheme_ranges,
@@ -302,6 +308,20 @@ def _line_ink_bounds(
     return QRectF(cached)
 
 
+class _PlainColumnLayout(NamedTuple):
+    """Keep scalar placement inputs, never native QTextLine/QTextLayout handles."""
+
+    key: tuple
+    line_ranges: Tuple[Tuple[int, int], ...]
+    line_y: Tuple[float, ...]
+    advance: float
+    shrink_height: float
+    char_offsets: Tuple[Tuple[float, ...], ...]
+    line_spaces: Tuple[Tuple[int, int, Tuple[float, ...], int], ...]
+    char_records: Tuple[Tuple[int, Tuple[Tuple[str, Union[float, str]], ...]], ...]
+    draw_offsets: Optional[Tuple[Tuple[float, float], ...]] = None
+
+
 class VerticalTextDocumentLayout(SceneTextLayout):
     def __init__(self, doc: QTextDocument, fontformat: FontFormat):
         super().__init__(doc, fontformat)
@@ -322,6 +342,100 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._resize_layout_available_height = None
         self._resize_layout_padding = None
         self._selection_geometry_cache = {}
+        self._plain_column_cache: dict[int, _PlainColumnLayout] = {}
+        self._plain_column_context: Optional[tuple] = None
+        self._plain_column_reused: set[int] = set()
+        self._plain_column_stroke_format = stroke_alignment_format()
+
+    def _plain_column_formats(self, layout: QTextLayout) -> Optional[tuple]:
+        formats = layout.formats()
+        if not formats:
+            return ()
+        # The renderer's transparent alignment outline changes raster policy,
+        # not column flow. Every other transient format keeps full Qt layout.
+        if len(formats) != 1:
+            return None
+        entry = formats[0]
+        if (
+            entry.start != 0 or entry.length != STROKE_ALIGNMENT_RANGE_LENGTH
+            or entry.format != self._plain_column_stroke_format
+        ):
+            return None
+        return ((entry.start, entry.length, QTextCharFormat(entry.format)),)
+
+    def _plain_column_key(
+        self, block: QTextBlock, text: str, additional_formats: tuple,
+    ) -> tuple:
+        number = block.blockNumber()
+        return (
+            QTextBlock(block), block.revision(), text,
+            block.blockFormat(), block.charFormat(),
+            QFont(block.layout().font()),
+            tuple(self.block_qcharfmt_lst[number]),
+            tuple(self._block_fragment_ends[number]),
+            additional_formats,
+        )
+
+    def _reuse_plain_column(self, block: QTextBlock, text: str) -> bool:
+        """Place an unchanged single column from its original scalar inputs.
+
+        >>> callable(VerticalTextDocumentLayout._reuse_plain_column)
+        True
+        """
+        cached = self._plain_column_cache.get(block.blockNumber())
+        if cached is None or self.render_delegate is not None:
+            return False
+        # Transient outline ranges can make Qt announce a whole-document edit
+        # for one changed character. Validate actual block inputs and live lines
+        # rather than discarding the unchanged columns in that reported range.
+        layout = block.layout()
+        additional_formats = self._plain_column_formats(layout)
+        if (
+            layout.preeditAreaText() or additional_formats is None
+            or layout.lineCount() != len(cached.line_ranges)
+            or cached.key != self._plain_column_key(block, text, additional_formats)
+        ):
+            return False
+        for number, (start, length) in enumerate(cached.line_ranges):
+            line = layout.lineAt(number)
+            if (
+                not line.isValid() or line.textStart() != start
+                or line.textLength() != length
+            ):
+                return False
+
+        margin = self._effect_padding
+        if block == self.document().firstBlock():
+            self.x_offset_lst = [self.max_width - margin]
+            self.y_offset_lst = []
+        x_offset = self.x_offset_lst[-1]
+        x_offset -= cached.advance
+        # Reset absolute positions before the normal alignment/growth pass.
+        # Translating old positions would accumulate Qt's fixed-point rounding.
+        for number, ypos in enumerate(cached.line_y):
+            layout.lineAt(number).setPosition(QPointF(x_offset, ypos))
+
+        self.text_combine_ranges.append(())
+        self._ruby_metrics.append(RubyBlockMetrics.empty())
+        self.layout_left = x_offset
+        self.shrink_width = max(
+            self.max_width - self.layout_left - margin + 0.01,
+            self.shrink_width,
+        )
+        self.shrink_height = max(
+            cached.shrink_height + 0.01 - margin, self.shrink_height,
+        )
+        self.x_offset_lst.append(x_offset)
+        self.y_offset_lst.append([list(offsets) for offsets in cached.char_offsets])
+        self.line_spaces_lst.append([
+            [trailing, leading, list(offsets), position]
+            for trailing, leading, offsets, position in cached.line_spaces
+        ])
+        self.per_char_records.append({
+            position: dict(record) for position, record in cached.char_records
+        })
+        self._plain_column_reused.add(block.blockNumber())
+        return True
 
     def needs_vertical_rotation(self, char: str) -> bool:
         rotation_chars = (
@@ -522,8 +636,30 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         # Match minSize()'s guard against Qt's fractional metric rounding.
         return 0.0 if growth <= 1e-6 else growth + 0.01
 
-    def reLayout(self):
+    def reLayout(self) -> None:
         self._begin_layout_generation()
+        doc = self.document()
+        option = doc.defaultTextOption()
+        device = self.paintDevice()
+        device_metrics = (
+            None if device is None else
+            (device, device.logicalDpiX(), device.logicalDpiY(), device.devicePixelRatioF())
+        )
+        context = (
+            doc.blockCount(), QFont(doc.defaultFont()),
+            self.available_height, self._effect_padding,
+            self.line_spacing, self.linespacing_type, self.letter_spacing,
+            self.fontformat.standard_vertical_roman_alignment,
+            pcfg.compact_vertical_punctuation_spacing,
+            option.alignment(), option.textDirection(), option.flags(),
+            option.useDesignMetrics(), option.tabStopDistance(),
+            tuple((tab.position, tab.type, tab.delimiter) for tab in option.tabs()),
+            device_metrics,
+        )
+        if context != self._plain_column_context:
+            self._plain_column_cache.clear()
+            self._plain_column_context = context
+        self._plain_column_reused.clear()
         self._selection_geometry_cache.clear()
         self.min_height = 0
         self.layout_left = 0
@@ -534,7 +670,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.shrink_height = 0
         self.shrink_width = 0
         self.text_padding = 0
-        doc = self.document()
         doc_margin = self._effect_padding
         block = doc.firstBlock()
         while block.isValid():
@@ -604,6 +739,18 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
         while block.isValid():
             blk_no = block.blockNumber()
+            cached = self._plain_column_cache.get(blk_no)
+            if (
+                not custom_rendering and blk_no in self._plain_column_reused
+                and cached is not None and cached.draw_offsets is not None
+            ):
+                # Normalized ink/font offsets are independent of the column's
+                # final x coordinate. Only this pass's validated reuse qualifies.
+                self._draw_offset.append([
+                    list(offsets) for offsets in cached.draw_offsets
+                ])
+                block = block.next()
+                continue
             _draw_offsets = []
             self._draw_offset.append(_draw_offsets)
 
@@ -780,6 +927,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         yoff += space_shift
 
                 xy_offsets[0], xy_offsets[1] = xoff, yoff
+            if cached is not None and not custom_rendering:
+                self._plain_column_cache[blk_no] = cached._replace(
+                    draw_offsets=tuple(tuple(offsets) for offsets in _draw_offsets),
+                )
             block = block.next()
 
     def _line_record(
@@ -794,7 +945,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block_number = block.blockNumber()
         if not 0 <= block_number < len(self.per_char_records):
             return {}
-        return self.per_char_records[block_number].get(line.textStart(), {})
+        _trailing, leading, _offsets, line_position = self.line_spaces_lst[
+            block_number
+        ][line_number]
+        # Column metrics belong to the visible run after native leading spaces.
+        char_position = min(
+            line_position + leading, max(0, block.length() - 2),
+        )
+        return self.per_char_records[block_number].get(char_position, {})
 
     def is_tate_chu_yoko_line(
         self,
@@ -870,6 +1028,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         content_length = text_length - leading - trailing
         content_top = offsets[leading]
         content_bottom = offsets[leading + 1]
+        if trailing:
+            content_bottom -= self._line_record(
+                block, line_number
+            ).get('ruby_trailing_gap', 0.0)
         if content_length > 0:
             content = _utf16_slice(
                 block.text(), content_start, content_length
@@ -1119,7 +1281,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             line_end = line_start + line.textLength()
             if line_start >= local_end or line_end <= local_start:
                 continue
-            cells = self._vertical_line_cells(block, line_number)
+            # Qt can attach unannotated whitespace to the same native line.
+            cells = [
+                cell for cell in self._vertical_line_cells(block, line_number)
+                if cell[0] < local_end and cell[1] > local_start
+            ]
             if not cells:
                 continue
             top = min(cell[2] for cell in cells)
@@ -1920,6 +2086,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         doc = self.document()
         compact_punctuation = pcfg.compact_vertical_punctuation_spacing
 
+        blk_text = block.text()
+        if self._reuse_plain_column(block, blk_text):
+            return
+        self._plain_column_cache.pop(block.blockNumber(), None)
         block.clearLayout()
         clear_horizontal_ruby_layout(block)
         doc_margin = self._effect_padding
@@ -1928,7 +2098,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         blk_line_spaces = []
 
         block_no = block.blockNumber()
-        blk_text = block.text()
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
         self.text_combine_ranges.append(text_combine_ranges)
@@ -1941,10 +2110,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.letter_spacing,
         )
         self._ruby_metrics.append(ruby_metrics)
-        ruby_starts = {
-            metric.unit.start - block.position(): metric
-            for metric in ruby_metrics
-        }
         inline_unit_boundaries = None
         ruby_base_leading = {}
         ruby_base_trailing = {}
@@ -2002,6 +2167,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         char_records = {}
         line_char_ids = []
         active_ruby_metric = None
+        column_overflow = False
+        column_advance = 0.0
 
         while True:
             inseparable_run_range = None
@@ -2063,49 +2230,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
             end_char = char_idx + text_len >= blk_text_len
-            if active_ruby_metric is None:
-                active_ruby_metric = ruby_starts.get(char_idx)
-            ruby_metric = active_ruby_metric
-            ruby_unit_start = (
-                -1
-                if ruby_metric is None
-                else ruby_metric.unit.start - block.position()
-            )
-            ruby_unit_end = (
-                -1
-                if ruby_metric is None
-                else ruby_metric.unit.end - block.position()
-            )
-            ruby_leading = ruby_base_leading.get(char_idx, 0.0)
-            ruby_trailing = ruby_base_trailing.get(
-                char_idx + text_len, 0.0
-            )
-            group_ruby = (
-                ruby_metric is not None
-                and ruby_metric.container.ruby_type == 'group'
-            )
-            if ruby_metric is not None and ruby_metric.extent > self.available_height:
-                self.min_height = max(
-                    self.min_height, doc_margin + ruby_metric.extent
-                )
-            force_ruby_wrap = (
-                ruby_metric is not None
-                and char_idx == ruby_unit_start
-                and line_y_offset > doc_margin + 1e-6
-                and line_y_offset + ruby_metric.extent
-                > self.available_height + doc_margin
-            )
-
-            is_first_lbracket = False
-            # _lbracket_shift = 0
-
             if char_idx + text_len > blk_text_len:
                 ypos = ypos_list[-1] if len(ypos_list) > 0 else 0
                 blk_line_spaces.append([0, 0, [ypos], char_idx])
                 line.setPosition(QPointF(x_offset - block_width, ypos))
                 continue
 
-            num_rspaces, num_lspaces = 0, 0
             if utf16_indexing:
                 text = _utf16_slice(
                     blk_text, char_idx, text_len
@@ -2128,6 +2258,69 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 0,
                 line.textLength() - num_lspaces - num_rspaces,
             )
+
+            if active_ruby_metric is None and ruby_metrics:
+                # A native line can start with spaces before its Ruby unit.
+                active_ruby_metric = next(iter(ruby_metrics.overlapping(
+                    block.position() + char_idx,
+                    block.position() + ink_start + 1,
+                )), None)
+            ruby_metric = active_ruby_metric
+            ruby_unit_start = (
+                -1
+                if ruby_metric is None
+                else ruby_metric.unit.start - block.position()
+            )
+            ruby_unit_end = (
+                -1
+                if ruby_metric is None
+                else ruby_metric.unit.end - block.position()
+            )
+            ruby_leading = ruby_base_leading.get(
+                max(char_idx, ruby_unit_start), 0.0,
+            )
+            ruby_trailing = ruby_base_trailing.get(
+                min(char_idx + text_len, ruby_unit_end), 0.0
+            )
+            ruby_space_gap = (
+                ruby_trailing
+                if num_rspaces and char_idx + text_len - num_rspaces == ruby_unit_end
+                else 0.0
+            )
+            if ruby_space_gap:
+                # The unit's end gap precedes unannotated trailing spaces.
+                char_records.setdefault(ink_start, {})[
+                    'ruby_trailing_gap'
+                ] = ruby_space_gap
+                ruby_trailing = 0.0
+            group_ruby = (
+                ruby_metric is not None
+                and ruby_metric.container.ruby_type == 'group'
+            )
+            ruby_prefix_advance = (
+                (ruby_unit_start - char_idx)
+                * self.get_char_fontfmt(block_no, ruby_unit_start).space_width
+                if ruby_unit_start > char_idx else 0.0
+            )
+            ruby_flow_extent = (
+                ruby_metric.extent + ruby_prefix_advance
+                if ruby_metric is not None else 0.0
+            )
+            if ruby_metric is not None and ruby_flow_extent > self.available_height:
+                self.min_height = max(
+                    self.min_height, doc_margin + ruby_flow_extent
+                )
+            available_height = max(available_height, doc_margin + ruby_flow_extent)
+            force_ruby_wrap = (
+                ruby_metric is not None
+                and char_idx <= ruby_unit_start
+                and line_y_offset > doc_margin + 1e-6
+                and line_y_offset + ruby_flow_extent
+                > self.available_height + doc_margin
+            )
+
+            is_first_lbracket = False
+            # _lbracket_shift = 0
 
             tbr_h = space_w = spacing_advance = 0
             char_idx += num_lspaces
@@ -2275,49 +2468,57 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 force_ruby_wrap
                 or (
                     not group_ruby
-                    and char_bottom + ruby_trailing
+                    and char_bottom + ruby_space_gap + ruby_trailing
                     - max(spacing_advance, 0) > available_height
                 )
             )
+            cfmt = self.get_char_fontfmt(block_no, char_idx)
+            if cfmt is not None:
+                if text_combine_line_metrics is None:
+                    right_margin, left_margin = emphasis_margins(
+                        block, line, vertical=True
+                    )
+                    ruby_right, ruby_left = ruby_side_margins(
+                        block, line, ruby_metrics, vertical=True
+                    )
+                    current_line_metrics = (
+                        line_base_width,
+                        right_margin + ruby_right,
+                        left_margin + ruby_left,
+                    )
+                else:
+                    current_line_metrics = text_combine_line_metrics
+                width_list.append(current_line_metrics)
+            else:
+                width_list.append((-1.0, 0.0, 0.0))
             if out_of_vspace:
+                column_overflow = True
                 # switch to next line
                 if char_idx == 0 and layout_first_block:
                     self.min_height = doc_margin + tbr_h
 
                 line_y_offset = doc_margin
                 line_position_y = line_y_offset + ruby_leading
-                char_yoffset_lst[-1] = line_position_y
-                char_yoffset_lst.append(line_position_y + tbr_h)
-                for _ in range(num_rspaces):
-                    char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
-                line_bottom = char_yoffset_lst[-1] + ruby_trailing
-            else:
-                cfmt = self.get_char_fontfmt(block_no, char_idx)
-                if cfmt is not None:
-                    if text_combine_line_metrics is None:
-                        right_margin, left_margin = emphasis_margins(
-                            block, line, vertical=True
-                        )
-                        ruby_right, ruby_left = ruby_side_margins(
-                            block, line, ruby_metrics, vertical=True
-                        )
-                        right_margin += ruby_right
-                        left_margin += ruby_left
-                        current_line_metrics = (
-                            line_base_width,
-                            right_margin,
-                            left_margin,
-                        )
-                    else:
-                        current_line_metrics = text_combine_line_metrics
-                    width_list.append(current_line_metrics)
+                if ruby_metric is not None and num_lspaces:
+                    char_yoffset_lst[:] = [
+                        line_position_y + index * space_w
+                        for index in range(num_lspaces + 1)
+                    ]
                 else:
-                    width_list.append((-1.0, 0.0, 0.0))
-
-                char_yoffset_lst.append(char_bottom)
-                for _ in range(num_rspaces):
-                    char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
-                line_bottom = char_yoffset_lst[-1] + ruby_trailing
+                    char_yoffset_lst[-1] = line_position_y
+                char_yoffset_lst.append(char_yoffset_lst[-1] + tbr_h + ruby_space_gap)
+            else:
+                char_yoffset_lst.append(char_bottom + ruby_space_gap)
+            for _ in range(num_rspaces):
+                space_bottom = char_yoffset_lst[-1] + space_w
+                char_yoffset_lst.append(
+                    space_bottom if ruby_metric is not None
+                    else min(space_bottom, available_height)
+                )
+            line_bottom = char_yoffset_lst[-1] + ruby_trailing
+            if ruby_metric is not None:
+                self.min_height = max(self.min_height, line_bottom)
+            if not out_of_vspace:
                 shrink_height = max(shrink_height, line_bottom)
 
             ypos_list.append(line_position_y)
@@ -2329,18 +2530,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     )
                 else:
                     line_spacing = block_line_spacing
-                if len(width_list) == 0:
-                    width_list = [(block_width, 0.0, 0.0)]
                 end_line, end_ypos, end_metrics = (
                     line,
                     line_position_y,
                     width_list[-1],
                 )
-                if out_of_vspace and text_combine_line_metrics is not None:
-                    # This line belongs to the next column and therefore did
-                    # not enter the previous column's width list.
-                    end_metrics = text_combine_line_metrics
-                if out_of_vspace and end_char and len(width_list) > 1:
+                # An overflow line carries its own metrics to the next column.
+                # With no previous line, it supplies this column's width too.
+                if out_of_vspace and len(width_list) > 1:
                     column_metrics = width_list[:-1]
                 else:
                     column_metrics = width_list
@@ -2373,11 +2570,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     })
                 line_char_ids = []
 
-                x_offset -= self.calculate_line_spacing(
+                column_advance = self.calculate_line_spacing(
                     idea_line_width,
                     line_spacing,
                     block_line_spacing_type,
                 )
+                x_offset -= column_advance
 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
                     line.setPosition(QPointF(x_offset, ypos))
@@ -2448,3 +2646,35 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.y_offset_lst.append(blk_char_yoffset)
         self.line_spaces_lst.append(blk_line_spaces)
         self.per_char_records.append(char_records)
+        if (
+            not custom_rendering and 0 < blk_text_len <= 128
+            and '\ufffc' not in blk_text
+            and not column_overflow and not text_combine_ranges
+            and not ruby_metrics and not tl.preeditAreaText()
+            and 0 < tl.lineCount() == len(ypos_list)
+            and all(
+                emphasis_values(char_format)[0] == 'none'
+                for char_format in self.block_qcharfmt_lst[block_no]
+            )
+            and tl.lineAt(0).textStart() == 0
+            and tl.lineAt(tl.lineCount() - 1).textStart()
+            + tl.lineAt(tl.lineCount() - 1).textLength() == blk_text_len
+        ):
+            additional_formats = self._plain_column_formats(tl)
+            if additional_formats is None:
+                return
+            self._plain_column_cache[block_no] = _PlainColumnLayout(
+                self._plain_column_key(block, blk_text, additional_formats),
+                tuple(
+                    (tl.lineAt(number).textStart(), tl.lineAt(number).textLength())
+                    for number in range(tl.lineCount())
+                ),
+                tuple(ypos_list), column_advance, shrink_height,
+                tuple(tuple(offsets) for offsets in blk_char_yoffset),
+                tuple(
+                    (trailing, leading, tuple(offsets), position)
+                    for trailing, leading, offsets, position in blk_line_spaces
+                ),
+                tuple((position, tuple(record.items()))
+                      for position, record in char_records.items()),
+            )
