@@ -52,6 +52,7 @@ from ballontranslator.ui.misc import ndarray2pixmap, pixmap2ndarray
 GLYPH_STROKE_FORMAT_PROPERTY = 0x100000 + 1239
 GLYPH_DILATED_STROKE_FORMAT_PROPERTY = 0x100000 + 1240
 STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1241
+STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY = 0x100000 + 1242
 FALLBACK_RASTER_MAX_SCALE = 8.0
 FALLBACK_RASTER_MAX_PIXELS = 4_194_304
@@ -66,6 +67,19 @@ GLYPH_GEOMETRY_CACHE_MAX_ENTRIES = 16384
 GLYPH_GEOMETRY_CACHE_MAX_BYTES = 64 * 1024 * 1024
 GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_ENTRIES = 4096
 GLYPH_PREVIEW_GEOMETRY_CACHE_MAX_BYTES = 16 * 1024 * 1024
+
+
+def stroke_alignment_format() -> QTextCharFormat:
+    """Create the transparent outline shared by native fill and Stroke."""
+    char_format = QTextCharFormat()
+    char_format.setProperty(STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True)
+    # A styled outline selects Qt's path-backed glyph rasterizer;
+    # transparent zero width paints no pixels.
+    char_format.setTextOutline(QPen(
+        QColor(0, 0, 0, 0), 0.0, Qt.PenStyle.SolidLine,
+        Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin,
+    ))
+    return char_format
 
 
 class GlyphRasterAllocationError(RuntimeError):

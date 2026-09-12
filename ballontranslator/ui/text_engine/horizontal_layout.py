@@ -75,20 +75,6 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         self._plain_line_cache: dict[int, _PlainLineLayout] = {}
         self._plain_line_context: Optional[tuple] = None
 
-    def documentChanged(self, position: int, charsRemoved: int, charsAdded: int) -> None:
-        # Qt can discard a changed block's native lines before this callback.
-        # A paragraph boundary also owns the following insertion format.
-        if charsRemoved != charsAdded:
-            self._plain_line_cache.clear()
-        elif self._plain_line_cache:
-            doc = self.document()
-            first = doc.findBlock(max(0, position - 1)).blockNumber()
-            end = min(position + charsAdded, max(0, doc.characterCount() - 1))
-            last = doc.findBlock(end).blockNumber()
-            for number in range(max(0, first), last + 1):
-                self._plain_line_cache.pop(number, None)
-        super().documentChanged(position, charsRemoved, charsAdded)
-
     def _plain_line_key(self, block: QTextBlock, text: str) -> tuple:
         number = block.blockNumber()
         return (

@@ -54,6 +54,8 @@ from ..rendering.glyph import (
     GLYPH_FEEDBACK_ONLY_FORMAT_PROPERTY,
     GLYPH_STROKE_FORMAT_PROPERTY,
     STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY,
+    STROKE_ALIGNMENT_RANGE_LENGTH,
+    stroke_alignment_format,
 )
 from .filters import (
     FilterContext,
@@ -77,7 +79,6 @@ from ..rendering.raster import (
 )
 
 
-_STROKE_ALIGNMENT_RANGE_LENGTH = 0x7FFFFFFF
 # Glyph Slant writes vector paths into effect pixmaps, not native text.
 _VECTOR_EFFECT_RENDER_HINTS = (
     QPainter.RenderHint.Antialiasing
@@ -1880,22 +1881,10 @@ class TextEffectRenderer:
             ]
             if enabled:
                 if alignment_format is None:
-                    alignment_format = QTextCharFormat()
-                    alignment_format.setProperty(
-                        STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True
-                    )
-                    # A styled outline selects Qt's path-backed glyph
-                    # rasterizer; transparent zero width paints no pixels.
-                    alignment_format.setTextOutline(QPen(
-                        QColor(0, 0, 0, 0),
-                        0.0,
-                        Qt.PenStyle.SolidLine,
-                        Qt.PenCapStyle.RoundCap,
-                        Qt.PenJoinStyle.RoundJoin,
-                    ))
+                    alignment_format = stroke_alignment_format()
                 entry = QTextLayout.FormatRange()
                 entry.start = 0
-                entry.length = _STROKE_ALIGNMENT_RANGE_LENGTH
+                entry.length = STROKE_ALIGNMENT_RANGE_LENGTH
                 entry.format = alignment_format
                 formats.append(entry)
             layout.setFormats(formats)

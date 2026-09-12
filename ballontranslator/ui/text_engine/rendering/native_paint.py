@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import struct
 from collections import OrderedDict
 from typing import Iterable, Optional, Sequence, Union
 
@@ -325,6 +326,7 @@ class _NativePathDevice(QPaintDevice):
         # Qt 6's protected metric() can report base-device defaults for a
         # Python-created QImage, even when these getters report the real values.
         metrics = QPaintDevice.PaintDeviceMetric
+        ratio = self.target.devicePixelRatioF()
         self._metrics = {
             metrics.PdmWidth: self.target.width(),
             metrics.PdmHeight: self.target.height(),
@@ -336,11 +338,17 @@ class _NativePathDevice(QPaintDevice):
             metrics.PdmDpiY: self.target.logicalDpiY(),
             metrics.PdmPhysicalDpiX: self.target.physicalDpiX(),
             metrics.PdmPhysicalDpiY: self.target.physicalDpiY(),
-            metrics.PdmDevicePixelRatio: int(self.target.devicePixelRatioF()),
+            metrics.PdmDevicePixelRatio: int(ratio),
             metrics.PdmDevicePixelRatioScaled: int(
-                self.target.devicePixelRatioF() * QPaintDevice.devicePixelRatioFScale()
+                ratio * QPaintDevice.devicePixelRatioFScale()
             ),
         }
+        if hasattr(metrics, 'PdmDevicePixelRatioF_EncodedA'):
+            # Qt 6.8+ encodeMetricF copies a double into two native-order int32s
+            # and selects metric & 1. PyQt6 does not expose that static helper.
+            halves = struct.unpack('=ii', struct.pack('=d', ratio))
+            self._metrics[metrics.PdmDevicePixelRatioF_EncodedA] = halves[1]
+            self._metrics[metrics.PdmDevicePixelRatioF_EncodedB] = halves[0]
 
     def paintEngine(self) -> QPaintEngine:
         return self.engine
@@ -375,6 +383,9 @@ def draw_native_layout(
         not painter.isActive()
         or not isinstance(device, (QImage, QPixmap))
         or not transform.isInvertible()
+        or not transform.isAffine()
+        or transform.m12() != 0.0
+        or transform.m21() != 0.0
         or painter.viewTransformEnabled()
         or bool(selections)
         or bool(layout.preeditAreaText())
@@ -388,8 +399,7 @@ def draw_native_layout(
         or not math.isfinite(scaled_ratio)
         or scaled_ratio != int(scaled_ratio)
     ):
-        # This proxy exposes Qt's fixed-point DPR metric. Fractional values
-        # that it cannot represent exactly must retain the real paint device.
+        # Require exact DPR in the fixed-point metric used by older Qt versions.
         layout.draw(painter, QPointF(), selections, clip)
         return
     expected_device_transform = transform * QTransform.fromScale(ratio, ratio)

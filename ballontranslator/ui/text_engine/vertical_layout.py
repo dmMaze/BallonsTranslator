@@ -8,10 +8,8 @@ from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QBrush,
-    QColor,
     QFont,
     QPainter,
-    QPen,
     QTextBlock,
     QTextCharFormat,
     QTextDocument,
@@ -43,9 +41,10 @@ from .rendering.emphasis import (
     emphasis_margins,
 )
 from .rendering.glyph import (
-    STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY,
+    STROKE_ALIGNMENT_RANGE_LENGTH,
     draw_slanted_line,
     glyph_geometry,
+    stroke_alignment_format,
 )
 from .rendering.indexing import (
     _grapheme_count,
@@ -346,14 +345,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._plain_column_cache: dict[int, _PlainColumnLayout] = {}
         self._plain_column_context: Optional[tuple] = None
         self._plain_column_reused: set[int] = set()
-        self._plain_column_stroke_format = QTextCharFormat()
-        self._plain_column_stroke_format.setProperty(
-            STROKE_ALIGNMENT_LAYOUT_FORMAT_PROPERTY, True,
-        )
-        self._plain_column_stroke_format.setTextOutline(QPen(
-            QColor(0, 0, 0, 0), 0.0, Qt.PenStyle.SolidLine,
-            Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin,
-        ))
+        self._plain_column_stroke_format = stroke_alignment_format()
 
     def _plain_column_formats(self, layout: QTextLayout) -> Optional[tuple]:
         formats = layout.formats()
@@ -365,7 +357,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             return None
         entry = formats[0]
         if (
-            entry.start != 0 or entry.length != 0x7FFFFFFF
+            entry.start != 0 or entry.length != STROKE_ALIGNMENT_RANGE_LENGTH
             or entry.format != self._plain_column_stroke_format
         ):
             return None

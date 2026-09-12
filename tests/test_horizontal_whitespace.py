@@ -8,11 +8,12 @@ from qtpy.QtCore import QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QImage,
+    QInputMethodEvent,
     QPainter,
     QTextCharFormat,
     QTextCursor,
 )
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
 
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.textblock import TextBlock
@@ -160,6 +161,82 @@ class HorizontalWhitespaceTest(unittest.TestCase):
             caret.center().y(),
         ).toPoint()
         self.assertEqual(image.pixelColor(selected_point), Qt.GlobalColor.red)
+
+    def test_paragraph_edits_and_undo_match_fresh_layout(self) -> None:
+        item = self._make_item(
+            'First line\nSecond line\nThird line', width=480, height=420,
+        )
+
+        def check() -> None:
+            fresh = self._make_item(item.toPlainText(), width=480, height=420)
+            try:
+                actual = item.document().firstBlock()
+                expected = fresh.document().firstBlock()
+                while actual.isValid():
+                    a_layout, e_layout = actual.layout(), expected.layout()
+                    self.assertEqual(a_layout.lineCount(), e_layout.lineCount())
+                    for index in range(a_layout.lineCount()):
+                        a_line, e_line = a_layout.lineAt(index), e_layout.lineAt(index)
+                        self.assertEqual(a_line.naturalTextRect(), e_line.naturalTextRect())
+                        for position in range(actual.length()):
+                            self.assertEqual(
+                                a_line.cursorToX(position), e_line.cursorToX(position),
+                            )
+                    actual, expected = actual.next(), expected.next()
+                images = []
+                for candidate in (item, fresh):
+                    image = QImage(500, 450, QImage.Format.Format_ARGB32_Premultiplied)
+                    image.fill(Qt.GlobalColor.transparent)
+                    painter = QPainter(image)
+                    try:
+                        candidate.document().drawContents(painter)
+                    finally:
+                        painter.end()
+                    images.append(image)
+                self.assertEqual(images[0], images[1])
+            finally:
+                fresh.deleteLater()
+
+        cursor = QTextCursor(item.document())
+        cursor.setPosition(5)
+        cursor.insertText('X')
+        check()
+        cursor.deletePreviousChar()
+        check()
+        cursor.insertBlock()
+        check()
+        cursor.deletePreviousChar()
+        check()
+        item.document().undo()
+        check()
+        item.document().redo()
+        check()
+
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        self.addCleanup(scene.deleteLater)
+        self.addCleanup(view.close)
+        view.show()
+        item.startEdit()
+        view.setFocus()
+        item.setFocus()
+        self.app.processEvents()
+        self.assertTrue(item.hasFocus())
+        item.setTextCursor(cursor)
+        item.inputMethodEvent(QInputMethodEvent('かな', []))
+        self.assertEqual(item.document().firstBlock().layout().preeditAreaText(), 'かな')
+        item.inputMethodEvent(QInputMethodEvent())
+        check()
+        commit = QInputMethodEvent()
+        commit.setCommitString('仮名')
+        item.inputMethodEvent(commit)
+        self.assertIn('仮名', item.toPlainText())
+        check()
+        item.document().undo()
+        check()
+        item.document().redo()
+        check()
 
 
 if __name__ == '__main__':

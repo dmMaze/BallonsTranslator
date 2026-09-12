@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from qtpy.QtCore import QPointF, QRectF, Qt
+from qtpy.QtCore import QPointF, QRectF, Qt, qInstallMessageHandler
 from qtpy.QtGui import (
     QAbstractTextDocumentLayout,
     QColor,
@@ -20,9 +20,11 @@ from qtpy.QtGui import (
     QInputMethodEvent,
     QPainter,
     QPalette,
+    QPen,
     QPixmap,
     QTextCharFormat,
     QTextCursor,
+    QTransform,
 )
 from qtpy.QtWidgets import (
     QApplication,
@@ -34,6 +36,7 @@ from qtpy.QtWidgets import (
 
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.ui.text_engine.rendering.native_paint import draw_native_layout
 from ballontranslator.ui.text_engine.rendering.raster import (
     EFFECT_RASTER_GUARD,
     EffectRasterPlan,
@@ -290,6 +293,70 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         if owns_scene:
             scene.removeItem(item)
         return pixmap2ndarray(image, keep_alpha=True)
+
+    def test_native_outline_transforms_and_dpr_match_qt_without_warnings(self) -> None:
+        block = TextBlock([0, 0, 4000, 200])
+        block._bounding_rect = [0, 0, 4000, 200]
+        block.translation = 'Outline ' * 24
+        block.fontformat.font_family = 'DejaVu Sans'
+        block.fontformat.font_size = 24
+        item = TextBlkItem(block, 0)
+        layout = item.document().firstBlock().layout()
+
+        def capture(transform: QTransform, ratio: float, native: bool) -> QImage:
+            image = QImage(
+                int(4200 * ratio), int(280 * ratio),
+                QImage.Format.Format_ARGB32_Premultiplied,
+            )
+            image.setDevicePixelRatio(ratio)
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            try:
+                painter.translate(15.25, 40.5)
+                painter.setWorldTransform(transform, True)
+                if native:
+                    layout.draw(painter, QPointF(), [], QRectF())
+                else:
+                    draw_native_layout(layout, painter, [], QRectF())
+            finally:
+                painter.end()
+            return image
+
+        warnings = []
+        previous_handler = qInstallMessageHandler(
+            lambda _kind, _context, message: warnings.append(message)
+        )
+        try:
+            cursor = QTextCursor(item.document())
+            cursor.select(QTextCursor.SelectionType.Document)
+            for width in (0.0, 0.8):
+                char_format = QTextCharFormat()
+                char_format.setTextOutline(QPen(
+                    QColor(20, 80, 140, 255 if width else 0), width,
+                    Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                    Qt.PenJoinStyle.RoundJoin,
+                ))
+                cursor.mergeCharFormat(char_format)
+                for ratio in (1.0, 1.25, 2.0, 3.0):
+                    for transform in (
+                        QTransform(), QTransform().rotate(3.0),
+                        QTransform().shear(0.1, 0.0),
+                        QTransform(1, 0, 0.00001, 0, 1, 0, 0, 0, 1),
+                    ):
+                        with self.subTest(width=width, ratio=ratio, transform=transform):
+                            # Warm Qt's glyph raster state before comparing paths.
+                            capture(transform, ratio, True)
+                            capture(transform, ratio, False)
+                            self.assertEqual(
+                                capture(transform, ratio, True),
+                                capture(transform, ratio, False),
+                            )
+            self.assertFalse(
+                [message for message in warnings if 'QPaintDevice::metrics' in message],
+            )
+        finally:
+            qInstallMessageHandler(previous_handler)
+            item.deleteLater()
 
     @staticmethod
     def _all_stroke_silhouette(
