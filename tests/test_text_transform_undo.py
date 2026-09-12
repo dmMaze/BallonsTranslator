@@ -12,7 +12,7 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
     QImage,
@@ -60,7 +60,7 @@ from ballontranslator.ui.text_engine.shape_control import TextBlkShapeControl
 from ballontranslator.ui.text_engine.transforms.edit_session import (
     TextTransformEditSession,
 )
-from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
+from ballontranslator.ui.text_engine.editing.manager import SceneTextManager, TextPanel
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.text_engine.rendering.glyph import (
     GLOBAL_GLYPH_GEOMETRY_CACHE,
@@ -83,6 +83,7 @@ from ballontranslator.ui.text_engine.transforms.projective_control import (
     TextProjectiveTransformControl,
 )
 from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.mainwindowbars import TitleBar
 from ballontranslator.ui.drawingpanel import DrawingPanel
 from ballontranslator.ui.text_engine.transforms.modal import ModalPointTransform
 from ballontranslator.ui.text_engine.transforms.mapping import (
@@ -102,7 +103,7 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
-from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
+from ballontranslator.utils.proj_imgtrans import ProjImgTrans, TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_effects import (
     GlowEffect,
@@ -1543,6 +1544,241 @@ class TextTransformPanelTest(TextTransformTestBase):
 
 
 class TextTransformUndoTest(TextTransformTestBase):
+    def test_native_child_ime_cancellation_restores_shortcuts(self) -> None:
+        if QApplication.platformName() != 'cocoa':
+            self.skipTest('Requires the native Cocoa input context')
+        import AppKit
+        import objc
+        from ctypes import c_void_p
+
+        host = QWidget()
+        canvas = Canvas(host)
+        canvas.editor_index = 1
+        canvas.imgtrans_proj = ProjImgTrans()
+        canvas.gv.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)
+        with patch.object(shared, 'register_view_widget', create=True):
+            panel = TextPanel(self.app, host)
+        panel.formatpanel.global_format = FontFormat()
+        manager = SceneTextManager(self.app, host, canvas, panel, parent=host)
+        titlebar = TitleBar(host)
+        titlebar.undo_trigger.connect(canvas.undo)
+        titlebar.redo_trigger.connect(canvas.redo)
+        layout = QVBoxLayout(host)
+        layout.addWidget(titlebar)
+        layout.addWidget(canvas.gv)
+        layout.addWidget(panel)
+        item = manager.addTextBlock(TextBlock(
+            [0, 0, 300, 180], _bounding_rect=[0, 0, 300, 180],
+            translation='abc',
+        ))
+        edit = manager.pairwidget_list[0].e_trans
+        unrealized_view = QGraphicsView(canvas)
+        active_format = C.active_format
+        try:
+            host.show()
+            host.activateWindow()
+            canvas.gv.setFocus()
+            item.startEdit()
+            self.app.processEvents()
+            native_view = objc.objc_object(c_void_p=c_void_p(
+                int(canvas.gv.viewport().effectiveWinId())
+            ))
+            window = native_view.window()
+            AppKit.NSApp.activateIgnoringOtherApps_(True)
+            window.makeKeyAndOrderFront_(None)
+            self.assertTrue(QTest.qWaitForWindowActive(host))
+            canvas.gv.setFocus()
+            item.setFocus()
+            window.makeFirstResponder_(native_view)
+            self.assertTrue(item.hasFocus())
+            cursor = item.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            item.setTextCursor(cursor)
+            QTest.keyClicks(canvas.gv, '12')
+            native_view.setMarkedText_selectedRange_replacementRange_(
+                'pinyin', (6, 0), (AppKit.NSNotFound, 0)
+            )
+            self.assertTrue(item.pre_editing)
+            self.assertTrue(native_view.hasMarkedText())
+            item.endEdit()
+            self.assertFalse(item.pre_editing)
+            self.assertFalse(native_view.hasMarkedText())
+            self.assertEqual(canvas.text_undo_stack.count(), 2)
+            self.assertEqual(item.toPlainText(), 'abc12')
+            self.assertEqual(edit.toPlainText(), 'abc12')
+
+            # QTest key events bypass Cocoa's marked-text shortcut gate.
+            for modifiers, expected in (
+                (AppKit.NSEventModifierFlagCommand, 'abc1'),
+                (AppKit.NSEventModifierFlagCommand | AppKit.NSEventModifierFlagShift, 'abc12'),
+            ):
+                for kind in (AppKit.NSEventTypeKeyDown, AppKit.NSEventTypeKeyUp):
+                    event = AppKit.NSEvent.keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode_(
+                        kind, (0, 0), modifiers, 0, window.windowNumber(),
+                        None, 'z', 'z', False, 6,
+                    )
+                    AppKit.NSApp.sendEvent_(event)
+                self.app.processEvents()
+                self.assertEqual(item.toPlainText(), expected)
+                self.assertEqual(edit.toPlainText(), expected)
+        finally:
+            item.endEdit()
+            manager.clearSceneTextitems()
+            unrealized_view.deleteLater()
+            host.close()
+            host.deleteLater()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            self.app.processEvents()
+            C.active_format = active_format
+
+    def test_ime_completion_preserves_paired_history_and_new_edits(self) -> None:
+        for vertical in (False, True):
+            for selected in (False, True):
+                for finish in ('focus', 'end', 'deactivate', 'hide', 'commit'):
+                    with self.subTest(vertical=vertical, selected=selected, finish=finish):
+                        host = QWidget()
+                        canvas = Canvas(host)
+                        canvas.editor_index = 1
+                        canvas.imgtrans_proj = ProjImgTrans()
+                        with patch.object(shared, 'register_view_widget', create=True):
+                            panel = TextPanel(self.app, host)
+                        panel.formatpanel.global_format = FontFormat()
+                        manager = SceneTextManager(self.app, host, canvas, panel, parent=host)
+                        layout = QVBoxLayout(host)
+                        layout.addWidget(canvas.gv)
+                        layout.addWidget(panel)
+                        block = TextBlock([0, 0, 300, 180])
+                        block._bounding_rect = [0, 0, 300, 180]
+                        block.vertical = vertical
+                        block.translation = 'abc'
+                        canvas.imgtrans_proj.pages = {'page.png': [block]}
+                        canvas.imgtrans_proj.current_img = 'page.png'
+                        item = manager.addTextBlock(block)
+                        edit = manager.pairwidget_list[0].e_trans
+                        stack = canvas.text_undo_stack
+                        active_format = C.active_format
+                        try:
+                            host.show()
+                            host.activateWindow()
+                            canvas.gv.setFocus()
+                            item.startEdit()
+                            self.app.processEvents()
+                            self.assertTrue(item.hasFocus())
+                            cursor = item.textCursor()
+                            cursor.movePosition(QTextCursor.MoveOperation.End)
+                            item.setTextCursor(cursor)
+                            QTest.keyClicks(canvas.gv.viewport(), '12')
+                            self.assertEqual(stack.count(), 2)
+                            self.assertEqual(edit.toPlainText(), 'abc12')
+                            if selected:
+                                cursor = item.textCursor()
+                                cursor.setPosition(0)
+                                cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+                                item.setTextCursor(cursor)
+                            item.inputMethodEvent(QInputMethodEvent('pinyin', []))
+
+                            def reset() -> None:
+                                event = QInputMethodEvent()
+                                if finish != 'hide':
+                                    event.setCommitString('unwanted')
+                                item.inputMethodEvent(event)
+
+                            if finish == 'commit':
+                                event = QInputMethodEvent()
+                                event.setCommitString('中')
+                                item.inputMethodEvent(event)
+                            else:
+                                with patch.object(QApplication.inputMethod(), 'reset', side_effect=reset) as reset_input:
+                                    if finish == 'focus':
+                                        edit.setFocus()
+                                    elif finish == 'deactivate':
+                                        self.app.setActiveWindow(None)
+                                    elif finish == 'hide':
+                                        host.hide()
+                                    else:
+                                        item.endEdit()
+                                reset_input.assert_called_once()
+                                event = QInputMethodEvent()
+                                event.setCommitString('late commit')
+                                item.inputMethodEvent(event)
+                            self.assertFalse(item.pre_editing)
+                            self.assertEqual(item.textCursor().block().layout().preeditAreaText(), '')
+                            settled = ('中bc12' if selected else 'abc12中') if finish == 'commit' else ('bc12' if selected else 'abc12')
+                            history = ['abc', 'abc1', 'abc12']
+                            if selected or finish == 'commit':
+                                history.append(settled)
+                            self.assertEqual(item.toPlainText(), settled)
+                            self.assertEqual(edit.toPlainText(), settled)
+                            self.assertEqual(stack.count(), len(history) - 1)
+                            manager.updateTextBlkList()
+                            self.assertEqual(block.translation, settled)
+
+                            # Both input owners must still publish new commands.
+                            host.show()
+                            self.app.setActiveWindow(host)
+                            canvas.gv.setFocus()
+                            item.startEdit()
+                            self.app.processEvents()
+                            cursor = item.textCursor()
+                            cursor.movePosition(QTextCursor.MoveOperation.End)
+                            item.setTextCursor(cursor)
+                            item.inputMethodEvent(QInputMethodEvent('xin', []))
+                            event = QInputMethodEvent()
+                            event.setCommitString('新')
+                            item.inputMethodEvent(event)
+                            history.append(settled + '新')
+                            edit.setFocus()
+                            cursor = edit.textCursor()
+                            cursor.movePosition(QTextCursor.MoveOperation.Start)
+                            edit.setTextCursor(cursor)
+                            QTest.keyClicks(edit, '!')
+                            history.append('!' + settled + '新')
+                            self.assertEqual(stack.count(), len(history) - 1)
+                            self.assertEqual(item.toPlainText(), history[-1])
+                            self.assertEqual(edit.toPlainText(), history[-1])
+                            position = item.logical_position()
+                            moved = position + QPointF(10, 20)
+                            canvas.push_text_command(MoveBlkItemsCommand([item], [position], [moved]))
+                            self.assertEqual(stack.count(), len(history))
+                            self.assertEqual(item.logical_position(), moved)
+                            modifiers = Qt.KeyboardModifier.ControlModifier
+                            QTest.keyClick(edit, Qt.Key.Key_Z, modifiers)
+                            self.assertEqual(item.logical_position(), position)
+
+                            for expected in reversed(history[:-1]):
+                                QTest.keyClick(edit, Qt.Key.Key_Z, modifiers)
+                                self.assertEqual(item.toPlainText(), expected)
+                                self.assertEqual(edit.toPlainText(), expected)
+                            self.assertEqual(stack.index(), 0)
+                            canvas.gv.setFocus()
+                            item.startEdit()
+                            self.app.processEvents()
+                            redo_modifiers = modifiers | Qt.KeyboardModifier.ShiftModifier
+                            for expected in history[1:]:
+                                QTest.keyClick(canvas.gv, Qt.Key.Key_Z, redo_modifiers)
+                                self.assertEqual(item.toPlainText(), expected)
+                                self.assertEqual(edit.toPlainText(), expected)
+                            QTest.keyClick(canvas.gv, Qt.Key.Key_Z, redo_modifiers)
+                            self.assertEqual(item.logical_position(), moved)
+                            cursor = item.textCursor()
+                            cursor.movePosition(QTextCursor.MoveOperation.End)
+                            item.setTextCursor(cursor)
+                            previous_index = stack.index()
+                            QTest.keyClicks(canvas.gv, '?')
+                            self.assertEqual(stack.index(), previous_index + 1)
+                            QTest.keyClick(canvas.gv, Qt.Key.Key_Z, modifiers)
+                            self.assertEqual(stack.index(), previous_index)
+                            self.assertEqual(item.toPlainText(), history[-1])
+                            self.assertEqual(edit.toPlainText(), history[-1])
+                        finally:
+                            item.endEdit()
+                            manager.clearSceneTextitems()
+                            host.close()
+                            host.deleteLater()
+                            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                            self.app.processEvents()
+                            C.active_format = active_format
+
     def test_pair_editor_paste_shortcuts_at_document_start_stay_synced(self):
         shortcuts = (
             (Qt.Key.Key_V, Qt.KeyboardModifier.ControlModifier),
@@ -3049,6 +3285,8 @@ class TextTransformRenderingTest(TextTransformTestBase):
                 item = TextBlkItem(block, 0)
                 scene = QGraphicsScene()
                 scene.addItem(item)
+                QApplication.sendEvent(scene, QEvent(QEvent.Type.WindowActivate))
+                scene.setFocus()
                 grid = GridTextTransform(2, 2, 'catmull_rom')
                 points = list(grid.control_points)
                 points[4] = (0.56, 0.44)

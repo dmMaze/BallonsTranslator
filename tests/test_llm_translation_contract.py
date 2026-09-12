@@ -14,7 +14,6 @@ from ballontranslator.modules.context.translation_context import (
 )
 from ballontranslator.modules.translators.llm_translation_contract import (
     InvalidNumTranslations,
-    LLM_VISUAL_SUMMARY_MAX_CHARS,
     TranslationPromptSpec,
     assemble_translation_request,
     parse_translation_response,
@@ -54,7 +53,7 @@ class LLMTranslationContractTest(unittest.TestCase):
         )
         self.assertIn('"source": "心"', prompt)
 
-    def test_summary_contract_uses_target_language(self):
+    def test_summary_contract_uses_target_language(self) -> None:
         system_prompt = translation_system_prompt(
             '',
             'Simplified Chinese',
@@ -62,7 +61,7 @@ class LLMTranslationContractTest(unittest.TestCase):
         )
 
         self.assertIn(
-            '"page_summary":"Concise page memory in Simplified Chinese"',
+            '"page_summary":"Short factual page summary in Simplified Chinese"',
             system_prompt,
         )
         self.assertIn(
@@ -125,8 +124,8 @@ class LLMTranslationContractTest(unittest.TestCase):
         self.assertIn('"source": "old source"', messages[3]['content'])
         self.assertEqual(
             messages[4]['content'],
-            '{"translations":{"1":"old target"},'
-            '"page_summary":"Old page summary."}',
+            '{"page_summary":"Old page summary.",'
+            '"translations":{"1":"old target"}}',
         )
         self.assertIn('Current clue.', prompt)
         self.assertIn('infer the natural comic reading order', prompt)
@@ -152,12 +151,16 @@ class LLMTranslationContractTest(unittest.TestCase):
             {
                 'type': 'object',
                 'properties': {
-                    'translations': translation_schema,
                     'page_summary': {'type': 'string'},
+                    'translations': translation_schema,
                 },
-                'required': ['translations', 'page_summary'],
+                'required': ['page_summary', 'translations'],
                 'additionalProperties': False,
             },
+        )
+        self.assertEqual(
+            list(translation_json_schema(2, summary_enabled=True)['properties']),
+            ['page_summary', 'translations'],
         )
 
     def test_parser_accepts_numeric_map_and_legacy_wrapper_list(self):
@@ -172,13 +175,14 @@ class LLMTranslationContractTest(unittest.TestCase):
         self.assertEqual(numeric.translations, ('heart', 'spirit'))
         self.assertEqual(legacy.translations, ('heart', 'spirit'))
 
-    def test_parser_normalizes_without_truncating_optional_summary(self):
-        summary = '  scene\n\tmemory  ' + ('x' * LLM_VISUAL_SUMMARY_MAX_CHARS)
+    def test_parser_normalizes_without_truncating_optional_summary(self) -> None:
+        body = ' '.join(['detail'] * 501)
+        summary = '  scene\n\tmemory  ' + body
 
         parsed = parse_translation_response(
             json.dumps({
-                'translations': {'1': 'heart'},
                 'page_summary': summary,
+                'translations': {'1': 'heart'},
             }),
             1,
         )
@@ -189,9 +193,30 @@ class LLMTranslationContractTest(unittest.TestCase):
 
         self.assertEqual(
             parsed.page_summary,
-            'scene memory ' + ('x' * LLM_VISUAL_SUMMARY_MAX_CHARS),
+            'scene memory ' + body,
         )
         self.assertEqual(non_string.page_summary, '')
+
+    def test_empty_input_requires_only_a_usable_summary(self) -> None:
+        for payload in ({}, {'translations': 'ignored'}, {'translations': {'99': []}}):
+            with self.subTest(payload=payload):
+                parsed = parse_translation_response(
+                    json.dumps({**payload, 'page_summary': '  The train\narrives. '}),
+                    0,
+                )
+                self.assertEqual(parsed.translations, ())
+                self.assertEqual(parsed.page_summary, 'The train arrives.')
+        for summary in (None, '', ' \n ', []):
+            with self.subTest(summary=summary):
+                with self.assertRaisesRegex(ValueError, 'no usable page_summary'):
+                    parse_translation_response(json.dumps({'page_summary': summary}), 0)
+
+        # A summary alone must not bypass translation validation on text pages.
+        with self.assertRaisesRegex(ValueError, 'Unsupported translations payload'):
+            parse_translation_response(
+                '{"translations":"ignored","page_summary":"The train arrives."}',
+                1,
+            )
 
     def test_parser_preserves_fenced_and_prose_object_compatibility(self):
         fenced = parse_translation_response('```json\n{"1":"heart"}\n```', 1)

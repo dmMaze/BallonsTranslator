@@ -83,6 +83,24 @@ def getNSWindow(winId):
     return view.window()
 
 
+def discard_marked_text(widget: QWidget) -> None:
+    """Clear the owning native view while the caller rejects IME commits."""
+    win_id = widget.effectiveWinId()
+    if not win_id:
+        return
+    view = objc.objc_object(c_void_p=c_void_p(int(win_id)))
+    if not view.hasMarkedText():
+        return
+    view.unmarkText()
+    context = view.inputContext()
+    current_context = Cocoa.NSTextInputContext.currentInputContext()
+    if context is not None:
+        context.discardMarkedText()
+        # Discarding on an old view activates its text-services document.
+        if current_context is not None and current_context != context:
+            current_context.activate()
+
+
 def getSystemAccentColor():
     """ get the accent color of system
 

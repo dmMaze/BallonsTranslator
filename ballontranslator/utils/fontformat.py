@@ -902,6 +902,9 @@ class FontFormat(Config):
         )
         for name in _LEGACY_EFFECT_VIEW_NAMES:
             self.__dict__.pop(name, None)
+        unknown = set(da) - {'size', 'weight', 'bold', 'family', 'glyph_slant_angle'}
+        if unknown:
+            LOGGER.warning('Ignoring unsupported font format fields: %s.', sorted(unknown))
         self.deprecated_attributes = {}
 
     def to_serializable_dict(self) -> dict:

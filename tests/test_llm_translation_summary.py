@@ -11,6 +11,7 @@ from _llm_translation_test_support import (
 from ballontranslator.modules.context.translation_context import (
     PageSummary,
 )
+from ballontranslator.modules.llm_chat import LLMChatResult
 from ballontranslator.utils.config import LLMTranslateContext, pcfg
 
 
@@ -26,6 +27,152 @@ class LLMTranslationSummaryTest(
         )
         last_page_compaction.start()
         self.addCleanup(last_page_compaction.stop)
+
+    def test_empty_visual_pages_extend_normal_summary_history(self) -> None:
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary_memory = True
+        for strict_schema in (False, True):
+            with self.subTest(strict_schema=strict_schema):
+                self.profile.json_schema_response_format = strict_schema
+                project = self._project(4)
+                project.pages['002.png'] = []
+                project.pages['003.png'] = [_block('  ')]
+                project.read_img = mock.Mock(
+                    return_value=np.zeros((32, 24, 3), dtype=np.uint8),
+                )
+                responses = [
+                    LLMChatResult(json.dumps({
+                        'translations': translations,
+                        'page_summary': f'Scene {index}.',
+                    }))
+                    for index, translations in enumerate((
+                        {'1': 'First dialogue.'},
+                        'Ignored translation formatting.',
+                        {'99': 'Ignored extra translation.'},
+                        {'1': 'Next dialogue.'},
+                    ), 1)
+                ]
+                with mock.patch.object(
+                    type(self.translator), 'profile',
+                    new_callable=mock.PropertyMock, return_value=self.profile,
+                ), mock.patch.object(
+                    self.translator, 'request_chat_completion', side_effect=responses,
+                ) as request:
+                    for page_key in project.pages:
+                        project.begin_full_page_translation(page_key)
+                        self.translator.translate_textblk_lst(
+                            project.pages[page_key], project=project,
+                            page_key=page_key, full_page=True,
+                        )
+                        self.assertIsNone(project.get_llm_visual_summary(page_key))
+                        self._complete(project, page_key)
+                        self.translator.on_page_translation_finished(project, page_key)
+
+                self.assertEqual(request.call_count, 4)
+                requests = [call.args[1] for call in request.call_args_list]
+                messages = [args['messages'] for args in requests]
+                for index in (1, 2):
+                    self.assertEqual(messages[index][0], messages[0][0])
+                    current = messages[index][-1]['content']
+                    self.assertIn('INPUT:\n[]', current[0]['text'])
+                    self.assertEqual(current[1]['type'], 'image_url')
+                    prefix = messages[index][:-1]
+                    self.assertEqual(messages[index + 1][:len(prefix)], prefix)
+                    if strict_schema:
+                        schema = requests[index]['response_format']['json_schema']['schema']
+                        self.assertEqual(schema['properties']['translations']['properties'], {})
+                self.assertEqual(
+                    [page.page_key for page in self.translator._history_window.history],
+                    ['001.png', '002.png', '003.png'],
+                )
+                self.assertEqual(project.get_llm_visual_summary('002.png')['text'], 'Scene 2.')
+                self.assertEqual(project.get_llm_visual_summary('003.png')['text'], 'Scene 3.')
+                empty_history = json.loads(messages[3][4]['content'])
+                self.assertEqual(empty_history, {'translations': {}, 'page_summary': 'Scene 2.'})
+                self.assertEqual(project.pages['002.png'], [])
+                self.assertEqual(project.pages['003.png'][0].translation.strip(), '')
+
+    def test_empty_page_summary_requires_both_features_and_a_full_project_page(self) -> None:
+        project = self._project(1)
+        project.pages['001.png'] = []
+        cases = (
+            (False, True, True, project, '001.png'),
+            (True, False, True, project, '001.png'),
+            (True, True, False, project, '001.png'),
+            (True, True, True, None, '001.png'),
+            (True, True, True, project, None),
+        )
+        with mock.patch.object(self.translator, 'load_model') as load_model, mock.patch.object(
+            self.translator, 'request_chat_completion',
+        ) as request:
+            for vision, summary, full_page, current_project, page_key in cases:
+                with self.subTest(vision=vision, summary=summary, full_page=full_page, page_key=page_key):
+                    pcfg.module.llm_translate_vision = vision
+                    pcfg.module.llm_translate_summary_memory = summary
+                    self.translator.translate_textblk_lst(
+                        [], project=current_project, page_key=page_key, full_page=full_page,
+                    )
+            project.set_llm_visual_summary_text('001.png', 'Existing summary.')
+            self.translator.translate_textblk_lst(
+                [], project=project, page_key='001.png', full_page=True,
+            )
+        request.assert_not_called()
+        load_model.assert_not_called()
+        self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'Existing summary.')
+
+    def test_empty_page_retries_missing_summary_with_frozen_image_and_prompt(self) -> None:
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary_memory = True
+        self.translator.set_param_value('retry timeout', 0)
+        self.translator.set_param_value('retry attempts', 2)
+        project = self._project(1)
+        project.pages['001.png'] = []
+        project.read_img = mock.Mock(return_value=np.zeros((32, 24, 3), dtype=np.uint8))
+        with mock.patch.object(
+            type(self.translator), 'profile',
+            new_callable=mock.PropertyMock, return_value=self.profile,
+        ), mock.patch.object(
+            self.translator, 'request_chat_completion',
+            side_effect=[
+                LLMChatResult('{"translations":{},"page_summary":" "}'),
+                LLMChatResult('{"page_summary":"The train arrives."}'),
+            ],
+        ) as request:
+            self.translator.translate_textblk_lst(
+                [], project=project, page_key='001.png', full_page=True,
+            )
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0].args[1], request.call_args_list[1].args[1])
+        project.read_img.assert_called_once_with('001.png')
+        self._complete(project, '001.png')
+        self.translator.on_page_translation_finished(project, '001.png')
+        self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'The train arrives.')
+
+    def test_empty_page_overwrite_replaces_existing_summary(self) -> None:
+        pcfg.module.llm_translate_vision = True
+        pcfg.module.llm_translate_summary_memory = True
+        pcfg.module.llm_translate_overwrite_summary = True
+        project = self._project(1)
+        project.pages['001.png'] = []
+        project.set_llm_visual_summary_text('001.png', 'Old summary.')
+        project.read_img = mock.Mock(return_value=np.zeros((32, 24, 3), dtype=np.uint8))
+
+        with mock.patch.object(
+            type(self.translator), 'profile',
+            new_callable=mock.PropertyMock, return_value=self.profile,
+        ), mock.patch.object(
+            self.translator, 'request_chat_completion',
+            return_value=LLMChatResult('{"page_summary":"Generated summary."}'),
+        ) as request:
+            self.translator.translate_textblk_lst(
+                [], project=project, page_key='001.png', full_page=True,
+            )
+        self.assertNotIn('Old summary.', request.call_args.args[1]['messages'][-1]['content'][0]['text'])
+        self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'Old summary.')
+        self._complete(project, '001.png')
+        self.translator.on_page_translation_finished(project, '001.png')
+        self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'Generated summary.')
 
     def test_summary_persists_only_after_page_finalization(self):
         project = self._project(1)

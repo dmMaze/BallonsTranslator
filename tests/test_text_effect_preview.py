@@ -3,6 +3,7 @@ import math
 import os
 import unittest
 import weakref
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -42,6 +43,7 @@ from ballontranslator.utils.text_alpha_mask import (
     TextAlphaMask,
 )
 from ballontranslator.utils.text_effects import (
+    SyntheticBoldEffect,
     FilterEffect,
     GlowEffect,
     HollowEffect,
@@ -212,6 +214,56 @@ class TextEffectPreviewTest(unittest.TestCase):
         self.assertIsNone(renderer._preview_effect_raster_state)
         self.assertEqual(renderer.background_pixmap.cacheKey(), committed_key)
         self.assertFalse(item.clear_text_effect_preview())
+
+    def test_synthetic_source_preview_cancel_and_commit_preserve_pixels(self) -> None:
+        for shape in ('rect', 'ellipse'):
+            with self.subTest(shape=shape):
+                canonical = self._stack()
+                target = replace(canonical, effects=(*canonical.effects,
+                    SyntheticBoldEffect(shape=shape, x=0.2, y=0.02)))
+                item = self._item(stack=canonical)
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                before = self._render_scene(scene, 2.0)
+                item.set_text_effects(target, preview=True)
+                preview = self._render_scene(scene, 2.0)
+                self.assertEqual(item.blk.fontformat.text_effects, canonical)
+                self.assertNotEqual(before, preview)
+                item.clear_text_effect_preview()
+                self.assertEqual(self._render_scene(scene, 2.0), before)
+                item.set_text_effects(target)
+                self.assertEqual(self._render_scene(scene, 2.0), preview)
+                scene.clear()
+
+    def test_synthetic_bold_mixed_sizes_keep_radius_when_axes_diverge(self) -> None:
+        bold = SyntheticBoldEffect(x=0.1, y=0.1)
+        item = self._item(stack=TextEffectStack(effects=(bold,)))
+        self.addCleanup(item.deleteLater)
+        item.setHtml(
+            '<p><span style="font-family:DejaVu Sans;font-size:12pt;'
+            'color:#00ff00">HH          </span>'
+            '<span style="font-family:DejaVu Sans;font-size:60pt;'
+            'color:#ff0000">HH</span></p>'
+        )
+        html = item.document().toHtml()
+        rect = QRectF(-80, -80, 660, 360)
+        bounds = []
+        for x in (0.1, 0.10001, 0.101):
+            item.set_text_effects(TextEffectStack(effects=(replace(bold, x=x),)))
+            source = item.effect_renderer._capture_effect_source(rect, 1.0)
+            rgba = pixmap2ndarray(source, keep_alpha=True)
+            rows, columns = np.nonzero(
+                (rgba[..., 1] > 200) & (rgba[..., 0] < 20)
+                & (rgba[..., 3] > 128)
+            )
+            bounds.append(np.array((
+                columns.min(), rows.min(), columns.max(), rows.max()
+            )))
+        # Native outlines and discrete dilation can differ at the edge, but
+        # changing X slightly must not switch the small fragment's font basis.
+        for bound in bounds[1:]:
+            self.assertLessEqual(int(np.abs(bound - bounds[0]).max()), 2)
+        self.assertEqual(item.document().toHtml(), html)
 
     def test_full_quality_preview_renders_once_at_view_scale_and_promotes(self):
         canonical = self._stack()

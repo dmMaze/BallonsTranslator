@@ -64,6 +64,8 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    SyntheticBoldEffect,
+    SYNTHETIC_BOLD_OFFSET_MAX,
     TextFillEffect,
     TexturePaint,
 )
@@ -664,6 +666,124 @@ class EffectPaintButton(QToolButton):
             self.palette(),
             self.devicePixelRatioF(),
         )
+
+
+class SyntheticBoldEffectCard(_EffectCard):
+    """One fixed source card, expanded before all layer effects.
+
+    >>> SyntheticBoldEffectCard.__name__
+    'SyntheticBoldEffectCard'
+    """
+
+    value_commit_requested = Signal(int, str, object)
+    value_preview_requested = Signal(int, str, object)
+    parameter_preview_requested = Signal(int, str, object)
+    parameter_commit_requested = Signal(int, str, object)
+    preview_canceled = Signal(int, str)
+    remove_requested = Signal(int)
+
+    def __init__(self, index: int, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.index = int(index)
+        self.setObjectName('TextEffectParameterPanel')
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        title = QLabel(self.tr('Synthetic Bold'), self)
+        title.setObjectName('TextEffectParameterTitle')
+        hint = self.tr(
+            'Expand glyphs before all other effects, without changing '
+            'font weight or spacing. X and Y are percentages of font size.'
+        )
+        title.setToolTip(hint)
+        self.shape_selector = BottomBorderComboBox(
+            self, text_alignment=Qt.AlignmentFlag.AlignCenter
+        )
+        self.shape_selector.setObjectName('TextEffectParamEditor')
+        self.shape_selector.setAccessibleName(self.tr('Synthetic Bold Shape'))
+        self.shape_selector.addItem(self.tr('Rectangle'), 'rect')
+        self.shape_selector.addItem(self.tr('Ellipse'), 'ellipse')
+        _set_effect_header_selector_width(self.shape_selector)
+        self.shape_selector.currentIndexChanged.connect(self._on_shape_changed)
+        self.delete_button = EffectDeleteButton(self)
+        self.delete_button.clicked.connect(self._on_delete_clicked)
+        self.visibility_button = EffectVisibilityButton(self)
+        self.visibility_button.visibility_requested.connect(self._on_enabled_clicked)
+
+        header = QHBoxLayout()
+        header.setSpacing(6)
+        header.addWidget(_effect_icon_label('fontfmt_bold.svg', self))
+        header.addWidget(title)
+        header.addWidget(self.shape_selector)
+        header.addStretch()
+        header.addWidget(_effect_action_widget(self, (self.delete_button,)))
+        header.addWidget(self.visibility_button)
+
+        self.x_control = EffectNumericControl(
+            self.tr('X'), 'x', 100.0, 0.0, SYNTHETIC_BOLD_OFFSET_MAX,
+            '%', 0.1, self, decimals=1,
+        )
+        self.y_control = EffectNumericControl(
+            self.tr('Y'), 'y', 100.0, 0.0, SYNTHETIC_BOLD_OFFSET_MAX,
+            '%', 0.1, self, decimals=1,
+        )
+        axes = QHBoxLayout()
+        axes.setSpacing(8)
+        for control in self.iter_controls():
+            control.label.setToolTip(hint)
+            control.editor.setToolTip(hint)
+            control.commit_requested.connect(self._on_control_commit)
+            control.value_preview_requested.connect(self._on_value_preview)
+            control.preview_requested.connect(self._on_parameter_preview)
+            control.drag_commit_requested.connect(self._on_parameter_commit)
+            control.preview_canceled.connect(self._on_preview_canceled)
+            control.value_preview_canceled.connect(self._on_preview_canceled)
+            axes.addWidget(control)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(8)
+        layout.addLayout(header)
+        layout.addLayout(axes)
+
+    def set_value(self, effect: SyntheticBoldEffect) -> None:
+        self.visibility_button.set_visibility(effect.enabled)
+        with QSignalBlocker(self.shape_selector):
+            self.shape_selector.setCurrentIndex(
+                self.shape_selector.findData(effect.shape)
+            )
+        self.x_control.set_model_value(effect.x)
+        self.y_control.set_model_value(effect.y)
+
+    def iter_controls(self) -> Tuple[EffectNumericControl, ...]:
+        return self.x_control, self.y_control
+
+    def _on_shape_changed(self, index: int) -> None:
+        if index >= 0:
+            self.value_commit_requested.emit(
+                self.index, 'shape', self.shape_selector.itemData(index)
+            )
+
+    def _on_enabled_clicked(self, enabled: bool) -> None:
+        self.value_commit_requested.emit(self.index, 'enabled', enabled)
+
+    def _on_delete_clicked(self) -> None:
+        self.remove_requested.emit(self.index)
+
+    def _on_control_commit(self, name: str, value: object) -> None:
+        self.value_commit_requested.emit(self.index, name, value)
+
+    def _on_value_preview(self, name: str, value: object) -> None:
+        self.value_preview_requested.emit(self.index, name, value)
+
+    def _on_parameter_preview(self, name: str, delta: object) -> None:
+        self.parameter_preview_requested.emit(self.index, name, delta)
+
+    def _on_parameter_commit(self, name: str, delta: object) -> None:
+        self.parameter_commit_requested.emit(self.index, name, delta)
+
+    def _on_preview_canceled(self, name: str) -> None:
+        self.preview_canceled.emit(self.index, name)
 
 
 class StrokeEffectCard(_EffectCard):

@@ -79,44 +79,58 @@
         <translation type="vanished">번역 중지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="607"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="602"/>
         <source>Text Detector</source>
         <translation>텍스트 검출기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="611"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="606"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="612"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="607"/>
         <source>Inpaint</source>
         <translation>인페인트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="614"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="609"/>
         <source>Translator</source>
         <translation>번역기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="622"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="617"/>
         <source>Enable/disable paint mode</source>
         <translation>페인트 모드를 활성화/비활성화</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="626"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="621"/>
         <source>Enable/disable text edit mode</source>
         <translation>텍스트 편집 모드를 활성화/비활성화</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="632"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="627"/>
         <source>Original image opacity</source>
         <translation>원본 이미지 불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="636"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="631"/>
         <source>Text layer opacity</source>
         <translation>텍스트 레이어 불투명도</translation>
+    </message>
+</context>
+<context>
+    <name>BulkPageSummaryDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/bulk_page_summary_editor.py" line="357"/>
+        <location filename="../../ballontranslator/ui/bulk_page_summary_editor.py" line="393"/>
+        <source>Page Summaries</source>
+        <translation>페이지 요약</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/bulk_page_summary_editor.py" line="445"/>
+        <source>Edit page summaries</source>
+        <translation>페이지 요약 편집</translation>
     </message>
 </context>
 <context>
@@ -767,7 +781,7 @@
 <context>
     <name>DrawingPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="383"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="454"/>
         <source>Mask Opacity</source>
         <translation>마스크 불투명도</translation>
     </message>
@@ -825,87 +839,87 @@
 <context>
     <name>EmphasisToolButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="176"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="180"/>
         <source>Emphasis Marks</source>
         <translation>강조 표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="184"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="188"/>
         <source>Marks</source>
         <translation>표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="191"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="195"/>
         <source>Filled Dot</source>
         <translation>채운 점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="192"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="196"/>
         <source>Open Dot</source>
         <translation>빈 점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="193"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="197"/>
         <source>Filled Circle</source>
         <translation>채운 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="194"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="198"/>
         <source>Open Circle</source>
         <translation>빈 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="195"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="199"/>
         <source>Filled Double Circle</source>
         <translation>채운 이중 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="196"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
         <source>Open Double Circle</source>
         <translation>빈 이중 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="197"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="201"/>
         <source>Filled Triangle</source>
         <translation>채운 삼각형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="198"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="202"/>
         <source>Open Triangle</source>
         <translation>빈 삼각형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="199"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="203"/>
         <source>Filled Sesame</source>
         <translation>채운 깨점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="204"/>
         <source>Open Sesame</source>
         <translation>빈 깨점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="210"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="214"/>
         <source>Position</source>
         <translation>위치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="217"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="221"/>
         <source>Over / Right</source>
         <translation>위 / 오른쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="218"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="222"/>
         <source>Under / Right</source>
         <translation>아래 / 오른쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="219"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="223"/>
         <source>Over / Left</source>
         <translation>위 / 왼쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="220"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="224"/>
         <source>Under / Left</source>
         <translation>아래 / 왼쪽</translation>
     </message>
@@ -1003,42 +1017,42 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="687"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="808"/>
         <source>Font Family</source>
         <translation>글꼴 패밀리</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="693"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="814"/>
         <source>Font Weight</source>
         <translation>글꼴 굵기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="699"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="820"/>
         <source>Font Size</source>
         <translation>글꼴 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="701"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="822"/>
         <source>Change font size</source>
         <translation>글꼴 크기 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="712"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="833"/>
         <source>Change line spacing</source>
         <translation>줄 간격 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="722"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="843"/>
         <source>Change font color</source>
         <translation>글꼴 색상 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="738"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="859"/>
         <source>Combine the selected text into one upright vertical cell</source>
         <translation>선택한 텍스트를 하나의 세로쓰기 셀로 결합합니다</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="751"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="872"/>
         <source>Standard Vertical Roman Alignment</source>
         <translation>표준 세로 로마자 정렬</translation>
     </message>
@@ -1051,58 +1065,58 @@
         <translation type="vanished">획 색상 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="804"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="925"/>
         <source>Text Effect</source>
         <translation>텍스트 효과</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="812"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="933"/>
         <source>Text Transform</source>
         <translation>텍스트 변형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1016"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1138"/>
         <source>Tate-chu-yoko cannot overlap Ruby.</source>
         <translation>세로쓰기 중 가로쓰기는 루비와 겹칠 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1019"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1141"/>
         <source>Unable to apply Tate-chu-yoko to this selection.</source>
         <translation>이 선택 영역에 세로쓰기 중 가로쓰기를 적용할 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1052"/>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1060"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1174"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1182"/>
         <source>Select base text to apply Ruby.</source>
         <translation>루비를 적용할 기준 텍스트를 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1063"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1185"/>
         <source>Ruby text cannot be empty.</source>
         <translation>루비 텍스트는 비워 둘 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1066"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1188"/>
         <source>Mono Ruby needs one whitespace-separated reading per base grapheme.</source>
         <translation>개별 루비는 각 기준 문자마다 공백으로 구분된 독음이 하나씩 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1069"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1191"/>
         <source>Ruby cannot partially overlap an existing container.</source>
         <translation>루비는 기존 컨테이너와 부분적으로 겹칠 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1072"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1194"/>
         <source>Ruby cannot overlap Tate-chu-yoko.</source>
         <translation>루비는 세로쓰기 중 가로쓰기와 겹칠 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1075"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1197"/>
         <source>Ruby base text cannot contain paragraph or forced line breaks.</source>
         <translation>루비 기준 텍스트에는 문단 나누기나 강제 줄 바꿈을 포함할 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1081"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1203"/>
         <source>Unable to apply Ruby to this selection.</source>
         <translation>이 선택 영역에 루비를 적용할 수 없습니다.</translation>
     </message>
@@ -1111,7 +1125,7 @@
         <translation type="vanished">획 너비 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="762"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="883"/>
         <source>Change letter spacing</source>
         <translation>자간 변경</translation>
     </message>
@@ -1120,12 +1134,12 @@
         <translation type="vanished">각도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="776"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="897"/>
         <source>Global Font Format</source>
         <translation>글로벌 글꼴 형식</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="786"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="907"/>
         <source>Advanced Text Format</source>
         <translation>고급 텍스트 형식</translation>
     </message>
@@ -1134,70 +1148,83 @@
         <translation type="vanished">효과</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="828"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
         <source>Unfold</source>
         <translation>펼치기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="828"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
         <source>Fold</source>
         <translation>접기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="829"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="951"/>
         <source>Source</source>
         <translation>원본</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="830"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="952"/>
         <source>Translation</source>
         <translation>번역</translation>
     </message>
 </context>
 <context>
+    <name>FontSizeDragLabel</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="459"/>
+        <source>Drag to resize text</source>
+        <translation>드래그하여 텍스트 크기 조절</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="460"/>
+        <source>Resize text</source>
+        <translation>텍스트 크기 조절</translation>
+    </message>
+</context>
+<context>
     <name>FontWeightComboBox</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="456"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="564"/>
         <source>Thin</source>
         <translation>Thin</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="457"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="565"/>
         <source>Extra Light</source>
         <translation>Extra Light</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="458"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="566"/>
         <source>Light</source>
         <translation>Light</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="459"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="567"/>
         <source>Normal</source>
         <translation>Normal</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="460"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="568"/>
         <source>Medium</source>
         <translation>Medium</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="461"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="569"/>
         <source>Demi Bold</source>
         <translation>Demi Bold</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="462"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="570"/>
         <source>Bold</source>
         <translation>Bold</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="463"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="571"/>
         <source>Extra Bold</source>
         <translation>Extra Bold</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="464"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="572"/>
         <source>Black</source>
         <translation>Black</translation>
     </message>
@@ -1733,37 +1760,49 @@
 <context>
     <name>ImgtransThread</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="784"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="820"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="850"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="920"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="809"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="845"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="864"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="875"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="923"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="938"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="994"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1171"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1227"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1241"/>
         <source>Page</source>
         <translation>페이지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="817"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="847"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="842"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="861"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="872"/>
         <source>Translation Failed.</source>
         <translation>번역이 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="917"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1143"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="920"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="935"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1168"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1182"/>
         <source>OCR Failed.</source>
         <translation>OCR이 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1059"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1088"/>
         <source>Text Detection Failed.</source>
         <translation>텍스트 검출에 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1199"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="991"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1224"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1238"/>
         <source>Inpainting Failed.</source>
         <translation>인페인팅이 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1266"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1302"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1311"/>
         <source>Image translation failed.</source>
         <translation>이미지 번역에 실패했습니다.</translation>
     </message>
@@ -1832,22 +1871,22 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="117"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="171"/>
         <source>Thickness</source>
         <translation>두께</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="122"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="176"/>
         <source>Shape</source>
         <translation>모양</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="125"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="179"/>
         <source>Circle</source>
         <translation>원형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="126"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="180"/>
         <source>Rectangle</source>
         <translation>사각형</translation>
     </message>
@@ -1859,7 +1898,8 @@
 <context>
     <name>InpaintThread</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="418"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="436"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="448"/>
         <source>Inpainting Failed.</source>
         <translation>인페인팅이 실패했습니다.</translation>
     </message>
@@ -1867,13 +1907,13 @@
 <context>
     <name>InpainterSelectorRow</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="74"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="124"/>
         <source>Inpainter</source>
         <translation>인페인터</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="86"/>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="87"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="136"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="137"/>
         <source>Config</source>
         <translation>설정</translation>
     </message>
@@ -1919,74 +1959,116 @@
     </message>
 </context>
 <context>
+    <name>LLMContextEditor</name>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="111"/>
+        <source>Write or revise context for the current page.</source>
+        <translation>현재 페이지의 컨텍스트를 작성하거나 수정하세요.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="115"/>
+        <source>Review or revise the project memory applied to every page.</source>
+        <translation>모든 페이지에 적용되는 프로젝트 메모리를 검토하거나 수정하세요.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="121"/>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="191"/>
+        <source>Page Summary</source>
+        <translation>페이지 요약</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="134"/>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="136"/>
+        <source>Edit all page summaries</source>
+        <translation>모든 페이지 요약 편집</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="145"/>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="196"/>
+        <source>Memory</source>
+        <translation>메모리</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="344"/>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="375"/>
+        <source>{count} covered</source>
+        <translation>{count}개 포함됨</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_context_editor.py" line="347"/>
+        <source>No project open</source>
+        <translation>열린 프로젝트 없음</translation>
+    </message>
+</context>
+<context>
     <name>LLMProfilesWidget</name>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1511"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1530"/>
         <source>New</source>
         <translation>추가</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1515"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1534"/>
         <source>New Empty Profile</source>
         <translation>새 빈 프로필</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1516"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1535"/>
         <source>Import from Clipboard</source>
         <translation>클립보드 가져오기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1520"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1539"/>
         <source>Restore Built-ins...</source>
         <translation>기본 프로필 복원...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1527"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1546"/>
         <source>Filter profiles</source>
         <translation>프로필 검색</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1528"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1547"/>
         <source>Filter displayed profiles by name, model, or base URL.</source>
         <translation>이름, 모델 또는 기본 URL로 표시되는 프로필을 검색합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1650"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1669"/>
         <source>New Profile</source>
         <translation>새 프로필</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1670"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1689"/>
         <source>Import Profiles</source>
         <translation>프로필 가져오기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1671"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1690"/>
         <source>The clipboard does not contain valid LLM profile JSON.</source>
         <translation>클립보드에 유효한 LLM 프로필 JSON 데이터가 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1722"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1741"/>
         <source>Restore Built-in Profiles</source>
         <translation>기본 프로필 복원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1723"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1742"/>
         <source>Restore built-in LLM profiles to their default values?</source>
         <translation>기본 제공 LLM 프로필을 초기 기본값으로 복원하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1725"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1744"/>
         <source>This may overwrite current built-in profile settings such as base URL, model, and prompts. Filled API keys will be kept.</source>
         <translation>기본 URL, 모델, 프롬프트 등 현재 기본 제공 프로필 설정이 덮어씌워질 수 있습니다. 이미 입력된 API 키는 유지됩니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1728"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1747"/>
         <source>Restore</source>
         <translation>복원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1779"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1798"/>
         <source>Image Base URL</source>
         <translation>이미지 기본 URL</translation>
     </message>
@@ -1994,42 +2076,47 @@
 <context>
     <name>LeftBar</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="110"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="107"/>
+        <source>Page List and Context</source>
+        <translation>페이지 목록 및 컨텍스트</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="112"/>
         <source>Global Search (Ctrl+G)</source>
         <translation>전체 검색 (Ctrl+G)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="121"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="119"/>
         <source>Open Folder ...</source>
         <translation>폴더 열기 ...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="125"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="123"/>
         <source>Open Project ... *.json</source>
         <translation>프로젝트 열기 ... *.json</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="128"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="126"/>
         <source>Save Project</source>
         <translation>프로젝트 저장</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="132"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="130"/>
         <source>Export as Doc</source>
         <translation>DOC 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="134"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="132"/>
         <source>Import from Doc</source>
         <translation>DOC 불러오기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="137"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="135"/>
         <source>Export source text as TXT</source>
         <translation>원본 텍스트 TXT로 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="142"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="140"/>
         <source>Export source text as markdown</source>
         <translation>원본 텍스트 마크다운 문서로 내보내기</translation>
     </message>
@@ -2038,7 +2125,7 @@
         <translation type="vanished">원본 텍스트 TXT로 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="139"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="137"/>
         <source>Export translation as TXT</source>
         <translation>번역 텍스트 TXT로 내보내기</translation>
     </message>
@@ -2047,28 +2134,28 @@
         <translation type="vanished">원본 텍스트 마크다운 문서로 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="144"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="142"/>
         <source>Export translation as markdown</source>
         <translation>번역 텍스트 마크다운 문서로 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="155"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="153"/>
         <source>Open Recent</source>
         <translation>최근 프로젝트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="177"/>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="178"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="175"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="176"/>
         <source>Run</source>
         <translation>실행</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="271"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="268"/>
         <source>Select Directory</source>
         <translation>경로 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="278"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="275"/>
         <source>Import *.docx</source>
         <translation>*.docx 불러오기</translation>
     </message>
@@ -2077,7 +2164,7 @@
         <translation type="vanished">실행</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="147"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="145"/>
         <source>Import translation from TXT/markdown</source>
         <translation>텍스트/마크다운 파일에서 번역 불러오기</translation>
     </message>
@@ -2089,17 +2176,17 @@
         <translation type="obsolete">OCR 키워드 치환</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="307"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="332"/>
         <source>Keyword substitution for machine translation</source>
         <translation>번역문에 대한 키워드 치환(후처리)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="720"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="752"/>
         <source>Failed to load project </source>
         <translation>프로젝트를 불러오지 못했습니다: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="765"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="798"/>
         <source>Failed to load project from</source>
         <translation>다음 프로젝트를 불러오지 못했습니다: </translation>
     </message>
@@ -2110,207 +2197,232 @@
 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1827"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2013"/>
         <source>unsaved</source>
         <translation>저장되지 않음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1827"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2013"/>
         <source>saved</source>
         <translation>저장</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1898"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2084"/>
         <source>Saving image...</source>
         <translation>이미지 저장 ...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2039"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2225"/>
         <source>Import Text Styles</source>
         <translation>텍스트 스타일 가져오기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2053"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2239"/>
         <source>Save Text Styles</source>
         <translation>텍스트 스타일 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2164"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2348"/>
         <source>Export to </source>
         <translation>내보내기 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="828"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="876"/>
         <source>Restart to apply changes? 
 </source>
         <translation>변경 사항을 적용하기 위해 다시 시작 하시겠습니까? 
 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="186"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="616"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="199"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="647"/>
         <source>Updating: </source>
         <translation>업데이트 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="585"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="616"/>
         <source>Checking...</source>
         <translation>확인 중...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="594"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="608"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="609"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="610"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="625"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="639"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="640"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="641"/>
         <source>Downloading update: </source>
         <translation>업데이트 다운로드 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="607"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="638"/>
         <source>Backing up current version: </source>
         <translation>현재 버전 백업 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="611"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="642"/>
         <source>Saving local changes: </source>
         <translation>로컬 변경 사항 저장 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="612"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="613"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="614"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="643"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="644"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="645"/>
         <source>Installing update: </source>
         <translation>업데이트 설치 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="639"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="670"/>
         <source>Already up-to-date.</source>
         <translation>이미 최신 버전입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="660"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="691"/>
         <source>Failed to check for updates.</source>
         <translation>업데이트 확인에 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2049"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1208"/>
+        <source>No project is open.</source>
+        <translation>열려 있는 프로젝트가 없습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1218"/>
+        <source>The project could not be saved before opening Photoshop.</source>
+        <translation>Photoshop을 열기 전에 프로젝트를 저장하지 못했습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1235"/>
+        <source>BallonsTranslator has unsaved changes. Save them, then check for the Photoshop update again.</source>
+        <translation>BallonsTranslator에 저장되지 않은 변경 사항이 있습니다. 먼저 저장한 후 Photoshop의 변경 사항을 다시 확인하세요.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1242"/>
+        <source>The project file changed outside BallonsTranslator. Reload it before applying Photoshop changes.</source>
+        <translation>프로젝트 파일이 BallonsTranslator 외부에서 변경되었습니다. Photoshop 변경 사항을 적용하기 전에 프로젝트를 다시 불러오세요.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1287"/>
+        <source>Failed to save Photoshop changes: {error}</source>
+        <translation>Photoshop 변경 사항을 저장하지 못했습니다: {error}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2235"/>
         <source>Failed to load from {p}</source>
         <translation>불러오기에 실패하였습니다: {p}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2070"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2256"/>
         <source>Failed save to {savep}</source>
         <translation>저장에 실패하였습니다: {savep}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2096"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2282"/>
         <source>Text file exported to </source>
         <translation>텍스트 파일 저장됨: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2198"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2382"/>
         <source>Failed to copy source text</source>
         <translation>소스 텍스트 복사 실패</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2293"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2477"/>
         <source>API key required</source>
         <translation>API 키 필요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2294"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2478"/>
         <source>The selected LLM profile requires an API key.</source>
         <translation>선택한 LLM 프로필에는 API 키가 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2296"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2480"/>
         <source>Fill the API key before running this LLM task for: {profile_name}</source>
         <translation>다음 프로필의 LLM 작업을 실행하기 전에 API 키를 입력해야 합니다: {profile_name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2298"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2482"/>
         <source>Fill API Key</source>
         <translation>API 키 입력</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2319"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2503"/>
         <source>Model required</source>
         <translation>모델 필요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2320"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2504"/>
         <source>Vision model required</source>
         <translation>비전 모델 필요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2321"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2505"/>
         <source>Image model required</source>
         <translation>이미지 모델 필요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2324"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2508"/>
         <source>model</source>
         <translation>모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2325"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2509"/>
         <source>vision model</source>
         <translation>비전 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2326"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2510"/>
         <source>image model</source>
         <translation>이미지 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2330"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2380"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2514"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2564"/>
         <source>LLM Profile</source>
         <translation>LLM 프로필</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2335"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2519"/>
         <source>The selected LLM profile requires a {field_name}.</source>
         <translation>선택한 LLM 프로필을 사용하려면 {field_name} 항목이 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2338"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2388"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2522"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2572"/>
         <source>Fill the {field_name} before running this LLM task for: {profile_name}</source>
         <translation>다음 프로필의 LLM 작업을 실행하기 전에 {field_name} 항목을 입력해야 합니다: {profile_name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2343"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2527"/>
         <source>Fill Model</source>
         <translation>모델 입력</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2371"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2555"/>
         <source>Base URL required</source>
         <translation>기본 URL 필요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2372"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2556"/>
         <source>Image base URL required</source>
         <translation>이미지 기본 URL 필요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2375"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2559"/>
         <source>base URL</source>
         <translation>기본 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2376"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2560"/>
         <source>image base URL</source>
         <translation>이미지 기본 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2385"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2569"/>
         <source>The selected LLM profile requires this field: {field_name}.</source>
         <translation>다음 항목이 선택한 LLM 프로필에 필요합니다: {field_name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2393"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2577"/>
         <source>Fill URL</source>
         <translation>URL 입력</translation>
     </message>
@@ -2319,7 +2431,7 @@
         <translation type="obsolete">텍스트 파일 내보내기 실패</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="299"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="324"/>
         <source>Keyword substitution for source text</source>
         <translation>OCR 결과에 대한 키워드 치환</translation>
     </message>
@@ -2334,47 +2446,47 @@ All existing translation results will be cleared!</source>
 모든 기존 번역 결과가 지워집니다!</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2098"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2284"/>
         <source>Failed to export as TEXT file</source>
         <translation>텍스트 파일 내보내기 실패</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2104"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2290"/>
         <source>Import *.md/*.txt</source>
         <translation>*.md/*.txt 불러오기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2119"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2305"/>
         <source>Translation imported and matched successfully.</source>
         <translation>번역을 성공적으로 불러왔습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2121"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2307"/>
         <source>Imported txt file not fully matched with current project, please make sure source txt file structured like results from &quot;export TXT/markdown&quot;</source>
         <translation>불러온 텍스트 파일이 현재 프로젝트와 전체 매칭 되지 않습니다, 소스 텍스트가 &quot;텍스트/마크다운 파일 내보내기&quot; 메뉴로 생성된 파일과 동일한 구조인지 확인하세요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2123"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2309"/>
         <source>Missing pages: </source>
         <translation>누락된 페이지: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2126"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2312"/>
         <source>Unexpected pages: </source>
         <translation>예상치 못한 페이지: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2129"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2315"/>
         <source>Unmatched pages: </source>
         <translation>불일치한 페이지: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2140"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2326"/>
         <source>Failed to import translation from </source>
         <translation>다음 파일에서 불러오기를 실패했습니다: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="303"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="328"/>
         <source>Keyword substitution for machine translation source text</source>
         <translation>원문에 대한 키워드 치환(전처리)</translation>
     </message>
@@ -2390,97 +2502,97 @@ All existing translation results will be cleared!</source>
         <translation type="vanished">유효하지 않은</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1354"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1683"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1399"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1728"/>
         <source>Preparing module: </source>
         <translation>모듈 준비 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1567"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1866"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1612"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1911"/>
         <source>Missing packages</source>
         <translation>누락된 패키지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1569"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1614"/>
         <source>Selected modules require missing package(s):
 {modules}</source>
         <translation>선택한 모듈에는 다음 누락된 패키지가 필요합니다:
 {modules}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1573"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1873"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1618"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1918"/>
         <source>Install the missing package(s) now?</source>
         <translation>지금 누락된 패키지를 설치하시겠습니까?</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1575"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1875"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1620"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1920"/>
         <source>Install</source>
         <translation>설치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1576"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1876"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1621"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1921"/>
         <source>Not Now</source>
         <translation>나중에</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1577"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1877"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1622"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1922"/>
         <source>Install all missing packages and don&apos;t show again</source>
         <translation>누락된 패키지를 모두 설치하고 다시 표시하지 않음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1639"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1684"/>
         <source>Installing packages: </source>
         <translation>패키지 설치 중: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1643"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1688"/>
         <source>Installing...</source>
         <translation>설치 중...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1670"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1715"/>
         <source>Failed to install packages</source>
         <translation>패키지 설치에 실패</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1725"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1770"/>
         <source>Downloading package</source>
         <translation>패키지 다운로드 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1735"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1780"/>
         <source>{speed}/s</source>
         <translation>{speed}/s</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1738"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1783"/>
         <source>ETA {eta}</source>
         <translation>예상 남은 시간 {eta}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1868"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1913"/>
         <source>Module &quot;{module}&quot; requires missing package(s):
 {packages}</source>
         <translation>&quot;{module}&quot; 모듈에는 다음 누락된 패키지가 필요합니다:
 {packages}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1898"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1943"/>
         <source>Failed to set module </source>
         <translation>모듈 설정 실패 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1954"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1999"/>
         <source>Module preparation is already running.</source>
         <translation>모듈 준비 작업이 이미 진행 중입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1958"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="2003"/>
         <source>Selected modules are ready.</source>
         <translation>선택한 모듈이 준비되었습니다.</translation>
     </message>
@@ -2499,7 +2611,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="14"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="101"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="575"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="587"/>
         <source>Delay</source>
         <translation>지연 시간</translation>
     </message>
@@ -2520,7 +2632,7 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="26"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="107"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="581"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="593"/>
         <source>Max Requests Per Minute</source>
         <translation>분당 최대 요청 수</translation>
     </message>
@@ -2537,14 +2649,14 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="110"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="584"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="596"/>
         <source>Proxy address used for the OpenAI-compatible client.</source>
         <translation>OpenAI 호환 클라이언트에 사용되는 프록시 주소입니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="38"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="113"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="587"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="599"/>
         <source>Proxy</source>
         <translation>프록시</translation>
     </message>
@@ -2586,21 +2698,21 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="50"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="119"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="593"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="605"/>
         <source>Retry Attempts</source>
         <translation>재시도 횟수</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="53"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="122"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="596"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="608"/>
         <source>Delay between retries in seconds.</source>
         <translation>재시도 간 지연 시간(초)입니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="56"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="125"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="599"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="611"/>
         <source>Retry Timeout</source>
         <translation>재시도 타임아웃</translation>
     </message>
@@ -2615,14 +2727,15 @@ All existing translation results will be cleared!</source>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="80"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="89"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="128"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="215"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="224"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="233"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="257"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="332"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="428"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="644"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="680"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="218"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="227"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="236"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="245"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="269"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="344"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="440"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="656"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="692"/>
         <source>device</source>
         <translation>장치</translation>
     </message>
@@ -2681,14 +2794,14 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="140"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="188"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="533"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="539"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="554"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="545"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="551"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="566"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="602"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="650"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="653"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="677"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="578"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="614"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="662"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="665"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="689"/>
         <source>delay</source>
         <translation>지연 시간</translation>
     </message>
@@ -2764,8 +2877,8 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="185"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="548"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="647"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="560"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="659"/>
         <source>API Key</source>
         <translation>API 키</translation>
     </message>
@@ -2790,607 +2903,622 @@ All existing translation results will be cleared!</source>
         <translation>프록시 주소 (예: http(s)://user:password@host:port 또는 socks4/5://user:password@host:port)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="218"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="227"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="215"/>
+        <source>Hayai OCR v2 crop recognition model.</source>
+        <translation>Hayai OCR v2 자르기 영역 인식 모델입니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="221"/>
+        <source>Maximum image patches. Use 256 for standard lines, or 384/512 for dense panels.</source>
+        <translation>이미지 패치의 최대 개수입니다. 일반적인 줄에는 256을, 빽빽한 패널에는 384 또는 512를 사용하세요.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="224"/>
+        <source>Max Num Patches</source>
+        <translation>최대 패치 수</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="230"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="239"/>
         <source>OCRMIT48px</source>
         <translation>OCRMIT48px</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="221"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="230"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="233"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="242"/>
         <source>Chunk Size</source>
         <translation>청크 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="236"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="248"/>
         <source>本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)</source>
         <translation>로컬 배포된 Paddle OCR-VL 서비스 (POST /layout-parsing)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="239"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="251"/>
         <source>max retry times</source>
         <translation>최대 재시도 횟수</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="242"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="254"/>
         <source>Prettify Markdown</source>
         <translation>마크다운 가독성 개선 (Prettify)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="245"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="257"/>
         <source>retry interval</source>
         <translation>재시도 간격</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="248"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="260"/>
         <source>Server URL</source>
         <translation>서버 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="251"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="263"/>
         <source>visualize</source>
         <translation>시각화</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="254"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="266"/>
         <source>PP-OCRv6 ONNX recognition-only — crops text blocks then recognizes via ONNX Runtime</source>
         <translation>PP-OCRv6 ONNX 인식 전용 — 텍스트 블록을 잘라낸 후 ONNX Runtime으로 인식</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="260"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="272"/>
         <source>Recognition batch size (higher = faster, more VRAM)</source>
         <translation>인식 배치 크기 (높을수록 빠르지만 VRAM을 더 많이 사용)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="263"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="275"/>
         <source>Recognition Batch Size</source>
         <translation>인식 배치 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="266"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="278"/>
         <source>星河云(团子翻译器) OCR API</source>
         <translation>성하운(단고 번역기) OCR API</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="269"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="446"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="281"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="458"/>
         <source>Password</source>
         <translation>비밀번호</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="272"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="449"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="284"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="461"/>
         <source>User</source>
         <translation>사용자</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="275"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="452"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="287"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="464"/>
         <source>Detect Scale</source>
         <translation>검출 스케일 (비율)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="278"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="455"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="290"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="467"/>
         <source>Disable Skip Area</source>
         <translation>건너뛰기 영역 비활성화</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="281"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="461"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="293"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="473"/>
         <source>Filtrate</source>
         <translation>필터링</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="284"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="296"/>
         <source>是否强制扩展图片像素，会导致识别速度下降</source>
         <translation>이미지 픽셀 강제 확장 여부 (인식 속도가 저하될 수 있음)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="287"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="476"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="299"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="488"/>
         <source>Force Expand</source>
         <translation>강제 확장</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="290"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="479"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="302"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="491"/>
         <source>Low Accuracy Mode</source>
         <translation>저정밀도 모드</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="293"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="482"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="305"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="494"/>
         <source>Merge Threshold</source>
         <translation>병합 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="296"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="485"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="308"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="497"/>
         <source>Refine</source>
         <translation>보정 / 다듬기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="299"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="488"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="311"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="500"/>
         <source>删除旧 Token 并重新申请</source>
         <translation>기존 토큰 삭제 및 재발급</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="302"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="491"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="314"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="503"/>
         <source>更新 Token</source>
         <translation>토큰 갱신</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="305"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="317"/>
         <source>RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector) for text/bubble detection.</source>
         <translation>텍스트/말풍선 검출용 RT-DETR-V2 (ogkalu/comic-text-and-bubble-detector).</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="308"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="320"/>
         <source>Minimum detection score (0.0-1.0).</source>
         <translation>최소 검출 점수 (0.0-1.0).</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="311"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="323"/>
         <source>Confidence Threshold</source>
         <translation>신뢰도 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="314"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="326"/>
         <source>Area ratio threshold to trigger removal of contained boxes (0.0-1.0).</source>
         <translation>포함된 상자 제거를 위한 면적 비율 임계값 (0.0-1.0).</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="317"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="329"/>
         <source>Containment Threshold</source>
         <translation>포함 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="320"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="332"/>
         <source>Detect speech bubbles.</source>
         <translation>말풍선 검출.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="323"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="335"/>
         <source>Detect Bubbles</source>
         <translation>말풍선 검출</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="326"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="338"/>
         <source>Detect text blocks.</source>
         <translation>텍스트 블록 검출.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="329"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="341"/>
         <source>Detect Text</source>
         <translation>텍스트 검출</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="335"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="347"/>
         <source>Dilation kernel size (px) for the inpaint mask. Merges text fragments.</source>
         <translation>인페인트 마스크의 팽창 커널 크기(px). 텍스트 조각들을 병합합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="338"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="350"/>
         <source>Inpaint Mask Dilate</source>
         <translation>인페인트 마스크 팽창</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="341"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="353"/>
         <source>Method to unify fragments into one mask: &apos;none&apos;, &apos;bounding rectangle&apos;, or &apos;convex hull&apos;.</source>
         <translation>조각들을 하나의 마스크로 통합하는 방법: &apos;없음(none)&apos;, &apos;경계 사각형(bounding rectangle)&apos;, &apos;볼록 껍질(convex hull)&apos;.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="344"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="356"/>
         <source>Mask Unification Method</source>
         <translation>마스크 통합 방법</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="347"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="359"/>
         <source>Merge near-identical duplicate boxes of the same category.</source>
         <translation>동일 카테고리 내 거의 동일한 중복 상자를 병합합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="350"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="362"/>
         <source>Merge Duplicates</source>
         <translation>중복 항목 병합</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="353"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="365"/>
         <source>IoU threshold for merging duplicates within the same class.</source>
         <translation>동일 클래스 내 중복 병합을 위한 IoU 임계값.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="356"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="368"/>
         <source>Merge Duplicates IoU</source>
         <translation>중복 병합 IoU</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="359"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="371"/>
         <source>Remove text boxes that are largely contained within other larger text boxes.</source>
         <translation>더 큰 다른 텍스트 상자에 대부분 포함되어 있는 텍스트 상자를 제거합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="362"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="374"/>
         <source>Remove Contained Text</source>
         <translation>포함된 텍스트 제거</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="365"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="377"/>
         <source>Containment threshold for merging boxes.</source>
         <translation>상자 병합을 위한 포함 임계값.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="368"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="380"/>
         <source>Slice Containment Threshold</source>
         <translation>슬라이스 포함 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="371"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="383"/>
         <source>IoU threshold for removing duplicate boxes.</source>
         <translation>중복 상자 제거를 위한 IoU 임계값.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="374"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="386"/>
         <source>Slice Duplicate IoU</source>
         <translation>슬라이스 중복 IoU</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="377"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="389"/>
         <source>IoU threshold for merging text lines.</source>
         <translation>텍스트 줄 병합을 위한 IoU 임계값.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="380"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="392"/>
         <source>Slice Merge IoU</source>
         <translation>슬라이스 병합 IoU</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="383"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="395"/>
         <source>Max relative Y-distance for merging text lines.</source>
         <translation>텍스트 줄 병합을 위한 최대 상대 Y거리.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="386"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="398"/>
         <source>Slice Merge Y Distance</source>
         <translation>슬라이스 병합 Y거리</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="389"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="401"/>
         <source>Minimum height ratio for the last slice.</source>
         <translation>마지막 슬라이스의 최소 높이 비율.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="392"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="404"/>
         <source>Slice Min Height Ratio</source>
         <translation>슬라이스 최소 높이 비율</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="395"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="407"/>
         <source>Slice overlap ratio (0.0-1.0).</source>
         <translation>슬라이스 중첩 비율 (0.0-1.0).</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="398"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="410"/>
         <source>Slice Overlap Ratio</source>
         <translation>슬라이스 중첩 비율</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="401"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="413"/>
         <source>Target H/W ratio for slices.</source>
         <translation>슬라이스의 목표 높이/너비 비율.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="404"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="416"/>
         <source>Slice Target Ratio</source>
         <translation>슬라이스 목표 비율</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="407"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="419"/>
         <source>H/W ratio to trigger image slicing.</source>
         <translation>이미지 슬라이싱을 실행할 높이/너비 비율 기준.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="410"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="422"/>
         <source>Slice Threshold Ratio</source>
         <translation>슬라이스 임계 비율</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="413"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="425"/>
         <source>Keep all text, only text inside speech bubbles, or only text outside speech bubbles.</source>
         <translation>모든 텍스트 유지, 말풍선 내부 텍스트만 유지, 또는 말풍선 외부 텍스트만 유지.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="416"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="428"/>
         <source>Text Region Filter</source>
         <translation>텍스트 영역 필터</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="419"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="431"/>
         <source>ComicTextDetector</source>
         <translation>ComicTextDetector</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="422"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="434"/>
         <source>Max split batch size</source>
         <translation>최대 분할 배치 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="425"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="437"/>
         <source>Detect Size</source>
         <translation>검출 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="431"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="443"/>
         <source>font size max</source>
         <translation>최대 글꼴 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="434"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="446"/>
         <source>font size min</source>
         <translation>최소 글꼴 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="437"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="449"/>
         <source>font size multiplier</source>
         <translation>글꼴 크기 배수</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="440"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="452"/>
         <source>mask dilate size</source>
         <translation>마스크 팽창 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="443"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="455"/>
         <source>星河云(团子翻译器) OCR 文字检测器</source>
         <translation>성하운(단고 번역기) OCR 텍스트 검출기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="458"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="470"/>
         <source>Expand Ratio</source>
         <translation>확장 비율</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="464"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="476"/>
         <source>Font Size Max (set to -1 to disable)</source>
         <translation>최대 글꼴 크기 (비활성화하려면 -1로 설정)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="467"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="479"/>
         <source>Font Size Min (set to -1 to disable)</source>
         <translation>최소 글꼴 크기 (비활성화하려면 -1로 설정)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="470"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="482"/>
         <source>Font Size Multiplier</source>
         <translation>글꼴 크기 배수</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="473"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="485"/>
         <source>Font Size Offset</source>
         <translation>글꼴 크기 오프셋</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="494"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="506"/>
         <source>IoU阈值</source>
         <translation>IoU 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="497"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="509"/>
         <source>置信度阈值</source>
         <translation>신뢰도 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="500"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="512"/>
         <source>检测尺寸</source>
         <translation>검출 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="503"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="515"/>
         <source>设备</source>
         <translation>장치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="506"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="518"/>
         <source>最大字号</source>
         <translation>최대 글꼴 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="509"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="521"/>
         <source>最小字号</source>
         <translation>최소 글꼴 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="512"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="524"/>
         <source>字号乘数</source>
         <translation>글꼴 크기 배수</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="515"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="527"/>
         <source>标签</source>
         <translation>태그 / 라벨</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="518"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="530"/>
         <source>掩码扩张尺寸</source>
         <translation>마스크 확장 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="521"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="533"/>
         <source>合并文本行</source>
         <translation>텍스트 줄 병합</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="524"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="536"/>
         <source>模型路径</source>
         <translation>모델 경로</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="527"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="539"/>
         <source>竖排文本</source>
         <translation>세로쓰기 텍스트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="530"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="542"/>
         <source>appId</source>
         <translation>appId</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="536"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="542"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="548"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="554"/>
         <source>token</source>
         <translation>token</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="545"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="557"/>
         <source>Return source text as translation</source>
         <translation>원문을 번역문으로 반환</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="551"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="563"/>
         <source>context</source>
         <translation>context</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="557"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="569"/>
         <source>formality</source>
         <translation>formality</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="560"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="572"/>
         <source>Preserve Formatting</source>
         <translation>서식 유지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="563"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="575"/>
         <source>API URL</source>
         <translation>API URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="569"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="581"/>
         <source>Translate using the selected text-capable LLM profile.</source>
         <translation>선택한 텍스트 지원 LLM 프로필을 사용하여 번역합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="572"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="584"/>
         <source>Delay between LLM requests in seconds.</source>
         <translation>LLM 요청 간 지연 시간(초)입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="578"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="590"/>
         <source>Global request limit for LLM translation.</source>
         <translation>LLM 번역의 전역 요청 제한입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="590"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="602"/>
         <source>Retries for API or parsing failures.</source>
         <translation>API 또는 파싱 실패 시 재시도 횟수입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="605"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="617"/>
         <source>api baseurl</source>
         <translation>API 기본 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="608"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="620"/>
         <source>dict path</source>
         <translation>사전 경로</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="611"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="623"/>
         <source>Enlarge small kana to normal size</source>
         <translation>작은 가나(가타카나/히라가나)를 일반 크기로 확대</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="614"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="626"/>
         <source>do enlarge small kana</source>
         <translation>작은 가나 확대 수행</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="617"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="629"/>
         <source>Force apply the dictionary regardless of whether the terms appear in the original text
  DO NOT CHECK THIS IF YOU ARE NOT SURE WHAT IT MEANS</source>
         <translation>원문에 용어가 존재하는지 여부와 관계없이 강제로 사전을 적용합니다.&lt;br&gt;(의미를 확실히 알지 못하는 경우 체크하지 마세요)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="620"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="632"/>
         <source>force apply dict</source>
         <translation>사전 강제 적용</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="623"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="635"/>
         <source>check it if you&apos;re running it locally on a single device and encountered a crash due to vram OOM</source>
         <translation>단일 기기에서 로컬로 실행 중 VRAM 부족(OOM)으로 인한 튕김이 발생한 경우 체크하세요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="626"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="638"/>
         <source>low vram mode</source>
         <translation>저 VRAM 모드</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="629"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="641"/>
         <source>max tokens</source>
         <translation>최대 토큰 수</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="632"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="644"/>
         <source>repeat detect threshold</source>
         <translation>반복 감지 임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="635"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="647"/>
         <source>retry attempts</source>
         <translation>재시도 횟수</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="638"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="650"/>
         <source>timeout</source>
         <translation>타임아웃</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="641"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="653"/>
         <source>version</source>
         <translation>버전</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="656"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="668"/>
         <source>Select the translation service from the FOSWLY library.</source>
         <translation>FOSWLY 라이브러리에서 번역 서비스를 선택합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="659"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="671"/>
         <source>service</source>
         <translation>서비스</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="662"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="674"/>
         <source>API Key for Yandex.Cloud. If empty, a keyless method will be attempted.</source>
         <translation>Yandex.Cloud용 API 키입니다. 비어 있으면 키가 없는 방식으로 시도합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="665"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="677"/>
         <source>Yandex Cloud API Key</source>
         <translation>Yandex Cloud API 키</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="668"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="680"/>
         <source>DAT Path</source>
         <translation>DAT 파일 경로</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="671"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="683"/>
         <source>J2KEngine.dll Path</source>
         <translation>J2KEngine.dll 경로</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="674"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="686"/>
         <source>ehnd-kor.dll Path (optional)</source>
         <translation>ehnd-kor.dll 경로 (선택 사항)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="612"/>
+        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="625"/>
         <source>No configurable param</source>
         <translation>설정 가능한 매개변수가 없습니다</translation>
     </message>
@@ -3398,67 +3526,67 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleSelectionWidget</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="366"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="367"/>
         <source>LLM</source>
         <translation>LLM</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="394"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="395"/>
         <source>No text profiles</source>
         <translation>텍스트 프로필 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="396"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="397"/>
         <source>No vision profiles</source>
         <translation>비전 프로필 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="397"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="398"/>
         <source>No image profiles</source>
         <translation>이미지 프로필 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="400"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="401"/>
         <source>Language</source>
         <translation>언어</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="402"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="403"/>
         <source>Source - {language}</source>
         <translation>원문 - {language}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="417"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="418"/>
         <source>Target - {language}</source>
         <translation>번역문 - {language}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="470"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="471"/>
         <source>Thinking Level</source>
         <translation>사고 수준 (Thinking Level)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="471"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="472"/>
         <source>Model</source>
         <translation>모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="475"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="476"/>
         <source>Vision Model</source>
         <translation>비전 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="476"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="477"/>
         <source>Vision Detail Level</source>
         <translation>비전 상세 수준</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="479"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="480"/>
         <source>Image Model</source>
         <translation>이미지 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_tool_button.py" line="513"/>
+        <location filename="../../ballontranslator/ui/module_tool_button.py" line="516"/>
         <source>{model} {thinking_level}</source>
         <translation>{model} {thinking_level}</translation>
     </message>
@@ -3466,32 +3594,33 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleThread</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="169"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="211"/>
         <source>Checking dependencies</source>
         <translation>의존성(종속성) 확인 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="174"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="216"/>
         <source>Importing module</source>
         <translation>모듈 불러오는 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="207"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="249"/>
         <source>Creating module</source>
         <translation>모듈 생성 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="214"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="256"/>
         <source>Loading model</source>
         <translation>모델 불러오는 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="301"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="343"/>
         <source>Installing packages</source>
         <translation>패키지 설치 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="356"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="386"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="394"/>
         <source>Module task failed.</source>
         <translation>모듈 작업에 실패했습니다.</translation>
     </message>
@@ -3518,7 +3647,7 @@ All existing translation results will be cleared!</source>
 <context>
     <name>PageListView</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="84"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="96"/>
         <source>Reveal in File Explorer</source>
         <translation>파일 탐색기에서 열기</translation>
     </message>
@@ -3621,34 +3750,224 @@ All existing translation results will be cleared!</source>
 <context>
     <name>PenConfigPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="169"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="233"/>
         <source>Color</source>
         <translation>색상</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="170"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="234"/>
         <source>Alpha</source>
         <translation>불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="178"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="242"/>
         <source>Thickness</source>
         <translation>두께</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="183"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="247"/>
         <source>Shape</source>
         <translation>모양</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="186"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="250"/>
         <source>Circle</source>
         <translation>원형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="187"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="251"/>
         <source>Rectangle</source>
         <translation>사각형</translation>
+    </message>
+</context>
+<context>
+    <name>PhotoshopBridgeDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="306"/>
+        <source>Photoshop Bridge</source>
+        <translation>Photoshop 브리지</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="360"/>
+        <source>Photoshop Integration Status</source>
+        <translation>Photoshop 연동 상태</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="366"/>
+        <source>Photoshop:</source>
+        <translation>Photoshop:</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="368"/>
+        <source>Checking Photoshop installation...</source>
+        <translation>Photoshop 설치 확인 중...</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="374"/>
+        <source>Bridge Script:</source>
+        <translation>브리지 스크립트:</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="376"/>
+        <source>Checking Bridge script status...</source>
+        <translation>브리지 스크립트 상태 확인 중...</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="382"/>
+        <source>Photoshop Changes:</source>
+        <translation>Photoshop 변경 사항:</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="384"/>
+        <source>No pending changes</source>
+        <translation>대기 중인 변경 사항 없음</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="391"/>
+        <source>Check Update</source>
+        <translation>업데이트 확인</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="399"/>
+        <source>Bridge Quick Actions</source>
+        <translation>브리지 빠른 작업</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="406"/>
+        <source>Open This Project in Photoshop</source>
+        <translation>이 프로젝트를 Photoshop에서 열기</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="413"/>
+        <source>Install / Update Script in Photoshop</source>
+        <translation>Photoshop 스크립트 설치 / 업데이트</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="419"/>
+        <source>Open Scripts Folder in Explorer</source>
+        <translation>탐색기에서 스크립트 폴더 열기</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="429"/>
+        <source>Tip: Inside Photoshop, run the bridge via File -&gt; Scripts -&gt; BallonTranslator_PS_Bridge.
+You can export layers, edit texts/strokes, and sync changes back into BallonsTranslator.</source>
+        <translation>팁: Photoshop에서 파일 -&gt; 스크립트 -&gt; BallonTranslator_PS_Bridge를 통해 브리지를 실행하세요.
+레이어를 내보내고 텍스트와 획을 편집한 후 변경 사항을 BallonsTranslator로 다시 동기화할 수 있습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="460"/>
+        <source>Photoshop installation not detected</source>
+        <translation>설치된 Photoshop을 찾을 수 없음</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="472"/>
+        <source>Reinstall Script in Photoshop</source>
+        <translation>Photoshop 스크립트 다시 설치</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="477"/>
+        <source>Update Script in Photoshop</source>
+        <translation>Photoshop 스크립트 업데이트</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="482"/>
+        <source>Install Script in Photoshop</source>
+        <translation>Photoshop 스크립트 설치</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="514"/>
+        <source>Waiting for Photoshop to finish writing changes...</source>
+        <translation>Photoshop에서 변경 사항 저장을 기다리는 중...</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="528"/>
+        <source>Ignored changes from an expired Photoshop session.</source>
+        <translation>만료된 Photoshop 세션의 변경 사항을 무시했습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="539"/>
+        <source>BallonsTranslator cannot apply Photoshop changes.</source>
+        <translation>BallonsTranslator에서 Photoshop 변경 사항을 적용할 수 없습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="557"/>
+        <source>Applied {count} Photoshop change(s).</source>
+        <translation>Photoshop 변경 사항 {count}개를 적용했습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="573"/>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="623"/>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="668"/>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="713"/>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="728"/>
+        <source>Error</source>
+        <translation>오류</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="574"/>
+        <source>Photoshop or the Bridge JSX script was not found.</source>
+        <translation>Photoshop 또는 브리지 JSX 스크립트를 찾을 수 없습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="587"/>
+        <source>Updated</source>
+        <translation>업데이트됨</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="588"/>
+        <source>Bridge script updated. It is ready to use.</source>
+        <translation>브리지 스크립트가 업데이트되었습니다. 이제 사용할 수 있습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="593"/>
+        <source>Installed</source>
+        <translation>설치됨</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="594"/>
+        <source>Bridge script installed. Restart Photoshop to refresh its Scripts menu.</source>
+        <translation>브리지 스크립트가 설치되었습니다. 스크립트 메뉴를 새로 고치려면 Photoshop을 다시 시작하세요.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="604"/>
+        <source>Manual Installation Required</source>
+        <translation>수동 설치 필요</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="606"/>
+        <source>BallonsTranslator cannot write to Photoshop&apos;s Scripts folder without administrator permission.
+
+Copy this file:
+{source}
+
+To this folder:
+{destination}
+
+Then restart Photoshop. Explorer will now open the source file and destination location.</source>
+        <translation>BallonsTranslator가 관리자 권한 없이 Photoshop의 스크립트 폴더에 파일을 저장할 수 없습니다.
+
+다음 파일을 복사하세요:
+{source}
+
+복사할 위치:
+{destination}
+
+복사가 끝나면 Photoshop을 다시 시작하세요. 원본 파일과 대상 폴더가 탐색기에서 열립니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="624"/>
+        <source>Failed to install the Bridge script: {error}</source>
+        <translation>브리지 스크립트 설치에 실패했습니다: {error}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="668"/>
+        <source>Bridge JSX script not found.</source>
+        <translation>브리지 JSX 스크립트를 찾을 수 없습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/ps_bridge_dialog.py" line="733"/>
+        <source>Waiting for changes from Photoshop...</source>
+        <translation>Photoshop의 변경 사항을 기다리는 중...</translation>
     </message>
 </context>
 <context>
@@ -3690,13 +4009,13 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="389"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="555"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="557"/>
         <source>Vision Model</source>
         <translation>비전 모델</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="390"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="608"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="609"/>
         <source>Image Model</source>
         <translation>이미지 모델</translation>
     </message>
@@ -3769,13 +4088,13 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="408"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="559"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="561"/>
         <source>Model used by LLMOCR for image OCR.</source>
         <translation>이미지 OCR을 위해 LLMOCR이 사용하는 모델입니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="409"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="612"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="613"/>
         <source>Model used by LLMInpaint for image cleanup.</source>
         <translation>이미지 정리를 위해 LLMInpaint가 사용하는 모델입니다.</translation>
     </message>
@@ -3785,217 +4104,221 @@ All existing translation results will be cleared!</source>
         <translation>비전 지원 제공업체에 전송되는 이미지 상세 수준입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="411"/>
         <source>Reasoning effort sent only when it is not None.</source>
-        <translation>None이 아닐 때만 전송되는 추론 강도(사고 수준)입니다.</translation>
+        <translation type="vanished">None이 아닐 때만 전송되는 추론 강도(사고 수준)입니다.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="412"/>
+        <source>Auto uses the provider default. Disabled requests no reasoning; explicit levels set the reasoning effort.</source>
+        <translation>&apos;자동&apos;은 제공업체 기본값을 사용하고, &apos;비활성화&apos;는 추론을 사용하지 않습니다. 특정 수준을 선택하면 해당 추론 강도가 적용됩니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="415"/>
         <source>Additional translation instructions for style and wording.</source>
         <translation>스타일 및 어조에 대한 추가 번역 지시사항입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="413"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="416"/>
         <source>Instructions sent to the vision model for OCR.</source>
         <translation>OCR을 위해 비전 모델에 전송되는 지시사항입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="414"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="417"/>
         <source>Instructions sent to the image model for cleanup.</source>
         <translation>이미지 정리를 위해 이미지 모델에 전송되는 지시사항입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="415"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="418"/>
         <source>Maximum generated response tokens, not input/context tokens.</source>
         <translation>생성되는 최대 응답 토큰 수입니다 (입력/문맥 토큰 미포함).</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="416"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="419"/>
         <source>Sampling temperature.</source>
         <translation>샘플링 온도 값입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="417"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="420"/>
         <source>Top-p sampling.</source>
         <translation>Top-p 샘플링 값.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="418"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="419"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="421"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="422"/>
         <source>Sent only when greater than 0. Some OpenAI-compatible providers may ignore or reject it.</source>
         <translation>0보다 클 때만 전송됩니다. 일부 OpenAI 호환 제공업체는 이를 무시하거나 거부할 수 있습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="420"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="423"/>
         <source>Request responses with the translation JSON schema. Useful for LM Studio; disable it if a provider rejects json_schema response_format.</source>
         <translation>번역 JSON 스키마 형식으로 응답을 요청합니다. LM Studio에 유용하며, 제공업체가 json_schema response_format을 거부하는 경우 비활성화하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="421"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="424"/>
         <source>Preserved compatibility flag for local profiles.</source>
         <translation>로컬 프로필의 호환성을 유지하기 위한 플래그입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="449"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="924"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1029"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="452"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="933"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1038"/>
         <source>Edit</source>
         <translation>편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="457"/>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1026"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="460"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1035"/>
         <source>Delete</source>
         <translation>삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="476"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="479"/>
         <source>API Key</source>
         <translation>API 키</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="510"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="513"/>
         <source>Text Model</source>
         <translation>텍스트 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="514"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="517"/>
         <source>Text translation model used by LLMTranslator.</source>
         <translation>LLMTranslator가 사용하는 텍스트 번역 모델입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="518"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="521"/>
         <source>Add model</source>
         <translation>모델 추가</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="524"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="527"/>
         <source>Delete current model</source>
         <translation>현재 모델 삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="563"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="565"/>
         <source>Add vision model</source>
         <translation>비전 모델 추가</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="569"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="571"/>
         <source>Delete current vision model</source>
         <translation>현재 비전 모델 삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="616"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="617"/>
         <source>Add image model</source>
         <translation>이미지 모델 추가</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="622"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="623"/>
         <source>Delete current image model</source>
         <translation>현재 이미지 모델 삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="670"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="679"/>
         <source>Text</source>
         <translation>텍스트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="671"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="680"/>
         <source>Vision</source>
         <translation>비전</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="672"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="681"/>
         <source>Image</source>
         <translation>이미지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="959"/>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="968"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="977"/>
         <source>LLM Profile</source>
         <translation>LLM 프로필</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1025"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1034"/>
         <source>Edit name</source>
         <translation>이름 편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1027"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1036"/>
         <source>Copy</source>
         <translation>복사</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1028"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1037"/>
         <source>Copy Profile as JSON</source>
         <translation>프로필을 JSON으로 복사</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1030"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1039"/>
         <source>Set for Translator</source>
         <translation>번역기로 설정</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1031"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1040"/>
         <source>Set for OCR</source>
         <translation>OCR로 설정</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1032"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1041"/>
         <source>Set for Inpainter</source>
         <translation>인페인터로 설정</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1121"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1129"/>
         <source>Model name</source>
         <translation>모델 이름</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1186"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1195"/>
         <source>Vision model name</source>
         <translation>비전 모델 이름</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1254"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1271"/>
         <source>Image model name</source>
         <translation>이미지 모델 이름</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1406"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1425"/>
         <source>Text translation model used by LLMTranslator. Click to disable text translation for this profile.</source>
         <translation>LLMTranslator가 사용하는 텍스트 번역 모델입니다. 클릭하면 이 프로필의 텍스트 번역을 비활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1408"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1427"/>
         <source>Text translation model used by LLMTranslator. Click to enable text translation for this profile.</source>
         <translation>LLMTranslator가 사용하는 텍스트 번역 모델입니다. 클릭하면 이 프로필의 텍스트 번역을 활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1420"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1439"/>
         <source>Vision OCR model used by LLMOCR. Click to disable vision OCR for this profile.</source>
         <translation>LLMOCR이 사용하는 비전 OCR 모델입니다. 클릭하면 이 프로필의 비전 OCR을 비활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1422"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1441"/>
         <source>Vision OCR model used by LLMOCR. Click to enable vision OCR for this profile.</source>
         <translation>LLMOCR이 사용하는 비전 OCR 모델입니다. 클릭하면 이 프로필의 비전 OCR을 활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1434"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1453"/>
         <source>Image cleanup model used by LLMInpaint. Click to disable image cleanup for this profile.</source>
         <translation>LLMInpaint가 사용하는 이미지 정리 모델입니다. 클릭하면 이 프로필의 이미지 정리를 비활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1436"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1455"/>
         <source>Image cleanup model used by LLMInpaint. Click to enable image cleanup for this profile.</source>
         <translation>LLMInpaint가 사용하는 이미지 정리 모델입니다. 클릭하면 이 프로필의 이미지 정리를 활성화합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1472"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1491"/>
         <source>Required API key is configured.</source>
         <translation>필수 API 키가 설정되었습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1476"/>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1495"/>
         <source>Required API key is missing.</source>
         <translation>필수 API 키가 누락되었습니다.</translation>
     </message>
@@ -4017,47 +4340,47 @@ All existing translation results will be cleared!</source>
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="230"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="301"/>
         <source>Dilate</source>
         <translation>확장</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="238"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="309"/>
         <source>method 1</source>
         <translation>방법 1</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="239"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="310"/>
         <source>method 2</source>
         <translation>방법 2</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="314"/>
         <source>Auto</source>
         <translation>자동</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="244"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="315"/>
         <source>run inpainting automatically.</source>
         <translation>자동 인페인팅 시도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="246"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="317"/>
         <source>Inpaint</source>
         <translation>인페인트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="247"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="318"/>
         <source>Space</source>
         <translation>여백</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="249"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="320"/>
         <source>Delete</source>
         <translation>삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="250"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="321"/>
         <source>Ctrl+D</source>
         <translation>Ctrl+D</translation>
     </message>
@@ -4066,7 +4389,7 @@ All existing translation results will be cleared!</source>
         <translation type="vanished">인페인터</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="240"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="311"/>
         <source>Use Existing Mask</source>
         <translation>기존 마스크 사용</translation>
     </message>
@@ -4199,7 +4522,7 @@ All existing translation results will be cleared!</source>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="667"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1367"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1548"/>
         <source>Settings</source>
         <translation>설정</translation>
     </message>
@@ -4219,17 +4542,32 @@ All existing translation results will be cleared!</source>
         <translation>텍스트 검출</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="790"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="789"/>
+        <source>Page-level LLM OCR</source>
+        <translation>페이지 단위 LLM OCR</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="798"/>
+        <source>Mask non-text areas</source>
+        <translation>텍스트가 아닌 영역 마스킹</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="807"/>
+        <source>Use LLM reading order</source>
+        <translation>LLM 읽기 순서 사용</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="829"/>
         <source>Letter Case</source>
         <translation>대소문자</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="793"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="832"/>
         <source>Choose how OCR text letter case is adjusted after keyword substitution.</source>
         <translation>키워드 치환 후 OCR 텍스트의 대소문자를 조정하는 방법을 선택합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="801"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="840"/>
         <source>None</source>
         <translation>없음</translation>
     </message>
@@ -4242,119 +4580,154 @@ All existing translation results will be cleared!</source>
         <translation type="vanished">모두 대문자로</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="803"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="842"/>
         <source>Keep OCR text letter case unchanged.</source>
         <translation>OCR 텍스트의 대소문자를 변경하지 않습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="806"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="845"/>
         <source>Capitalize</source>
         <translation>첫 글자 대문자화</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="809"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="848"/>
         <source>Lowercase OCR text, then capitalize the first letter of each sentence.</source>
         <translation>OCR 텍스트를 소문자로 변환한 후 각 문장의 첫 글자를 대문자로 변경합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="813"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="852"/>
         <source>Uppercase</source>
         <translation>모두 대문자로</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="815"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="854"/>
         <source>Convert OCR text to uppercase.</source>
         <translation>OCR 텍스트를 모두 대문자로 변환합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="843"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="891"/>
         <source>Skip simple cases</source>
         <translation>단순한 경우 건너뛰기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="852"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="900"/>
         <source>Filter mask by text boxes</source>
         <translation>텍스트 상자로 마스크 필터링</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="881"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="933"/>
         <source>Source</source>
         <translation>원본</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="900"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="952"/>
         <source>Target</source>
         <translation>대상</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="922"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="974"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="993"/>
         <source>Context</source>
         <translation>컨텍스트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="928"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="980"/>
         <source>textblock</source>
         <translation>텍스트 블록</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="929"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="948"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="981"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1000"/>
         <source>page</source>
         <translation>페이지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="941"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1045"/>
+        <source>Token budget shared by prior translation history, saved page summaries, and compact memory. The current translation input, instructions, glossary, image, and generated reply are not included.</source>
+        <translation>이전 번역 기록, 저장된 페이지 요약 및 압축 메모리가 공유하는 토큰 예산입니다. 현재 번역 입력, 지침, 용어집, 이미지 및 생성된 응답은 포함되지 않습니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1121"/>
         <source>LLM Context</source>
         <translation>LLM 컨텍스트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="952"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1004"/>
         <source>+history</source>
         <translation>+히스토리</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="972"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1024"/>
         <source>Token budget</source>
         <translation>토큰 할당량</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="991"/>
         <source>Maximum translation history sent to the model. The current page, instructions, glossary, and generated reply are not included.</source>
-        <translation>모델에 전송되는 최대 번역 기록 범위입니다. 현재 페이지, 지시사항, 용어집 및 생성된 응답은 여기에 포함되지 않습니다.</translation>
+        <translation type="vanished">모델에 전송되는 최대 번역 기록 범위입니다. 현재 페이지, 지시사항, 용어집 및 생성된 응답은 여기에 포함되지 않습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1011"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1061"/>
         <source>Glossary</source>
         <translation>용어집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1022"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1157"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1072"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1336"/>
         <source>Select Glossary File</source>
         <translation>용어집 파일 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1031"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1081"/>
         <source>Matching</source>
         <translation>일치 방식</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1035"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1085"/>
         <source>All</source>
         <translation>모두</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1052"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1102"/>
         <source>Mode</source>
         <translation>모드</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1159"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1133"/>
+        <source>Vision</source>
+        <translation>비전</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1141"/>
+        <source>Summary</source>
+        <translation>요약</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1182"/>
+        <source>Overwrite Existing Summary</source>
+        <translation>기존 요약 덮어쓰기</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1196"/>
+        <source>Attach the current page image to the translation request.</source>
+        <translation>현재 페이지 이미지를 번역 요청에 첨부합니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1199"/>
+        <source>Generate editable page summaries and compact older summaries into reusable project memory when the context budget fills.</source>
+        <translation>편집 가능한 페이지 요약을 생성하고, 컨텍스트 예산이 가득 차면 이전 요약을 재사용 가능한 프로젝트 메모리로 압축합니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1203"/>
+        <source>Ignore and replace the current page summary when translating it again.</source>
+        <translation>현재 페이지를 다시 번역할 때 기존 요약을 무시하고 새 요약으로 교체합니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1338"/>
         <source>Glossary Files (*.json *.txt *.tsv)</source>
         <translation>용어집 파일 (*.json *.txt *.tsv)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1385"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1566"/>
         <source>Render without update text style</source>
         <translation>텍스트 스타일 업데이트 없이 렌더링</translation>
     </message>
@@ -4362,17 +4735,17 @@ All existing translation results will be cleared!</source>
 <context>
     <name>SecretLineEditor</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="108"/>
+        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="121"/>
         <source>Copy</source>
         <translation>복사</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="111"/>
+        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="124"/>
         <source>Paste</source>
         <translation>붙여넣기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="113"/>
+        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="126"/>
         <source>Select All</source>
         <translation>모두 선택</translation>
     </message>
@@ -4380,7 +4753,7 @@ All existing translation results will be cleared!</source>
 <context>
     <name>SecretParamWidget</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="154"/>
+        <location filename="../../ballontranslator/ui/module_parse_widgets.py" line="167"/>
         <source>Stored in portable obfuscated form. This hides the key from plain-text scans, but it is not a secure password vault.</source>
         <translation>이동식 난독화 형태로 저장됩니다. 일반 텍스트 검색으로부터 키를 숨겨주지만, 안전한 비밀번호 보관소 수준의 보안은 아닙니다.</translation>
     </message>
@@ -5446,32 +5819,32 @@ All existing translation results will be cleared!</source>
 <context>
     <name>TitleBar</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="317"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="306"/>
         <source>Edit</source>
         <translation>편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="319"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="308"/>
         <source>Undo</source>
         <translation>실행 취소</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="322"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="311"/>
         <source>Redo</source>
         <translation>다시 실행</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="325"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="314"/>
         <source>Search</source>
         <translation>찾기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="328"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="317"/>
         <source>Global Search</source>
         <translation>글로벌 검색</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="334"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="323"/>
         <source>Keyword substitution for machine translation</source>
         <translation>번역문에 대한 키워드 치환(후처리)</translation>
     </message>
@@ -5480,22 +5853,22 @@ All existing translation results will be cleared!</source>
         <translation type="obsolete">OCR 결과 키워드 치환</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="347"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="336"/>
         <source>View</source>
         <translation>보기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="351"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="340"/>
         <source>Display Language</source>
         <translation>디스플레이 언어</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="365"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="354"/>
         <source>Drawing Board</source>
         <translation>그림판</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="367"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="356"/>
         <source>Text Editor</source>
         <translation>텍스트 편집기</translation>
     </message>
@@ -5504,77 +5877,82 @@ All existing translation results will be cleared!</source>
         <translation type="obsolete">텍스트 스타일 패널</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="369"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="358"/>
         <source>Import Text Styles</source>
         <translation>텍스트 스타일 가져오기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="370"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="359"/>
         <source>Export Text Styles</source>
         <translation>텍스트 스타일 내보내기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="371"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="360"/>
         <source>Dark Mode</source>
         <translation>다크 모드</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="375"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="364"/>
         <source>Show Text Detection</source>
         <translation>텍스트 검출기 표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="376"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="365"/>
         <source>Show OCR</source>
         <translation>OCR 표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="377"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="366"/>
         <source>Show Translation</source>
         <translation>번역기 표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="378"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="367"/>
         <source>Show Inpainting</source>
         <translation>인페인터 표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="406"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="395"/>
         <source>Go</source>
         <translation>이동</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="407"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="396"/>
         <source>Previous Page</source>
         <translation>이전 페이지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="409"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="398"/>
         <source>Next Page</source>
         <translation>다음 페이지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="420"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="409"/>
         <source>Tools</source>
         <translation>도구</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="427"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="417"/>
+        <source>Photoshop Bridge</source>
+        <translation>Photoshop 브리지</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="421"/>
         <source>Path Reorder</source>
         <translation>경로 순서 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="431"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="425"/>
         <source>Font Exclusion</source>
         <translation>글꼴 제외</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="443"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="438"/>
         <source>Sponsor</source>
         <translation>후원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="456"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="451"/>
         <source>Afdian</source>
         <translation>Afdian</translation>
     </message>
@@ -5607,12 +5985,12 @@ All existing translation results will be cleared!</source>
         <translation type="vanished">이 페이지 번역</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="336"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="325"/>
         <source>Keyword substitution for source text</source>
         <translation>OCR 결과에 대한 키워드 치환</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="332"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="321"/>
         <source>Keyword substitution for machine translation source text</source>
         <translation>원문에 대한 키워드 치환(전처리)</translation>
     </message>
@@ -5698,34 +6076,36 @@ All existing translation results will be cleared!</source>
         <translation type="vanished">번역기를 설정하지 못했습니다</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="484"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="514"/>
         <source>Creating module</source>
         <translation>모듈 생성 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="491"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="521"/>
         <source>Loading model</source>
         <translation>모델 불러오는 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="561"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="591"/>
         <source>Installing packages</source>
         <translation>패키지 설치 중</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="621"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="659"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="634"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="648"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="684"/>
         <source>Translation Failed.</source>
         <translation>번역이 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="624"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="661"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="637"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="651"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="685"/>
         <source>Page</source>
         <translation>페이지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="664"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="689"/>
         <source>{param} is required for {translator}</source>
         <translation>{translator}을(를) 사용하려면 {param}이(가) 필요함</translation>
     </message>

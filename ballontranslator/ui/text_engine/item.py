@@ -14,8 +14,8 @@ from qtpy.QtWidgets import (
     QGraphicsSceneMouseEvent,
 )
 from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
-from qtpy.QtGui import (QKeyEvent, QFont, QTextCursor,
-                       QInputMethodEvent, QPainter, QColor, QTextCharFormat,
+from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
+                       QInputMethodEvent, QFocusEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QFontMetrics, QPen,
                        QTextBlockFormat)
 
@@ -190,6 +190,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.geometry_controller = TextItemGeometryController(self)
         self.effect_renderer = TextEffectRenderer(self)
         self.pre_editing = False
+        self._resetting_ime = False
         self.blk: TextBlock = None
         self.fontformat: FontFormat = None
         self.repainting = False
@@ -223,7 +224,13 @@ class TextBlkItem(QGraphicsTextItem):
 
         self.layout: Union[VerticalTextDocumentLayout, HorizontalTextDocumentLayout] = None
         self.document().setDocumentMargin(0)
-        self.initTextBlock(blk, set_format=set_format)
+        # Render effects once both the initial format and document are settled.
+        self.repainting = True
+        try:
+            self.initTextBlock(blk, set_format=set_format)
+        finally:
+            self.repainting = False
+        self.repaint_background()
         self.setBoundingRegionGranularity(0)
         self.setFlags(
             QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -235,6 +242,13 @@ class TextBlkItem(QGraphicsTextItem):
         self._sync_order_badge()
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
+        if self._resetting_ime:
+            if e.commitString() or e.replacementLength():
+                e.accept()
+                return
+        elif not self.hasFocus() or not self.isEditing():
+            e.accept()
+            return
         self._vertical_navigation_y = None
         if not self.pre_editing:
             cursor = self.textCursor()
@@ -267,7 +281,15 @@ class TextBlkItem(QGraphicsTextItem):
             self.input_method_removed = replacement_end - replacement_start
         if e.commitString():
             cursor = self.textCursor()
-            cursor.beginEditBlock()
+            # Qt deletes a selection when preedit starts. Keep the eventual
+            # commit in that same document command, as in the paired editor.
+            if (
+                self.input_method_removed > 0
+                and self.document().availableUndoSteps() > self.old_undo_steps
+            ):
+                cursor.joinPreviousEditBlock()
+            else:
+                cursor.beginEditBlock()
             prepare_cursor = QTextCursor(cursor)
             if replacement_start is not None:
                 prepare_cursor.setPosition(replacement_start)
@@ -297,6 +319,33 @@ class TextBlkItem(QGraphicsTextItem):
         # not change. The next paint is cached until another IME event.
         self.geometry_controller.invalidate_surface_cache()
         self._update_nonlinear_editing_ui()
+
+    def _reset_ime(self) -> None:
+        """Cancel native composition while the paired editor is still attached.
+
+        >>> callable(TextBlkItem._reset_ime)
+        True
+        """
+        if not self.pre_editing or self._resetting_ime:
+            return
+        self._resetting_ime = True
+        try:
+            # Some backends send a commit during reset; reject it above.
+            QApplication.inputMethod().reset()
+            if QApplication.platformName() == 'cocoa' and self.scene() is not None:
+                from ..framelesswindow.mac_utils import discard_marked_text
+                # Qt resets the root NSView; a native canvas child can keep
+                # marked text and swallow shortcuts before Qt receives them.
+                for view in self.scene().views():
+                    discard_marked_text(view.viewport())
+            self.inputMethodEvent(QInputMethodEvent())
+        finally:
+            self._resetting_ime = False
+        self.update()
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        self._reset_ime()
+        super().focusOutEvent(event)
 
     def setTextCursor(self, cursor: QTextCursor) -> None:
         self._vertical_navigation_y = None
@@ -385,10 +434,15 @@ class TextBlkItem(QGraphicsTextItem):
         ):
             self.update()
         
-    def on_content_changed(self):
+    def on_content_changed(self) -> None:
         self.geometry_controller.invalidate_surface_cache()
-        if (self.hasFocus() or self.is_formatting) and not self.pre_editing and not self.block_change_signal:   
-            # self.content_changed.emit(self)
+        # Reset may finish after focus has left. Any selection deletion Qt
+        # already performed still belongs to the normal paired undo path.
+        if (
+            (self.hasFocus() or self.is_formatting or self._resetting_ime)
+            and not self.pre_editing
+            and not self.block_change_signal
+        ):
             if not self.in_redo_undo:
                 undo_steps = self.document().availableUndoSteps()
                 new_steps = undo_steps - self.old_undo_steps
@@ -1021,6 +1075,16 @@ class TextBlkItem(QGraphicsTextItem):
             return
         self._vertical_navigation_y = None
 
+        if e.matches(QKeySequence.StandardKey.Paste) and self.isEditing():
+            e.accept()
+            self.pasted.emit(self.idx)
+            return
+        if e.matches(QKeySequence.StandardKey.Copy):
+            if self.textCursor().hasSelection():
+                self._copy_selected_text()
+            e.accept()
+            return
+
         if e.modifiers() == Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Z:
                 e.accept()
@@ -1030,18 +1094,12 @@ class TextBlkItem(QGraphicsTextItem):
                 e.accept()
                 self.redo_signal.emit()
                 return
-            elif e.key() == Qt.Key.Key_V:
-                if self.isEditing():
-                    e.accept()
-                    self.pasted.emit(self.idx)
-                    return
-            elif e.key() in (Qt.Key.Key_C, Qt.Key.Key_X):
+            elif e.key() == Qt.Key.Key_X:
                 cursor = self.textCursor()
                 if cursor.hasSelection():
                     self._copy_selected_text()
-                    if e.key() == Qt.Key.Key_X:
-                        cursor.removeSelectedText()
-                        self.setTextCursor(cursor)
+                    cursor.removeSelectedText()
+                    self.setTextCursor(cursor)
                 e.accept()
                 return
         elif e.modifiers() == Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier:
@@ -1231,7 +1289,8 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.setPosition(hit)
             self.setTextCursor(cursor)
 
-    def endEdit(self, keep_focus=True) -> None:
+    def endEdit(self, keep_focus: bool = True) -> None:
+        self._reset_ime()
         self.end_edit.emit(self.idx)
         cursor = self.textCursor()
         cursor.clearSelection()
@@ -1501,6 +1560,7 @@ class TextBlkItem(QGraphicsTextItem):
         set_char_format=False,
         set_stroke_width=True,
     ) -> None:
+        was_repainting = self.repainting
         self.repainting = True
         if self.fontformat.vertical != ffmat.vertical:
             self.setVertical(ffmat.vertical)
@@ -1595,7 +1655,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.set_text_transform(ffmat.text_transform)
         self.fontformat.merge(ffmat)
 
-        self.repainting = False
+        self.repainting = was_repainting
         if set_stroke_width:
             self.repaint_background()
 

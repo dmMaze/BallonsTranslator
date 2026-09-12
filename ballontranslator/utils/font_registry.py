@@ -1224,6 +1224,10 @@ def _system_display_family(qfont_db: Any, family: str, locale: str) -> str:
     'Example Sans'
     """
     try:
+        # Qt 5/6 font() dereferences an empty style array for an existing
+        # family with an unmatched [foundry]. This native crash bypasses except.
+        if not qfont_db.styles(family):
+            return family
         font = qfont_db.font(family, '', 12)
         from qtpy.QtGui import QRawFont
 

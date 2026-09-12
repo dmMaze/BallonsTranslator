@@ -228,7 +228,7 @@ class LLMTranslationHistoryTest(
             for page in context.history
         ))
 
-    def test_memory_tokens_reduce_available_recent_history_budget(self):
+    def test_current_summary_tokens_reduce_available_recent_history_budget(self) -> None:
         pages = tuple(
             HistoryPage(str(index), (f's{index}',), (f't{index}',))
             for index in range(1, 4)
@@ -256,11 +256,11 @@ class LLMTranslationHistoryTest(
             reserved_tokens=3,
         )
 
-        self.assertEqual([page.page_key for page in history], ['2', '3'])
-        self.assertEqual(diagnostic.evicted, 1)
-        self.assertEqual(diagnostic.token_count, 9)
+        self.assertEqual([page.page_key for page in history], ['3'])
+        self.assertEqual(diagnostic.evicted, 2)
+        self.assertEqual(diagnostic.token_count, 6)
 
-    def test_context_overflow_recovery_preserves_compacted_memory(self):
+    def test_context_overflow_recovery_preserves_compacted_memory(self) -> None:
         pages = tuple(
             RenderedHistoryPage(
                 HistoryPage(str(index), ('s',), ('t',)),
@@ -269,7 +269,7 @@ class LLMTranslationHistoryTest(
             )
             for index in range(2)
         )
-        memory = MemoryCheckpoint('memory', ('old',), 2)
+        memory = MemoryCheckpoint('memory', ('old',), 100)
         summary = PageSummary('current', 'Current page context.')
         recovered = recover_context_length(RequestContext(
             history=pages,
@@ -284,14 +284,16 @@ class LLMTranslationHistoryTest(
         self.assertIs(recovered.memory, memory)
         self.assertEqual(recovered.page_summaries, (summary,))
         self.assertEqual(len(recovered.history), 1)
-        self.assertEqual(recovered.diagnostic.token_count, 7)
+        self.assertEqual(recovered.diagnostic.token_count, 5)
 
-    def test_context_overflow_drops_prior_summaries_before_current_page(self):
+    def test_context_overflow_drops_prior_summaries_before_current_page(self) -> None:
         prior = PageSummary('001.png', 'Prior context.')
         current = PageSummary('002.png', 'Current context.')
+        memory = MemoryCheckpoint('memory', ('old',), 100)
         context = RequestContext(
             history=(),
             history_budget=20,
+            memory=memory,
             request_page_key='002.png',
             page_summaries=(prior, current),
             summary_token_count=10,
@@ -299,6 +301,7 @@ class LLMTranslationHistoryTest(
         )
         recovered = recover_context_length(context)
         self.assertEqual(recovered.page_summaries, (current,))
+        self.assertIs(recovered.memory, memory)
         self.assertEqual(recovered.summary_token_count, 4)
         self.assertEqual(recovered.diagnostic.token_count, 4)
         self.assertEqual(recovered.diagnostic.summaries_evicted, 1)
@@ -534,7 +537,7 @@ class LLMTranslationHistoryTest(
 
         self.assertEqual(
             [page.page_key for page in rebuilt.history],
-            ['003.png', '004.png', '005.png'],
+            ['004.png', '005.png'],
         )
         self.assertEqual(adjacent.diagnostic.action, ContextAction.GROW)
         self.assertEqual(adjacent.history[:-1], rebuilt.history)
@@ -607,7 +610,7 @@ class LLMTranslationHistoryTest(
         self.assertEqual(second_messages[:len(first_messages)], first_messages)
         self.assertEqual(third_messages[:len(second_messages)], second_messages)
 
-    def test_overflow_bulk_evicts_and_later_prefix_grows_stably(self):
+    def test_overflow_bulk_evicts_and_later_prefix_grows_stably(self) -> None:
         project = self._project(8)
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
@@ -630,8 +633,8 @@ class LLMTranslationHistoryTest(
         eviction = contexts[6]
         after_eviction = contexts[7]
         self.assertEqual(eviction.diagnostic.action, ContextAction.EVICT)
-        self.assertEqual(eviction.diagnostic.evicted, 2)
-        self.assertEqual(eviction.diagnostic.token_count, 8)
+        self.assertEqual(eviction.diagnostic.evicted, 4)
+        self.assertEqual(eviction.diagnostic.token_count, 4)
         self.assertEqual(after_eviction.diagnostic.action, ContextAction.GROW)
         self.assertEqual(after_eviction.history[:-1], eviction.history)
         eviction_messages, _ = self._assemble_request(
@@ -644,6 +647,24 @@ class LLMTranslationHistoryTest(
             later_messages[:len(eviction_messages)],
             eviction_messages,
         )
+
+    def test_incoming_page_above_low_water_still_serves_as_history(self) -> None:
+        older = RenderedHistoryPage(HistoryPage('old', ('s',), ('t',)), (), 4)
+        incoming = HistoryPage('new', ('s',), ('t',))
+        history, diagnostic = eligible_history_for_request(
+            window=HistoryWindow(HistoryWindowKey(object(), ()), 'new', (older,), 4),
+            project=None,
+            page_key='current',
+            previous_page=incoming,
+            token_budget=10,
+            rebuild_reason=None,
+            snapshot_page=lambda _key: None,
+            render_page=lambda page: RenderedHistoryPage(page, (), 7),
+        )
+
+        self.assertEqual([page.snapshot for page in history], [incoming])
+        self.assertEqual(diagnostic.evicted, 1)
+        self.assertEqual(diagnostic.token_count, 7)
 
     def test_oversized_adjacent_page_is_skipped_without_splitting_window(self):
         project = self._project(3)
@@ -1172,7 +1193,7 @@ class LLMTranslationHistoryTest(
         self.assertEqual(first_messages[-1], recovered_messages[-1])
         self.assertEqual(
             [page.page_key for page in self.translator._history_window.history],
-            ['002.png', '003.png'],
+            ['003.png'],
         )
         self.assertEqual(context.history[1:], self.translator._history_window.history)
 

@@ -27,6 +27,7 @@ from ballontranslator.utils.fontformat import SineTextTransform, TextTransformSt
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_alpha_mask import AlphaBrushStroke, TextAlphaMask
 from ballontranslator.utils.text_effects import (
+    SyntheticBoldEffect,
     FilterEffect,
     GlowEffect,
     ImageEffect,
@@ -120,6 +121,39 @@ class TextFilterRendererTest(unittest.TestCase):
         source = Path(directory) / 'rendered.png'
         Image.fromarray(pixels, 'RGBA').save(source)
         return project.import_raster_asset(str(source))
+
+    def test_synthetic_source_changes_invalidate_filter_prefix_pixels(self) -> None:
+        effect = FilterEffect('custom:identity')
+        registry = _RuntimeRegistry({effect.filter_id: _runtime(
+            effect, lambda rgba, _params, _context: rgba,
+        )})
+        canonical = TextEffectStack(effects=(effect, StrokeEffect(width=0.1)))
+        with patch(
+            'ballontranslator.ui.text_engine.effects.renderer.get_filter_registry',
+            return_value=registry,
+        ):
+            item = self._item(canonical)
+            renderer = item.effect_renderer
+            before = self._public_pixels(item)
+            for shape, x, y in (
+                ('rect', 0.2, 0.05), ('ellipse', 0.2, 0.05),
+                ('ellipse', 0.2, 0.2),
+            ):
+                target = replace(
+                    canonical, effects=(*canonical.effects,
+                        SyntheticBoldEffect(shape=shape, x=x, y=y)),
+                )
+                item.set_text_effects(target, preview=True)
+                preview = self._public_pixels(item)
+                self.assertFalse(np.array_equal(preview, before))
+                fresh = self._item(target)
+                np.testing.assert_array_equal(preview, self._public_pixels(fresh))
+                fresh.effect_renderer.release_caches()
+                fresh.deleteLater()
+            item.clear_text_effect_preview()
+            np.testing.assert_array_equal(self._public_pixels(item), before)
+            renderer.release_caches()
+            item.deleteLater()
 
     def test_chain_runs_bottom_to_top_through_one_rgba_bridge(self):
         first = FilterEffect('custom:first')
@@ -569,7 +603,7 @@ class TextFilterRendererTest(unittest.TestCase):
         self.assertEqual(calls, ['custom:bottom', 'custom:top'])
         self.assertEqual(bridge.call_count, 2)
 
-    def test_exterior_source_keeps_preceding_direct_stroke_across_filter(self):
+    def test_exterior_source_keeps_preceding_stroke_across_filter(self) -> None:
         effect = FilterEffect('custom:identity')
         registry = _RuntimeRegistry({
             effect.filter_id: _runtime(
@@ -583,10 +617,7 @@ class TextFilterRendererTest(unittest.TestCase):
         )))
         renderer = item.effect_renderer
         bounds = renderer.boundingRect()
-        nodes = renderer._ordered_surface_nodes(target_stroke=False)
-        self.assertFalse(any(
-            isinstance(node, StrokeEffect) for _index, node in nodes
-        ))
+        nodes = renderer._ordered_surface_nodes()
         canonical = renderer._capture_effect_source(bounds, 1.0)
         canonical_alpha = renderer._pixmap_alpha(canonical)
         silhouette = QPixmap(canonical)
@@ -608,7 +639,7 @@ class TextFilterRendererTest(unittest.TestCase):
             renderer, '_glow_pixmap', wraps=renderer._glow_pixmap
         ) as glow_pixmap:
             renderer._render_pre_mask_effect_surface(
-                bounds, 1.0, target_stroke=False, nodes=nodes
+                bounds, 1.0, nodes=nodes
             )
 
         np.testing.assert_array_equal(
@@ -619,9 +650,7 @@ class TextFilterRendererTest(unittest.TestCase):
             effect, glow, stroke
         )))
         cache_renderer = cache_item.effect_renderer
-        cache_nodes = cache_renderer._ordered_surface_nodes(
-            target_stroke=False
-        )
+        cache_nodes = cache_renderer._ordered_surface_nodes()
         changed_stack = TextEffectStack(effects=(
             effect, glow, replace(stroke, opacity=0.5)
         ))

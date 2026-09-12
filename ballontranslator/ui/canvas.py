@@ -118,17 +118,14 @@ class CustomGV(QGraphicsView):
             return super().keyPressEvent(e)
 
         modifiers = e.modifiers()
-        if modifiers == Qt.KeyboardModifier.ControlModifier:
-            if key == QKEY.Key_V:
-                # self.ctrlv_pressed.emit(e)
-                if self.canvas.handle_ctrlv():
-                    e.accept()
-                    return
-            if key == QKEY.Key_C:
-                if self.canvas.handle_ctrlc():
-                    e.accept()
-                    return
-                
+        if e.matches(QKeySequence.StandardKey.Paste):
+            if self.canvas.handle_ctrlv():
+                e.accept()
+                return
+        elif e.matches(QKeySequence.StandardKey.Copy):
+            if self.canvas.handle_ctrlc():
+                e.accept()
+                return
         elif modifiers & Qt.KeyboardModifier.ControlModifier and modifiers & Qt.KeyboardModifier.ShiftModifier:
             if key == QKEY.Key_C:
                 self.canvas.copy_src_signal.emit()
