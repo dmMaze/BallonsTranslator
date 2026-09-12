@@ -2472,6 +2472,25 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     - max(spacing_advance, 0) > available_height
                 )
             )
+            cfmt = self.get_char_fontfmt(block_no, char_idx)
+            if cfmt is not None:
+                if text_combine_line_metrics is None:
+                    right_margin, left_margin = emphasis_margins(
+                        block, line, vertical=True
+                    )
+                    ruby_right, ruby_left = ruby_side_margins(
+                        block, line, ruby_metrics, vertical=True
+                    )
+                    current_line_metrics = (
+                        line_base_width,
+                        right_margin + ruby_right,
+                        left_margin + ruby_left,
+                    )
+                else:
+                    current_line_metrics = text_combine_line_metrics
+                width_list.append(current_line_metrics)
+            else:
+                width_list.append((-1.0, 0.0, 0.0))
             if out_of_vspace:
                 column_overflow = True
                 # switch to next line
@@ -2489,28 +2508,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     char_yoffset_lst[-1] = line_position_y
                 char_yoffset_lst.append(char_yoffset_lst[-1] + tbr_h + ruby_space_gap)
             else:
-                cfmt = self.get_char_fontfmt(block_no, char_idx)
-                if cfmt is not None:
-                    if text_combine_line_metrics is None:
-                        right_margin, left_margin = emphasis_margins(
-                            block, line, vertical=True
-                        )
-                        ruby_right, ruby_left = ruby_side_margins(
-                            block, line, ruby_metrics, vertical=True
-                        )
-                        right_margin += ruby_right
-                        left_margin += ruby_left
-                        current_line_metrics = (
-                            line_base_width,
-                            right_margin,
-                            left_margin,
-                        )
-                    else:
-                        current_line_metrics = text_combine_line_metrics
-                    width_list.append(current_line_metrics)
-                else:
-                    width_list.append((-1.0, 0.0, 0.0))
-
                 char_yoffset_lst.append(char_bottom + ruby_space_gap)
             for _ in range(num_rspaces):
                 space_bottom = char_yoffset_lst[-1] + space_w
@@ -2533,18 +2530,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     )
                 else:
                     line_spacing = block_line_spacing
-                if len(width_list) == 0:
-                    width_list = [(block_width, 0.0, 0.0)]
                 end_line, end_ypos, end_metrics = (
                     line,
                     line_position_y,
                     width_list[-1],
                 )
-                if out_of_vspace and text_combine_line_metrics is not None:
-                    # This line belongs to the next column and therefore did
-                    # not enter the previous column's width list.
-                    end_metrics = text_combine_line_metrics
-                if out_of_vspace and end_char and len(width_list) > 1:
+                # An overflow line carries its own metrics to the next column.
+                # With no previous line, it supplies this column's width too.
+                if out_of_vspace and len(width_list) > 1:
                     column_metrics = width_list[:-1]
                 else:
                     column_metrics = width_list

@@ -1,7 +1,10 @@
 import hashlib
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
+import textwrap
 import unittest
 from dataclasses import replace
 from unittest.mock import patch
@@ -293,6 +296,42 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         if owns_scene:
             scene.removeItem(item)
         return pixmap2ndarray(image, keep_alpha=True)
+
+    def test_first_outlined_emoji_fit_uses_settled_native_width(self) -> None:
+        # A fresh Qt font cache is required: earlier glyph paint masks this bug.
+        code = textwrap.dedent('''
+            from qtpy.QtWidgets import QApplication
+            from ballontranslator.ui.text_engine.item import TextBlkItem
+            from ballontranslator.utils.textblock import TextBlock
+            from ballontranslator.utils.text_effects import SolidPaint, StrokeEffect, TextEffectStack
+
+            app = QApplication([])
+            block = TextBlock([0, 0, 520, 400])
+            block._bounding_rect = [0, 0, 520, 400]
+            block.translation = '😀👩‍👩‍👧‍👦'
+            block.fontformat.font_family = 'DejaVu Sans'
+            block.fontformat.font_size = 24
+            block.fontformat.line_spacing = 1.2
+            block.fontformat.text_effects = TextEffectStack(effects=(
+                StrokeEffect(width=0.2, paint=SolidPaint((80, 100, 200))),
+            ))
+            item = TextBlkItem(block, 0)
+            minimum = item.layout.minSize()
+            item.squeezeBoundingRect()
+            first = item.logical_unpadded_rect()
+            item.squeezeBoundingRect()
+            second = item.logical_unpadded_rect()
+            assert abs(first.width() - second.width()) < 0.02, (first, second)
+            assert abs(minimum[1] - item.layout.minSize()[1]) < 0.02
+            assert item.toPlainText() == block.translation
+        ''')
+        result = subprocess.run(
+            [sys.executable, '-c', code],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_native_outline_transforms_and_dpr_match_qt_without_warnings(self) -> None:
         block = TextBlock([0, 0, 4000, 200])

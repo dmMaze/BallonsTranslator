@@ -189,6 +189,7 @@ class TextEffectRenderer:
         self._render_stroke = None
         self._outline_only_stroke = False
         self._native_stroke_alignment = False
+        self._native_stroke_metrics_changed = False
         self.refreshing_effect_padding = False
         self._verified_export_assets: Set[
             Tuple[object, RasterAssetRef]
@@ -2075,6 +2076,22 @@ class TextEffectRenderer:
         layout.relayout_on_changed = False
         doc.drawContents(painter)
 
+        if isinstance(self.layout, HorizontalTextDocumentLayout):
+            live = self.document().firstBlock()
+            copied = doc.firstBlock()
+            while live.isValid():
+                native = live.layout()
+                if (
+                    not native.preeditAreaText()
+                    and native.maximumWidth() != copied.layout().maximumWidth()
+                ):
+                    # Bitmap fallback fonts can change advances on first
+                    # outline paint, leaving Qt's live line widths stale.
+                    self._native_stroke_metrics_changed = True
+                    break
+                live = live.next()
+                copied = copied.next()
+
     def _paint_vertical_stroke(
         self,
         painter: QPainter,
@@ -2743,23 +2760,35 @@ class TextEffectRenderer:
         True
         """
         state = self._raster_state()
-        pre_mask_key = self._pre_mask_cache_key(
-            surface_rect, render_scale, target_stroke, skipped_filters
-        )
-        target_map = state.pre_mask_cache.get(pre_mask_key)
-        if target_map is None:
-            target_map = self._render_pre_mask_effect_surface(
-                surface_rect,
-                render_scale,
-                target_stroke=target_stroke,
-                skipped_filters=skipped_filters,
-                filter_plan=filter_plan,
-                nodes=nodes,
-                image_rasters=image_rasters,
+        for attempt in range(2):
+            pre_mask_key = self._pre_mask_cache_key(
+                surface_rect, render_scale, target_stroke, skipped_filters
             )
-            state.pre_mask_cache[pre_mask_key] = target_map
-            while len(state.pre_mask_cache) > 2:
-                state.pre_mask_cache.pop(next(iter(state.pre_mask_cache)))
+            target_map = state.pre_mask_cache.get(pre_mask_key)
+            self._native_stroke_metrics_changed = False
+            if target_map is None:
+                target_map = self._render_pre_mask_effect_surface(
+                    surface_rect,
+                    render_scale,
+                    target_stroke=target_stroke,
+                    skipped_filters=skipped_filters,
+                    filter_plan=filter_plan,
+                    nodes=nodes,
+                    image_rasters=image_rasters,
+                )
+            if not self._native_stroke_metrics_changed or attempt:
+                state.pre_mask_cache[pre_mask_key] = target_map
+                while len(state.pre_mask_cache) > 2:
+                    state.pre_mask_cache.pop(next(iter(state.pre_mask_cache)))
+                break
+            # All source painters have ended. Settle the shared layout and
+            # render once with its new generation, without reentrant repaint.
+            was_repainting = self.repainting
+            self.repainting = True
+            try:
+                self.layout.invalidate_native_metrics()
+            finally:
+                self.repainting = was_repainting
 
         alpha_mask = self._active_text_alpha_mask()
         if alpha_mask is None:

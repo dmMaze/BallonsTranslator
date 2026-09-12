@@ -1488,6 +1488,45 @@ class RubyFuriganaTest(unittest.TestCase):
             sides[position] = placement.ink_bounds.center().x()
         self.assertGreater(sides['over'], sides['under'])
 
+    def test_wrapped_ruby_keeps_its_font_width_and_side_margins(self) -> None:
+        for prefix, suffix in (('前', ''), ('前   ', ''), ('前', '後'), ('前   ', '後')):
+            for position in ('over', 'under'):
+                for emphasis in (False, True):
+                    with self.subTest(prefix=prefix, suffix=suffix, position=position, emphasis=emphasis):
+                        item = self._item(
+                            vertical=True, text=prefix + '木' + suffix,
+                            bounds=(0, 0, 240, 200),
+                        )
+                        self.addCleanup(item.deleteLater)
+                        item.setFontFamily('Noto Sans CJK SC')
+                        cursor = _select(item.document(), len(prefix), len(prefix) + 1)
+                        char_format = QTextCharFormat()
+                        char_format.setFontPointSize(48)
+                        cursor.mergeCharFormat(char_format)
+                        if emphasis:
+                            apply_emphasis(
+                                cursor, 'filled sesame',
+                                'over right' if position == 'over' else 'under left',
+                            )
+                        item.setTextCursor(cursor)
+                        item.setRuby('group', '测试注音测试注音', position)
+
+                        block = item.document().firstBlock()
+                        first_line = block.layout().lineForTextPosition(0)
+                        ruby_line = block.layout().lineForTextPosition(len(prefix))
+                        placements = item.layout._vertical_ruby_placements(block)
+                        self.assertEqual(len(placements), 1)
+                        placement = placements[0]
+                        occupied = placement.cell.united(placement.ink_bounds)
+                        self.assertLess(ruby_line.x(), first_line.x())
+                        self.assertGreaterEqual(occupied.left(), ruby_line.x() - 0.02)
+                        self.assertLessEqual(occupied.right(), first_line.x() + 0.02)
+                        self.assertAlmostEqual(
+                            placement.cell.width(),
+                            item.layout.get_char_fontfmt(0, len(prefix)).tbr.width(),
+                            delta=0.02,
+                        )
+
     def test_ruby_and_emphasis_accumulate_same_side_margin(self):
         plain = self._item(text='東京')
         ruby = self._item(text='東京')

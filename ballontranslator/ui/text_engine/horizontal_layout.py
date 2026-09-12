@@ -85,6 +85,11 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             tuple(self._block_fragment_ends[number]),
         )
 
+    def invalidate_native_metrics(self) -> None:
+        """Discard placement retained before a native font metric change."""
+        self._plain_line_cache.clear()
+        self.reLayoutEverything()
+
     def _reuse_plain_line(
         self, block: QTextBlock, text: str, text_length: int,
     ) -> bool:
