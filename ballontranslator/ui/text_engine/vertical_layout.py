@@ -945,7 +945,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         block_number = block.blockNumber()
         if not 0 <= block_number < len(self.per_char_records):
             return {}
-        return self.per_char_records[block_number].get(line.textStart(), {})
+        _trailing, leading, _offsets, line_position = self.line_spaces_lst[
+            block_number
+        ][line_number]
+        # Column metrics belong to the visible run after native leading spaces.
+        char_position = min(
+            line_position + leading, max(0, block.length() - 2),
+        )
+        return self.per_char_records[block_number].get(char_position, {})
 
     def is_tate_chu_yoko_line(
         self,
@@ -1021,6 +1028,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         content_length = text_length - leading - trailing
         content_top = offsets[leading]
         content_bottom = offsets[leading + 1]
+        if trailing:
+            content_bottom -= self._line_record(
+                block, line_number
+            ).get('ruby_trailing_gap', 0.0)
         if content_length > 0:
             content = _utf16_slice(
                 block.text(), content_start, content_length
@@ -1270,7 +1281,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             line_end = line_start + line.textLength()
             if line_start >= local_end or line_end <= local_start:
                 continue
-            cells = self._vertical_line_cells(block, line_number)
+            # Qt can attach unannotated whitespace to the same native line.
+            cells = [
+                cell for cell in self._vertical_line_cells(block, line_number)
+                if cell[0] < local_end and cell[1] > local_start
+            ]
             if not cells:
                 continue
             top = min(cell[2] for cell in cells)
@@ -2095,10 +2110,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.letter_spacing,
         )
         self._ruby_metrics.append(ruby_metrics)
-        ruby_starts = {
-            metric.unit.start - block.position(): metric
-            for metric in ruby_metrics
-        }
         inline_unit_boundaries = None
         ruby_base_leading = {}
         ruby_base_trailing = {}
@@ -2219,49 +2230,12 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             available_height = self.available_height + doc_margin
             text_len = line.textLength()
             end_char = char_idx + text_len >= blk_text_len
-            if active_ruby_metric is None:
-                active_ruby_metric = ruby_starts.get(char_idx)
-            ruby_metric = active_ruby_metric
-            ruby_unit_start = (
-                -1
-                if ruby_metric is None
-                else ruby_metric.unit.start - block.position()
-            )
-            ruby_unit_end = (
-                -1
-                if ruby_metric is None
-                else ruby_metric.unit.end - block.position()
-            )
-            ruby_leading = ruby_base_leading.get(char_idx, 0.0)
-            ruby_trailing = ruby_base_trailing.get(
-                char_idx + text_len, 0.0
-            )
-            group_ruby = (
-                ruby_metric is not None
-                and ruby_metric.container.ruby_type == 'group'
-            )
-            if ruby_metric is not None and ruby_metric.extent > self.available_height:
-                self.min_height = max(
-                    self.min_height, doc_margin + ruby_metric.extent
-                )
-            force_ruby_wrap = (
-                ruby_metric is not None
-                and char_idx == ruby_unit_start
-                and line_y_offset > doc_margin + 1e-6
-                and line_y_offset + ruby_metric.extent
-                > self.available_height + doc_margin
-            )
-
-            is_first_lbracket = False
-            # _lbracket_shift = 0
-
             if char_idx + text_len > blk_text_len:
                 ypos = ypos_list[-1] if len(ypos_list) > 0 else 0
                 blk_line_spaces.append([0, 0, [ypos], char_idx])
                 line.setPosition(QPointF(x_offset - block_width, ypos))
                 continue
 
-            num_rspaces, num_lspaces = 0, 0
             if utf16_indexing:
                 text = _utf16_slice(
                     blk_text, char_idx, text_len
@@ -2284,6 +2258,69 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 0,
                 line.textLength() - num_lspaces - num_rspaces,
             )
+
+            if active_ruby_metric is None and ruby_metrics:
+                # A native line can start with spaces before its Ruby unit.
+                active_ruby_metric = next(iter(ruby_metrics.overlapping(
+                    block.position() + char_idx,
+                    block.position() + ink_start + 1,
+                )), None)
+            ruby_metric = active_ruby_metric
+            ruby_unit_start = (
+                -1
+                if ruby_metric is None
+                else ruby_metric.unit.start - block.position()
+            )
+            ruby_unit_end = (
+                -1
+                if ruby_metric is None
+                else ruby_metric.unit.end - block.position()
+            )
+            ruby_leading = ruby_base_leading.get(
+                max(char_idx, ruby_unit_start), 0.0,
+            )
+            ruby_trailing = ruby_base_trailing.get(
+                min(char_idx + text_len, ruby_unit_end), 0.0
+            )
+            ruby_space_gap = (
+                ruby_trailing
+                if num_rspaces and char_idx + text_len - num_rspaces == ruby_unit_end
+                else 0.0
+            )
+            if ruby_space_gap:
+                # The unit's end gap precedes unannotated trailing spaces.
+                char_records.setdefault(ink_start, {})[
+                    'ruby_trailing_gap'
+                ] = ruby_space_gap
+                ruby_trailing = 0.0
+            group_ruby = (
+                ruby_metric is not None
+                and ruby_metric.container.ruby_type == 'group'
+            )
+            ruby_prefix_advance = (
+                (ruby_unit_start - char_idx)
+                * self.get_char_fontfmt(block_no, ruby_unit_start).space_width
+                if ruby_unit_start > char_idx else 0.0
+            )
+            ruby_flow_extent = (
+                ruby_metric.extent + ruby_prefix_advance
+                if ruby_metric is not None else 0.0
+            )
+            if ruby_metric is not None and ruby_flow_extent > self.available_height:
+                self.min_height = max(
+                    self.min_height, doc_margin + ruby_flow_extent
+                )
+            available_height = max(available_height, doc_margin + ruby_flow_extent)
+            force_ruby_wrap = (
+                ruby_metric is not None
+                and char_idx <= ruby_unit_start
+                and line_y_offset > doc_margin + 1e-6
+                and line_y_offset + ruby_flow_extent
+                > self.available_height + doc_margin
+            )
+
+            is_first_lbracket = False
+            # _lbracket_shift = 0
 
             tbr_h = space_w = spacing_advance = 0
             char_idx += num_lspaces
@@ -2431,7 +2468,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 force_ruby_wrap
                 or (
                     not group_ruby
-                    and char_bottom + ruby_trailing
+                    and char_bottom + ruby_space_gap + ruby_trailing
                     - max(spacing_advance, 0) > available_height
                 )
             )
@@ -2443,11 +2480,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
                 line_y_offset = doc_margin
                 line_position_y = line_y_offset + ruby_leading
-                char_yoffset_lst[-1] = line_position_y
-                char_yoffset_lst.append(line_position_y + tbr_h)
-                for _ in range(num_rspaces):
-                    char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
-                line_bottom = char_yoffset_lst[-1] + ruby_trailing
+                if ruby_metric is not None and num_lspaces:
+                    char_yoffset_lst[:] = [
+                        line_position_y + index * space_w
+                        for index in range(num_lspaces + 1)
+                    ]
+                else:
+                    char_yoffset_lst[-1] = line_position_y
+                char_yoffset_lst.append(char_yoffset_lst[-1] + tbr_h + ruby_space_gap)
             else:
                 cfmt = self.get_char_fontfmt(block_no, char_idx)
                 if cfmt is not None:
@@ -2471,10 +2511,17 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 else:
                     width_list.append((-1.0, 0.0, 0.0))
 
-                char_yoffset_lst.append(char_bottom)
-                for _ in range(num_rspaces):
-                    char_yoffset_lst.append(min(char_yoffset_lst[-1] + space_w, available_height))
-                line_bottom = char_yoffset_lst[-1] + ruby_trailing
+                char_yoffset_lst.append(char_bottom + ruby_space_gap)
+            for _ in range(num_rspaces):
+                space_bottom = char_yoffset_lst[-1] + space_w
+                char_yoffset_lst.append(
+                    space_bottom if ruby_metric is not None
+                    else min(space_bottom, available_height)
+                )
+            line_bottom = char_yoffset_lst[-1] + ruby_trailing
+            if ruby_metric is not None:
+                self.min_height = max(self.min_height, line_bottom)
+            if not out_of_vspace:
                 shrink_height = max(shrink_height, line_bottom)
 
             ypos_list.append(line_position_y)
