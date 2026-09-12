@@ -1215,24 +1215,71 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="117" />
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="203" />
         <source>Thickness</source>
         <translation>Толщина</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="122" />
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="207" />
+        <source>Tool Type</source>
+        <translation>Тип инструмента</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="210" />
+        <source>Circle Brush</source>
+        <translation>Круглая кисть</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="211" />
+        <source>Rectangle Brush</source>
+        <translation>Прямоугольная кисть</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="212" />
+        <source>Magic Wand</source>
+        <translation>Волшебная палочка</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="223" />
+        <source>Selection Mode</source>
+        <translation>Режим выделения</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="226" />
+        <source>Selection</source>
+        <translation>Выделение</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="227" />
+        <source>Selection Interior</source>
+        <translation>Внутри выделения</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="228" />
+        <source>Selection + Interior</source>
+        <translation>Выделение + внутри</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="235" />
+        <source>Tolerance</source>
+        <translation>Допуск</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243" />
+        <source>Range</source>
+        <translation>Диапазон</translation>
+    </message>
+    <message>
         <source>Shape</source>
-        <translation>Форма</translation>
+        <translation type="vanished">Форма</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="125" />
         <source>Circle</source>
-        <translation>Круг</translation>
+        <translation type="vanished">Круг</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="126" />
         <source>Rectangle</source>
-        <translation>Прямоугольник</translation>
+        <translation type="vanished">Прямоугольник</translation>
     </message>
 </context>
 <context>
