@@ -7,9 +7,9 @@ from functools import partial
 import time
 
 from tqdm import tqdm
-from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QWidget
+from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QWidget, QColorDialog
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
-from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard
+from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard, QColor
 
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_processing import is_cjk
@@ -72,6 +72,21 @@ from .module_parse_widgets import ModuleParamDialog
 from . import shared_widget as SW
 from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
 
+
+def _restore_custom_colors(colors: List[str]) -> None:
+    for index, color_name in enumerate(colors[:QColorDialog.customCount()]):
+        color = QColor(color_name)
+        if color.isValid():
+            QColorDialog.setCustomColor(index, color)
+
+
+def _current_custom_colors() -> List[str]:
+    return [
+        QColorDialog.customColor(index).name()
+        for index in range(QColorDialog.customCount())
+    ]
+
+
 class PageListView(QListWidget):
 
     reveal_file = Signal()
@@ -124,6 +139,7 @@ class MainWindow(mainwindow_cls):
         super().__init__()
 
         self.app = app
+        _restore_custom_colors(pcfg.custom_colors)
         install_app_style_filters(self.app)
         self.resetStyleSheet()
 
@@ -856,6 +872,7 @@ class MainWindow(mainwindow_cls):
         self.st_manager.hovering_transwidget = None
         self.st_manager.blockSignals(True)
         self.canvas.prepareClose()
+        pcfg.custom_colors = _current_custom_colors()
         self.save_config()
         return super().closeEvent(event)
 
