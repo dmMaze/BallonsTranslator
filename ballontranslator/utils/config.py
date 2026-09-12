@@ -1,4 +1,4 @@
-import json, os, string, traceback
+import json, os, re, string, traceback
 import os.path as osp
 import copy
 from dataclasses import fields
@@ -389,6 +389,7 @@ class ProgramConfig(Config):
     text_transform_panel: bool = True
     expand_ttransform_panel: bool = True
     excluded_fonts: List[str] = field(default_factory=list)
+    custom_colors: List[str] = field(default_factory=list)
 
     @staticmethod
     def load(cfg_path: str):
@@ -423,6 +424,27 @@ class ProgramConfig(Config):
                         'Discard invalid or duplicate entries in excluded_fonts config.'
                     )
                 config_dict['excluded_fonts'] = normalized_fonts
+
+        if 'custom_colors' in config_dict:
+            custom_colors = config_dict['custom_colors']
+            if not isinstance(custom_colors, list):
+                LOGGER.warning(
+                    'Discard invalid custom_colors config: expected a list of colors.'
+                )
+                config_dict.pop('custom_colors')
+            else:
+                valid_colors = []
+                for color in custom_colors:
+                    if isinstance(color, str) and re.fullmatch(
+                        r'#[0-9a-fA-F]{6}', color
+                    ):
+                        valid_colors.append(color)
+                    else:
+                        LOGGER.warning(
+                            'Discard invalid entry in custom_colors config: %r.',
+                            color,
+                        )
+                config_dict['custom_colors'] = valid_colors
 
         if 'module' in config_dict:
             module_cfg = config_dict['module']
