@@ -1,4 +1,4 @@
-"""Shared OpenAI-compatible Chat Completions request transport."""
+"""Shared profile-backed chat transport for translation and OCR."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from .context.errors import provider_error_message
-from .context.token_usage import format_completion_token_usage
+from .context.token_usage import LLMUsageTotals, format_completion_token_usage
 from .exceptions import (
     LLMApiKeyRequiredError,
     LLMOutputLimitError,
@@ -71,6 +71,8 @@ def _uses_provider_base_url(base_url: str, provider: str) -> bool:
 def openai_chat_completion_args(
     profile: LLMProfile,
     model: str,
+    *,
+    vision: bool = False,
 ) -> Dict[str, Any]:
     """Map provider-neutral profile values to OpenAI chat API arguments.
 
@@ -85,6 +87,9 @@ def openai_chat_completion_args(
     >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
     0.1
     """
+
+    if profile.transport == 'Codex App Server':
+        return {'reasoning_effort': profile.vision_thinking_level if vision else profile.thinking_level}
 
     base_url = _normalized_base_url(_openai_sdk_base_url(profile.base_url))
     openai_base_url = _normalized_base_url(
@@ -167,7 +172,7 @@ class LLMChatRequestError(RuntimeError):
 
 
 class LLMChatRequester:
-    """Issue one profile-backed OpenAI-compatible chat request.
+    """Issue one profile-backed HTTP or official Codex chat request.
 
     Prompt construction and retries stay with the owning Translator or OCR
     module; this boundary owns only transport and provider normalization.
@@ -188,6 +193,7 @@ class LLMChatRequester:
         self.request_count_minute = 0
         self.minute_start_time = time.time()
         self.stop_event: Optional[threading.Event] = None
+        self.usage_totals = LLMUsageTotals()
 
     def set_stop_event(
         self,
@@ -303,9 +309,18 @@ class LLMChatRequester:
         api_args: Dict[str, Any],
     ) -> LLMChatResult:
         """Perform one request; feature owners decide whether to retry it."""
+        if profile.transport == 'Codex App Server':
+            from .llm_codex import request_codex_completion
+
+            self._respect_delay()
+            self.usage_totals.requests += 1
+            result = request_codex_completion(profile, api_args, self.stop_event)
+            self.usage_totals.add(api_args.get('model', ''), result.usage)
+            return result
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay()
+        self.usage_totals.requests += 1
         try:
             completion = client.chat.completions.create(**api_args)
         except getattr(openai, 'AuthenticationError') as error:
@@ -327,6 +342,8 @@ class LLMChatRequester:
                 getattr(choice, 'finish_reason', '') or ''
             ),
         )
+        # A truncated or unparsable response still consumed tokens.
+        self.usage_totals.add(api_args.get('model', ''), result.usage)
         if result.finish_reason.strip().lower() == 'length':
             usage = format_completion_token_usage(result)
             model = str(api_args.get('model', '')).replace(
