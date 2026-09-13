@@ -99,7 +99,7 @@ class FontRefreshController(QObject):
 
     def request_manual_refresh(self) -> None:
         log_font_refresh_debug('[font-refresh][signal] manual reload requested')
-        self._queue(manual=True, force=True)
+        self._queue(manual=True, force=sys.platform != 'darwin')
 
     def request_system_refresh(self) -> None:
         log_font_refresh_debug('[font-refresh][signal] Windows WM_FONTCHANGE received')
@@ -156,12 +156,21 @@ class FontRefreshController(QObject):
         try:
             if worker.error is not None:
                 raise worker.error
-            if worker.force:
-                if not sys.platform.startswith('linux') or self._app.platformName() in ('xcb', 'wayland', 'wayland-egl'):
-                    fontconfig = reinitialize_current_fontconfig()
-                log_font_refresh_debug('[font-refresh][%d][fontconfig] status=%s interval=%s',
-                            self._generation, fontconfig.status, fontconfig.interval)
-                invalidate_qt_fonts(QFontDatabase, worker.seed)
+            if sys.platform == 'win32':
+                # Native WM_FONTCHANGE does not refresh Qt's database itself.
+                if worker.force:
+                    invalidate_qt_fonts(QFontDatabase, worker.seed)
+            elif sys.platform == 'darwin':
+                # Cocoa updates Qt's database through native notifications.
+                # Manual refresh still reconciles fonts/ below, without a seed.
+                log_font_refresh_debug('[font-refresh][%d][macos] synchronize Qt database', self._generation)
+            elif sys.platform.startswith('linux'):
+                if worker.force:
+                    if self._app.platformName() in ('xcb', 'wayland', 'wayland-egl'):
+                        fontconfig = reinitialize_current_fontconfig()
+                    log_font_refresh_debug('[font-refresh][%d][fontconfig] status=%s interval=%s',
+                                           self._generation, fontconfig.status, fontconfig.interval)
+                    invalidate_qt_fonts(QFontDatabase, worker.seed)
             log_font_refresh_debug('[font-refresh][%d][registry] rebuilding from Qt families', self._generation)
             registry = refresh_font_registry(
                 QFontDatabase, shared.FONT_REGISTRY, worker.locale,

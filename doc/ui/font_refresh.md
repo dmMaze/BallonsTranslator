@@ -25,7 +25,9 @@ file fingerprints created by startup and subsequent manual refreshes.
 | --- | --- |
 | Windows `WM_FONTCHANGE` | Debounce 300 ms, force Qt invalidation, synchronize app state |
 | Qt `fontDatabaseChanged`, including native macOS notifications | Debounce and synchronize app state without another forced invalidation |
-| Manual reload, all supported platforms | Read changed application `fonts/` files; on Linux xcb/Wayland refresh fontconfig; invalidate Qt and synchronize app state |
+| Windows manual reload | Read changed application `fonts/` files, invalidate Qt, and synchronize app state |
+| macOS manual reload | Read changed application `fonts/` files and synchronize Qt's current database; no temporary seed or forced invalidation |
+| Linux manual reload | Read changed application `fonts/` files; on xcb/Wayland refresh fontconfig; invalidate Qt and synchronize app state |
 
 There is no Linux filesystem watcher. WSL tests must use Linux Python and
 its own font environment; Windows-installed fonts are not an equivalent test.
@@ -86,12 +88,6 @@ resolution, and weight tests. They cover registration ownership, corrupt
 replacement retention, request coalescing, cache invalidation, feature gates,
 and fontconfig failure classification. Native external-font behavior requires
 interactive testing on each platform.
-
-Use `scripts/watch_font_database.py --family "ABeeZee"` to observe native
-messages, forced-reload signals, discovery, matching, and wall times.
-Add `--observe-only` to measure native Qt behavior without invalidation.
-Use `--probe` for a startup-only query. The diagnostic uses the packaged seed
-by default; `--reload-font` overrides it without installing a system font.
 
 Before release, activate/deactivate and install/remove a test font on Windows
 and macOS; on Linux test manual refresh through xcb and Wayland. Check repeated

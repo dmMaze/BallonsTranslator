@@ -291,7 +291,9 @@ def test_refresh_failure_reports_status(app, monkeypatch, tmp_path):
     statuses = []
     controller.status_changed.connect(lambda label, detail: statuses.append((label, detail)))
     try:
-        with patch('ballontranslator.ui.font_refresh.invalidate_qt_fonts', side_effect=RuntimeError('seed rejected')), patch(
+        with patch('ballontranslator.ui.font_refresh.sys.platform', 'win32'), patch(
+            'ballontranslator.ui.font_refresh.invalidate_qt_fonts', side_effect=RuntimeError('seed rejected'),
+        ), patch(
             'ballontranslator.ui.font_refresh.create_info_dialog',
         ):
             controller.request_manual_refresh()
@@ -383,3 +385,44 @@ def test_detector_reports_without_refreshing_and_disconnects(app):
     del detector, owner
     gc.collect()
     assert reference() is None
+
+
+@pytest.mark.parametrize('platform,backend,force,expected', [
+    ('win32', 'windows', True, ['invalidate']),
+    ('win32', 'windows', False, []),
+    ('darwin', 'cocoa', True, []),
+    ('linux', 'xcb', True, ['fontconfig', 'invalidate']),
+    ('linux', 'wayland', True, ['fontconfig', 'invalidate']),
+    ('linux', 'offscreen', True, ['invalidate']),
+    ('linux', 'xcb', False, []),
+])
+def test_platform_reload_paths(app, monkeypatch, platform, backend, force, expected):
+    from ballontranslator.ui.font_refresh import FontRefreshController
+    monkeypatch.setattr(shared, 'HEADLESS', False)
+    registry = build_font_registry(QFontDatabase, [], QFontDatabase.families())
+    monkeypatch.setattr(shared, 'FONT_REGISTRY', registry)
+    monkeypatch.setattr(shared, 'FONT_FAMILIES', set(QFontDatabase.families()))
+    owner = QObject()
+    controller = FontRefreshController(owner)
+    controller._app = SimpleNamespace(platformName=lambda: backend)
+    controller._worker.force = force
+    calls = []
+    def fontconfig():
+        calls.append('fontconfig')
+        return FontconfigRefresh('refreshed')
+    try:
+        with patch('ballontranslator.ui.font_refresh.sys.platform', platform), patch(
+            'ballontranslator.ui.font_refresh.reinitialize_current_fontconfig', side_effect=fontconfig,
+        ), patch('ballontranslator.ui.font_refresh.invalidate_qt_fonts', side_effect=lambda *args: calls.append('invalidate')), patch(
+            'ballontranslator.ui.font_refresh.refresh_font_registry', return_value=registry,
+        ) as rebuild:
+            controller._finish()
+            assert calls == expected
+            rebuild.assert_called_once()
+            controller.request_manual_refresh()
+            assert controller._manual
+            assert controller._force is (platform != 'darwin')
+    finally:
+        controller.shutdown()
+        owner.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
