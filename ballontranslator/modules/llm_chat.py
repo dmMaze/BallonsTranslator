@@ -194,6 +194,8 @@ class LLMChatRequester:
         self.minute_start_time = time.time()
         self.stop_event: Optional[threading.Event] = None
         self.usage_totals = LLMUsageTotals()
+        self._codex_throttle_lock = threading.Lock()
+        self._codex_usage_lock = threading.Lock()
 
     def set_stop_event(
         self,
@@ -312,10 +314,16 @@ class LLMChatRequester:
         if profile.transport == 'Codex App Server':
             from .llm_codex import request_codex_completion
 
-            self._respect_delay()
-            self.usage_totals.requests += 1
+            # Reserve starts together; independent sessions wait on the provider
+            # outside the lock, while retries share the same RPM/delay budget.
+            with self._codex_throttle_lock:
+                if self.stop_event is not None and self.stop_event.is_set():
+                    raise LLMRequestStopped()
+                self._respect_delay()
+                self.usage_totals.requests += 1
             result = request_codex_completion(profile, api_args, self.stop_event)
-            self.usage_totals.add(api_args.get('model', ''), result.usage)
+            with self._codex_usage_lock:
+                self.usage_totals.add(api_args.get('model', ''), result.usage)
             return result
         openai = self._openai_module()
         client = self._initialize_client(profile)

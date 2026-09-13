@@ -109,6 +109,23 @@ adds prior-page text, and summaries add output and may require compaction calls.
 They can improve quality and consistency, so they are not disabled automatically.
 OCR page batching, masking, and reading order remain available as well.
 
+**Experimental Codex Parallel Requests** in the translator parameters sets a
+bounded full-page request window: **1** (default) disables it; **2–4** allow
+independent requests to overlap. This applies to the GUI/headless page queue,
+not selected blocks or OCR. Other transports and `+history` remain sequential.
+The existing [App Server thread/turn lifecycle](https://learn.chatgpt.com/docs/app-server)
+is unchanged: each request owns its server and fresh session.
+
+The queue finalizes results, summaries, and progress in submission order; a
+slow earlier page can hold later results. Each page snapshots the summaries
+and memory committed when it starts, so concurrently requested pages do not
+see each other's new summaries. Context snapshots/compaction and summary
+commits are serialized; final-page memory compaction includes prior finalized
+pages. Vision and glossary settings remain active. The shared translation RPM
+and delay budget includes retries and compaction; concurrency does not bypass
+account limits. Stop or a user-action error interrupts active Codex sessions,
+cancels unsent work, and joins the workers before the pipeline becomes idle.
+
 **Save Codex Sessions (token monitors)** opts into official session persistence
 (`thread/start.ephemeral=false`). Codex writes its standard JSONL under
 `$CODEX_HOME/sessions` (default `~/.codex/sessions`), readable by tools such as
