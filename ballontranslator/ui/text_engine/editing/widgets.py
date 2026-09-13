@@ -966,6 +966,13 @@ class TextEditListScrollArea(QScrollArea):
         self._drag_cursor_vp_y = cursor_vp_y
 
         QApplication.instance().installEventFilter(self)
+        # Primary deactivation hook is the signal: the ApplicationDeactivate
+        # event is not reliably delivered to app-level filters on Windows
+        # (BallonsTranslator-lite 2026-08-18 lesson, same workaround the
+        # pie menu there uses); the filter branch below is a fallback.
+        QApplication.instance().applicationStateChanged.connect(
+            self._on_app_state_changed
+        )
         self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
         self.viewport().grabMouse()
 
@@ -1118,6 +1125,12 @@ class TextEditListScrollArea(QScrollArea):
         self._drag_active = False
         QApplication.instance().removeEventFilter(self)
         try:
+            QApplication.instance().applicationStateChanged.disconnect(
+                self._on_app_state_changed
+            )
+        except (TypeError, RuntimeError):
+            pass
+        try:
             self.viewport().releaseMouse()
         except RuntimeError:
             pass
@@ -1164,6 +1177,12 @@ class TextEditListScrollArea(QScrollArea):
     def clearDrag(self):
         """External clear request (e.g. focus moved away): cancel an active drag."""
         if self._drag_active:
+            self._cancel_drag()
+
+    def _on_app_state_changed(self, state) -> None:
+        """App-wide deactivation (screenshot overlay, window switch) cancels
+        the drag and restores the rows."""
+        if self._drag_active and state != Qt.ApplicationState.ApplicationActive:
             self._cancel_drag()
 
     def eventFilter(self, obj, event) -> bool:
