@@ -19,7 +19,12 @@ from ...spellcheck import (
 )
 
 
-STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
+STYLE_TRANSPAIR_CHECKED = (
+    "background-color: rgba(30, 147, 229, 20%);"
+    # Checked reinforces state with an accent border — same color the
+    # editors' focus border and the drag drop indicator use.
+    "border: 1px solid rgb(30, 147, 229);"
+)
 # Accent used by the row-drag drop indicator — same color the old
 # top/bottom border hint (removed with the QDrag implementation) showed.
 DRAG_INDICATOR_COLOR = QColor(30, 147, 229)
@@ -1004,8 +1009,12 @@ class TextEditListScrollArea(QScrollArea):
         wr, wg, wb = shared.WIDGET_BACKGROUND_COLOR[:3]
         mix = lambda t, s: int(round(t * 0.2 + s * 0.8))
         solid = QColor(mix(r, wr), mix(g, wg), mix(b, wb)).name()
+        solid_style = (
+            f'TransPairWidget{{background-color: {solid};'
+            'border: 1px solid rgb(30, 147, 229);}'
+        )
         for w in drags:
-            w.setStyleSheet(f'TransPairWidget{{background-color: {solid};}}')
+            w.setStyleSheet(solid_style)
 
         # Dragged group keeps its real widgets: jump to the cursor anchor,
         # z-order rear-card-on-top so every top strip stays visible.
