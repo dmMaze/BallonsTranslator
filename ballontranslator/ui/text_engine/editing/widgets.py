@@ -1172,6 +1172,13 @@ class TextEditListScrollArea(QScrollArea):
             if t == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
                 self._cancel_drag()
                 return True
+            if t == QEvent.Type.ApplicationDeactivate:
+                # Another window took over (e.g. a screenshot overlay): the
+                # frozen pile would linger and still follow wheel scrolling,
+                # then a stray click after refocusing would land the stale
+                # position. Cancel on focus loss, like the old QDrag flow did.
+                self._cancel_drag()
+                return False
             if t in (QEvent.Type.HoverEnter, QEvent.Type.HoverMove):
                 # Swallow hovers inside the list while dragging so editors
                 # don't light up (mouse grab should isolate this already).
