@@ -1,4 +1,6 @@
 import threading
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional, Union
 import os.path as osp
 
@@ -612,21 +614,29 @@ class TranslateThread(ModuleThread):
         self,
         project: ProjImgTrans,
         page_key: str,
-    ):
+        future: Optional[Future] = None,
+    ) -> bool:
         page = project.pages[page_key]
         # A failed or partially completed full-page request must never leave the
         # old page eligible as history.
-        project.begin_full_page_translation(page_key)
+        if future is None:
+            project.begin_full_page_translation(page_key)
         success = True
         if hasattr(self.translator, 'set_stop_event'):
             self.translator.set_stop_event(self.pipeline_stop_event)
         try:
-            self.translator.translate_textblk_lst(
-                page,
-                project=project,
-                page_key=page_key,
-                full_page=True,
-            )
+            if future is None:
+                self.translator.translate_textblk_lst(
+                    page,
+                    project=project,
+                    page_key=page_key,
+                    full_page=True,
+                )
+            else:
+                # Only the queue owner commits context and emits page progress.
+                future.result()
+                if self.pipeline_stop_event.is_set():
+                    raise LLMRequestStopped()
             _mark_translation_finished(project, page_key, self.translator)
         except LLMUserActionRequiredError as e:
             success = False
@@ -662,7 +672,66 @@ class TranslateThread(ModuleThread):
         self.start()
 
 
-    def _run_translate_pipeline(self):
+    def _run_parallel_translate_pipeline(self, workers: int) -> None:
+        """Keep a bounded window of requests and finalize in submission order.
+
+        >>> callable(TranslateThread._run_parallel_translate_pipeline)
+        True
+        """
+        stop_event = self.pipeline_stop_event
+        pending = deque()
+        self.translator.set_stop_event(stop_event)
+        LOGGER.info('Experimental Codex translation queue: parallel_requests=%d', workers)
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='codex-translate') as executor:
+            try:
+                while not self.pipeline_finished() and not stop_event.is_set():
+                    # Inspect every slot: a later auth/timeout failure must also
+                    # cancel an earlier request that is still waiting on Codex.
+                    for page_key, future in pending:
+                        if future.done() and isinstance(
+                            future.exception(), (LLMUserActionRequiredError, LLMRequestStopped),
+                        ):
+                            self._translate_page(self.imgtrans_proj, page_key, future)
+                            stop_event.set()
+                            break
+                    if stop_event.is_set():
+                        break
+                    if pending and pending[0][1].done():
+                        page_key, future = pending.popleft()
+                        self._translate_page(self.imgtrans_proj, page_key, future)
+                        if stop_event.is_set():
+                            break
+                        self.finished_counter += 1
+                        self.progress_changed.emit(self.finished_counter)
+                        continue
+                    # ponytail: bound completed results too; a slow first page
+                    # holds a slot until page-aware unordered finalization exists.
+                    while len(pending) < workers and self.pipeline_pagekey_queue and not stop_event.is_set():
+                        page_key = self.pipeline_pagekey_queue.pop(0)
+                        project = self.imgtrans_proj
+                        project.begin_full_page_translation(page_key)
+                        future = executor.submit(
+                            self.translator.translate_textblk_lst,
+                            project.pages[page_key], project=project,
+                            page_key=page_key, full_page=True,
+                        )
+                        pending.append((page_key, future))
+                    stop_event.wait(0.05)
+            finally:
+                if pending:
+                    stop_event.set()
+                    for _, future in pending:
+                        future.cancel()
+        # shutdown waits for every owned session before Qt reports the run idle.
+        if stop_event.is_set():
+            self.module_thread_stopped.emit()
+
+    def _run_translate_pipeline(self) -> None:
+        worker_count = getattr(self.translator, 'parallel_request_workers', None)
+        workers = worker_count() if callable(worker_count) else 1
+        if workers > 1:
+            self._run_parallel_translate_pipeline(workers)
+            return
         delay = self.translator.delay()
         stop_event = self.pipeline_stop_event or threading.Event()
 
@@ -1280,7 +1349,6 @@ class ImgtransThread(QThread):
 
     def translate_finished(self) -> bool:
         if self.imgtrans_proj is None \
-            or not cfg_module.enable_ocr \
             or not cfg_module.enable_translate:
             return True
         if self.parallel_trans:
@@ -2330,9 +2398,10 @@ class ModuleManager(QObject):
             profile = profile_by_id(profiles, getattr(cfg_module, f'{module_key}_llm_id'))
             if profile is None and profiles:
                 profile = profiles[0]
-            if profile is not None and profile.transport == 'Codex App Server':
-                # Filter only the editor view; retain the HTTP proxy for switching back.
-                return {key: value for key, value in params.items() if key != 'proxy'}
+            codex = profile is not None and profile.transport == 'Codex App Server'
+            # Filter only the editor view; retain each backend's saved settings.
+            hidden = 'proxy' if codex else 'codex parallel requests'
+            return {key: value for key, value in params.items() if key != hidden}
         return params
 
     def moduleRuntimeActionsEnabled(

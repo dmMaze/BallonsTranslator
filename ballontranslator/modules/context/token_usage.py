@@ -213,7 +213,7 @@ def estimated_token_cost(model: str, counts: Dict[str, int]) -> Optional[Decimal
 
 @dataclass
 class LLMUsageTotals:
-    """One requester's run counters; each module has a single worker writer.
+    """One requester's run counters; concurrent writers must serialize updates.
 
     >>> totals = LLMUsageTotals(requests=1)
     >>> totals.add('gpt-5.6-sol', {'input_tokens': 1000, 'output_tokens': 100})
