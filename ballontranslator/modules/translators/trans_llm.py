@@ -110,11 +110,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
     params: Dict = {
         "description": "Translate using the selected text-capable LLM profile.",
         "codex parallel requests": {
-            "type": "selector",
-            "options": ["1", "2", "3", "4"],
+            "type": "line_editor",
             "value": "1",
             "display_name": "Experimental Codex Parallel Requests",
-            "description": "Concurrent full-page Codex requests. 1 disables parallel requests. History mode stays sequential. Each request uses already committed summaries and memory; pages are finalized in order. RPM and delay still apply.",
+            "description": "Concurrent full-page Codex requests. Enter a positive integer, such as 6 or 8. 1 disables parallel requests. History mode stays sequential. Each request uses already committed summaries and memory; pages are finalized in order. RPM and delay still apply.",
         },
         "max requests per minute": {
             "value": 20,
@@ -184,12 +183,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         >>> LLMTranslator('日本語', 'English').get_param_value('codex parallel requests')
         '1'
         """
-        value = str(self.get_param_value('codex parallel requests'))
-        if value not in ('1', '2', '3', '4'):
+        value = str(self.get_param_value('codex parallel requests')).strip()
+        try:
+            workers = int(value) if value.isdecimal() else 0
+        except ValueError:
+            workers = 0
+        if workers < 1:
             self.logger.warning('Invalid Codex parallel requests %r; using 1.', value)
             self.set_param_value('codex parallel requests', '1')
             return 1
-        workers = int(value)
         if workers == 1 or self.profile.transport != 'Codex App Server':
             return 1
         if pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY:

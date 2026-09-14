@@ -110,9 +110,12 @@ They can improve quality and consistency, so they are not disabled automatically
 OCR page batching, masking, and reading order remain available as well.
 
 **Experimental Codex Parallel Requests** in the translator parameters sets a
-bounded full-page request window: **1** (default) disables it; **2–4** allow
-independent requests to overlap. This applies to the GUI/headless page queue,
-not selected blocks or OCR. Other transports and `+history` remain sequential.
+bounded full-page request window using a manually entered positive integer:
+**1** (default) disables it; larger values allow independent requests to overlap.
+Existing numeric/string settings remain valid; invalid values log a warning
+and fall back to **1** without discarding other settings. This applies to the
+GUI/headless page queue, not selected blocks or OCR. Other transports and
+`+history` remain sequential.
 The existing [App Server thread/turn lifecycle](https://learn.chatgpt.com/docs/app-server)
 is unchanged: each request owns its server and fresh session.
 

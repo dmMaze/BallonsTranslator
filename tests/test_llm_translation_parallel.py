@@ -1,16 +1,30 @@
+import os
 import threading
 import unittest
+from copy import deepcopy
 from unittest import mock
+
+os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+
+from qtpy.QtCore import Qt
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import QApplication
 
 from _llm_translation_test_support import LLMTranslationTestMixin
 from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.llm_chat import LLMChatResult
 from ballontranslator.modules.llm_codex import CodexRequestError
+from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.ui import module_manager
+from ballontranslator.ui.module_parse_widgets import ParamWidget
 from ballontranslator.utils.config import LLMTranslateContext, RunStatus, pcfg
 
 
 class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
     def setUp(self) -> None:
         super().setUp()
         self.profile.transport = 'Codex App Server'
@@ -172,12 +186,49 @@ class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
         self.assertEqual(worker.finished_counter, 2)
 
     def test_invalid_saved_worker_count_falls_back_without_losing_other_settings(self) -> None:
-        for value in ('0', '5', 'broken', None, True, []):
+        for value in ('0', '-1', '1.5', '1e2', '', 'broken', None, True, [], {}, 1.5, '9' * 5000):
             self.translator.set_param_value('codex parallel requests', value, convert_dtype=False)
             with self.assertLogs(self.translator.logger, level='WARNING'):
                 self.assertEqual(self.translator.parallel_request_workers(), 1)
             self.assertEqual(self.translator.get_param_value('codex parallel requests'), '1')
             self.assertEqual(self.translator.get_param_value('retry attempts'), 1)
+
+    def test_saved_positive_counts_and_old_selector_settings_still_load(self) -> None:
+        for value, expected in (
+            ('1', 1), ('4', 4), ('6', 6), ('8', 8), ('16', 16), (8, 8), (' 6 ', 6),
+            ({'type': 'selector', 'options': ['1', '2', '3', '4'], 'value': '3'}, 3),
+        ):
+            with self.subTest(value=value):
+                translator = LLMTranslator('日本語', '简体中文', **{'codex parallel requests': value})
+                self.assertEqual(translator.parallel_request_workers(), expected)
+
+    def test_manual_entry_starts_eight_concurrent_requests(self) -> None:
+        panel = ParamWidget(deepcopy(self.translator.params))
+        self.addCleanup(panel.deleteLater)
+        edits = []
+        panel.paramwidget_edited.connect(lambda key, content: edits.append((key, content)))
+        panel.show()
+        self.app.processEvents()
+        editor = panel.param_widgets['codex parallel requests']
+        editor.setFocus()
+        editor.selectAll()
+        QTest.keyClicks(editor, '8')
+        QTest.keyClick(editor, Qt.Key.Key_Return)
+        panel.hide()
+        self.assertEqual(edits, [('codex parallel requests', {'content': '8'})])
+        self.translator.updateParam(edits[0][0], edits[0][1]['content'])
+        worker = self._worker(8)
+        overlap = threading.Barrier(8)
+
+        def request(_profile, _args, _stop) -> LLMChatResult:
+            overlap.wait(5)
+            return LLMChatResult('{"1":"translated"}')
+
+        with mock.patch('ballontranslator.modules.llm_codex.request_codex_completion', side_effect=request) as requests:
+            worker._run_translate_pipeline()
+        self.assertEqual(requests.call_count, 8)
+        self.assertEqual(worker.finished_counter, 8)
+        self.assertFalse(worker.pipeline_stop_event.is_set())
 
     def test_failed_page_stays_incomplete_while_following_pages_continue(self) -> None:
         worker = self._worker()
