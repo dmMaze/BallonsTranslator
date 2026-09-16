@@ -13,7 +13,7 @@ from unittest import mock
 
 from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.llm_chat import LLMChatRequestError
-from ballontranslator.modules.llm_codex import CodexRequestError, request_codex_completion
+from ballontranslator.modules.llm_codex import CodexBusyError, CodexRequestError, request_codex_completion
 from ballontranslator.modules.context.token_usage import format_run_token_usage
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
@@ -75,6 +75,13 @@ for line in sys.stdin:
             continue
         if scenario == 'disconnect':
             sys.exit(1)
+        if scenario == 'capacity':
+            event('turn/completed', turn={'id': 'turn-1', 'status': 'failed',
+                'error': {'message': 'Selected model is at capacity. Please try a different model.',
+                          'codexErrorInfo': 'other'}})
+            continue
+        if scenario == 'recovered_capacity':
+            event('error', error={'message': 'Selected model is at capacity.'}, willRetry=True)
         event('item/completed', item={'type': 'agentMessage', 'id': 'comment',
               'text': 'Thinking...', 'phase': 'commentary'})
         event('item/agentMessage/delta', itemId='answer', delta='ignored partial')
@@ -90,10 +97,11 @@ for line in sys.stdin:
                      'cachedInputTokens': 80, 'reasoningOutputTokens': 15, 'cacheWriteInputTokens': 10}
             for _ in range(2):
                 event('thread/tokenUsage/updated', tokenUsage={'last': tokens, 'total': total})
-        status = 'interrupted' if scenario == 'interrupted' else 'failed' if scenario in ('quota', 'context') else 'completed'
+        status = 'interrupted' if scenario == 'interrupted' else 'failed' if scenario in ('quota', 'context', 'busy503') else 'completed'
         event('turn/completed', turn={'id': 'turn-1', 'status': status,
-            'error': {'message': 'usage limit reached', 'codexErrorInfo':
-                      'contextWindowExceeded' if scenario == 'context' else 'usageLimitExceeded'}})
+            'error': {'message': 'Service unavailable' if scenario == 'busy503' else 'usage limit reached',
+                      'codexErrorInfo': {'httpConnectionFailed': {'httpStatusCode': 503}} if scenario == 'busy503'
+                      else 'contextWindowExceeded' if scenario == 'context' else 'usageLimitExceeded'}})
         if scenario == 'early':
             emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1'}}})
         continue
@@ -203,6 +211,76 @@ class CodexTransportTest(unittest.TestCase):
         self.scenario = 'context'
         with self.assertRaises(LLMChatRequestError):
             request_codex_completion(self.profile, self.args)
+
+    def test_capacity_retries_only_the_failed_request_and_remains_cancellable(self) -> None:
+        with mock.patch.object(pcfg, 'module', ModuleConfig(
+            llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+        )):
+            for owner in (LLMTranslator('English', '繁體中文'), LLMOCR()):
+                with self.subTest(owner=type(owner).__name__):
+                    owner.set_param_value('retry attempts', 5)
+                    owner.set_param_value('retry timeout', 7)
+                    owner.set_param_value('delay', 0)
+                    owner.set_param_value('max requests per minute', 0)
+                    clock = [1000.0]
+                    waits = []
+                    self.scenario = 'capacity'
+                    before = len(self.processes)
+
+                    def wait(seconds: float) -> None:
+                        waits.append(seconds)
+                        clock[0] += seconds
+                        if len(waits) == 4:
+                            self.scenario = 'success'
+
+                    with mock.patch('ballontranslator.modules.llm_chat.time.monotonic',
+                                    side_effect=lambda: clock[0]), \
+                            mock.patch.object(owner, '_wait', side_effect=wait):
+                        result = owner.request_chat_completion(self.profile, self.args)
+                    self.assertIn('譯文一', result.content)
+                    self.assertEqual(len(self.processes) - before, 5)
+                    for actual, base in zip(waits, (60, 120, 240, 300)):
+                        self.assertGreaterEqual(actual, base)
+                        self.assertLessEqual(actual, base + 10)
+                    self.assertEqual(len(waits), 4)
+                    self.assertEqual(owner.usage_totals.requests, 5)
+                    self.assertEqual(owner.usage_totals.total_tokens, 120)
+                    self.assertIn('missing_usage_requests=4', format_run_token_usage([owner.usage_totals]))
+
+                    self.scenario = 'capacity'
+                    before = len(self.processes)
+                    with mock.patch.object(owner, '_wait', side_effect=LLMRequestStopped):
+                        with self.assertRaises(LLMRequestStopped):
+                            owner.request_chat_completion(self.profile, self.args)
+                    self.assertEqual(len(self.processes) - before, 1)
+
+    def test_busy_exhaustion_is_bounded_and_intermediate_errors_do_not_resubmit(self) -> None:
+        with mock.patch.object(pcfg, 'module', ModuleConfig(
+            llm_profiles=[self.profile], translator_llm_id='codex',
+        )):
+            translator = LLMTranslator('English', '繁體中文', **{
+                'retry attempts': 2, 'retry timeout': 600, 'delay': 0,
+                'max requests per minute': 0,
+            })
+            self.scenario = 'busy503'
+            clock = [1000.0]
+
+            def wait(seconds: float) -> None:
+                self.assertGreaterEqual(seconds, 600)
+                self.assertLessEqual(seconds, 610)
+                clock[0] += seconds
+
+            with mock.patch('ballontranslator.modules.llm_chat.time.monotonic', side_effect=lambda: clock[0]), \
+                    mock.patch.object(translator, '_wait', side_effect=wait) as waiting:
+                with self.assertRaises(CodexBusyError):
+                    translator.translate(['first', 'second'])
+            self.assertEqual(len(self.processes), 2)
+            self.assertEqual(waiting.call_count, 1)
+            self.assertEqual(translator.usage_totals.total_tokens, 240)
+            self.assertEqual(translator.usage_totals.usage_reports, 2)
+            self.scenario = 'recovered_capacity'
+            self.assertEqual(translator.translate(['first', 'second']), ['譯文一', '譯文二'])
+            self.assertEqual(len(self.processes), 3)
 
     def test_timeout_interrupts_turn_and_cleans_up(self) -> None:
         self.scenario = 'timeout'

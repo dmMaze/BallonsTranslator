@@ -30,6 +30,18 @@ class CodexRequestError(LLMUserActionRequiredError):
     """
 
 
+class CodexBusyError(CodexRequestError):
+    """A terminal capacity rejection; exhaustion still stops the outer batch.
+
+    >>> isinstance(CodexBusyError('at capacity'), LLMUserActionRequiredError)
+    True
+    """
+
+    def __init__(self, message: str, usage: Any = None) -> None:
+        super().__init__(message)
+        self.usage = usage
+
+
 class _CodexSession:
     """One disposable stdio session, with bounded and cancellable pipe IO.
 
@@ -204,8 +216,8 @@ def request_codex_completion(profile: LLMProfile, api_args: Dict[str, Any],
                              stop_event: Optional[threading.Event] = None) -> LLMChatResult:
     """Run a fresh turn with official ChatGPT auth and the caller's exact history.
 
-    No account tokens are read by BallonsTranslator. A lost/failed turn stops the
-    batch instead of triggering the caller's ordinary automatic retry loop.
+    No account tokens are read by BallonsTranslator. Only explicit terminal
+    capacity rejections allow the requester to retry; uncertain completion stops.
 
     >>> request_codex_completion.__name__
     'request_codex_completion'
@@ -306,7 +318,15 @@ def request_codex_completion(profile: LLMProfile, api_args: Dict[str, Any],
                         error = turn.get('error') or {}
                         if error.get('codexErrorInfo') == 'contextWindowExceeded':
                             raise LLMChatRequestError(RuntimeError('maximum context length exceeded'))
-                        raise CodexRequestError(f'Codex turn failed: {error.get("message", turn["status"])}')
+                        detail = error.get('message', turn['status'])
+                        info = error.get('codexErrorInfo')
+                        http_error = (info.get('httpConnectionFailed') or {}) if isinstance(info, dict) else {}
+                        # Wait for terminal failure, never retry an intermediate
+                        # error event while Codex may still be recovering itself.
+                        if ('selected model is at capacity' in detail.lower()
+                                or http_error.get('httpStatusCode') == 503):
+                            raise CodexBusyError(f'Codex turn failed: {detail}', usage)
+                        raise CodexRequestError(f'Codex turn failed: {detail}')
                     return LLMChatResult(content='\n'.join(output.values()), usage=usage, finish_reason='stop')
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             # A protocol mismatch may occur after submission; never let the

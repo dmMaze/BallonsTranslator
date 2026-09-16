@@ -13,7 +13,7 @@ from qtpy.QtWidgets import QApplication
 from _llm_translation_test_support import LLMTranslationTestMixin
 from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.llm_chat import LLMChatResult
-from ballontranslator.modules.llm_codex import CodexRequestError
+from ballontranslator.modules.llm_codex import CodexBusyError, CodexRequestError
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.ui import module_manager
 from ballontranslator.ui.module_parse_widgets import ParamWidget
@@ -129,6 +129,54 @@ class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
         dialog.assert_called_once()
         for key in ('001.png', '002.png'):
             self.assertFalse(worker.imgtrans_proj._image_info[key]['finish_code'] & RunStatus.FIN_TRANSLATE)
+
+    def test_capacity_cooldown_preserves_active_work_and_delays_new_pages(self) -> None:
+        worker = self._worker()
+        self.translator.set_param_value('retry attempts', 2)
+        first_started = threading.Event()
+        cooldown_started = threading.Event()
+        both_waiting = threading.Event()
+        clock = [1000.0]
+        lock = threading.Lock()
+        calls = {1: 0, 2: 0, 3: 0}
+        waits = []
+
+        def wait(seconds: float) -> None:
+            with lock:
+                waits.append(seconds)
+                cooldown_started.set()
+                if len(waits) == 2:
+                    both_waiting.set()
+            self.assertTrue(both_waiting.wait(3), 'new page bypassed the shared cooldown')
+            clock[0] = 1060.0
+
+        def request(_profile, args: dict, _stop) -> LLMChatResult:
+            number = next(i for i in calls if f'source-{i}' in str(args['messages']))
+            calls[number] += 1
+            if number == 1:
+                first_started.set()
+                self.assertTrue(cooldown_started.wait(3))
+            elif number == 2 and calls[number] == 1:
+                self.assertTrue(first_started.wait(3))
+                raise CodexBusyError('Selected model is at capacity', {'total_tokens': 2})
+            else:
+                self.assertGreaterEqual(clock[0], 1060.0)
+            return LLMChatResult('{"1":"translated-%d"}' % number, {'total_tokens': 3})
+
+        with mock.patch('ballontranslator.modules.llm_chat.time.monotonic', side_effect=lambda: clock[0]), \
+                mock.patch('ballontranslator.modules.llm_chat.random.uniform', return_value=0), \
+                mock.patch.object(self.translator, '_wait', side_effect=wait), \
+                mock.patch('ballontranslator.modules.llm_codex.request_codex_completion', side_effect=request):
+            worker._run_translate_pipeline()
+
+        self.assertEqual(waits, [60.0, 60.0])
+        self.assertEqual(calls, {1: 1, 2: 2, 3: 1})
+        self.assertEqual(worker.finished_counter, 3)
+        self.assertFalse(worker.pipeline_stop_event.is_set())
+        self.assertEqual(self.translator.usage_totals.requests, 4)
+        self.assertEqual(self.translator.usage_totals.total_tokens, 11)
+        for index, blocks in enumerate(worker.imgtrans_proj.pages.values(), 1):
+            self.assertEqual(blocks[0].translation, f'translated-{index}')
 
     def test_history_and_other_transports_keep_sequential_execution(self) -> None:
         self.assertEqual(self.translator.parallel_request_workers(), 2)
