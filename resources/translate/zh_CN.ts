@@ -17,7 +17,7 @@
 <context>
     <name>AlphaMaskCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2990"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3110"/>
         <source>Eraser</source>
         <translation>橡皮擦</translation>
     </message>
@@ -34,32 +34,32 @@
         <translation type="obsolete">移除橡皮擦</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3013"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3133"/>
         <source>Mode</source>
         <translation>模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3022"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3142"/>
         <source>Erase</source>
         <translation>擦除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3023"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3143"/>
         <source>Restore</source>
         <translation>恢复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3037"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3157"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3053"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3173"/>
         <source> px</source>
         <translation> px</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3077"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3197"/>
         <source>Clear</source>
         <translation>清除</translation>
     </message>
@@ -176,77 +176,77 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1430"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1480"/>
         <source>Copy</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1432"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1482"/>
         <source>Paste</source>
         <translation>粘贴</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1434"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1484"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1436"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1486"/>
         <source>Copy source text</source>
         <translation>复制原文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1438"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1488"/>
         <source>Paste source text</source>
         <translation>粘贴原文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1440"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1490"/>
         <source>Delete and Recover removed text</source>
         <translation>删除并恢复被抹除文字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1445"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1495"/>
         <source>Apply font formatting</source>
         <translation>应用字体格式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1446"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1496"/>
         <source>Auto layout</source>
         <translation>自动排版</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1447"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1497"/>
         <source>Reset Angle</source>
         <translation>角度复位</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1448"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1498"/>
         <source>Squeeze</source>
         <translation>收缩</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1450"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1500"/>
         <source>translate</source>
         <translation>翻译</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1451"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1501"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1452"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1502"/>
         <source>OCR and translate</source>
         <translation>OCR并翻译</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1453"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1503"/>
         <source>OCR, translate and inpaint</source>
         <translation>OCR，翻译并抹字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1454"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1504"/>
         <source>inpaint</source>
         <translation>抹字</translation>
     </message>
@@ -877,7 +877,7 @@
 <context>
     <name>DrawingPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="454"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="584"/>
         <source>Mask Opacity</source>
         <translation>掩膜不透明度</translation>
     </message>
@@ -889,7 +889,7 @@
 <context>
     <name>EffectDeleteButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="185"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="187"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
@@ -897,7 +897,7 @@
 <context>
     <name>EffectMoveDownButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="211"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="213"/>
         <source>Move Down</source>
         <translation>下移</translation>
     </message>
@@ -905,7 +905,7 @@
 <context>
     <name>EffectMoveUpButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="198"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="200"/>
         <source>Move Up</source>
         <translation>上移</translation>
     </message>
@@ -929,12 +929,12 @@
         <translation type="obsolete">描边填充不一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="644"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="646"/>
         <source>Edit Gradient</source>
         <translation>编辑渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="646"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="648"/>
         <source>Choose Stroke Color</source>
         <translation>选择描边颜色</translation>
     </message>
@@ -942,12 +942,12 @@
 <context>
     <name>EffectVisibilityButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="242"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="244"/>
         <source>Hide</source>
         <translation>隐藏</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="245"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="247"/>
         <source>Show</source>
         <translation>显示</translation>
     </message>
@@ -955,87 +955,87 @@
 <context>
     <name>EmphasisToolButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="180"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="184"/>
         <source>Emphasis Marks</source>
         <translation>着重号</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="197"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="201"/>
         <source>Filled Circle</source>
         <translation>实心圆</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="195"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="199"/>
         <source>Filled Dot</source>
         <translation>实心圆点</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="199"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="203"/>
         <source>Filled Double Circle</source>
         <translation>实心双圆</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="203"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="207"/>
         <source>Filled Sesame</source>
         <translation>实心芝麻点</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="201"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="205"/>
         <source>Filled Triangle</source>
         <translation>实心三角</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="188"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="192"/>
         <source>Marks</source>
         <translation>符号</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="198"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="202"/>
         <source>Open Circle</source>
         <translation>空心圆</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="196"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
         <source>Open Dot</source>
         <translation>空心小圆点</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="204"/>
         <source>Open Double Circle</source>
         <translation>空心双圆</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="204"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="208"/>
         <source>Open Sesame</source>
         <translation>空心芝麻点</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="202"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="206"/>
         <source>Open Triangle</source>
         <translation>空心三角</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="223"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="227"/>
         <source>Over / Left</source>
         <translation>上方 / 左侧</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="221"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="225"/>
         <source>Over / Right</source>
         <translation>上方 / 右侧</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="214"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="218"/>
         <source>Position</source>
         <translation>位置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="224"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="228"/>
         <source>Under / Left</source>
         <translation>下方 / 左侧</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="222"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="226"/>
         <source>Under / Right</source>
         <translation>下方 / 右侧</translation>
     </message>
@@ -1056,7 +1056,7 @@
 <context>
     <name>FilterEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2026"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2146"/>
         <source>Missing Filter: {id}</source>
         <translation>缺失滤镜：{id}</translation>
     </message>
@@ -1176,27 +1176,32 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="808"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="877"/>
         <source>Font Family</source>
         <translation>字体</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="820"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="884"/>
+        <source>Reload system fonts and fonts folder</source>
+        <translation>重载字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="895"/>
         <source>Font Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="822"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="897"/>
         <source>Change font size</source>
         <translation>改变字体大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="833"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="908"/>
         <source>Change line spacing</source>
         <translation>修改行距</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="843"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="918"/>
         <source>Change font color</source>
         <translation>改变文字颜色</translation>
     </message>
@@ -1213,7 +1218,7 @@
         <translation type="vanished">改变文字描边颜色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="883"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="958"/>
         <source>Change letter spacing</source>
         <translation>修改字符间距</translation>
     </message>
@@ -1222,42 +1227,42 @@
         <translation type="vanished">角度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="897"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="972"/>
         <source>Global Font Format</source>
         <translation>全局字体格式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="907"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="982"/>
         <source>Advanced Text Format</source>
         <translation>进阶字体格式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="925"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1000"/>
         <source>Text Effect</source>
         <translation>文本特效</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="933"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1008"/>
         <source>Text Transform</source>
         <translation>文本变形</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1025"/>
         <source>Unfold</source>
         <translation>展开</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1025"/>
         <source>Fold</source>
         <translation>折叠</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="951"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1026"/>
         <source>Source</source>
         <translation>原文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="952"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1027"/>
         <source>Translation</source>
         <translation>译文</translation>
     </message>
@@ -1274,76 +1279,159 @@
         <translation type="vanished">特效</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="859"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="934"/>
         <source>Combine the selected text into one upright vertical cell</source>
         <translation>将所选文本合并为竖排中的一个横排单元</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="814"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="889"/>
         <source>Font Weight</source>
         <translation>字重</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1188"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1265"/>
         <source>Mono Ruby needs one whitespace-separated reading per base grapheme.</source>
         <translation>单字注释要求每个基文字符对应一个以空格分隔的读音</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1197"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1274"/>
         <source>Ruby base text cannot contain paragraph or forced line breaks.</source>
         <translation>注释基文不能包含段落或强制换行</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1194"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1271"/>
         <source>Ruby cannot overlap Tate-chu-yoko.</source>
         <translation>注释不能与纵中横重叠</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1191"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1268"/>
         <source>Ruby cannot partially overlap an existing container.</source>
         <translation>注释范围不能与现有注释范围部分重叠</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1185"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1262"/>
         <source>Ruby text cannot be empty.</source>
         <translation>注释文本不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1174"/>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1182"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1251"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1259"/>
         <source>Select base text to apply Ruby.</source>
         <translation>请选择要添加注释的基文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="872"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="947"/>
         <source>Standard Vertical Roman Alignment</source>
         <translation>标准垂直罗马对齐方式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1138"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1215"/>
         <source>Tate-chu-yoko cannot overlap Ruby.</source>
         <translation>纵中横不能与注释重叠</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1203"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1280"/>
         <source>Unable to apply Ruby to this selection.</source>
         <translation>无法为当前选区应用注释</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1141"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1218"/>
         <source>Unable to apply Tate-chu-yoko to this selection.</source>
         <translation>无法为当前选区应用纵中横</translation>
     </message>
 </context>
 <context>
+    <name>FontRefreshController</name>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="118"/>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="216"/>
+        <source>Refreshing…</source>
+        <translation>正在刷新…</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="118"/>
+        <source>Refreshing fonts. Please wait.</source>
+        <translation>正在刷新字体，请稍候。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="130"/>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="203"/>
+        <source>Failed</source>
+        <translation>失败</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="130"/>
+        <source>The font registry is not initialized.</source>
+        <translation>字体注册表尚未初始化。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="193"/>
+        <source>Refreshed</source>
+        <translation>已刷新</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="193"/>
+        <source>Check fonts</source>
+        <translation>请检查字体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="194"/>
+        <source>Font list refreshed: {count} families (+{added}, -{removed}) in {ms} ms.</source>
+        <translation>字体列表已刷新：共 {count} 个字体族（新增 {added} 个，移除 {removed} 个），耗时 {ms} 毫秒。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="203"/>
+        <source>Could not refresh fonts: {error}</source>
+        <translation>无法刷新字体：{error}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="205"/>
+        <source>Could not refresh fonts. Please try again or restart the application.</source>
+        <translation>无法刷新字体。请重试或重启应用程序。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="216"/>
+        <source>Another font refresh is pending.</source>
+        <translation>另一次字体刷新正在等待执行。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="221"/>
+        <source>Fontconfig could not reload its configuration. Check the font configuration and try again, or restart the application.</source>
+        <translation>Fontconfig 无法重新加载配置。请检查字体配置后重试，或重启应用程序。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="223"/>
+        <source>Immediate system font refresh is unavailable and automatic rescanning is disabled. Restart the application to reload system fonts.</source>
+        <translation>无法立即刷新系统字体，且自动重新扫描已禁用。请重启应用程序以重新加载系统字体。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="225"/>
+        <source>Immediate system font refresh is unavailable. Try refreshing again after about {seconds} seconds; if fonts are still missing, restart the application.</source>
+        <translation>无法立即刷新系统字体。请等待约 {seconds} 秒后再次刷新；如果仍有字体缺失，请重启应用程序。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="227"/>
+        <source>Immediate system font refresh is unavailable. With the usual fontconfig settings, try again after about 30 seconds; if fonts are still missing, restart the application.</source>
+        <translation>无法立即刷新系统字体。使用常规 Fontconfig 设置时，请等待约 30 秒后重试；如果仍有字体缺失，请重启应用程序。</translation>
+    </message>
+</context>
+<context>
+    <name>FontReloadButton</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="812"/>
+        <source>Reload fonts</source>
+        <translation>重载字体</translation>
+    </message>
+</context>
+<context>
     <name>FontSizeDragLabel</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="459"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="463"/>
         <source>Drag to resize text</source>
         <translation>拖拽缩放文字大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="460"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="464"/>
         <source>Resize text</source>
         <translation>缩放文字</translation>
     </message>
@@ -1351,47 +1439,47 @@
 <context>
     <name>FontWeightComboBox</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="572"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="576"/>
         <source>Black</source>
         <translation>黑体</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="570"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="574"/>
         <source>Bold</source>
         <translation>粗体</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="569"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="573"/>
         <source>Demi Bold</source>
         <translation>半粗</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="571"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="575"/>
         <source>Extra Bold</source>
         <translation>中黑</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="565"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="569"/>
         <source>Extra Light</source>
         <translation>超细</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="566"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="570"/>
         <source>Light</source>
         <translation>细体</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="568"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="572"/>
         <source>Medium</source>
         <translation>中等</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="567"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="571"/>
         <source>Normal</source>
         <translation>常规</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="564"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="568"/>
         <source>Thin</source>
         <translation>瘦体</translation>
     </message>
@@ -1495,7 +1583,7 @@
 <context>
     <name>GlowEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1382"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1502"/>
         <source>Glow</source>
         <translation>发光</translation>
     </message>
@@ -1524,63 +1612,63 @@
         <translation type="obsolete">混合值</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1413"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1533"/>
         <source>Glow Type</source>
         <translation>发光类型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1414"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1534"/>
         <source>Outer</source>
         <translation>外发光</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1415"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1535"/>
         <source>Inner</source>
         <translation>内发光</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1431"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1551"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1435"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1555"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1439"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1547"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1559"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1667"/>
         <source>Spread</source>
         <translation>扩展</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1443"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1563"/>
         <source>Glow Blend</source>
         <translation>发光混合模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1460"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1580"/>
         <source>Fill</source>
         <translation>填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1469"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1589"/>
         <source>Glow Fill</source>
         <translation>发光填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1470"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1590"/>
         <source>Solid</source>
         <translation>纯色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1472"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1592"/>
         <source>Gradient</source>
         <translation>渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1545"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1665"/>
         <source>Choke</source>
         <translation>阻塞</translation>
     </message>
@@ -1601,17 +1689,17 @@
         <translation type="obsolete">发光填充不一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1562"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1682"/>
         <source>Edit Glow Gradient</source>
         <translation>编辑发光渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1564"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1684"/>
         <source>Choose Glow Color</source>
         <translation>选择发光颜色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1646"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1766"/>
         <source>Glow Color</source>
         <translation>发光颜色</translation>
     </message>
@@ -1661,18 +1749,18 @@
 <context>
     <name>ImageEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2540"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2588"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2660"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2708"/>
         <source>Image</source>
         <translation>图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2546"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2666"/>
         <source>Hidden while editing so the caret and selection match the text.</source>
         <translation>编辑文本时隐藏，以使文本光标和选区与文本保持一致。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2548"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2668"/>
         <source>Choose an image...</source>
         <translation>选择图像…</translation>
     </message>
@@ -1701,99 +1789,99 @@
         <translation type="obsolete">删除图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2585"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2705"/>
         <source>Choose Image</source>
         <translation>选择图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2595"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2715"/>
         <source>Image Placement</source>
         <translation>图像层叠位置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2598"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2718"/>
         <source>In Front</source>
         <translation>前置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2601"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2721"/>
         <source>Draws the Image over everything rendered before it.</source>
         <translation>将图像绘制在此前所有渲染内容的上方。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2605"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2725"/>
         <source>Behind</source>
         <translation>后置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2608"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2728"/>
         <source>Draws the Image behind everything rendered before it.</source>
         <translation>将图像绘制在此前所有渲染内容的下方。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2623"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2743"/>
         <source>Placement</source>
         <translation>层叠位置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2635"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2692"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2850"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2755"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2812"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2970"/>
         <source>Generate</source>
         <translation>生成</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2640"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2760"/>
         <source>Image Generation Model</source>
         <translation>图像生成模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2646"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2766"/>
         <source>Model</source>
         <translation>模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2654"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2774"/>
         <source>Image Generation Context</source>
         <translation>图像生成参考图</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2656"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2776"/>
         <source>Source</source>
         <translation>原图</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2657"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2777"/>
         <source>Inpainted</source>
         <translation>修复图</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2658"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2778"/>
         <source>Lettered</source>
         <translation>嵌字图</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2659"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2779"/>
         <source>None</source>
         <translation>无</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2664"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2784"/>
         <source>Context</source>
         <translation>参考图</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2669"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2789"/>
         <source>Describe the image to generate or edit</source>
         <translation>描述要生成或编辑的图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2672"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2792"/>
         <source>Image Generation Prompt</source>
         <translation>图像生成提示词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2678"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2798"/>
         <source>Prompt</source>
         <translation>提示词</translation>
     </message>
@@ -1806,57 +1894,57 @@
         <translation type="obsolete">图像不一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2746"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2866"/>
         <source>No Image Selected</source>
         <translation>未选择图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2754"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2874"/>
         <source>Missing: {name}</source>
         <translation>缺失：{name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2850"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2970"/>
         <source>Stop</source>
         <translation>停止</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2863"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2983"/>
         <source>Select exactly one text item to generate an Image.</source>
         <translation>请选择一个文本项以生成图像。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2866"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2986"/>
         <source>Select an available image generation model.</source>
         <translation>请选择可用的图像生成模型。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2869"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2989"/>
         <source>Another Image generation request is in progress.</source>
         <translation>另一个图像生成请求正在进行中。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2873"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2993"/>
         <source>Waiting for the current image request to stop.</source>
         <translation>正在等待当前图像请求停止。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2876"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2996"/>
         <source>Stop image generation</source>
         <translation>停止图像生成</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2878"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2998"/>
         <source>Generate an image for this effect</source>
         <translation>为此特效生成图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2881"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3001"/>
         <source>Stop Image Generation</source>
         <translation>停止图像生成</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2883"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3003"/>
         <source>Generate Image</source>
         <translation>生成图像</translation>
     </message>
@@ -1927,37 +2015,37 @@
 <context>
     <name>ImageGenerationModelSelector</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2354"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2474"/>
         <source>Unavailable: {backend}</source>
         <translation>不可用：{backend}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2358"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2478"/>
         <source>Missing: {profile}</source>
         <translation>缺失：{profile}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2366"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2486"/>
         <source>No Models</source>
         <translation>无可用模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2388"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2508"/>
         <source>LLM</source>
         <translation>LLM</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2392"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2512"/>
         <source>No image profiles</source>
         <translation>未找到可用的图像配置卡</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2408"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2528"/>
         <source>Image Model</source>
         <translation>图像模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2430"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2550"/>
         <source>No image models</source>
         <translation>无可用图像模型</translation>
     </message>
@@ -2114,24 +2202,71 @@
 <context>
     <name>InpaintPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="171"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="219"/>
         <source>Thickness</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="176"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="223"/>
+        <source>Tool Type</source>
+        <translation>工具类型</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="226"/>
+        <source>Circle Brush</source>
+        <translation>圆形画笔</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="227"/>
+        <source>Rectangle Brush</source>
+        <translation>矩形画笔</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="228"/>
+        <source>Magic Wand</source>
+        <translation>魔棒</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="239"/>
+        <source>Selection Mode</source>
+        <translation>选区模式</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="242"/>
+        <source>Selection</source>
+        <translation>选区</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243"/>
+        <source>Selection Interior</source>
+        <translation>选区内部</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="244"/>
+        <source>Selection + Interior</source>
+        <translation>选区 + 内部</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="251"/>
+        <source>Tolerance</source>
+        <translation>容差</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="259"/>
+        <source>Range</source>
+        <translation>范围</translation>
+    </message>
+    <message>
         <source>Shape</source>
-        <translation>形状</translation>
+        <translation type="vanished">形状</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="179"/>
         <source>Circle</source>
-        <translation>圆形</translation>
+        <translation type="vanished">圆形</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="180"/>
         <source>Rectangle</source>
-        <translation>方形</translation>
+        <translation type="vanished">方形</translation>
     </message>
     <message>
         <source>Inpainter</source>
@@ -2169,13 +2304,13 @@
 <context>
     <name>InpainterSelectorRow</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="124"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="167"/>
         <source>Inpainter</source>
         <translation>修复工具</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="136"/>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="137"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="179"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="180"/>
         <source>Config</source>
         <translation>设置</translation>
     </message>
@@ -2430,286 +2565,286 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="199"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="647"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="201"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="665"/>
         <source>Updating: </source>
         <translation>更新中: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="324"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="326"/>
         <source>Keyword substitution for source text</source>
         <translation>替换原文关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="328"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="330"/>
         <source>Keyword substitution for machine translation source text</source>
         <translation>替换机翻前文本关键字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="332"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="334"/>
         <source>Keyword substitution for machine translation</source>
         <translation>替换机翻结果中的关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="616"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="634"/>
         <source>Checking...</source>
         <translation>检查中...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="625"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="639"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="640"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="641"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="643"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="657"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="658"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="659"/>
         <source>Downloading update: </source>
         <translation>下载更新: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="638"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="656"/>
         <source>Backing up current version: </source>
         <translation>备份当前版本:</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="642"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="660"/>
         <source>Saving local changes: </source>
         <translation>保存本地更改: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="643"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="644"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="645"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="661"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="662"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="663"/>
         <source>Installing update: </source>
         <translation>安装更新: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="670"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="688"/>
         <source>Already up-to-date.</source>
         <translation>版本已是最新</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="691"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="709"/>
         <source>Failed to check for updates.</source>
         <translation>更新检查失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="752"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="785"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="798"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="831"/>
         <source>Failed to load project from</source>
         <translation>无法从所选路径加载项目：</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="876"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="912"/>
         <source>Restart to apply changes? 
 </source>
         <translation>重启程序以应用更改?\n</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1208"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1244"/>
         <source>No project is open.</source>
         <translation>未打开项目</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1218"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1254"/>
         <source>The project could not be saved before opening Photoshop.</source>
         <translation>打开 Photoshop 前无法保存项目</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1235"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1271"/>
         <source>BallonsTranslator has unsaved changes. Save them, then check for the Photoshop update again.</source>
         <translation>有未保存的更改。请先保存，然后重新检查 Photoshop 更改。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1242"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1278"/>
         <source>The project file changed outside BallonsTranslator. Reload it before applying Photoshop changes.</source>
         <translation></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1287"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1323"/>
         <source>Failed to save Photoshop changes: {error}</source>
         <translation>保存 Photoshop 更改失败：{error}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2013"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2049"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2013"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2049"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2084"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2120"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2225"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2261"/>
         <source>Import Text Styles</source>
         <translation>导入字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2239"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2275"/>
         <source>Save Text Styles</source>
         <translation>导出字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2282"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2318"/>
         <source>Text file exported to </source>
         <translation>文本文件已导出到</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2284"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2320"/>
         <source>Failed to export as TEXT file</source>
         <translation>文本文件导出失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2290"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2326"/>
         <source>Import *.md/*.txt</source>
         <translation>导入*.md/*.txt</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2305"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2341"/>
         <source>Translation imported and matched successfully.</source>
         <translation>译文已导入且匹配成功</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2307"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2343"/>
         <source>Imported txt file not fully matched with current project, please make sure source txt file structured like results from &quot;export TXT/markdown&quot;</source>
         <translation>导入文件当前项目没能完全匹配，请确保导入文件格式和导出文件一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2309"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2345"/>
         <source>Missing pages: </source>
         <translation>缺失页: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2312"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2348"/>
         <source>Unexpected pages: </source>
         <translation>额外页: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2315"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2351"/>
         <source>Unmatched pages: </source>
         <translation>未匹配页: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2326"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2362"/>
         <source>Failed to import translation from </source>
         <translation>从目标文件导入失败 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2348"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2384"/>
         <source>Export to </source>
         <translation>导出至 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2382"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2418"/>
         <source>Failed to copy source text</source>
         <translation>原文复制失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2477"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2513"/>
         <source>API key required</source>
         <translation>需要 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2478"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2514"/>
         <source>The selected LLM profile requires an API key.</source>
         <translation>选中的配置卡需要 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2480"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2516"/>
         <source>Fill the API key before running this LLM task for: {profile_name}</source>
         <translation>运行任务前请为配置卡 {profile_name} 填入 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2482"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2518"/>
         <source>Fill API Key</source>
         <translation>填入 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2503"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2539"/>
         <source>Model required</source>
         <translation>配置卡的模型不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2504"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2540"/>
         <source>Vision model required</source>
         <translation>配置卡的视觉模型不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2505"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2541"/>
         <source>Image model required</source>
         <translation>配置卡的图像模型不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2508"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2544"/>
         <source>model</source>
         <translation>模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2509"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2545"/>
         <source>vision model</source>
         <translation>视觉模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2510"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2546"/>
         <source>image model</source>
         <translation>图像模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2514"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2564"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2550"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2600"/>
         <source>LLM Profile</source>
         <translation>LLM 配置卡</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2519"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2555"/>
         <source>The selected LLM profile requires a {field_name}.</source>
         <translation>所选配置卡需要 {field_name}.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2522"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2572"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2558"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2608"/>
         <source>Fill the {field_name} before running this LLM task for: {profile_name}</source>
         <translation>运行前请为配置 {profile_name} 填入 {field_name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2527"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2563"/>
         <source>Fill Model</source>
         <translation>填入模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2555"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2591"/>
         <source>Base URL required</source>
         <translation>基础 URL 是必填项</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2556"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2592"/>
         <source>Image base URL required</source>
         <translation>基础图像 URL 是必填项</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2559"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2595"/>
         <source>base URL</source>
         <translation>基础 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2560"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2596"/>
         <source>image base URL</source>
         <translation>图像基础 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2569"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2605"/>
         <source>The selected LLM profile requires this field: {field_name}.</source>
         <translation>所选配置卡 {field_name} 不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2577"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2613"/>
         <source>Fill URL</source>
         <translation>填入 URL</translation>
     </message>
@@ -2718,12 +2853,12 @@
         <translation type="vanished">替换OCR文本中的关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2235"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2271"/>
         <source>Failed to load from {p}</source>
         <translation>无法导入{p}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2256"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2292"/>
         <source>Failed save to {savep}</source>
         <translation>无法保存到{savep}</translation>
     </message>
@@ -2796,95 +2931,95 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleManager</name>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1399"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1728"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1404"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1733"/>
         <source>Preparing module: </source>
         <translation>准备模块: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1612"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1911"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1617"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1916"/>
         <source>Missing packages</source>
         <translation>缺失库</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1614"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1619"/>
         <source>Selected modules require missing package(s):
 {modules}</source>
         <translation>选中模块缺失库: {modules}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1618"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1918"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1623"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1923"/>
         <source>Install the missing package(s) now?</source>
         <translation>安装缺失库?</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1620"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1920"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1625"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1925"/>
         <source>Install</source>
         <translation>安装</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1621"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1921"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1626"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1926"/>
         <source>Not Now</source>
         <translation>跳过</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1622"/>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1922"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1627"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1927"/>
         <source>Install all missing packages and don&apos;t show again</source>
         <translation>安装缺失库且不再提示</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1684"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1689"/>
         <source>Installing packages: </source>
         <translation>安装库 : </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1688"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1693"/>
         <source>Installing...</source>
         <translation>安装中...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1715"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1720"/>
         <source>Failed to install packages</source>
         <translation>库安装失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1770"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1775"/>
         <source>Downloading package</source>
         <translation>下载库</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1780"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1785"/>
         <source>{speed}/s</source>
         <translation></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1783"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1788"/>
         <source>ETA {eta}</source>
         <translation></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1913"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1918"/>
         <source>Module &quot;{module}&quot; requires missing package(s):
 {packages}</source>
         <translation>&quot;{module}&quot; 确实依赖包:</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1943"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="1948"/>
         <source>Failed to set module </source>
         <translation>模块启用失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="1999"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="2004"/>
         <source>Module preparation is already running.</source>
         <translation>模块预备正在进行中</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/module_manager.py" line="2003"/>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="2008"/>
         <source>Selected modules are ready.</source>
         <translation>所选模块已就绪</translation>
     </message>
@@ -3979,7 +4114,7 @@ All existing translation results will be cleared!</source>
 <context>
     <name>PageListView</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="96"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="98"/>
         <source>Reveal in File Explorer</source>
         <translation>在文件管理器中显示</translation>
     </message>
@@ -4082,32 +4217,32 @@ All existing translation results will be cleared!</source>
 <context>
     <name>PenConfigPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="233"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="332"/>
         <source>Color</source>
         <translation>颜色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="234"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="333"/>
         <source>Alpha</source>
         <translation>Alpha</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="242"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="341"/>
         <source>Thickness</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="247"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="346"/>
         <source>Shape</source>
         <translation>形状</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="250"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="349"/>
         <source>Circle</source>
         <translation>圆形</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="251"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="350"/>
         <source>Rectangle</source>
         <translation>方形</translation>
     </message>
@@ -4786,52 +4921,52 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="301"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="400"/>
         <source>Dilate</source>
         <translation>膨胀</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="309"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="408"/>
         <source>method 1</source>
         <translation>方法1</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="310"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="409"/>
         <source>method 2</source>
         <translation>方法2</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="311"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="410"/>
         <source>Use Existing Mask</source>
         <translation>使用区域已有掩膜</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="314"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="413"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="315"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="414"/>
         <source>run inpainting automatically.</source>
         <translation>自动运行修复函数.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="317"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="416"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="318"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="417"/>
         <source>Space</source>
         <translation>空格</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="320"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="419"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="321"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="420"/>
         <source>Ctrl+D</source>
         <translation></translation>
     </message>
@@ -5211,7 +5346,7 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>ShadowEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="999"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1119"/>
         <source>Shadow</source>
         <translation>阴影</translation>
     </message>
@@ -5240,88 +5375,88 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="obsolete">混合值</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1032"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1152"/>
         <source>Shadow Type</source>
         <translation>阴影类型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1034"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1154"/>
         <source>Drop</source>
         <translation>投影</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1035"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1155"/>
         <source>Inner</source>
         <translation>内阴影</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1036"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1156"/>
         <source>Long / Extrude</source>
         <translation>长阴影 / 凸出</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1055"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1175"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1059"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1179"/>
         <source>Angle</source>
         <translation>角度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1063"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1183"/>
         <source>Drag to set shadow angle</source>
         <translation>拖动以设置阴影角度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1064"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1184"/>
         <source>Shadow Angle</source>
         <translation>阴影角度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1081"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1201"/>
         <source>Distance</source>
         <translation>距离</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1086"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1206"/>
         <source>Blur</source>
         <translation>模糊</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1091"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1203"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1211"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1323"/>
         <source>Spread</source>
         <translation>扩展</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1096"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1216"/>
         <source>Shadow Blend</source>
         <translation>阴影混合模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1111"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1231"/>
         <source>Fill</source>
         <translation>填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1120"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1240"/>
         <source>Shadow Fill</source>
         <translation>阴影填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1121"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1241"/>
         <source>Solid</source>
         <translation>纯色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1123"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1243"/>
         <source>Gradient</source>
         <translation>渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1201"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1321"/>
         <source>Choke</source>
         <translation>阻塞</translation>
     </message>
@@ -5342,17 +5477,17 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="obsolete">阴影填充不一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1222"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1342"/>
         <source>Edit Shadow Gradient</source>
         <translation>编辑阴影渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1224"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1344"/>
         <source>Choose Shadow Color</source>
         <translation>选择阴影颜色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1333"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1453"/>
         <source>Shadow Color</source>
         <translation>阴影颜色</translation>
     </message>
@@ -5396,7 +5531,7 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>StrokeEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="697"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="817"/>
         <source>Stroke</source>
         <translation>描边</translation>
     </message>
@@ -5425,64 +5560,102 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="obsolete">混合值</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="731"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="851"/>
         <source>Stroke Position</source>
         <translation>描边位置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="733"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="853"/>
         <source>Inside</source>
         <translation>内部</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="734"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="854"/>
         <source>Center</source>
         <translation>居中</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="735"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="855"/>
         <source>Outside</source>
         <translation>外部</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="754"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="874"/>
         <source>Width</source>
         <translation>宽度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="758"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="878"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="762"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="882"/>
         <source>Stroke Blend</source>
         <translation>描边混合模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="768"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="888"/>
         <source>Fill</source>
         <translation>填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="777"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="897"/>
         <source>Stroke Fill</source>
         <translation>描边填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="778"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="898"/>
         <source>Solid</source>
         <translation>纯色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="779"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="899"/>
         <source>Gradient</source>
         <translation>渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1070"/>
         <source>Stroke Color</source>
         <translation>描边颜色</translation>
+    </message>
+</context>
+<context>
+    <name>SyntheticBoldEffectCard</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="693"/>
+        <source>Synthetic Bold</source>
+        <translation>仿粗体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="696"/>
+        <source>Expand glyphs before all other effects, without changing font weight or spacing. X and Y are percentages of font size.</source>
+        <translation>在应用其他所有特效之前扩展字形，不改变字重或字间距。X 和 Y 的数值为字号的百分比。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="704"/>
+        <source>Synthetic Bold Shape</source>
+        <translation>仿粗体形状</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="705"/>
+        <source>Rectangle</source>
+        <translation>方形</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="706"/>
+        <source>Ellipse</source>
+        <translation>椭圆</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="724"/>
+        <source>X</source>
+        <translation>X</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="728"/>
+        <source>Y</source>
+        <translation>Y</translation>
     </message>
 </context>
 <context>
@@ -5623,7 +5796,7 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>TextEffectEditSession</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/edit_session.py" line="806"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/edit_session.py" line="818"/>
         <source>Open a project before generating an Image.</source>
         <translation>请先打开项目再生成图像。</translation>
     </message>
@@ -5635,154 +5808,154 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="vanished">特效</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="98"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="100"/>
         <source>Noise</source>
         <translation>噪点</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="101"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="103"/>
         <source>Grain</source>
         <translation>颗粒</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="104"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="106"/>
         <source>Gaussian Blur</source>
         <translation>高斯模糊</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="107"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="109"/>
         <source>Bloom</source>
         <translation>泛光</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="110"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="112"/>
         <source>Glitch</source>
         <translation>故障</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="113"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="115"/>
         <source>Amount</source>
         <translation>数量</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="116"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="118"/>
         <source>Color</source>
         <translation>彩色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="119"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="121"/>
         <source>Monochrome</source>
         <translation>单色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="122"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="124"/>
         <source>Seed</source>
         <translation>随机种子</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="125"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="127"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="128"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="130"/>
         <source>Hardness</source>
         <translation>硬度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="131"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="133"/>
         <source>Radius</source>
         <translation>半径</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="134"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="136"/>
         <source>Threshold</source>
         <translation>阈值</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="137"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="139"/>
         <source>Intensity</source>
         <translation>强度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="140"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="142"/>
         <source>Shift</source>
         <translation>位移</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="143"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="145"/>
         <source>Block Size</source>
         <translation>块大小</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="146"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="148"/>
         <source>Activity</source>
         <translation>活跃度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="149"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="151"/>
         <source>RGB Split</source>
         <translation>RGB 分离</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="358"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="360"/>
         <source>Long / Extrude</source>
         <translation>长阴影 / 凸出</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="395"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="397"/>
         <source>Normal</source>
         <translation>正常</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="399"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="403"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="401"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="405"/>
         <source>Darken</source>
         <translation>变暗</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="405"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="407"/>
         <source>Multiply</source>
         <translation>正片叠底</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="409"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="411"/>
         <source>Color Burn</source>
         <translation>颜色加深</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="413"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="415"/>
         <source>Linear Burn</source>
         <translation>线性加深</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="417"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="419"/>
         <source>Darker Color</source>
         <translation>深色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="424"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="429"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="426"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="431"/>
         <source>Lighten</source>
         <translation>变亮</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="432"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="434"/>
         <source>Screen</source>
         <translation>滤色</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="434"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="436"/>
         <source>Color Dodge</source>
         <translation>颜色减淡</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="438"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="440"/>
         <source>Linear Dodge (Add)</source>
         <translation>线性减淡（添加）</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="444"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="446"/>
         <source>Lighter Color</source>
         <translation>浅色</translation>
     </message>
@@ -5791,111 +5964,116 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="obsolete">混合值</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="502"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="504"/>
         <source>Blends with earlier output in the text-effect stack, not the page image or backdrop.</source>
         <translation>与文本特效堆栈中此前的输出混合，不与页面图像或背景混合。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="511"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="513"/>
         <source>Blend</source>
         <translation>混合模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="107"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="108"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="121"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="122"/>
         <source>Overall opacity of the text and all effects</source>
         <translation>文本及所有特效的整体不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="154"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="363"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="145"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="355"/>
         <source>Select one text block in text edit mode.</source>
         <translation>请在文本编辑模式下选择一个文本块。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="157"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="148"/>
         <source>Text Eraser</source>
         <translation>文本橡皮擦</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="179"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="170"/>
         <source>Add</source>
         <translation>添加</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="180"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="181"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="171"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="172"/>
         <source>Add Effect</source>
         <translation>添加特效</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="193"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="184"/>
+        <source>Synthetic Bold</source>
+        <translation>仿粗体</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="185"/>
         <source>Stroke</source>
         <translation>描边</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="194"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="186"/>
         <source>Shadow</source>
         <translation>阴影</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="195"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="187"/>
         <source>Glow</source>
         <translation>发光</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="197"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="189"/>
         <source>Gradient</source>
         <translation>渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="202"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="194"/>
         <source>Texture</source>
         <translation>纹理</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="207"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="199"/>
         <source>Image</source>
         <translation>图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="220"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="212"/>
         <source>Filter</source>
         <translation>滤镜</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="234"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="226"/>
         <source>Faster Preview</source>
         <translation>快速预览</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="240"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="232"/>
         <source>Render live effect changes at half resolution. Committed and exported text keep full quality.</source>
         <translation>以半分辨率实时预览特效调整；提交和导出的文本仍保持完整质量。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="361"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="353"/>
         <source>Edit Text Eraser</source>
         <translation>编辑文本橡皮擦</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="380"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="372"/>
         <source>Choose Image</source>
         <translation>选择图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="393"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="831"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="385"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="824"/>
         <source>Unable to Import Image</source>
         <translation>无法导入图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="395"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="833"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="387"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="826"/>
         <source>The selected image could not be added to this project.
 
 {message}</source>
@@ -5904,32 +6082,32 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 {message}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="650"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="643"/>
         <source>Select exactly one text item to generate an Image.</source>
         <translation>请选择一个文本块以生成图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="776"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="769"/>
         <source>Image Generation Failed.</source>
         <translation>图像生成失败。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="787"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="780"/>
         <source>Unable to Generate Image</source>
         <translation>无法生成图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="946"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="939"/>
         <source>Enable Hollow for All Selected Text</source>
         <translation>启用镂空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="948"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="941"/>
         <source>Disable Hollow</source>
         <translation>禁用镂空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="943"/>
         <source>Enable Hollow</source>
         <translation>启用镂空</translation>
     </message>
@@ -6028,12 +6206,12 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>TextFillEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1702"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1822"/>
         <source>Gradient</source>
         <translation>渐变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1705"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1825"/>
         <source>Texture</source>
         <translation>纹理</translation>
     </message>
@@ -6058,58 +6236,58 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="obsolete">删除{effect}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1773"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1939"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1893"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2059"/>
         <source>Choose Texture Image</source>
         <translation>选择纹理图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1777"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1897"/>
         <source>Image</source>
         <translation>图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1787"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1907"/>
         <source>Texture Mapping</source>
         <translation>纹理映射</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1790"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1910"/>
         <source>Fill</source>
         <translation>填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1791"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1911"/>
         <source>Fit</source>
         <translation>适应</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1792"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1912"/>
         <source>Crop</source>
         <translation>裁剪</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1793"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1913"/>
         <source>Tile</source>
         <translation>平铺</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1800"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1920"/>
         <source>Mapping</source>
         <translation>映射</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1803"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1923"/>
         <source>Scale</source>
         <translation>缩放</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1808"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1928"/>
         <source>Opacity</source>
         <translation>不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1823"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1943"/>
         <source>{effect} Blend</source>
         <translation>{effect}混合模式</translation>
     </message>
@@ -6126,17 +6304,17 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="obsolete">纹理图像不一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1882"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2002"/>
         <source>Choose an image for this Texture</source>
         <translation>为此纹理选择图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1883"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2003"/>
         <source>No Texture Image Selected</source>
         <translation>未选择纹理图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1890"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2010"/>
         <source>Missing: {name}</source>
         <translation>缺失：{name}</translation>
     </message>
@@ -7027,7 +7205,7 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>&apos;pyspellchecker&apos; 安装失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="547"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="549"/>
         <source>Images (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</source>
         <translation>图像文件 (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</translation>
     </message>
