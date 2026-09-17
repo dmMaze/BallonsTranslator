@@ -501,6 +501,22 @@ class TextBlkItem(QGraphicsTextItem):
     def repaint_background(self, render_scale: float = 1.0):
         return self.effect_renderer.repaint_background(render_scale)
 
+    def refresh_font_metrics(self) -> None:
+        """Reshape live text without changing its formatting or undo history.
+
+        >>> callable(TextBlkItem.refresh_font_metrics)
+        True
+        """
+        # Settle glyph placement before effects can render against the new font.
+        was_repainting = self.repainting
+        self.repainting = True
+        try:
+            self.layout.invalidate_native_metrics()
+        finally:
+            self.repainting = was_repainting
+        self.repaint_background()
+        self.update()
+
     def set_export_effect_render(self, enabled: bool):
         self.effect_renderer.set_export_effect_render(enabled)
 
