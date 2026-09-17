@@ -42,6 +42,16 @@ class CodexBusyError(CodexRequestError):
         self.usage = usage
 
 
+class CodexTimeoutError(CodexRequestError):
+    """Retry a timed-out attempt only after its owned session is closed.
+
+    >>> CodexTimeoutError('timed out').usage is None
+    True
+    """
+
+    usage: Any = None
+
+
 class _CodexSession:
     """One disposable stdio session, with bounded and cancellable pipe IO.
 
@@ -128,9 +138,9 @@ class _CodexSession:
                 raise LLMRequestStopped()
             remaining = self.deadline - time.monotonic()
             if remaining <= 0:
-                raise CodexRequestError(
-                    'Codex request timed out. The run was stopped without resubmitting; '
-                    'check Codex usage or increase Codex Timeout before retrying.'
+                raise CodexTimeoutError(
+                    'Codex request timed out. Retrying may consume additional tokens '
+                    'if the service already processed the request.'
                 )
             try:
                 message = self.incoming.get(timeout=min(0.1, remaining))
@@ -216,8 +226,8 @@ def request_codex_completion(profile: LLMProfile, api_args: Dict[str, Any],
                              stop_event: Optional[threading.Event] = None) -> LLMChatResult:
     """Run a fresh turn with official ChatGPT auth and the caller's exact history.
 
-    No account tokens are read by BallonsTranslator. Only explicit terminal
-    capacity rejections allow the requester to retry; uncertain completion stops.
+    No account tokens are read by BallonsTranslator. Capacity rejection and
+    timeout allow bounded retries after cleanup; other uncertain failures stop.
 
     >>> request_codex_completion.__name__
     'request_codex_completion'
@@ -252,6 +262,7 @@ def request_codex_completion(profile: LLMProfile, api_args: Dict[str, Any],
     # Always start fresh; saving conversation content requires explicit opt-in.
     with tempfile.TemporaryDirectory(prefix='ballontranslator-codex-') as cwd:
         session = _CodexSession(executable, cwd, profile.codex_timeout, stop_event)
+        usage = None
         try:
             session.call('initialize', {
                 'clientInfo': {'name': 'ballontranslator', 'version': '1.0'},
@@ -279,7 +290,6 @@ def request_codex_completion(profile: LLMProfile, api_args: Dict[str, Any],
             # finish a turn before its request response reaches the pipe reader.
             turn_request = session.send('turn/start', turn_params)
             output = {}
-            usage = None
             while True:
                 message = session.receive()
                 if message.get('id') == turn_request:
@@ -328,6 +338,9 @@ def request_codex_completion(profile: LLMProfile, api_args: Dict[str, Any],
                             raise CodexBusyError(f'Codex turn failed: {detail}', usage)
                         raise CodexRequestError(f'Codex turn failed: {detail}')
                     return LLMChatResult(content='\n'.join(output.values()), usage=usage, finish_reason='stop')
+        except CodexTimeoutError as error:
+            error.usage = usage
+            raise
         except (KeyError, TypeError, ValueError, AttributeError) as error:
             # A protocol mismatch may occur after submission; never let the
             # feature owner's generic retry loop charge for the same turn again.

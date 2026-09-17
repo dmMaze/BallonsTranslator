@@ -68,6 +68,11 @@ for line in sys.stdin:
             continue
         if scenario != 'early':
             emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1'}}})
+        if scenario == 'timeout_usage':
+            event('thread/tokenUsage/updated', tokenUsage={'total': {
+                'inputTokens': 10, 'outputTokens': 2, 'totalTokens': 12,
+                'cachedInputTokens': 0, 'reasoningOutputTokens': 0}})
+            continue
         if scenario in ('timeout', 'cancel'):
             continue
         if scenario == 'tool':
@@ -290,6 +295,45 @@ class CodexTransportTest(unittest.TestCase):
             request_codex_completion(self.profile, self.args)
         self.assertLess(time.monotonic() - started, 4)
         self.assertIn('turn/interrupt', [r['method'] for r in self.requests()])
+
+    def test_timeout_retries_after_cleanup_with_same_payload_and_bounded_budget(self) -> None:
+        self.profile.codex_timeout = 1
+        for owner_type in (LLMTranslator, LLMOCR):
+            for outcome in ('recover', 'exhaust', 'cancel'):
+                with self.subTest(owner=owner_type.__name__, outcome=outcome):
+                    owner = (owner_type('English', '繁體中文') if owner_type is LLMTranslator else owner_type())
+                    owner.set_param_value('retry attempts', 2)
+                    owner.set_param_value('retry timeout', 7)
+                    owner.set_param_value('delay', 0)
+                    owner.set_param_value('max requests per minute', 0)
+                    self.scenario = 'timeout_usage'
+                    before = len(self.processes)
+
+                    def wait(seconds: float) -> None:
+                        self.assertGreaterEqual(seconds, 60)
+                        self.assertLessEqual(seconds, 66)
+                        self.assertIsNotNone(self.processes[-1].poll())
+                        self.assertEqual(self.requests()[-1]['method'], 'turn/interrupt')
+                        if outcome == 'cancel':
+                            raise LLMRequestStopped()
+                        owner._codex_cooldown_until = 0
+                        if outcome == 'recover':
+                            self.scenario = 'success'
+
+                    with mock.patch.object(owner, '_wait', side_effect=wait) as waiting, \
+                            mock.patch('ballontranslator.modules.llm_codex.request_codex_completion',
+                                       wraps=request_codex_completion) as request:
+                        if outcome == 'recover':
+                            self.assertIn('譯文一', owner.request_chat_completion(self.profile, self.args).content)
+                        else:
+                            expected = LLMRequestStopped if outcome == 'cancel' else CodexRequestError
+                            with self.assertRaises(expected):
+                                owner.request_chat_completion(self.profile, self.args)
+                    waiting.assert_called_once()
+                    count = 1 if outcome == 'cancel' else 2
+                    self.assertEqual(len(self.processes) - before, count)
+                    self.assertEqual(request.call_args_list, [mock.call(self.profile, self.args, None)] * count)
+                    self.assertEqual(owner.usage_totals.total_tokens, 132 if outcome == 'recover' else 12 * count)
 
     def test_cancellation_during_request_and_before_launch(self) -> None:
         self.scenario = 'cancel'

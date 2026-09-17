@@ -171,7 +171,7 @@ combine internal model calls, so their long-context estimate is approximate.
 Unknown prices or incomplete usage produce `estimated_cost_usd=unavailable`
 with a `priced_subtotal_usd` and `unpriced_requests`, not a guessed zero bill.
 
-Terminal `Selected model is at capacity` and HTTP 503 connection rejections
+Terminal `Selected model is at capacity`, HTTP 503 connection rejections, and request timeouts
 use the requesting module's existing **Retry Attempts** (total attempts,
 including the first). Before retrying the same payload, wait at least 60 seconds
 or **Retry Timeout**, whichever is larger; double this delay up to 300 seconds
@@ -188,8 +188,11 @@ another generic retry loop.
 **Codex Timeout** bounds each attempt (default 180 seconds), excluding capacity
 cooldown. Cancellation requests `turn/interrupt` when the turn ID is known;
 cleanup always closes the
-owned server. Missing CLI/login, quota exhaustion, protocol failures, and
-uncertain completion stop the run without application-level resubmission.
+owned server before a retry starts. Timeouts retry the same model and payload
+with the shared backoff above; each attempt gets a fresh timeout. Reported usage
+before timeout is counted, but resubmission can consume additional tokens if
+the service already processed the request. Missing CLI/login, quota exhaustion,
+protocol failures, and other uncertain failures still stop without resubmission.
 Explicit context-window rejection uses the existing context recovery path;
 completed but invalid model output follows existing parsing/retry rules.
 Completed pages and project saves keep their existing ownership and resume rules.

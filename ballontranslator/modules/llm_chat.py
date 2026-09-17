@@ -176,7 +176,7 @@ class LLMChatRequester:
     """Issue one profile-backed HTTP or official Codex chat request.
 
     Prompt construction and output retries stay with the Translator or OCR
-    module; Codex capacity retries share this boundary's request throttle.
+    module; Codex capacity/timeout retries share this boundary's request throttle.
 
     >>> LLMChatRequester().client is None
     True
@@ -312,13 +312,13 @@ class LLMChatRequester:
         profile: LLMProfile,
         api_args: Dict[str, Any],
     ) -> LLMChatResult:
-        """Request a result, backing off on explicit Codex capacity rejection.
+        """Request a result, backing off on Codex capacity rejection or timeout.
 
         >>> callable(LLMChatRequester.request_chat_completion)
         True
         """
         if profile.transport == 'Codex App Server':
-            from .llm_codex import CodexBusyError, request_codex_completion
+            from .llm_codex import CodexBusyError, CodexTimeoutError, request_codex_completion
 
             attempts = max(1, int(self.get_param_value('retry attempts')))
             retry_delay = max(60.0, float(self.get_param_value('retry timeout')))
@@ -339,17 +339,17 @@ class LLMChatRequester:
                 try:
                     result = request_codex_completion(profile, api_args, self.stop_event)
                     break
-                except CodexBusyError as error:
+                except (CodexBusyError, CodexTimeoutError) as error:
                     with self._codex_usage_lock:
                         self.usage_totals.add(api_args.get('model', ''), error.usage)
                     if attempt >= attempts:
-                        self.logger.error('Codex capacity retry budget exhausted after %d attempts.', attempts)
+                        self.logger.error('Codex retry budget exhausted after %d attempts: %s', attempts, error)
                         raise
                     wait = retry_delay + random.uniform(0, min(10.0, retry_delay * 0.1))
                     with self._codex_throttle_lock:
                         self._codex_cooldown_until = max(self._codex_cooldown_until, time.monotonic() + wait)
                     self.logger.warning(
-                        'Codex capacity rejection: %s. Attempt %d/%d; cooling down for %.1f seconds; %s',
+                        'Codex retryable failure: %s. Attempt %d/%d; cooling down for %.1f seconds; %s',
                         error, attempt, attempts, wait,
                         format_completion_token_usage(error) or 'usage=unavailable',
                     )
