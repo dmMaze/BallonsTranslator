@@ -2,14 +2,15 @@ import threading
 import traceback
 from typing import List
 
-from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton
-from qtpy.QtCore import Signal, Qt, QMimeData, QEvent, QPoint, QSize
-from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QDragEnterEvent, QDropEvent, QKeyEvent, QKeySequence, QTextCursor, QMouseEvent, QDrag, QPixmap
+from qtpy.QtWidgets import QStackedWidget, QSizePolicy, QTextEdit, QScrollArea, QGraphicsDropShadowEffect, QVBoxLayout, QApplication, QHBoxLayout, QLabel, QLineEdit, QWidget, QPushButton, QFrame
+from qtpy.QtCore import Signal, Qt, QEvent, QPoint, QSize, QTimer
+from qtpy.QtGui import QContextMenuEvent, QIntValidator, QColor, QFocusEvent, QInputMethodEvent, QKeyEvent, QKeySequence, QTextCursor, QMouseEvent, QPainter, QPen
 import numpy as np
 
 from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
 from .context_menu import create_text_edit_context_menu
+from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ...spellcheck import (
     SpellCheckHighlighter,
@@ -18,9 +19,15 @@ from ...spellcheck import (
 )
 
 
-STYLE_TRANSPAIR_CHECKED = "background-color: rgba(30, 147, 229, 20%);"
-STYLE_TRANSPAIR_BOTTOM = "border-width: 5px; border-bottom-style: solid; border-color: rgb(30, 147, 229);"
-STYLE_TRANSPAIR_TOP = "border-width: 5px; border-top-style: solid; border-color: rgb(30, 147, 229);"
+STYLE_TRANSPAIR_CHECKED = (
+    "background-color: rgba(30, 147, 229, 20%);"
+    # Checked reinforces state with an accent border — same color the
+    # editors' focus border and the drag drop indicator use.
+    "border: 1px solid rgb(30, 147, 229);"
+)
+# Accent used by the row-drag drop indicator — same color the old
+# top/bottom border hint (removed with the QDrag implementation) showed.
+DRAG_INDICATOR_COLOR = QColor(30, 147, 229)
 
 
 class FloatingSuggestionLabel(QWidget):
@@ -722,9 +729,7 @@ class RowIndexLabel(QStackedWidget):
 class TransPairWidget(Widget):
 
     check_state_changed = Signal(object, bool, bool)
-    drag_move = Signal(int)
     idx_edited = Signal(int, int)
-    pw_drop = Signal()
 
     def __init__(self, idx: int = None, fold: bool = False, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -752,35 +757,9 @@ class TransPairWidget(Widget):
         hlayout.setContentsMargins(0, 0, 0, 0)
         hlayout.setSpacing(spacing)
 
-        self.setAcceptDrops(True)
-
     def on_idx_edited(self, new_idx: int):
         new_idx -= 1
         self.idx_edited.emit(self.idx, new_idx)
-
-    def dragEnterEvent(self, e: QDragEnterEvent) -> None:
-        if isinstance(e.source(), TransPairWidget):
-            e.accept()
-        return super().dragEnterEvent(e)
-    
-    def handle_drag(self, pos: QPoint):
-        y = pos.y()
-        to_pos = self.idx
-        if y > self.size().height() / 2:
-            to_pos += 1
-        self.drag_move.emit(to_pos)
-    
-    def dragMoveEvent(self, e: QDragEnterEvent) -> None:
-        if isinstance(e.source(), TransPairWidget):
-            e.accept()
-            self.handle_drag(e.position())
-
-        return super().dragMoveEvent(e)
-
-    def dropEvent(self, e: QDropEvent) -> None:
-        if isinstance(e.source(), TransPairWidget):
-            e.acceptProposedAction()
-            self.pw_drop.emit()
 
     def _set_checked_state(self, checked: bool):
         """
@@ -816,6 +795,37 @@ class TransPairWidget(Widget):
             self.e_trans.idx = idx
 
 
+class _DragGapFrame(QFrame):
+    """Drop-slot indicator: translucent accent fill + dashed accent border.
+
+    QSS ``border-style: dashed`` renders thin, short segments that are hard
+    to notice, so the frame paints itself with QPainter: pen width, dash
+    lengths and radius are all controllable."""
+
+    PEN_WIDTH = 3
+    # In pen-width units: at 3px pen → 9px dash, 5.4px gap
+    DASH_PATTERN = (3.0, 1.8)
+    RADIUS = 6
+    FILL_ALPHA = 46
+
+    def paintEvent(self, event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        accent = DRAG_INDICATOR_COLOR
+        inset = self.PEN_WIDTH // 2 + 1
+        rect = self.rect().adjusted(inset, inset, -inset, -inset)
+        fill = QColor(accent)
+        fill.setAlpha(self.FILL_ALPHA)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(fill)
+        p.drawRoundedRect(rect, self.RADIUS, self.RADIUS)
+        pen = QPen(accent, self.PEN_WIDTH)
+        pen.setDashPattern(list(self.DASH_PATTERN))
+        p.setPen(pen)
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRoundedRect(rect, self.RADIUS, self.RADIUS)
+
+
 class TextEditListScrollArea(QScrollArea):
 
     textblock_list: List[TextBlock] = []
@@ -826,8 +836,38 @@ class TextEditListScrollArea(QScrollArea):
     textpanel_contextmenu_requested = Signal(QPoint, bool)
     focus_out = Signal()
 
+    # Class-level default: Qt re-enters eventFilter during
+    # QScrollArea.setWidget (before __init__ instance attributes exist),
+    # so reading _drag_active there must not raise.
+    _drag_active = False
+
+    # Pile folding: while dragging a multi-selection, card i sags i*PILE_PEEK
+    # below the pile top so every card's top strip (with its index) stays
+    # readable; the gap slot is sized to the folded pile height.
+    PILE_PEEK = 18
+    # Opacity (0-255, ~15%) of the dim overlay covering non-dragged content.
+    DIM_ALPHA = 38
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+
+        # ── Grab-style row drag state (see begin_rows_drag) ──
+        # Must be initialized before setWidget: eventFilter is re-entered
+        # during construction.
+        self._drag_pws: List[TransPairWidget] = []   # dragged group (sorted by orig idx)
+        self._rest: List[TransPairWidget] = []       # non-dragged rows (original order)
+        self._rest_y = {}                            # target y of the yielding rows
+        self._gap_slot = 0                           # drop slot (insert before rest[i])
+        self._spacing = 0
+        self._base_y = self._base_x = self._card_w = 0
+        self._gap_h = 0
+        self._drag_cursor_vp_y = 0.0
+        self._pile_offsets: List[int] = []           # pile fold offsets (pile top = 0)
+        self._drag_dim: QWidget = None
+        self._gap_frame: QFrame = None
+        self._auto_timer: QTimer = None
+        self._auto_speed = 0
+
         self.scrollContent = Widget(parent=self)
         self.setWidget(self.scrollContent)
 
@@ -844,116 +884,342 @@ class TextEditListScrollArea(QScrollArea):
         self.vlayout = vlayout
         self.checked_list: List[TransPairWidget] = []
         self.sel_anchor_widget: TransPairWidget = None
-        self.drag: QDrag = None
         self.dragStartPosition = None
 
         self.source_visible = True
         self.trans_visible = True
 
-        self.drag_to_pos: int = -1
-
         self.setSizePolicy(self.sizePolicy().horizontalPolicy(), QSizePolicy.Policy.Expanding)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
     def mouseReleaseEvent(self, e: QMouseEvent):
+        if self._drag_active:
+            if e.button() == Qt.MouseButton.LeftButton:
+                self._finish_drag()
+            return  # swallow other-button releases while dragging (context menu etc.)
         if e.button() == Qt.MouseButton.RightButton:
             pos = self.mapToGlobal(e.position()).toPoint()
             self.textpanel_contextmenu_requested.emit(pos, True)
+        self.dragStartPosition = None
         super().mouseReleaseEvent(e)
 
     def mousePressEvent(self, e: QMouseEvent) -> None:
+        if self._drag_active:
+            return
         if e.button() == Qt.MouseButton.LeftButton:
             self.dragStartPosition = e.pos()
         return super().mousePressEvent(e)
 
     def mouseMoveEvent(self, e: QMouseEvent) -> None:
-        if self.drag is None and self.sel_anchor_widget is not None and self.dragStartPosition is not None:
+        if self._drag_active:
+            self._drag_cursor_vp_y = e.position().y()
+            self._update_drag_frame()
+            return
+        if self.sel_anchor_widget is not None and self.dragStartPosition is not None:
             if (e.pos() - self.dragStartPosition).manhattanLength() < QApplication.startDragDistance():
                 return
             self.dragStartPosition = None
-            w = self.sel_anchor_widget
-            drag = self.drag = QDrag(w)
-            mime = QMimeData()
-            drag.setMimeData(mime)
-            pixmap = QPixmap(w.size())
-            w.render(pixmap)
-            drag.setPixmap(pixmap)
-            ac = drag.exec(Qt.DropAction.MoveAction)
-            self.drag = None
-            if self.drag_to_pos != -1:
-                self.set_drag_style(self.drag_to_pos, True)
-                self.drag_to_pos = -1
-            pass
+            self.begin_rows_drag(e.position().y())
 
         return super().mouseMoveEvent(e)
-    
-    def set_drag_style(self, pos: int, clear_style: bool = False):
-        if pos == len(self.pairwidget_list):
-            pos -= 1
-            style = STYLE_TRANSPAIR_BOTTOM
-        else:
-            style = STYLE_TRANSPAIR_TOP
-        if clear_style:
-            style = ""
-        pw = self.pairwidget_list[pos]
-        if pw.checked:
-            style += STYLE_TRANSPAIR_CHECKED
-        style = "TransPairWidget{" + style + "}"
-        pw.setStyleSheet(style)
-    
+
+    def wheelEvent(self, e) -> None:
+        super().wheelEvent(e)
+        if self._drag_active:
+            # Wheel keeps scrolling normally, but content coordinates changed:
+            # re-sync the dragged pile and the yielding arrangement.
+            self._update_drag_frame()
+
+    # ── Grab-style row drag with live yielding ─────────────────
+    # Differences from the old native-QDrag flow: the mouse is grabbed on
+    # the viewport (hover never leaks into the editors), the dragged group
+    # keeps its real rendering and folds into a pile that follows the
+    # cursor, non-dragged content sits under a dim overlay, a self-drawn
+    # dashed frame marks the drop slot, and the remaining rows yield in
+    # real time. The block list order only lands through rearrange_blks on
+    # release — dragging moves UI only, never data.
+
+    def begin_rows_drag(self, cursor_vp_y: float) -> None:
+        """Start a row drag. *cursor_vp_y* is the viewport y that triggered it
+        (the pile anchors there)."""
+        if self._drag_active:
+            return
+        n = len(self.pairwidget_list)
+        drags = sorted(self.checked_list, key=lambda w: w.idx)
+        if n < 2 or not drags or len(drags) == n:
+            return
+        self._drag_active = True
+        self._drag_pws = drags
+        self._rest = [w for w in self.pairwidget_list if w not in drags]
+        self._gap_slot = drags[0].idx
+        self._spacing = self.vlayout.spacing()
+        self._base_y = min(w.y() for w in self.pairwidget_list)
+        self._base_x = self._rest[0].x()
+        self._card_w = self._rest[0].width()
+        # Multi-selection folds into a pile: card i sags i*PILE_PEEK; the gap
+        # slot height follows the folded pile height.
+        self._pile_offsets = [i * self.PILE_PEEK for i in range(len(drags))]
+        self._gap_h = max(
+            off + w.height() for off, w in zip(self._pile_offsets, drags)
+        )
+        pile_top = int(cursor_vp_y + self.verticalScrollBar().value())
+        self._drag_cursor_vp_y = cursor_vp_y
+
+        QApplication.instance().installEventFilter(self)
+        # Primary deactivation hook is the signal: the ApplicationDeactivate
+        # event is not reliably delivered to app-level filters on Windows
+        # (BallonsTranslator-lite 2026-08-18 lesson, same workaround the
+        # pie menu there uses); the filter branch below is a fallback.
+        QApplication.instance().applicationStateChanged.connect(
+            self._on_app_state_changed
+        )
+        self.viewport().setCursor(Qt.CursorShape.ClosedHandCursor)
+        self.viewport().grabMouse()
+
+        # Layout takeover: rows leave the layout and get positioned manually.
+        # LayoutRequest only sees the stretch, so it never touches manually
+        # positioned rows; the minimum-height floor keeps widgetResizable
+        # from collapsing scrollContent (which would kill the scrollbar).
+        self.scrollContent.setMinimumHeight(self.scrollContent.height())
+        for w in self.pairwidget_list:
+            self.vlayout.removeWidget(w)
+
+        # Dim overlay over non-dragged content (WA_StyledBackground lets a
+        # plain QWidget take a QSS background color); the dragged pile and
+        # the indicator frame float above it at full native resolution.
+        self._drag_dim = QWidget(self.scrollContent)
+        self._drag_dim.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
+        self._drag_dim.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._drag_dim.setStyleSheet(
+            f"background-color: rgba(0, 0, 0, {self.DIM_ALPHA});"
+        )
+        self._drag_dim.setGeometry(
+            0, 0, self.scrollContent.width(), self.scrollContent.height()
+        )
+        self._drag_dim.show()
+
+        # Drop indicator frame (geometry refreshed by _apply_arrangement)
+        self._gap_frame = _DragGapFrame(self.scrollContent)
+        self._gap_frame.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
+
+        # Solid checked tint while piling: the 20%-alpha selection background
+        # would let text of lower cards bleed through the stack.
+        r, g, b = (
+            DRAG_INDICATOR_COLOR.red(),
+            DRAG_INDICATOR_COLOR.green(),
+            DRAG_INDICATOR_COLOR.blue(),
+        )
+        wr, wg, wb = shared.WIDGET_BACKGROUND_COLOR[:3]
+        mix = lambda t, s: int(round(t * 0.2 + s * 0.8))
+        solid = QColor(mix(r, wr), mix(g, wg), mix(b, wb)).name()
+        solid_style = (
+            f'TransPairWidget{{background-color: {solid};'
+            'border: 1px solid rgb(30, 147, 229);}'
+        )
+        for w in drags:
+            w.setStyleSheet(solid_style)
+
+        # Dragged group keeps its real widgets: jump to the cursor anchor,
+        # z-order rear-card-on-top so every top strip stays visible.
+        for w, off in zip(drags, self._pile_offsets):
+            w.move(w.x(), pile_top + off)
+        self._apply_arrangement()
+        self._gap_frame.show()
+        self._drag_dim.raise_()
+        self._gap_frame.raise_()
+        for w in drags:
+            w.raise_()
+
+    def _arrange_targets(self):
+        """Yielding arrangement: rest rows stack in order, the dragged group's
+        gap slot inserts before rest row ``_gap_slot``. Returns (target y per
+        row, gap top y)."""
+        ys = {}
+        y = self._base_y
+        gap_top = self._base_y
+        placed = False
+        for i, w in enumerate(self._rest):
+            if i == self._gap_slot:
+                gap_top = y
+                y += self._gap_h + self._spacing
+                placed = True
+            ys[w] = y
+            y += w.height() + self._spacing
+        if not placed:
+            gap_top = y  # gap at the end: below the last row
+        return ys, gap_top
+
+    def _apply_arrangement(self):
+        ys, gap_top = self._arrange_targets()
+        self._rest_y = ys
+        for w, ty in ys.items():
+            w.move(w.x(), ty)
+        if self._gap_frame is not None:
+            self._gap_frame.setGeometry(
+                self._base_x, gap_top, self._card_w, self._gap_h
+            )
+
+    def _update_gap(self, y_cursor: int):
+        """Yield decision (neighbor midpoints): cursor crossing the midpoint
+        of the row above the gap moves the gap up one slot, the row below
+        moves it down. Computed from the arrangement targets (not animated
+        positions); the while loop absorbs one fast event skipping rows."""
+        while True:
+            if self._gap_slot > 0:
+                above = self._rest[self._gap_slot - 1]
+                if y_cursor < self._rest_y[above] + above.height() / 2:
+                    self._gap_slot -= 1
+                    self._apply_arrangement()
+                    continue
+            if self._gap_slot < len(self._rest):
+                below = self._rest[self._gap_slot]
+                if y_cursor > self._rest_y[below] + below.height() / 2:
+                    self._gap_slot += 1
+                    self._apply_arrangement()
+                    continue
+            break
+
+    def _update_drag_frame(self):
+        sb = self.verticalScrollBar()
+        y_content = int(self._drag_cursor_vp_y + sb.value())
+        for w, off in zip(self._drag_pws, self._pile_offsets):
+            w.move(w.x(), y_content + off)
+        self._update_gap(y_content)
+        # Viewport edge auto-scroll (within 30px of top/bottom, faster when closer)
+        vp_h = self.viewport().height()
+        edge = 30
+        speed = 0
+        if self._drag_cursor_vp_y < edge:
+            speed = -max(3, int((edge - self._drag_cursor_vp_y) * 0.25))
+        elif self._drag_cursor_vp_y > vp_h - edge:
+            speed = max(3, int((self._drag_cursor_vp_y - (vp_h - edge)) * 0.25))
+        if speed:
+            self._auto_speed = speed
+            if self._auto_timer is None:
+                t = QTimer(self)
+                t.timeout.connect(self._auto_scroll_tick)
+                self._auto_timer = t
+                t.start(16)
+        elif self._auto_timer is not None:
+            self._auto_timer.stop()
+            self._auto_timer.deleteLater()
+            self._auto_timer = None
+
+    def _auto_scroll_tick(self):
+        sb = self.verticalScrollBar()
+        sb.setValue(sb.value() + self._auto_speed)
+        self._update_drag_frame()
+
+    def _restore_layout(self, order: List[TransPairWidget]):
+        for i, w in enumerate(order):
+            self.vlayout.insertWidget(i, w)
+        self.scrollContent.setMinimumHeight(0)
+
+    def _teardown_drag(self):
+        """Tear-down shared by finish and cancel: release grab, remove filter,
+        clear overlays."""
+        self._drag_active = False
+        QApplication.instance().removeEventFilter(self)
+        try:
+            QApplication.instance().applicationStateChanged.disconnect(
+                self._on_app_state_changed
+            )
+        except (TypeError, RuntimeError):
+            pass
+        try:
+            self.viewport().releaseMouse()
+        except RuntimeError:
+            pass
+        self.viewport().unsetCursor()
+        if self._auto_timer is not None:
+            self._auto_timer.stop()
+            self._auto_timer.deleteLater()
+            self._auto_timer = None
+        for w in (self._drag_dim, self._gap_frame):
+            if w is not None:
+                w.hide()
+                w.deleteLater()
+        self._drag_dim = None
+        self._gap_frame = None
+        for w in self._drag_pws:
+            if w.checked:
+                w.setStyleSheet('TransPairWidget{' + f'{STYLE_TRANSPAIR_CHECKED}' + '}')
+
+    def _finish_drag(self):
+        """Drop: snapshot current positions → restore layout in the new order
+        and activate it synchronously → land the reorder through
+        rearrange_blks (what you see is the final state)."""
+        if not self._drag_active:
+            return
+        self._teardown_drag()
+        new_order = (
+            self._rest[: self._gap_slot] + self._drag_pws + self._rest[self._gap_slot:]
+        )
+        self._restore_layout(new_order)
+        self.vlayout.activate()
+        self._drag_pws = []
+        self._rest = []
+        self._emit_rearrange_from_perm([w.idx for w in new_order])
+
+    def _cancel_drag(self):
+        if not self._drag_active:
+            return
+        self._teardown_drag()
+        self._restore_layout(self.pairwidget_list)  # original order, original slots
+        self.vlayout.activate()
+        self._drag_pws = []
+        self._rest = []
+
     def clearDrag(self):
-        self.drag_to_pos = -1
-        if self.drag is not None:
-            try:
-                self.drag.cancel()
-            except RuntimeError:
-                pass
-            self.drag = None
-    
-    def handle_drag_pos(self, to_pos: int):
-        if self.drag_to_pos != to_pos:
-            if self.drag_to_pos is not None:
-                self.set_drag_style(self.drag_to_pos, True)
-            self.drag_to_pos = to_pos
-            self.set_drag_style(to_pos)
+        """External clear request (e.g. focus moved away): cancel an active drag."""
+        if self._drag_active:
+            self._cancel_drag()
 
-    def on_pw_dropped(self):
-        if self.drag_to_pos != -1:
-            to_pos = self.drag_to_pos
-            self.drag_to_pos = -1
-            self.drag = None
-            self.set_drag_style(to_pos, True)
-            num_pw = len(self.pairwidget_list)
-            num_drags = len(self.checked_list)
-            if num_pw < 2 or num_drags == num_pw:
-                return
-            
-            tgt_pos = to_pos
-            drags = []
-            for pw in self.checked_list:
-                if pw.idx < tgt_pos:
-                    tgt_pos -= 1
-                drags.append(pw.idx)
-            new_pos = np.arange(num_drags, dtype=np.int32) + tgt_pos
-            drags = np.array(drags).astype(np.int32)
-            new_maps = np.where(drags != new_pos)
-            if len(new_maps) == 0:
-                return
+    def _on_app_state_changed(self, state) -> None:
+        """App-wide deactivation (screenshot overlay, window switch) cancels
+        the drag and restores the rows."""
+        if self._drag_active and state != Qt.ApplicationState.ApplicationActive:
+            self._cancel_drag()
 
-            drags_ori, drags_tgt = drags[new_maps], new_pos[new_maps]
-            result_list = list(range(len(self.pairwidget_list)))
-            to_insert = []
-            for ii, src_idx in enumerate(drags_ori):
-                pos = src_idx - ii
-                to_insert.append(result_list.pop(pos))
-            for ii, tgt_idx in enumerate(drags_tgt):
-                result_list.insert(tgt_idx, to_insert[ii])
-            drags_ori, drags_tgt = [], []
-            for ii, idx in enumerate(result_list):
-                if ii != idx:
-                    drags_ori.append(idx)
-                    drags_tgt.append(ii)
+    def eventFilter(self, obj, event) -> bool:
+        if self._drag_active:
+            t = event.type()
+            if t == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+                self._cancel_drag()
+                return True
+            if t == QEvent.Type.ApplicationDeactivate:
+                # Another window took over (e.g. a screenshot overlay): the
+                # frozen pile would linger and still follow wheel scrolling,
+                # then a stray click after refocusing would land the stale
+                # position. Cancel on focus loss, like the old QDrag flow did.
+                self._cancel_drag()
+                return False
+            if t in (QEvent.Type.HoverEnter, QEvent.Type.HoverMove):
+                # Swallow hovers inside the list while dragging so editors
+                # don't light up (mouse grab should isolate this already).
+                w = obj if isinstance(obj, QWidget) else None
+                while w is not None and w is not self.scrollContent:
+                    w = w.parentWidget()
+                if w is self.scrollContent:
+                    return True
+        return super().eventFilter(obj, event)
 
+    def _emit_rearrange_from_perm(self, result_list):
+        """Compute (drags_ori, drags_tgt) from a permutation list (each entry = old idx
+        at that position), emit rearrange_blks so on_rearrange_blks -> RearrangeBlksCommand
+        runs through the same path as drag-drop. Items unchanged are filtered out, so
+        unchanged blocks stay out of tgt_ids (updateTextBlkItemIdx won't touch them).
+        """
+        drags_ori, drags_tgt = [], []
+        for ii, idx in enumerate(result_list):
+            if ii != idx:
+                drags_ori.append(idx)
+                drags_tgt.append(ii)
+        if drags_ori:
             self.rearrange_blks.emit((drags_ori, drags_tgt))
 
 
@@ -995,7 +1261,7 @@ class TextEditListScrollArea(QScrollArea):
         shift_pressed: bool,
         ctrl_pressed: bool,
     ) -> None:
-        if self.drag is not None:
+        if self._drag_active:
             return
         
         idx = pwc.idx

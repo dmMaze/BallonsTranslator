@@ -384,6 +384,13 @@ TransTextEdit {
     background-color: @transtexteditBackgroundColor;
 }
 
+/* Row cards in the right text panel: a subtle card boundary so rows stay
+   distinguishable when they stack during multi-selection row drag. */
+TransPairWidget {
+    border: 1px solid @borderColor;
+    border-radius: 6px;
+}
+
 QComboBox {
     height: 25px;
     font-size: 13px;
