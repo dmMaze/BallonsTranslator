@@ -120,6 +120,34 @@ class DrawPanelMagicWandConfigTests(unittest.TestCase):
         self.assertEqual(cfg.magicwand_range, -50)
         self.assertEqual(cfg.magicwand_fill_mode, 0)
 
+    def test_malformed_optional_values_preserve_other_config(self) -> None:
+        import json
+        import tempfile
+        from pathlib import Path
+        from ballontranslator.utils.config import ProgramConfig
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'config.json'
+            for invalid in (None, 'bad', [], {}, float('inf'), float('nan'), 1.5):
+                with self.subTest(invalid=invalid):
+                    path.write_text(json.dumps({
+                        'display_lang': 'en_US',
+                        'drawpanel': {
+                            'pentool_width': 123,
+                            'inpainter_shape': invalid,
+                            'magicwand_tolerance': invalid,
+                            'magicwand_range': invalid,
+                            'magicwand_fill_mode': invalid,
+                        },
+                    }).replace('Infinity', '1e309'), encoding='utf-8')
+                    cfg = ProgramConfig.load(str(path))
+                    self.assertEqual(cfg.display_lang, 'en_US')
+                    self.assertEqual(cfg.drawpanel.pentool_width, 123)
+                    self.assertEqual(cfg.drawpanel.inpainter_shape, 0)
+                    self.assertEqual(cfg.drawpanel.magicwand_tolerance, 32)
+                    self.assertEqual(cfg.drawpanel.magicwand_range, 0)
+                    self.assertEqual(cfg.drawpanel.magicwand_fill_mode, 0)
+
 
 class InpaintMagicWandPanelTests(unittest.TestCase):
 
@@ -190,18 +218,26 @@ class InpaintMagicWandPanelTests(unittest.TestCase):
 
         canvas = Canvas()
         panel = DrawingPanel(canvas)
+        panel.show()
         panel.inpaintTool.setChecked(True)
         panel.on_use_inpainttool()
         self.assertEqual(canvas.image_edit_mode, ImageEditMode.InpaintTool)
 
         canvas.image_edit_mode = ImageEditMode.NONE
         panel.clearInpaintItems()
-        self.assertEqual(canvas.image_edit_mode, ImageEditMode.InpaintTool)
+        self.assertEqual(canvas.image_edit_mode, ImageEditMode.NONE)
 
         canvas.image_edit_mode = ImageEditMode.NONE
         panel.setInpaintShape(PenShape.Rectangle)
-        self.assertEqual(canvas.image_edit_mode, ImageEditMode.InpaintTool)
+        self.assertEqual(canvas.image_edit_mode, ImageEditMode.NONE)
         self.assertEqual(canvas.painting_shape, PenShape.Rectangle)
+
+        panel.on_inpaint_failed()
+        self.assertEqual(canvas.image_edit_mode, ImageEditMode.InpaintTool)
+        canvas.setPaintMode(False)
+        panel.hide()
+        panel.on_inpaint_failed()
+        self.assertEqual(canvas.image_edit_mode, ImageEditMode.NONE)
 
         panel.deleteLater()
         canvas.deleteLater()

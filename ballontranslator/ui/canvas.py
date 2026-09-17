@@ -211,6 +211,7 @@ class Canvas(QGraphicsScene):
     scale_tool = Signal(QPointF)
     end_scale_tool = Signal()
     magic_wand_clicked = Signal(QPointF, bool)
+    image_layers_updated = Signal()
     canvas_undostack_changed = Signal()
     
     imgtrans_proj: ProjImgTrans = None
@@ -648,6 +649,7 @@ class Canvas(QGraphicsScene):
 
         painter.end()
         self.inpaintLayer.setPixmap(pixmap)
+        self.image_layers_updated.emit()
 
     def setMaskTransparency(self, transparency: float):
         pcfg.mask_transparency = transparency
@@ -1200,12 +1202,12 @@ class Canvas(QGraphicsScene):
 
             elif btn == Qt.MouseButton.LeftButton:
                 # user is drawing using the pen/inpainting tool
-                if self.painting and self.painting_shape == PenShape.MagicWand:
+                if self.scale_tool_mode:
+                    self.begin_scale_tool.emit(event.scenePos())
+                elif self.painting and self.painting_shape == PenShape.MagicWand:
                     self.magic_wand_clicked.emit(event.scenePos(), False)
                     event.accept()
                     return
-                elif self.scale_tool_mode:
-                    self.begin_scale_tool.emit(event.scenePos())
                 elif self.painting:
                     self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.painting_pen)
 

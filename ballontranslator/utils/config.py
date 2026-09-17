@@ -247,6 +247,12 @@ class ModuleConfig(Config):
 
 @nested_dataclass
 class DrawPanelConfig(Config):
+    """Recover optional drawing settings independently when loading saved data.
+
+    >>> DrawPanelConfig().magicwand_tolerance
+    32
+    """
+
     pentool_color: List = field(default_factory=lambda: [0, 0, 0])
     pentool_width: float = 30.
     pentool_shape: int = 0
@@ -261,54 +267,27 @@ class DrawPanelConfig(Config):
     recttool_dilate_ksize: int = 2
 
     def __post_init__(self) -> None:
-        if self.inpainter_shape not in (0, 1, 2):
-            LOGGER.warning(
-                'Discard invalid drawpanel.inpainter_shape %r.',
-                self.inpainter_shape,
-            )
-            self.inpainter_shape = 0
-        try:
-            self.magicwand_tolerance = int(self.magicwand_tolerance)
-        except (TypeError, ValueError):
-            LOGGER.warning(
-                'Discard invalid drawpanel.magicwand_tolerance %r.',
-                self.magicwand_tolerance,
-            )
-            self.magicwand_tolerance = 32
-        if self.magicwand_tolerance < 0 or self.magicwand_tolerance > 255:
-            LOGGER.warning(
-                'Discard out-of-range drawpanel.magicwand_tolerance %r.',
-                self.magicwand_tolerance,
-            )
-            self.magicwand_tolerance = min(max(self.magicwand_tolerance, 0), 255)
-        try:
-            self.magicwand_range = int(self.magicwand_range)
-        except (TypeError, ValueError):
-            LOGGER.warning(
-                'Discard invalid drawpanel.magicwand_range %r.',
-                self.magicwand_range,
-            )
-            self.magicwand_range = 0
-        if self.magicwand_range < -50 or self.magicwand_range > 50:
-            LOGGER.warning(
-                'Discard out-of-range drawpanel.magicwand_range %r.',
-                self.magicwand_range,
-            )
-            self.magicwand_range = min(max(self.magicwand_range, -50), 50)
-        try:
-            self.magicwand_fill_mode = int(self.magicwand_fill_mode)
-        except (TypeError, ValueError):
-            LOGGER.warning(
-                'Discard invalid drawpanel.magicwand_fill_mode %r.',
-                self.magicwand_fill_mode,
-            )
-            self.magicwand_fill_mode = 0
-        if self.magicwand_fill_mode not in (0, 1, 2):
-            LOGGER.warning(
-                'Discard invalid drawpanel.magicwand_fill_mode %r.',
-                self.magicwand_fill_mode,
-            )
-            self.magicwand_fill_mode = 0
+        for name, default, minimum, maximum in (
+            ('inpainter_shape', 0, 0, 2),
+            ('magicwand_tolerance', 32, 0, 255),
+            ('magicwand_range', 0, -50, 50),
+            ('magicwand_fill_mode', 0, 0, 2),
+        ):
+            raw = getattr(self, name)
+            try:
+                value = int(raw)
+                if isinstance(raw, float) and raw != value:
+                    raise ValueError('Expected an integer.')
+            except (TypeError, ValueError, OverflowError):
+                LOGGER.warning('Discard invalid drawpanel.%s %r.', name, raw)
+                value = default
+            if not minimum <= value <= maximum:
+                LOGGER.warning('Discard out-of-range drawpanel.%s %r.', name, raw)
+                value = (
+                    default if name in ('inpainter_shape', 'magicwand_fill_mode')
+                    else min(max(value, minimum), maximum)
+                )
+            setattr(self, name, value)
 
 @nested_dataclass
 class PackageManagerConfig(Config):
