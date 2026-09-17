@@ -334,57 +334,6 @@ class Flux2KleinInpaintPipeline(DiffusionPipeline, Flux2LoraLoaderMixin):
         return latent_ids
 
     @staticmethod
-    # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._prepare_image_ids
-    def _prepare_image_ids(
-        image_latents: list[torch.Tensor],  # [(1, C, H, W), (1, C, H, W), ...]
-        scale: int = 10,
-    ):
-        r"""
-        Generates 4D time-space coordinates (T, H, W, L) for a sequence of image latents.
-
-        This function creates a unique coordinate for every pixel/patch across all input latent with different
-        dimensions.
-
-        Args:
-            image_latents (list[torch.Tensor]):
-                A list of image latent feature tensors, typically of shape (C, H, W).
-            scale (int, optional):
-                A factor used to define the time separation (T-coordinate) between latents. T-coordinate for the i-th
-                latent is: 'scale + scale * i'. Defaults to 10.
-
-        Returns:
-            torch.Tensor:
-                The combined coordinate tensor. Shape: (1, N_total, 4) Where N_total is the sum of (H * W) for all
-                input latents.
-
-        Coordinate Components (Dimension 4):
-            - T (Time): The unique index indicating which latent image the coordinate belongs to.
-            - H (Height): The row index within that latent image.
-            - W (Width): The column index within that latent image.
-            - L (Seq. Length): A sequence length dimension, which is always fixed at 0 (size 1)
-        """
-
-        if not isinstance(image_latents, list):
-            raise ValueError(f"Expected `image_latents` to be a list, got {type(image_latents)}.")
-
-        # create time offset for each reference image
-        t_coords = [scale + scale * t for t in torch.arange(0, len(image_latents))]
-        t_coords = [t.view(-1) for t in t_coords]
-
-        image_latent_ids = []
-        for x, t in zip(image_latents, t_coords):
-            x = x.squeeze(0)
-            _, height, width = x.shape
-
-            x_ids = torch.cartesian_prod(t, torch.arange(height), torch.arange(width), torch.arange(1))
-            image_latent_ids.append(x_ids)
-
-        image_latent_ids = torch.cat(image_latent_ids, dim=0)
-        image_latent_ids = image_latent_ids.unsqueeze(0)
-
-        return image_latent_ids
-
-    @staticmethod
     # Copied from diffusers.pipelines.flux2.pipeline_flux2.Flux2Pipeline._patchify_latents
     def _patchify_latents(latents):
         batch_size, num_channels_latents, height, width = latents.shape
