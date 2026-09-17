@@ -85,11 +85,23 @@ MODULE_PARAM_CATALOG = {
     ('inpainter', 'lama_large_512px', 'precision', 'display_name'): {
         "source": 'precision', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'precision'),
     },
+    ('inpainter', 'lama_large_512px', 'preserve screentones', 'description'): {
+        "source": 'Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.'),
+    },
+    ('inpainter', 'lama_large_512px', 'preserve screentones', 'display_name'): {
+        "source": 'Preserve Screentones (Experimental)', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Preserve Screentones (Experimental)'),
+    },
     ('inpainter', 'lama_mpe', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
     },
     ('inpainter', 'lama_mpe', 'inpaint_size', 'display_name'): {
         "source": 'Inpaint Size', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Inpaint Size'),
+    },
+    ('inpainter', 'lama_mpe', 'preserve screentones', 'description'): {
+        "source": 'Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.'),
+    },
+    ('inpainter', 'lama_mpe', 'preserve screentones', 'display_name'): {
+        "source": 'Preserve Screentones (Experimental)', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Preserve Screentones (Experimental)'),
     },
     ('ocr', 'LLMOCR', '', 'description'): {
         "source": 'OCR using the selected vision-capable LLM profile.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'OCR using the selected vision-capable LLM profile.'),

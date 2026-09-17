@@ -2747,6 +2747,14 @@ All existing translation results will be cleared!</source>
         <translation>인페인트 크기</translation>
     </message>
     <message>
+        <source>Preserve Screentones (Experimental)</source>
+        <translation>망점 보존 (실험적)</translation>
+    </message>
+    <message>
+        <source>Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.</source>
+        <translation>인페인팅 후 주변 배경에서 규칙적인 흑백 망점을 복원하며 명암과 뚜렷한 윤곽을 유지합니다. 근거가 부족한 영역은 일반 인페인팅 결과를 유지합니다.</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="74"/>
         <source>model</source>
         <translation>모델</translation>
