@@ -1347,6 +1347,7 @@ class ModuleManager(QObject):
     imgtrans_proj: ProjImgTrans = None
 
     canvas_inpaint_finished = Signal(dict)
+    canvas_inpaint_failed = Signal()
     inpaint_th_finished = Signal()
 
     imgtrans_pipeline_finished = Signal()
@@ -1363,6 +1364,8 @@ class ModuleManager(QObject):
                  *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.imgtrans_proj = imgtrans_proj
+        self._pending_canvas_inpaint: Optional[dict] = None
+        self._canvas_inpaint_source: Optional[np.ndarray] = None
         self.check_inpaint_fin_timer = QTimer(self)
         self.check_inpaint_fin_timer.timeout.connect(self.check_inpaint_th_finished)
         self.prepare_msgbox: ProgressMessageBox = None
@@ -1395,6 +1398,8 @@ class ModuleManager(QObject):
 
         self.inpaint_thread = InpaintThread()
         self.inpaint_thread.finish_inpaint.connect(self.on_finish_inpaint)
+        self.inpaint_thread.inpaint_failed.connect(self.on_canvas_inpaint_failed)
+        self.inpaint_thread.finished.connect(self._continue_canvas_inpaint)
 
         self.prepare_msgbox = ProgressMessageBox(self.tr('Preparing module: '), True, parent_widget)
         self.prepare_msgbox.stop_clicked.connect(self.cancelModulePreparation)
@@ -2276,20 +2281,68 @@ class ModuleManager(QObject):
         self._show_prepare_dialog(self.ocr_thread, ocr)
         self.ocr_thread.setOCR(ocr)
 
-    def on_finish_inpaint(self, inpaint_dict: dict):
-        if self.run_canvas_inpaint:
+    def on_finish_inpaint(self, inpaint_dict: dict) -> None:
+        apply_result = (
+            self.run_canvas_inpaint
+            and self._canvas_inpaint_source is self.imgtrans_proj.inpainted_array
+        )
+        self.run_canvas_inpaint = False
+        self._canvas_inpaint_source = None
+        if apply_result:
             self.canvas_inpaint_finished.emit(inpaint_dict)
-            self.run_canvas_inpaint = False
 
-    def canvas_inpaint(self, inpaint_dict):
+    def canvas_inpaint(self, inpaint_dict: dict) -> None:
+        """Keep a canvas request until module preparation and the worker finish.
+
+        >>> manager.canvas_inpaint(request)  # doctest: +SKIP
+        """
+        # The page may change while this request waits for an older inference.
+        self._pending_canvas_inpaint = {
+            **inpaint_dict,
+            'img': inpaint_dict['img'].copy(),
+            'mask': inpaint_dict['mask'].copy(),
+        }
+        self._continue_canvas_inpaint()
+
+    def _continue_canvas_inpaint(self) -> None:
+        if (
+            self._pending_canvas_inpaint is None
+            or self.inpaint_thread.isRunning()
+            or self._pending_prepare_success is not None
+            or self._pending_batch_package_success is not None
+        ):
+            return
         self._prepare_modules_then(
             [('inpainter', cfg_module.inpainter)],
-            lambda: self._start_canvas_inpaint(inpaint_dict),
+            self._start_canvas_inpaint,
+            self._fail_pending_canvas_inpaint,
         )
 
-    def _start_canvas_inpaint(self, inpaint_dict):
+    def _start_canvas_inpaint(self) -> None:
+        # finish_set_module can be delivered before QThread.run() returns.
+        # QThread.finished resumes the request if the worker is still busy.
+        if self._pending_canvas_inpaint is None or self.inpaint_thread.isRunning():
+            return
+        inpaint_dict = self._pending_canvas_inpaint
+        self._pending_canvas_inpaint = None
+        self._canvas_inpaint_source = self.imgtrans_proj.inpainted_array
         self.run_canvas_inpaint = True
         self.inpaint(**inpaint_dict)
+
+    def _fail_pending_canvas_inpaint(self) -> None:
+        if self._pending_canvas_inpaint is not None:
+            self._pending_canvas_inpaint = None
+            self.canvas_inpaint_failed.emit()
+
+    def on_canvas_inpaint_failed(self) -> None:
+        notify = (
+            self.run_canvas_inpaint
+            and self._canvas_inpaint_source is self.imgtrans_proj.inpainted_array
+        )
+        self.run_canvas_inpaint = False
+        self._canvas_inpaint_source = None
+        if notify:
+            self.canvas_inpaint_failed.emit()
     
     def moduleParams(self, module_key: str, module_name: str) -> dict:
         return cfg_module.get_params(module_key).get(module_name)
@@ -2387,8 +2440,10 @@ class ModuleManager(QObject):
         else:
             module.updateParam(param_key, param_content['content'])
 
-    def handle_page_changed(self):
+    def handle_page_changed(self) -> None:
         if not self.imgtrans_thread.isRunning():
-            if self.inpaint_thread.inpainting:
-                self.run_canvas_inpaint = False
-                self.inpaint_thread.terminate()
+            # Killing a QThread inside native model inference can abort the
+            # process. Let it finish, discard its result, then run the next page.
+            self._pending_canvas_inpaint = None
+            self.run_canvas_inpaint = False
+            self._canvas_inpaint_source = None

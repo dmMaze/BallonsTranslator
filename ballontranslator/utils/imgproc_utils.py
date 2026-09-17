@@ -523,7 +523,7 @@ def magic_wand_mask(
         upDiff=up_diff,
         flags=flags,
     )
-    result = np.where(ff_mask[1:-1, 1:-1] == 255, 255, 0).astype(np.uint8)
+    result = ff_mask[1:-1, 1:-1].copy()
     result = magic_wand_apply_fill_mode(result, fill_mode)
 
     ksize = abs(int(radius))
@@ -554,9 +554,8 @@ def magic_wand_preview_overlay(
     """
     if mask is None or mask.size == 0 or int(mask.max()) == 0:
         return None
-    ys, xs = np.where(mask > 0)
-    x1, x2 = int(xs.min()), int(xs.max()) + 1
-    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    x1, y1, width, height = cv2.boundingRect(mask)
+    x2, y2 = x1 + width, y1 + height
     crop = mask[y1:y2, x1:x2]
     overlay = np.zeros((crop.shape[0], crop.shape[1], 4), dtype=np.uint8)
     overlay[crop > 0] = color_rgba

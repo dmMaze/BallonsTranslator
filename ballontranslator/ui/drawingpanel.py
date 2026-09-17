@@ -637,7 +637,7 @@ class DrawingPanel(Widget):
     def initDLModule(self, module_manager: ModuleManager):
         self.module_manager = module_manager
         module_manager.canvas_inpaint_finished.connect(self.on_inpaint_finished)
-        module_manager.inpaint_thread.inpaint_failed.connect(self.on_inpaint_failed)
+        module_manager.canvas_inpaint_failed.connect(self.on_inpaint_failed)
 
     def setInpaintToolWidth(self, width):
         self.inpaint_pen.setWidthF(width)
@@ -700,9 +700,8 @@ class DrawingPanel(Widget):
         )
         if mask is None or mask.size == 0 or int(mask.max()) == 0:
             return
-        ys, xs = np.where(mask > 0)
-        x1, x2 = int(xs.min()), int(xs.max()) + 1
-        y1, y2 = int(ys.min()), int(ys.max()) + 1
+        x1, y1, width, height = cv2.boundingRect(mask)
+        x2, y2 = x1 + width, y1 + height
         crop_mask = mask[y1:y2, x1:x2]
         inpaint_rect = [x1, y1, x2, y2]
         if erasing:
@@ -755,8 +754,9 @@ class DrawingPanel(Widget):
             self.clear_magic_wand_preview()
             return
         self._magic_wand_hover_pos = QPointF(scene_pos)
-        if not self._magic_wand_hover_timer.isActive():
-            self._magic_wand_hover_timer.start()
+        # Wait for the pointer to settle instead of copying/repainting a full
+        # page repeatedly during mouse movement.
+        self._magic_wand_hover_timer.start()
 
     def _refresh_magic_wand_preview(self) -> None:
         self.clear_magic_wand_preview(clear_pos=False)
@@ -1110,6 +1110,7 @@ class DrawingPanel(Widget):
 
         self.canvas.image_edit_mode = ImageEditMode.NONE
         self._sync_magic_wand_hover_tracking()
+        self.canvas.set_canvas_cursor(Qt.CursorShape.WaitCursor)
         self.module_manager.canvas_inpaint(inpaint_dict)
 
     def on_inpaint_finished(self, inpaint_dict: dict) -> None:
@@ -1130,8 +1131,10 @@ class DrawingPanel(Widget):
         if self.isVisible() and self.canvas.drawMode():
             if self.currentTool is self.inpaintTool:
                 self.canvas.image_edit_mode = ImageEditMode.InpaintTool
+                self.setInpaintCursor()
             elif self.currentTool is self.rectTool:
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
+                self.setCrossCursor()
         self._sync_magic_wand_hover_tracking()
 
     def on_canvasctrl_released(self):
@@ -1208,6 +1211,9 @@ class DrawingPanel(Widget):
 
     def setInpaintCursor(self) -> None:
         if not self.isVisible() or self.currentTool != self.inpaintTool:
+            return
+        if self.canvas.image_edit_mode == ImageEditMode.NONE:
+            self.canvas.set_canvas_cursor(Qt.CursorShape.WaitCursor)
             return
         if self.inpaintConfigPanel.is_magic_wand():
             self.canvas.set_canvas_cursor(magic_wand_cursor())
