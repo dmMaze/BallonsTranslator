@@ -46,11 +46,13 @@ only that ID. It relies on an observed Qt implementation side effect, not a
 public refresh guarantee. It never clears all application fonts. Resources
 are packaged with the application and do not require matplotlib or downloads.
 
-Publication replaces the system registry and `shared.FONT_FAMILIES`, registers
-safe Qt aliases, clears character-width and punctuation caches, and updates
-the family/weight choices. Missing selected families remain stored; refresh
-must not emit formatting edits or add undo commands. Project JSON is unchanged.
-Existing canvas documents are not forcibly reshaped or rerendered.
+Publication rebuilds system entries excluding owned custom registrations,
+preserving custom groups and their exclusions. It replaces `shared.FONT_FAMILIES`,
+registers safe Qt aliases, and clears character-width and punctuation caches.
+The main window reshapes live canvas text and refreshes its effects before
+updating the family/weight choices, so preview and export use the same fonts.
+Missing selected families and saved exclusions remain stored; refresh does not
+edit document formatting or add undo commands. Project JSON fields are unchanged.
 
 The reload arrow rotates while refreshing and stops when finished. Animation
 pauses while hidden; the tooltip retains the last completion or failure state
@@ -94,4 +96,4 @@ and macOS; on Linux test manual refresh through xcb and Wayland. Check repeated
 refresh, selected missing families, custom-file replacement, other application
 font IDs, excluded/custom-only filters, and themed UI responsiveness. Record
 Qt version and backend; a passing offscreen check does not certify native
-font discovery or immediate canvas reflow.
+font discovery.

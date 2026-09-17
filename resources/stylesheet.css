@@ -1476,6 +1476,27 @@ QFontChecker::indicator::checked {
     background-color: rgb(30, 147, 229);
 }
 
+QToolButton#FontReloadButton {
+    min-width: 19px;
+    max-width: 19px;
+    min-height: 19px;
+    max-height: 19px;
+    padding: 0px;
+    border: 2px solid transparent;
+    border-radius: 0px;
+    background-color: transparent;
+}
+
+QToolButton#FontReloadButton:hover:enabled,
+QToolButton#FontReloadButton:focus:enabled {
+    background-color: rgba(30, 147, 229, 20%);
+}
+
+QToolButton#FontReloadButton:pressed:enabled {
+    border-color: rgb(30, 147, 229);
+    background-color: rgb(30, 147, 229);
+}
+
 #NestedStrokeColorPicker {
     min-width: 26px;
     max-width: 26px;

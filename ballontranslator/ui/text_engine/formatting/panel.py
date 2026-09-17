@@ -14,7 +14,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qtpy.QtCore import QElapsedTimer, QLocale, QModelIndex, QRectF, QSize, QSignalBlocker, QTimer, Signal, Qt
+from qtpy.QtCore import QElapsedTimer, QLocale, QModelIndex, QSignalBlocker, QTimer, Signal, Qt
 from qtpy.QtGui import (
     QActionGroup,
     QColor,
@@ -25,9 +25,7 @@ from qtpy.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
-    QPainterPath,
     QPaintEvent,
-    QPalette,
     QShowEvent,
     QPen,
     QPixmap,
@@ -56,6 +54,8 @@ from ...custom_widget import (
     TextCheckerLabel,
     Widget,
 )
+from ...icon_rendering import render_svg_pixmap
+from ...misc import themed_icon_path
 from ..item import TextBlkItem
 from ..font_family import qfont_with_family
 from ..annotations import (
@@ -795,13 +795,14 @@ class FontFamilyComboBox(QComboBox):
 
 
 class FontReloadButton(QToolButton):
-    """Paint a theme-colored reload arrow and animate only while busy and visible.
+    """Show the themed reload SVG and animate only while busy and visible.
 
     >>> issubclass(FontReloadButton, QToolButton)
     True
     """
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
+        self.setObjectName('FontReloadButton')
         self._busy = False
         self._angle = 0.0
         self._elapsed = QElapsedTimer()
@@ -809,10 +810,6 @@ class FontReloadButton(QToolButton):
         self._rotation_timer.setInterval(30)
         self._rotation_timer.timeout.connect(self._advance_rotation)
         self.setAccessibleName(self.tr('Reload fonts'))
-
-    def sizeHint(self) -> QSize:
-        side = max(24, self.fontMetrics().height() + 8)
-        return QSize(side, side)
 
     def set_busy(self, busy: bool) -> None:
         if self._busy == busy:
@@ -843,21 +840,21 @@ class FontReloadButton(QToolButton):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
+        icon = (
+            'fontfmt_reload_activate.svg'
+            if self.isDown() and self.isEnabled()
+            else 'fontfmt_reload.svg'
+        )
+        pixmap = render_svg_pixmap(
+            themed_icon_path(icon), 20, 20, self.devicePixelRatioF(),
+        )
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.translate(self.width() / 2, self.height() / 2)
         painter.rotate(self._angle)
-        color = self.palette().color(QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText)
-        pen = QPen(color, 1.5)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-        painter.drawArc(QRectF(-6, -6, 12, 12), 40 * 16, 290 * 16)
-        arrow = QPainterPath()
-        arrow.moveTo(1.5, -5.3)
-        arrow.lineTo(5.0, -3.4)
-        arrow.lineTo(5.0, -7.4)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.fillPath(arrow, color)
+        if not self.isEnabled():
+            painter.setOpacity(0.45)
+        painter.drawPixmap(-10, -10, pixmap)
         painter.end()
 
 
@@ -1042,15 +1039,15 @@ class FontFormatPanel(Widget):
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
         font_selector_layout = QHBoxLayout()
+        font_selector_layout.addWidget(self.colorPicker)
         font_selector_layout.addWidget(self.familybox, 1)
         if self.reloadFontsButton is not None:
             font_selector_layout.addWidget(self.reloadFontsButton)
-        font_selector_layout.addWidget(self.fontWeightBox)
-        font_selector_layout.setSpacing(7)
+        font_selector_layout.setSpacing(4)
         font_selector_layout.setContentsMargins(0, 0, 0, 0)
-        hl1.addWidget(self.colorPicker)
         hl1.addLayout(font_selector_layout, 1)
-        hl1.setSpacing(4)
+        hl1.addWidget(self.fontWeightBox)
+        hl1.setSpacing(7)
         hl1.setContentsMargins(0, 11, 0, 0)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)

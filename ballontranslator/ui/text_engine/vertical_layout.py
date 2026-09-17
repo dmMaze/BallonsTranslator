@@ -636,6 +636,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         # Match minSize()'s guard against Qt's fractional metric rounding.
         return 0.0 if growth <= 1e-6 else growth + 0.01
 
+    def invalidate_native_metrics(self) -> None:
+        """Discard columns shaped before a font database change."""
+        self._plain_column_cache.clear()
+        self.reLayoutEverything()
+
     def reLayout(self) -> None:
         self._begin_layout_generation()
         doc = self.document()

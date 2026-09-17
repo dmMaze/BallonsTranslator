@@ -185,8 +185,18 @@ def refresh_font_registry(
     custom_entries = previous.custom_entries if files is None else build_custom_entries(
         [face for registration in registrations.values() for face in registration.faces], custom_groups,
     )
+    # Qt lists application fonts alongside system fonts. Keep grouped custom
+    # members from reappearing as separate rows that bypass group exclusions.
+    # Populate Qt's database after removals before reading the surviving IDs.
+    families = set(database.families())
+    custom_families = {
+        family
+        for registration in registrations.values()
+        for family in database.applicationFontFamilies(registration.font_id)
+    }
     system_entries = merge_system_alias_entries(
-        [_system_entry(database, family) for family in sorted(database.families(), key=str.casefold)],
+        [_system_entry(database, family)
+         for family in sorted(families - custom_families, key=str.casefold)],
         system_aliases,
     )
     registry = FontRegistry(custom_entries=custom_entries, system_entries=system_entries,

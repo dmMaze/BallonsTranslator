@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import ctypes
 import gc
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import weakref
 
 import pytest
+from qtpy import QT6
 from qtpy.QtCore import QCoreApplication, QEvent, QObject
 from qtpy.QtGui import QFontDatabase
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.utils import shared
-from ballontranslator.utils.font_registry import build_font_registry
+from ballontranslator.utils.font_registry import build_font_registry, load_custom_group_table
 from ballontranslator.utils.font_refresh import (
     FontconfigRefresh, invalidate_qt_fonts, refresh_font_registry,
     reinitialize_current_fontconfig, runtime_font_refresh_supported, scan_custom_fonts,
@@ -26,6 +28,18 @@ SEED = Path(__file__).resolve().parents[1] / 'ballontranslator/assets/font_refre
 @pytest.fixture
 def app():
     return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def database(app: QApplication) -> QFontDatabase | type[QFontDatabase]:
+    return QFontDatabase if QT6 else QFontDatabase()
+
+
+@pytest.fixture
+def runtime_app(app: QApplication) -> QApplication:
+    if not runtime_font_refresh_supported():
+        pytest.skip('Qt 6.4+ GUI required')
+    return app
 
 
 @pytest.mark.parametrize('version,headless,expected', [
@@ -69,13 +83,13 @@ def test_fontconfig_c_signature_and_failure(success, status):
     library.FcConfigGetRescanInterval.assert_called_once_with(123)
 
 
-def test_invalidate_preserves_other_application_fonts(app):
+def test_invalidate_preserves_other_application_fonts(database) -> None:
     font_id = QFontDatabase.addApplicationFont(str(SEED))
     assert font_id >= 0
     try:
         expected = QFontDatabase.applicationFontFamilies(font_id)
         invalidate_qt_fonts(QFontDatabase, SEED.read_bytes())
-        assert all(family in QFontDatabase.families() for family in expected)
+        assert all(family in database.families() for family in expected)
         assert QFontDatabase.applicationFontFamilies(font_id) == expected
     finally:
         QFontDatabase.removeApplicationFont(font_id)
@@ -92,27 +106,27 @@ def test_scan_unchanged_and_unreadable_files(tmp_path):
         assert scan_custom_fonts(tmp_path, {}) == {key: None}
 
 
-def test_custom_add_replace_remove_and_automatic_reuse(app, tmp_path):
+def test_custom_add_replace_remove_and_automatic_reuse(database, tmp_path: Path) -> None:
     path = tmp_path / 'font.ttf'
     path.write_bytes(SEED.read_bytes())
-    registry = build_font_registry(QFontDatabase, [str(path)], QFontDatabase.families())
+    registry = build_font_registry(database, [str(path)], database.families())
     try:
         key = str(path.resolve())
         old_id = registry.registrations[key].font_id
         # A system-only refresh reuses custom entries without reading files.
-        updated = refresh_font_registry(QFontDatabase, registry, 'en-US', {}, {})
+        updated = refresh_font_registry(database, registry, 'en-US', {}, {})
         assert updated.custom_entries is registry.custom_entries
         assert updated.registrations[key].font_id == old_id
         files = scan_custom_fonts(tmp_path, {key: registry.registrations[key].fingerprint})
-        registry = refresh_font_registry(QFontDatabase, updated, 'en-US', {}, {}, files)
+        registry = refresh_font_registry(database, updated, 'en-US', {}, {}, files)
         assert registry.registrations[key].font_id == old_id
         path.write_bytes(SEED.read_bytes() + b'\0')
         files = scan_custom_fonts(tmp_path, {key: registry.registrations[key].fingerprint})
-        registry = refresh_font_registry(QFontDatabase, registry, 'en-US', {}, {}, files)
+        registry = refresh_font_registry(database, registry, 'en-US', {}, {}, files)
         assert registry.registrations[key].font_id != old_id
         assert QFontDatabase.applicationFontFamilies(old_id) == []
         path.unlink()
-        registry = refresh_font_registry(QFontDatabase, registry, 'en-US', {}, {}, scan_custom_fonts(tmp_path, {}))
+        registry = refresh_font_registry(database, registry, 'en-US', {}, {}, scan_custom_fonts(tmp_path, {}))
         assert not registry.custom_entries
         assert not registry.registrations
     finally:
@@ -120,20 +134,143 @@ def test_custom_add_replace_remove_and_automatic_reuse(app, tmp_path):
             QFontDatabase.removeApplicationFont(record.font_id)
 
 
-def test_bad_replacement_keeps_registered_font(app, tmp_path):
+def test_bad_replacement_keeps_registered_font(database, tmp_path: Path) -> None:
     path = tmp_path / 'font.ttf'
     path.write_bytes(SEED.read_bytes())
-    registry = build_font_registry(QFontDatabase, [str(path)], QFontDatabase.families())
+    registry = build_font_registry(database, [str(path)], database.families())
     try:
         key = str(path.resolve())
         old_id = registry.registrations[key].font_id
         path.write_bytes(b'broken font')
-        updated = refresh_font_registry(QFontDatabase, registry, 'en-US', {}, {}, scan_custom_fonts(tmp_path, {}))
+        updated = refresh_font_registry(database, registry, 'en-US', {}, {}, scan_custom_fonts(tmp_path, {}))
         assert updated.registrations[key].font_id == old_id
         assert updated.custom_entries
     finally:
         for record in registry.registrations.values():
             QFontDatabase.removeApplicationFont(record.font_id)
+
+
+def test_refresh_preserves_group_exclusions_and_selected_hidden_font(
+    database, monkeypatch, tmp_path: Path,
+) -> None:
+    from ballontranslator.ui.configpanel import FontExcludeDialog
+    from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+    from ballontranslator.utils.config import pcfg
+
+    overrides = tmp_path / 'groups.json'
+    overrides.write_text(json.dumps({'custom_groups': [{
+        'canonical': 'Review Group', 'display': '审阅字体',
+        'members': [{'canonical': 'Abel'}],
+    }]}), encoding='utf-8')
+    groups = load_custom_group_table(str(overrides))
+    font = tmp_path / 'font.ttf'
+    font.write_bytes(SEED.read_bytes())
+    registry = build_font_registry(database, [str(font)], database.families(),
+                                   font_registry_path=str(overrides))
+    monkeypatch.setattr(shared, 'FONT_REGISTRY', registry)
+    monkeypatch.setattr(shared, 'FONT_FAMILIES', set(database.families()))
+    monkeypatch.setattr(pcfg, 'excluded_fonts', ['Abel', 'Missing Font'])
+    picker = FontFamilyComboBox()
+    picker.update_font_entries(registry.entries(excluded=pcfg.excluded_fonts))
+    picker.set_current_family('Abel')
+    changes = []
+    picker.param_changed.connect(lambda *args: changes.append(args))
+    dialog = FontExcludeDialog()
+    try:
+        # Automatic sync, manual sync, deletion, and return all retain exclusions.
+        for files in (None, scan_custom_fonts(tmp_path, {}), {}, scan_custom_fonts(tmp_path, {})):
+            registry = refresh_font_registry(database, registry, 'en-US', groups, {}, files)
+            shared.FONT_REGISTRY = registry
+            picker.update_font_entries(registry.entries(excluded=pcfg.excluded_fonts))
+            for excluded in ('Abel', 'Review Group', '审阅字体'):
+                for only_custom in (False, True):
+                    assert not any(e.canonical_family in ('Abel', 'Review Group')
+                                   for e in registry.entries(only_custom, [excluded]))
+            assert picker.currentText() == 'Abel'
+            assert dialog.get_excluded_fonts() == ['Abel', 'Missing Font']
+            assert pcfg.excluded_fonts == ['Abel', 'Missing Font']
+        assert not changes
+    finally:
+        picker.deleteLater()
+        dialog.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        for record in registry.registrations.values():
+            database.removeApplicationFont(record.font_id)
+
+
+@pytest.mark.parametrize('vertical', [False, True])
+@pytest.mark.parametrize('stroke', [False, True])
+def test_refreshed_text_matches_fresh_layout_and_export(
+    runtime_app: QApplication, database, monkeypatch, vertical: bool, stroke: bool,
+) -> None:
+    from qtpy.QtCore import QRectF
+    from qtpy.QtGui import QColor, QImage, QPainter, QTextCursor
+    from qtpy.QtWidgets import QGraphicsScene
+    from ballontranslator.ui.text_engine.item import TextBlkItem
+    from ballontranslator.ui.text_engine.layout import clear_font_metrics_cache
+    from ballontranslator.utils.textblock import TextBlock
+    from ballontranslator.utils.text_effects import StrokeEffect, TextEffectStack
+
+    if 'Abel' in database.families():
+        pytest.skip('The probe font is already installed')
+    registry = build_font_registry(database, [], database.families())
+    monkeypatch.setattr(shared, 'FONT_REGISTRY', registry)
+
+    def make_item() -> tuple[TextBlkItem, QGraphicsScene]:
+        block = TextBlock([0, 0, 500, 300])
+        block._bounding_rect = [0, 0, 500, 300]
+        block.translation = 'WWWW abcdef 0123'
+        block.vertical = vertical
+        block.fontformat.font_family = 'Abel'
+        block.fontformat.font_size = 26
+        if stroke:
+            block.fontformat.text_effects = TextEffectStack(effects=(StrokeEffect(width=0.12),))
+        item = TextBlkItem(block, 0)
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        return item, scene
+
+    def render(scene: QGraphicsScene) -> QImage:
+        image = QImage(600, 400, QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(QColor('white'))
+        painter = QPainter(image)
+        scene.render(painter, QRectF(0, 0, 600, 400), QRectF(-30, -30, 600, 400))
+        painter.end()
+        return image
+
+    item, scene = make_item()
+    before = render(scene)
+    cursor = item.textCursor()
+    cursor.setPosition(5)
+    cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+    item.setTextCursor(cursor)
+    document = item.document()
+    html, undo = document.toHtml(), document.availableUndoSteps()
+    font_id = database.addApplicationFont(str(SEED))
+    assert font_id >= 0
+    try:
+        shared.FONT_REGISTRY = refresh_font_registry(database, registry, 'en-US', {}, {})
+        clear_font_metrics_cache()
+        item.refresh_font_metrics()
+        assert (item.textCursor().position(), item.textCursor().anchor()) == (1, 5)
+        cursor = item.textCursor()
+        cursor.clearSelection()
+        item.setTextCursor(cursor)
+        preview = render(scene)
+        assert preview != before
+        fresh, fresh_scene = make_item()
+        try:
+            assert preview == render(fresh_scene)
+            item.set_export_effect_render(True)
+            assert preview == render(scene)
+        finally:
+            item.set_export_effect_render(False)
+            fresh_scene.clear()
+        assert document.toHtml() == html
+        assert document.availableUndoSteps() == undo
+    finally:
+        scene.clear()
+        database.removeApplicationFont(font_id)
 
 
 def wait_refresh(controller, expected, results):
@@ -144,7 +281,7 @@ def wait_refresh(controller, expected, results):
     assert len(results) == expected
 
 
-def test_controller_coalesces_and_clears_metrics(app, monkeypatch, tmp_path):
+def test_controller_coalesces_and_clears_metrics(runtime_app: QApplication, monkeypatch, tmp_path: Path) -> None:
     from ballontranslator.ui.font_refresh import FontRefreshController
     from ballontranslator.ui.text_engine.layout import get_char_width, get_punc_rect
     from qtpy.QtGui import QFont
@@ -154,8 +291,6 @@ def test_controller_coalesces_and_clears_metrics(app, monkeypatch, tmp_path):
     monkeypatch.setattr(shared, 'FONT_FAMILIES', set(QFontDatabase.families()))
     owner = QObject()
     controller = FontRefreshController(owner)
-    if not controller.enabled:
-        pytest.skip('Qt 6.4+ required')
     from ballontranslator.ui.font_change_detection import FontChangeDetector
     detector = FontChangeDetector(owner)
     detector.system_fonts_changed.connect(controller.request_system_refresh)
@@ -280,7 +415,7 @@ def test_windows_filter_ignores_other_messages(app):
     assert owner.system_fonts_changed.emit.call_count == 5
 
 
-def test_refresh_failure_reports_status(app, monkeypatch, tmp_path):
+def test_refresh_failure_reports_status(runtime_app: QApplication, monkeypatch, tmp_path: Path) -> None:
     from ballontranslator.ui.font_refresh import FontRefreshController
     monkeypatch.setattr(shared, 'HEADLESS', False)
     monkeypatch.setattr(shared, 'PROGRAM_PATH', str(tmp_path))
@@ -396,7 +531,7 @@ def test_detector_reports_without_refreshing_and_disconnects(app):
     ('linux', 'offscreen', True, ['invalidate']),
     ('linux', 'xcb', False, []),
 ])
-def test_platform_reload_paths(app, monkeypatch, platform, backend, force, expected):
+def test_platform_reload_paths(runtime_app: QApplication, monkeypatch, platform: str, backend: str, force: bool, expected: list[str]) -> None:
     from ballontranslator.ui.font_refresh import FontRefreshController
     monkeypatch.setattr(shared, 'HEADLESS', False)
     registry = build_font_registry(QFontDatabase, [], QFontDatabase.families())
