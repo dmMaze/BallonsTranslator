@@ -103,6 +103,7 @@ class ModuleConfig(Config):
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
     llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
+    llm_codex_profile_migrated: bool = True
     translator_llm_id: str = ''
     ocr_llm_id: str = ''
     inpaint_llm_id: str = ''

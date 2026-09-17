@@ -218,6 +218,15 @@ class LLMTranslationContractTest(unittest.TestCase):
                 1,
             )
 
+    def test_blank_page_accepts_explicit_empty_translation_and_summary(self) -> None:
+        parsed = parse_translation_response(
+            '{"page_summary":"","translations":{}}', 0,
+        )
+        self.assertEqual(parsed.translations, ())
+        self.assertEqual(parsed.page_summary, '')
+        with self.assertRaises(InvalidNumTranslations):
+            parse_translation_response('{"page_summary":"","translations":{}}', 1)
+
     def test_parser_preserves_fenced_and_prose_object_compatibility(self):
         fenced = parse_translation_response('```json\n{"1":"heart"}\n```', 1)
         prose = parse_translation_response('Answer: {"1":"heart"}.', 1)

@@ -1,7 +1,8 @@
-"""Shared OpenAI-compatible Chat Completions request transport."""
+"""Shared profile-backed chat transport for translation and OCR."""
 
 from __future__ import annotations
 
+import random
 import re
 import threading
 import time
@@ -9,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
 from .context.errors import provider_error_message
-from .context.token_usage import format_completion_token_usage
+from .context.token_usage import LLMUsageTotals, format_completion_token_usage
 from .exceptions import (
     LLMApiKeyRequiredError,
     LLMOutputLimitError,
@@ -71,6 +72,8 @@ def _uses_provider_base_url(base_url: str, provider: str) -> bool:
 def openai_chat_completion_args(
     profile: LLMProfile,
     model: str,
+    *,
+    vision: bool = False,
 ) -> Dict[str, Any]:
     """Map provider-neutral profile values to OpenAI chat API arguments.
 
@@ -85,6 +88,9 @@ def openai_chat_completion_args(
     >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
     0.1
     """
+
+    if profile.transport == 'Codex App Server':
+        return {'reasoning_effort': profile.vision_thinking_level if vision else profile.thinking_level}
 
     base_url = _normalized_base_url(_openai_sdk_base_url(profile.base_url))
     openai_base_url = _normalized_base_url(
@@ -167,10 +173,10 @@ class LLMChatRequestError(RuntimeError):
 
 
 class LLMChatRequester:
-    """Issue one profile-backed OpenAI-compatible chat request.
+    """Issue one profile-backed HTTP or official Codex chat request.
 
-    Prompt construction and retries stay with the owning Translator or OCR
-    module; this boundary owns only transport and provider normalization.
+    Prompt construction and output retries stay with the Translator or OCR
+    module; Codex capacity/timeout retries share this boundary's request throttle.
 
     >>> LLMChatRequester().client is None
     True
@@ -188,6 +194,10 @@ class LLMChatRequester:
         self.request_count_minute = 0
         self.minute_start_time = time.time()
         self.stop_event: Optional[threading.Event] = None
+        self.usage_totals = LLMUsageTotals()
+        self._codex_throttle_lock = threading.Lock()
+        self._codex_usage_lock = threading.Lock()
+        self._codex_cooldown_until = 0.0
 
     def set_stop_event(
         self,
@@ -302,10 +312,55 @@ class LLMChatRequester:
         profile: LLMProfile,
         api_args: Dict[str, Any],
     ) -> LLMChatResult:
-        """Perform one request; feature owners decide whether to retry it."""
+        """Request a result, backing off on Codex capacity rejection or timeout.
+
+        >>> callable(LLMChatRequester.request_chat_completion)
+        True
+        """
+        if profile.transport == 'Codex App Server':
+            from .llm_codex import CodexBusyError, CodexTimeoutError, request_codex_completion
+
+            attempts = max(1, int(self.get_param_value('retry attempts')))
+            retry_delay = max(60.0, float(self.get_param_value('retry timeout')))
+            max_retry_delay = max(300.0, retry_delay)
+            for attempt in range(1, attempts + 1):
+                # Release the lock during cooldown so other failed requests can
+                # extend it. Already-running requests may finish normally.
+                while True:
+                    with self._codex_throttle_lock:
+                        if self.stop_event is not None and self.stop_event.is_set():
+                            raise LLMRequestStopped()
+                        remaining = self._codex_cooldown_until - time.monotonic()
+                        if remaining <= 0:
+                            self._respect_delay()
+                            self.usage_totals.requests += 1
+                            break
+                    self._wait(remaining)
+                try:
+                    result = request_codex_completion(profile, api_args, self.stop_event)
+                    break
+                except (CodexBusyError, CodexTimeoutError) as error:
+                    with self._codex_usage_lock:
+                        self.usage_totals.add(api_args.get('model', ''), error.usage)
+                    if attempt >= attempts:
+                        self.logger.error('Codex retry budget exhausted after %d attempts: %s', attempts, error)
+                        raise
+                    wait = retry_delay + random.uniform(0, min(10.0, retry_delay * 0.1))
+                    with self._codex_throttle_lock:
+                        self._codex_cooldown_until = max(self._codex_cooldown_until, time.monotonic() + wait)
+                    self.logger.warning(
+                        'Codex retryable failure: %s. Attempt %d/%d; cooling down for %.1f seconds; %s',
+                        error, attempt, attempts, wait,
+                        format_completion_token_usage(error) or 'usage=unavailable',
+                    )
+                    retry_delay = min(retry_delay * 2, max_retry_delay)
+            with self._codex_usage_lock:
+                self.usage_totals.add(api_args.get('model', ''), result.usage)
+            return result
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay()
+        self.usage_totals.requests += 1
         try:
             completion = client.chat.completions.create(**api_args)
         except getattr(openai, 'AuthenticationError') as error:
@@ -327,6 +382,8 @@ class LLMChatRequester:
                 getattr(choice, 'finish_reason', '') or ''
             ),
         )
+        # A truncated or unparsable response still consumed tokens.
+        self.usage_totals.add(api_args.get('model', ''), result.usage)
         if result.finish_reason.strip().lower() == 'length':
             usage = format_completion_token_usage(result)
             model = str(api_args.get('model', '')).replace(

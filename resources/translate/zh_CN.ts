@@ -3035,6 +3035,14 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleParamDialog</name>
     <message>
+        <source>Experimental Codex Parallel Requests</source>
+        <translation>实验性 Codex 并行请求数</translation>
+    </message>
+    <message>
+        <source>Concurrent full-page Codex requests. Enter a positive integer, such as 6 or 8. 1 disables parallel requests. History mode stays sequential. Each request uses already committed summaries and memory; pages are finalized in order. RPM and delay still apply.</source>
+        <translation>同时执行的 Codex 整页翻译请求数。请输入正整数，例如 6 或 8。1 表示关闭并行。历史模式保持顺序执行。各请求使用已提交的摘要与记忆，页面依次完成。每分钟请求数与延迟限制仍然适用。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="8"/>
         <source>Inpaint using the selected image-capable LLM profile.</source>
         <translation>使用选中的 LLM 配置修图</translation>
