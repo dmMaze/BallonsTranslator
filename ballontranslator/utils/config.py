@@ -247,15 +247,47 @@ class ModuleConfig(Config):
 
 @nested_dataclass
 class DrawPanelConfig(Config):
+    """Recover optional drawing settings independently when loading saved data.
+
+    >>> DrawPanelConfig().magicwand_tolerance
+    32
+    """
+
     pentool_color: List = field(default_factory=lambda: [0, 0, 0])
     pentool_width: float = 30.
     pentool_shape: int = 0
     inpainter_width: float = 30.
     inpainter_shape: int = 0
+    magicwand_tolerance: int = 32
+    magicwand_range: int = 0
+    magicwand_fill_mode: int = 0
     current_tool: int = 0
     rectool_auto: bool = False
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
+
+    def __post_init__(self) -> None:
+        for name, default, minimum, maximum in (
+            ('inpainter_shape', 0, 0, 2),
+            ('magicwand_tolerance', 32, 0, 255),
+            ('magicwand_range', 0, -50, 50),
+            ('magicwand_fill_mode', 0, 0, 2),
+        ):
+            raw = getattr(self, name)
+            try:
+                value = int(raw)
+                if isinstance(raw, float) and raw != value:
+                    raise ValueError('Expected an integer.')
+            except (TypeError, ValueError, OverflowError):
+                LOGGER.warning('Discard invalid drawpanel.%s %r.', name, raw)
+                value = default
+            if not minimum <= value <= maximum:
+                LOGGER.warning('Discard out-of-range drawpanel.%s %r.', name, raw)
+                value = (
+                    default if name in ('inpainter_shape', 'magicwand_fill_mode')
+                    else min(max(value, minimum), maximum)
+                )
+            setattr(self, name, value)
 
 @nested_dataclass
 class PackageManagerConfig(Config):
