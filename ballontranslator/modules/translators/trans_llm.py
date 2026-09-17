@@ -106,7 +106,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
     dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
 
     concate_text = False
-    cht_require_convert = True
     params: Dict = {
         "description": "Translate using the selected text-capable LLM profile.",
         "codex parallel requests": {

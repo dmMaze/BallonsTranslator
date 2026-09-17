@@ -19,6 +19,27 @@ class LLMTranslationIntegrationTest(
     LLMTranslationTestMixin,
     unittest.TestCase,
 ):
+    def test_traditional_chinese_output_keeps_model_wording(self) -> None:
+        self.translator.set_target('繁體中文')
+        wording = '試吃會。起床後，群眾才發現山峰的秘密。系上的活動。'
+        with mock.patch.object(type(self.translator), 'profile',
+                               new_callable=mock.PropertyMock, return_value=self.profile), \
+                mock.patch.object(self.translator, 'all_model_loaded', return_value=True), \
+                mock.patch.object(pcfg, 'mt_sublist', []), \
+                mock.patch.object(self.translator, '_request_translation',
+                                  return_value='{"1":"' + wording + '"}') as request:
+            for transport in ('OpenAI-compatible', 'Codex App Server'):
+                self.profile.transport = transport
+                for full_page in (False, True):
+                    with self.subTest(transport=transport, full_page=full_page):
+                        project = self._project(1)
+                        self.translator.translate_textblk_lst(
+                            project.pages['001.png'], project=project,
+                            page_key='001.png', full_page=full_page,
+                        )
+                        self.assertEqual(project.pages['001.png'][0].translation, wording)
+                        self.assertIn('Traditional Chinese', request.call_args.args[1][0]['content'])
+
     def test_vision_is_a_suffix_and_keeps_selected_translation_model(self):
         self.profile.model = 'selected-translation-model'
         self.profile.vision_model = 'ignored-ocr-model'
