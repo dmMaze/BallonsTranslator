@@ -17,37 +17,37 @@
 <context>
     <name>AlphaMaskCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2990"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3110"/>
         <source>Eraser</source>
         <translation>지우개</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3013"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3133"/>
         <source>Mode</source>
         <translation>모드</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3022"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3142"/>
         <source>Erase</source>
         <translation>지우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3023"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3143"/>
         <source>Restore</source>
         <translation>복원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3037"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3157"/>
         <source>Size</source>
         <translation>크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3053"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3173"/>
         <source> px</source>
         <translation> px</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3077"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3197"/>
         <source>Clear</source>
         <translation>초기화</translation>
     </message>
@@ -136,77 +136,77 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1430"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1427"/>
         <source>Copy</source>
         <translation>복사</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1432"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1429"/>
         <source>Paste</source>
         <translation>붙여넣기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1434"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1431"/>
         <source>Delete</source>
         <translation>삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1436"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1433"/>
         <source>Copy source text</source>
         <translation>소스 텍스트 복사</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1438"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1435"/>
         <source>Paste source text</source>
         <translation>소스 텍스트 붙여 넣기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1440"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1437"/>
         <source>Delete and Recover removed text</source>
         <translation>삭제하고 원본 텍스트를 복원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1445"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1442"/>
         <source>Apply font formatting</source>
         <translation>글꼴 형식 적용</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1446"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1443"/>
         <source>Auto layout</source>
         <translation>자동 레이아웃</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1447"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1444"/>
         <source>Reset Angle</source>
         <translation>각도 초기화</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1448"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1445"/>
         <source>Squeeze</source>
         <translation>텍스트 맞춤 크기 조절</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1450"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1447"/>
         <source>translate</source>
         <translation>번역</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1451"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1448"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1452"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1449"/>
         <source>OCR and translate</source>
         <translation>OCR과 번역</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1453"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1450"/>
         <source>OCR, translate and inpaint</source>
         <translation>OCR, 번역 및 인페인트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1454"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1451"/>
         <source>inpaint</source>
         <translation>인페인트</translation>
     </message>
@@ -789,7 +789,7 @@
 <context>
     <name>EffectDeleteButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="185"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="187"/>
         <source>Delete</source>
         <translation>삭제</translation>
     </message>
@@ -797,7 +797,7 @@
 <context>
     <name>EffectMoveDownButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="211"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="213"/>
         <source>Move Down</source>
         <translation>아래로 이동</translation>
     </message>
@@ -805,7 +805,7 @@
 <context>
     <name>EffectMoveUpButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="198"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="200"/>
         <source>Move Up</source>
         <translation>위로 이동</translation>
     </message>
@@ -813,12 +813,12 @@
 <context>
     <name>EffectPaintButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="644"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="646"/>
         <source>Edit Gradient</source>
         <translation>그라디언트 편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="646"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="648"/>
         <source>Choose Stroke Color</source>
         <translation>획 색상 선택</translation>
     </message>
@@ -826,12 +826,12 @@
 <context>
     <name>EffectVisibilityButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="242"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="244"/>
         <source>Hide</source>
         <translation>숨기기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="245"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="247"/>
         <source>Show</source>
         <translation>표시</translation>
     </message>
@@ -839,87 +839,87 @@
 <context>
     <name>EmphasisToolButton</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="180"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="179"/>
         <source>Emphasis Marks</source>
         <translation>강조 표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="188"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="187"/>
         <source>Marks</source>
         <translation>표시</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="195"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="194"/>
         <source>Filled Dot</source>
         <translation>채운 점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="196"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="195"/>
         <source>Open Dot</source>
         <translation>빈 점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="197"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="196"/>
         <source>Filled Circle</source>
         <translation>채운 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="198"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="197"/>
         <source>Open Circle</source>
         <translation>빈 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="199"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="198"/>
         <source>Filled Double Circle</source>
         <translation>채운 이중 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="199"/>
         <source>Open Double Circle</source>
         <translation>빈 이중 원</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="201"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="200"/>
         <source>Filled Triangle</source>
         <translation>채운 삼각형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="202"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="201"/>
         <source>Open Triangle</source>
         <translation>빈 삼각형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="203"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="202"/>
         <source>Filled Sesame</source>
         <translation>채운 깨점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="204"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="203"/>
         <source>Open Sesame</source>
         <translation>빈 깨점</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="214"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="213"/>
         <source>Position</source>
         <translation>위치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="221"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="220"/>
         <source>Over / Right</source>
         <translation>위 / 오른쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="222"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="221"/>
         <source>Under / Right</source>
         <translation>아래 / 오른쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="223"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="222"/>
         <source>Over / Left</source>
         <translation>위 / 왼쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="224"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="223"/>
         <source>Under / Left</source>
         <translation>아래 / 왼쪽</translation>
     </message>
@@ -940,7 +940,7 @@
 <context>
     <name>FilterEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2026"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2146"/>
         <source>Missing Filter: {id}</source>
         <translation>누락된 필터: {id}</translation>
     </message>
@@ -1017,42 +1017,42 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="808"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="807"/>
         <source>Font Family</source>
         <translation>글꼴 패밀리</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="814"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="813"/>
         <source>Font Weight</source>
         <translation>글꼴 굵기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="820"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="819"/>
         <source>Font Size</source>
         <translation>글꼴 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="822"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="821"/>
         <source>Change font size</source>
         <translation>글꼴 크기 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="833"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="832"/>
         <source>Change line spacing</source>
         <translation>줄 간격 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="843"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="842"/>
         <source>Change font color</source>
         <translation>글꼴 색상 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="859"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="858"/>
         <source>Combine the selected text into one upright vertical cell</source>
         <translation>선택한 텍스트를 하나의 세로쓰기 셀로 결합합니다</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="872"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="871"/>
         <source>Standard Vertical Roman Alignment</source>
         <translation>표준 세로 로마자 정렬</translation>
     </message>
@@ -1065,58 +1065,58 @@
         <translation type="vanished">획 색상 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="925"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="924"/>
         <source>Text Effect</source>
         <translation>텍스트 효과</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="933"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="932"/>
         <source>Text Transform</source>
         <translation>텍스트 변형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1138"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1137"/>
         <source>Tate-chu-yoko cannot overlap Ruby.</source>
         <translation>세로쓰기 중 가로쓰기는 루비와 겹칠 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1141"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1140"/>
         <source>Unable to apply Tate-chu-yoko to this selection.</source>
         <translation>이 선택 영역에 세로쓰기 중 가로쓰기를 적용할 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1174"/>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1182"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1173"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1181"/>
         <source>Select base text to apply Ruby.</source>
         <translation>루비를 적용할 기준 텍스트를 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1185"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1184"/>
         <source>Ruby text cannot be empty.</source>
         <translation>루비 텍스트는 비워 둘 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1188"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1187"/>
         <source>Mono Ruby needs one whitespace-separated reading per base grapheme.</source>
         <translation>개별 루비는 각 기준 문자마다 공백으로 구분된 독음이 하나씩 필요합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1191"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1190"/>
         <source>Ruby cannot partially overlap an existing container.</source>
         <translation>루비는 기존 컨테이너와 부분적으로 겹칠 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1194"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1193"/>
         <source>Ruby cannot overlap Tate-chu-yoko.</source>
         <translation>루비는 세로쓰기 중 가로쓰기와 겹칠 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1197"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1196"/>
         <source>Ruby base text cannot contain paragraph or forced line breaks.</source>
         <translation>루비 기준 텍스트에는 문단 나누기나 강제 줄 바꿈을 포함할 수 없습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1203"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="1202"/>
         <source>Unable to apply Ruby to this selection.</source>
         <translation>이 선택 영역에 루비를 적용할 수 없습니다.</translation>
     </message>
@@ -1125,7 +1125,7 @@
         <translation type="vanished">획 너비 변경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="883"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="882"/>
         <source>Change letter spacing</source>
         <translation>자간 변경</translation>
     </message>
@@ -1134,12 +1134,12 @@
         <translation type="vanished">각도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="897"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="896"/>
         <source>Global Font Format</source>
         <translation>글로벌 글꼴 형식</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="907"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="906"/>
         <source>Advanced Text Format</source>
         <translation>고급 텍스트 형식</translation>
     </message>
@@ -1148,22 +1148,22 @@
         <translation type="vanished">효과</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="949"/>
         <source>Unfold</source>
         <translation>펼치기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="949"/>
         <source>Fold</source>
         <translation>접기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="951"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="950"/>
         <source>Source</source>
         <translation>원본</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="952"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="951"/>
         <source>Translation</source>
         <translation>번역</translation>
     </message>
@@ -1171,12 +1171,12 @@
 <context>
     <name>FontSizeDragLabel</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="459"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="458"/>
         <source>Drag to resize text</source>
         <translation>드래그하여 텍스트 크기 조절</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="460"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="459"/>
         <source>Resize text</source>
         <translation>텍스트 크기 조절</translation>
     </message>
@@ -1184,47 +1184,47 @@
 <context>
     <name>FontWeightComboBox</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="564"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="563"/>
         <source>Thin</source>
         <translation>Thin</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="565"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="564"/>
         <source>Extra Light</source>
         <translation>Extra Light</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="566"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="565"/>
         <source>Light</source>
         <translation>Light</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="567"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="566"/>
         <source>Normal</source>
         <translation>Normal</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="568"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="567"/>
         <source>Medium</source>
         <translation>Medium</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="569"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="568"/>
         <source>Demi Bold</source>
         <translation>Demi Bold</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="570"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="569"/>
         <source>Bold</source>
         <translation>Bold</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="571"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="570"/>
         <source>Extra Bold</source>
         <translation>Extra Bold</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="572"/>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="571"/>
         <source>Black</source>
         <translation>Black</translation>
     </message>
@@ -1328,83 +1328,83 @@
 <context>
     <name>GlowEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1382"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1502"/>
         <source>Glow</source>
         <translation>광선</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1413"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1533"/>
         <source>Glow Type</source>
         <translation>광선 유형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1414"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1534"/>
         <source>Outer</source>
         <translation>외부</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1415"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1535"/>
         <source>Inner</source>
         <translation>내부</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1431"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1551"/>
         <source>Opacity</source>
         <translation>불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1435"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1555"/>
         <source>Size</source>
         <translation>크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1439"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1547"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1559"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1667"/>
         <source>Spread</source>
         <translation>확산</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1443"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1563"/>
         <source>Glow Blend</source>
         <translation>광선 혼합</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1460"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1580"/>
         <source>Fill</source>
         <translation>채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1469"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1589"/>
         <source>Glow Fill</source>
         <translation>광선 채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1470"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1590"/>
         <source>Solid</source>
         <translation>단색</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1472"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1592"/>
         <source>Gradient</source>
         <translation>그라디언트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1545"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1665"/>
         <source>Choke</source>
         <translation>축소</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1562"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1682"/>
         <source>Edit Glow Gradient</source>
         <translation>광선 그라디언트 편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1564"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1684"/>
         <source>Choose Glow Color</source>
         <translation>광선 색상 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1646"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1766"/>
         <source>Glow Color</source>
         <translation>광선 색상</translation>
     </message>
@@ -1454,170 +1454,170 @@
 <context>
     <name>ImageEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2540"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2588"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2660"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2708"/>
         <source>Image</source>
         <translation>이미지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2546"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2666"/>
         <source>Hidden while editing so the caret and selection match the text.</source>
         <translation>정확한 텍스트 편집을 위해 편집 중에는 이미지를 숨깁니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2548"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2668"/>
         <source>Choose an image...</source>
         <translation>이미지 선택...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2585"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2705"/>
         <source>Choose Image</source>
         <translation>이미지 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2595"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2715"/>
         <source>Image Placement</source>
         <translation>이미지 배치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2598"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2718"/>
         <source>In Front</source>
         <translation>앞쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2601"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2721"/>
         <source>Draws the Image over everything rendered before it.</source>
         <translation>이전에 렌더링된 모든 항목 위에 이미지를 그립니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2605"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2725"/>
         <source>Behind</source>
         <translation>뒤쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2608"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2728"/>
         <source>Draws the Image behind everything rendered before it.</source>
         <translation>이전에 렌더링된 모든 항목 뒤에 이미지를 그립니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2623"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2743"/>
         <source>Placement</source>
         <translation>배치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2635"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2692"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2850"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2755"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2812"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2970"/>
         <source>Generate</source>
         <translation>생성</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2640"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2760"/>
         <source>Image Generation Model</source>
         <translation>이미지 생성 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2646"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2766"/>
         <source>Model</source>
         <translation>모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2654"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2774"/>
         <source>Image Generation Context</source>
         <translation>이미지 생성 컨텍스트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2656"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2776"/>
         <source>Source</source>
         <translation>원본</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2657"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2777"/>
         <source>Inpainted</source>
         <translation>인페인트됨</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2658"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2778"/>
         <source>Lettered</source>
         <translation>번역됨</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2659"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2779"/>
         <source>None</source>
         <translation>없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2664"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2784"/>
         <source>Context</source>
         <translation>컨텍스트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2669"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2789"/>
         <source>Describe the image to generate or edit</source>
         <translation>생성하거나 편집할 이미지를 설명하세요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2672"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2792"/>
         <source>Image Generation Prompt</source>
         <translation>이미지 생성 프롬프트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2678"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2798"/>
         <source>Prompt</source>
         <translation>프롬프트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2746"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2866"/>
         <source>No Image Selected</source>
         <translation>선택한 이미지 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2754"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2874"/>
         <source>Missing: {name}</source>
         <translation>누락됨: {name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2850"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2970"/>
         <source>Stop</source>
         <translation>중지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2863"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2983"/>
         <source>Select exactly one text item to generate an Image.</source>
         <translation>이미지를 생성하려면 텍스트 항목을 하나만 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2866"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2986"/>
         <source>Select an available image generation model.</source>
         <translation>사용 가능한 이미지 생성 모델을 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2869"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2989"/>
         <source>Another Image generation request is in progress.</source>
         <translation>다른 이미지 생성 요청이 진행 중입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2873"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2993"/>
         <source>Waiting for the current image request to stop.</source>
         <translation>현재 이미지 요청이 중지되기를 기다리는 중입니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2876"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2996"/>
         <source>Stop image generation</source>
         <translation>이미지 생성 중지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2878"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2998"/>
         <source>Generate an image for this effect</source>
         <translation>이 효과에 사용할 이미지 생성</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2881"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3001"/>
         <source>Stop Image Generation</source>
         <translation>이미지 생성 중지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2883"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="3003"/>
         <source>Generate Image</source>
         <translation>이미지 생성</translation>
     </message>
@@ -1688,37 +1688,37 @@
 <context>
     <name>ImageGenerationModelSelector</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2354"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2474"/>
         <source>Unavailable: {backend}</source>
         <translation>사용할 수 없음: {backend}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2358"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2478"/>
         <source>Missing: {profile}</source>
         <translation>누락됨: {profile}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2366"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2486"/>
         <source>No Models</source>
         <translation>모델 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2388"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2508"/>
         <source>LLM</source>
         <translation>LLM</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2392"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2512"/>
         <source>No image profiles</source>
         <translation>이미지 프로필 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2408"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2528"/>
         <source>Image Model</source>
         <translation>이미지 모델</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2430"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2550"/>
         <source>No image models</source>
         <translation>이미지 모델 없음</translation>
     </message>
@@ -4761,108 +4761,108 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>ShadowEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="999"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1119"/>
         <source>Shadow</source>
         <translation>그림자</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1032"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1152"/>
         <source>Shadow Type</source>
         <translation>그림자 유형</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1034"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1154"/>
         <source>Drop</source>
         <translation>드롭</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1035"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1155"/>
         <source>Inner</source>
         <translation>내부</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1036"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1156"/>
         <source>Long / Extrude</source>
         <translation>긴 그림자 / 돌출</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1055"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1175"/>
         <source>Opacity</source>
         <translation>불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1059"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1179"/>
         <source>Angle</source>
         <translation>각도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1063"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1183"/>
         <source>Drag to set shadow angle</source>
         <translation>드래그하여 그림자 각도를 설정합니다</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1064"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1184"/>
         <source>Shadow Angle</source>
         <translation>그림자 각도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1081"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1201"/>
         <source>Distance</source>
         <translation>거리</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1086"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1206"/>
         <source>Blur</source>
         <translation>흐림</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1091"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1203"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1211"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1323"/>
         <source>Spread</source>
         <translation>확산</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1096"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1216"/>
         <source>Shadow Blend</source>
         <translation>그림자 혼합</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1111"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1231"/>
         <source>Fill</source>
         <translation>채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1120"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1240"/>
         <source>Shadow Fill</source>
         <translation>그림자 채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1121"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1241"/>
         <source>Solid</source>
         <translation>단색</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1123"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1243"/>
         <source>Gradient</source>
         <translation>그라디언트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1201"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1321"/>
         <source>Choke</source>
         <translation>축소</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1222"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1342"/>
         <source>Edit Shadow Gradient</source>
         <translation>그림자 그라디언트 편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1224"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1344"/>
         <source>Choose Shadow Color</source>
         <translation>그림자 색상 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1333"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1453"/>
         <source>Shadow Color</source>
         <translation>그림자 색상</translation>
     </message>
@@ -4870,69 +4870,107 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>StrokeEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="697"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="817"/>
         <source>Stroke</source>
         <translation>획</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="731"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="851"/>
         <source>Stroke Position</source>
         <translation>획 위치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="733"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="853"/>
         <source>Inside</source>
         <translation>안쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="734"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="854"/>
         <source>Center</source>
         <translation>가운데</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="735"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="855"/>
         <source>Outside</source>
         <translation>바깥쪽</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="754"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="874"/>
         <source>Width</source>
         <translation>너비</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="758"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="878"/>
         <source>Opacity</source>
         <translation>불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="762"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="882"/>
         <source>Stroke Blend</source>
         <translation>획 혼합</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="768"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="888"/>
         <source>Fill</source>
         <translation>채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="777"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="897"/>
         <source>Stroke Fill</source>
         <translation>획 채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="778"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="898"/>
         <source>Solid</source>
         <translation>단색</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="779"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="899"/>
         <source>Gradient</source>
         <translation>그라디언트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1070"/>
         <source>Stroke Color</source>
         <translation>획 색상</translation>
+    </message>
+</context>
+<context>
+    <name>SyntheticBoldEffectCard</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="693"/>
+        <source>Synthetic Bold</source>
+        <translation>합성 굵기</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="696"/>
+        <source>Expand glyphs before all other effects, without changing font weight or spacing. X and Y are percentages of font size.</source>
+        <translation>글꼴 굵기나 자간을 바꾸지 않고, 다른 모든 효과보다 먼저 글리프를 확장합니다. X와 Y는 글꼴 크기에 대한 백분율입니다.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="704"/>
+        <source>Synthetic Bold Shape</source>
+        <translation>합성 굵기 모양</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="705"/>
+        <source>Rectangle</source>
+        <translation>사각형</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="706"/>
+        <source>Ellipse</source>
+        <translation>타원</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="724"/>
+        <source>X</source>
+        <translation>X</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="728"/>
+        <source>Y</source>
+        <translation>Y</translation>
     </message>
 </context>
 <context>
@@ -5070,7 +5108,7 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>TextEffectEditSession</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/edit_session.py" line="806"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/edit_session.py" line="818"/>
         <source>Open a project before generating an Image.</source>
         <translation>이미지를 생성하기 전에 프로젝트를 열어주세요.</translation>
     </message>
@@ -5078,101 +5116,106 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>TextEffectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="107"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="108"/>
         <source>Opacity</source>
         <translation>불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="121"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="122"/>
         <source>Overall opacity of the text and all effects</source>
         <translation>텍스트와 모든 효과의 전체 불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="154"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="363"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="145"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="355"/>
         <source>Select one text block in text edit mode.</source>
         <translation>텍스트 편집 모드에서 텍스트 블록 하나를 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="157"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="148"/>
         <source>Text Eraser</source>
         <translation>텍스트 지우개</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="179"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="170"/>
         <source>Add</source>
         <translation>추가</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="180"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="181"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="171"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="172"/>
         <source>Add Effect</source>
         <translation>효과 추가</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="193"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="184"/>
+        <source>Synthetic Bold</source>
+        <translation>합성 굵기</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="185"/>
         <source>Stroke</source>
         <translation>획</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="194"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="186"/>
         <source>Shadow</source>
         <translation>그림자</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="195"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="187"/>
         <source>Glow</source>
         <translation>광선</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="197"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="189"/>
         <source>Gradient</source>
         <translation>그라디언트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="202"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="194"/>
         <source>Texture</source>
         <translation>텍스처</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="207"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="199"/>
         <source>Image</source>
         <translation>이미지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="220"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="212"/>
         <source>Filter</source>
         <translation>필터</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="234"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="226"/>
         <source>Faster Preview</source>
         <translation>빠른 미리보기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="240"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="232"/>
         <source>Render live effect changes at half resolution. Committed and exported text keep full quality.</source>
         <translation>실시간 효과 변경 사항을 절반 해상도로 렌더링합니다. 적용하거나 내보낸 텍스트는 원래 품질을 유지합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="361"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="353"/>
         <source>Edit Text Eraser</source>
         <translation>텍스트 지우개 편집</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="380"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="372"/>
         <source>Choose Image</source>
         <translation>이미지 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="393"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="831"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="385"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="824"/>
         <source>Unable to Import Image</source>
         <translation>이미지를 가져올 수 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="395"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="833"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="387"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="826"/>
         <source>The selected image could not be added to this project.
 
 {message}</source>
@@ -5181,194 +5224,194 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 {message}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="650"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="643"/>
         <source>Select exactly one text item to generate an Image.</source>
         <translation>이미지를 생성하려면 텍스트 항목을 하나만 선택하세요.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="776"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="769"/>
         <source>Image Generation Failed.</source>
         <translation>이미지 생성에 실패했습니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="787"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="780"/>
         <source>Unable to Generate Image</source>
         <translation>이미지를 생성할 수 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="946"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="939"/>
         <source>Enable Hollow for All Selected Text</source>
         <translation>선택한 모든 텍스트에 비우기 적용</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="948"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="941"/>
         <source>Disable Hollow</source>
         <translation>비우기 해제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="950"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="943"/>
         <source>Enable Hollow</source>
         <translation>비우기 적용</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="98"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="100"/>
         <source>Noise</source>
         <translation>노이즈</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="101"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="103"/>
         <source>Grain</source>
         <translation>입자</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="104"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="106"/>
         <source>Gaussian Blur</source>
         <translation>가우시안 흐림</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="107"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="109"/>
         <source>Bloom</source>
         <translation>블룸</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="110"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="112"/>
         <source>Glitch</source>
         <translation>글리치</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="113"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="115"/>
         <source>Amount</source>
         <translation>양</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="116"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="118"/>
         <source>Color</source>
         <translation>색상</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="119"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="121"/>
         <source>Monochrome</source>
         <translation>단색</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="122"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="124"/>
         <source>Seed</source>
         <translation>시드</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="125"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="127"/>
         <source>Size</source>
         <translation>크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="128"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="130"/>
         <source>Hardness</source>
         <translation>경도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="131"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="133"/>
         <source>Radius</source>
         <translation>반경</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="134"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="136"/>
         <source>Threshold</source>
         <translation>임계값</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="137"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="139"/>
         <source>Intensity</source>
         <translation>강도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="140"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="142"/>
         <source>Shift</source>
         <translation>이동량</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="143"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="145"/>
         <source>Block Size</source>
         <translation>블록 크기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="146"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="148"/>
         <source>Activity</source>
         <translation>활성도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="149"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="151"/>
         <source>RGB Split</source>
         <translation>RGB 분리</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="358"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="360"/>
         <source>Long / Extrude</source>
         <translation>긴 그림자 / 돌출</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="395"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="397"/>
         <source>Normal</source>
         <translation>표준</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="399"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="403"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="401"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="405"/>
         <source>Darken</source>
         <translation>어둡게</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="405"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="407"/>
         <source>Multiply</source>
         <translation>곱하기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="409"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="411"/>
         <source>Color Burn</source>
         <translation>색상 번</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="413"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="415"/>
         <source>Linear Burn</source>
         <translation>선형 번</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="417"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="419"/>
         <source>Darker Color</source>
         <translation>어두운 색상</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="424"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="429"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="426"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="431"/>
         <source>Lighten</source>
         <translation>밝게</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="432"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="434"/>
         <source>Screen</source>
         <translation>스크린</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="434"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="436"/>
         <source>Color Dodge</source>
         <translation>색상 닷지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="438"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="440"/>
         <source>Linear Dodge (Add)</source>
         <translation>선형 닷지(추가)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="444"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="446"/>
         <source>Lighter Color</source>
         <translation>밝은 색상</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="502"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="504"/>
         <source>Blends with earlier output in the text-effect stack, not the page image or backdrop.</source>
         <translation>페이지 이미지나 배경이 아니라 텍스트 효과 스택의 이전 출력과 혼합합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="511"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="513"/>
         <source>Blend</source>
         <translation>혼합</translation>
     </message>
@@ -5419,83 +5462,83 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>TextFillEffectCard</name>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1702"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1822"/>
         <source>Gradient</source>
         <translation>그라디언트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1705"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1825"/>
         <source>Texture</source>
         <translation>텍스처</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1773"/>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1939"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1893"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2059"/>
         <source>Choose Texture Image</source>
         <translation>텍스처 이미지 선택</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1777"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1897"/>
         <source>Image</source>
         <translation>이미지</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1787"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1907"/>
         <source>Texture Mapping</source>
         <translation>텍스처 매핑</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1790"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1910"/>
         <source>Fill</source>
         <translation>채우기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1791"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1911"/>
         <source>Fit</source>
         <translation>맞춤</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1792"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1912"/>
         <source>Crop</source>
         <translation>자르기</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1793"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1913"/>
         <source>Tile</source>
         <translation>타일</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1800"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1920"/>
         <source>Mapping</source>
         <translation>매핑</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1803"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1923"/>
         <source>Scale</source>
         <translation>크기 비율</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1808"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1928"/>
         <source>Opacity</source>
         <translation>불투명도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1823"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1943"/>
         <source>{effect} Blend</source>
         <translation>{effect} 혼합</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1882"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2002"/>
         <source>Choose an image for this Texture</source>
         <translation>이 텍스처에 사용할 이미지를 선택하세요</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1883"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2003"/>
         <source>No Texture Image Selected</source>
         <translation>선택한 텍스처 이미지 없음</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="1890"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="2010"/>
         <source>Missing: {name}</source>
         <translation>누락됨: {name}</translation>
     </message>
@@ -6270,7 +6313,7 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="547"/>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="549"/>
         <source>Images (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</source>
         <translation>이미지 (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</translation>
     </message>
