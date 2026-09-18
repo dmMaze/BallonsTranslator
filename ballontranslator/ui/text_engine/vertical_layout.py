@@ -71,20 +71,23 @@ from .rendering.ruby import (
 
 PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 
-# CLREQ Appendix A: pause/stop marks stay upright, while parenthetical
-# punctuation, dashes, ellipses, connectors, and indicators rotate.
+# JLREQ Appendix A and UAX #50 supply the Japanese punctuation classes.
+# The alternate Roman mode retains the existing CLREQ colon/semicolon policy.
 PUNSET_PAUSEORSTOP = {
     '。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁈', '⁉',
 }
+# Fullwidth comma/full stop placement is independent of Roman orientation.
+PUNSET_UPPER_RIGHT_STOP = {'、', '。', '，', '．'}
 PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
 # ‶ pairs with either 〟 or ″ as the closing mark.
-PUNSET_BRACKETL = {'「', '『', '“', '‘', '‶', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
-PUNSET_BRACKETR = {'」', '』', '”', '’', '〟', '″', '）', '》', '〉', '】', '〗', '〕', '］', '｝', ')'}
+PUNSET_BRACKETL = {'「', '『', '“', '‘', '‶', '〝', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '〘', '〚', '｟', '⦅', '«', '('}
+PUNSET_BRACKETR = {'」', '』', '”', '’', '〟', '〞', '″', '）', '》', '〉', '】', '〗', '〕', '］', '｝', '〙', '〛', '｠', '⦆', '»', ')'}
 PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 PUNSET_COMPACT = PUNSET_PAUSEORSTOP.union(PUNSET_BRACKET)
 
 PUNSET_INSEPARABLE_REPEAT = {'—', '―', '‥', '…', '⋯'}
-PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
+PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '〜', '〰', '‐', '゠', 'ー', '－', '-', '–', '—', '＿', '﹏', '~'}
+PUNSET_JAPANESE_SIDEWAYS = {'：', '；'}
 PUNSET_VERNEEDROTATE = (
     PUNSET_NONBRACKET
     | PUNSET_BRACKET
@@ -93,7 +96,7 @@ PUNSET_VERNEEDROTATE = (
 )
 PUNSET_STANDARD_VERTICAL_ROMAN = (
     PUNSET_VERNEEDROTATE - PUNSET_HALF
-) | PUNSET_NONBRACKET
+) | PUNSET_NONBRACKET | PUNSET_JAPANESE_SIDEWAYS
 _STANDARD_SHAPED_ROTATION_CHARS = ''.join(
     sorted(PUNSET_STANDARD_VERTICAL_ROMAN)
 )
@@ -109,8 +112,8 @@ TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1243
 _TATE_CHU_YOKO_WIDTH_FEATURES = {2: 'hwid', 3: 'twid', 4: 'qwid'}
 _TATE_CHU_YOKO_HALF_WIDTH_PUNCTUATION_FEATURE = 'halt'
 
-PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’', '〟', '″'}
-PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘', '‶'}
+PUNSET_ROTATE_ALIGNL = {'」', '』', '”', '’', '〟', '〞', '″'}
+PUNSET_ROTATE_ALIGNR = {'「', '『', '“', '‘', '‶', '〝'}
 
 Dingbats_vertical_aligncenter = r'\u2700-\u275A\u2761-\u2767\u2776-\u27BF'
 Miscellaneous_Symbols_Pattern = r'\u2600-\u26FF'  # align center in vertical mode
@@ -473,6 +476,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         return _single_glyph_character(line, candidates) or source_char
 
     def centers_vertical_glyph(self, char: str) -> bool:
+        if char in PUNSET_UPPER_RIGHT_STOP:
+            return False
         if char in PUNSET_PAUSEORSTOP:
             return self.fontformat.standard_vertical_roman_alignment
         if (
@@ -827,7 +832,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         if utf16_indexing
                         else blk_text[char_idx]
                     )
-                    if char.isalpha():
+                    if char.isalpha() and _is_non_fullwidth_roman(char):
                         xoff = 0
                         yoff = (
                             -line.ascent()
@@ -843,7 +848,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                             - non_bracket_br.height()
                         )
                         if compact_leading_trim > 0:
-                            xoff = -compact_leading_trim
+                            # A half-cell trim can exceed the font's actual
+                            # leading bearing; never move bracket ink above it.
+                            xoff = max(
+                                -compact_leading_trim, -non_bracket_br.left()
+                            )
                         elif char in PUNSET_BRACKETL:
                             if ii == 0:
                                 xoff = -non_bracket_br.left()
@@ -907,8 +916,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                                 ) / 2
                             )
                         elif char in PUNSET_PAUSEORSTOP:
-                            # CLREQ's Mainland convention places stop marks at
-                            # the upper-right of their full character frame.
+                            # Fullwidth stops and the alternate CLREQ punctuation
+                            # path share the upper-right character-frame anchor.
                             xoff = (
                                 -act_rect.left()
                                 + base_width
@@ -2408,7 +2417,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     tbr_h = tbr.width() * (
                         _grapheme_count(text) if utf16_indexing else text_len
                     )
-                    if char.isalpha():
+                    if char.isalpha() and _is_non_fullwidth_roman(char):
                         cw2 = cfmt.punc_rect(char+char)[1].width()
                         tbr_h = br.width() - (br.width() * 2 - cw2)
                     else:
