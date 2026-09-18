@@ -54,6 +54,7 @@ from ballontranslator.ui.text_engine.vertical_layout import (
     PUNSET_HALF,
     PUNSET_NONBRACKET,
     PUNSET_PAUSEORSTOP,
+    PUNSET_JAPANESE_SIDEWAYS,
     PUNSET_STANDARD_VERTICAL_ROMAN,
 )
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
@@ -1389,9 +1390,12 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                     self.assertAlmostEqual(
                         ink.center().x(), cell.center().x(), delta=1.0
                     )
-                    self.assertAlmostEqual(
-                        ink.center().y(), cell.center().y(), delta=1.0
-                    )
+                    if char in PUNSET_JAPANESE_SIDEWAYS:
+                        self.assertFalse(self._orientation(standard, 0).isIdentity())
+                    else:
+                        self.assertAlmostEqual(
+                            ink.center().y(), cell.center().y(), delta=1.0
+                        )
             with self.subTest(char=char, mode='chinese'):
                 chinese = self._make_item(char, False)
                 ink, cell = self._ink_and_cell(chinese, 0)

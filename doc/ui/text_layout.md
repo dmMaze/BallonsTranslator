@@ -67,9 +67,25 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
-세로쓰기의 `、。`는 영문 정렬 모드와 무관하게 글자 칸의 오른쪽 위에 배치한다.
-가운데점과 표준 영문 모드의 느낌표·물음표는 중앙 배치를 유지한다. 이 규칙은
-본문의 독립된 세로쓰기 칸에 적용하며, 세로 중 가로쓰기 묶음 내부에는 적용하지 않는다.
+일본어 부호의 방향과 칸 안 배치는 [JLREQ §3.1 및 부록 A](https://www.w3.org/TR/jlreq/)
+와 [Unicode 세로쓰기 방향](https://www.unicode.org/reports/tr50/)을 기준으로 삼는다.
+현재 엔진은 Qt 가로쓰기 글리프의 회전·이동으로 처리하며, 폰트의 `vert`/`vrt2`
+대체 글리프를 적용하는 완전한 세로쓰기 셰이핑 엔진은 아니다.
+
+| 부호 분류 | 현재 세로쓰기 처리 |
+| --- | --- |
+| 괄호·인용 부호(cl-01/02) | 전각 괄호, 겹괄호, 기유메, `〝〞〟`를 시계 방향으로 회전한다. 낫표와 따옴표의 좌우 기준을 유지한다. |
+| 하이픈류(cl-03), 장음 | `‐–〜゠` 및 `ー`를 회전한다. 진행량은 폰트의 실제 폭을 사용한다. |
+| 느낌표·물음표(cl-04) | 표준 영문 모드에서는 바로 세워 중앙에 배치한다. 대체 모드의 기존 CLREQ 배치를 유지한다. |
+| 중점류(cl-05) | `・`는 중앙에 둔다. 전각 `：；`는 표준 모드에서 회전하고, 대체 모드에서는 기존 배치를 유지한다. |
+| 구점·독점(cl-06/07) | `、。`는 영문 모드와 무관하게 칸의 오른쪽 위에 배치한다. 가로쓰기용 `,.，．`는 자동 치환하지 않는다. |
+| 대시·리더(cl-08) | `—―…‥`를 회전하고, 동일 부호의 연속 구간은 기존 분리 금지 처리를 유지한다. 이미 세로 방향인 `〳〴〵`는 회전하지 않는다. |
+
+곡선 따옴표 `“”‘’`는 회전 폴백을 유지하며 `〝〟` 등으로 자동 치환하지 않는다.
+압축한 여는 괄호의 선행 여백은 실제 글리프 여백보다 더 제거하지 않는다.
+배치 결과는 효과·선택·커서·히트 테스트가 공유한다. 세로 중 가로쓰기 묶음 내부에는
+이 회전 규칙을 적용하지 않는다. 금칙, 문맥별 약물 간격, 매달기 조판, 루비 읽기의
+세로쓰기 셰이핑은 이 부호 배치 규칙만으로 구현되지 않는다.
 
 Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Its
 layout ignores authored letter spacing and uses the font's half-width
