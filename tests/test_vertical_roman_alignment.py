@@ -1383,7 +1383,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             with self.subTest(char=char, mode='standard'):
                 standard = self._make_item(char, True)
                 ink, cell = self._ink_and_cell(standard, 0)
-                if char in '、。':
+                if char in '、。，．':
                     self.assertAlmostEqual(ink.right(), cell.right(), delta=1.0)
                     self.assertAlmostEqual(ink.top(), cell.top(), delta=1.0)
                 else:

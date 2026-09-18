@@ -38,7 +38,7 @@ class JapanesePunctuationTest(unittest.TestCase):
 
     def test_jlreq_brackets_hyphens_and_leaders_rotate(self) -> None:
         # Literal expectations cover omissions rather than mirroring the sets.
-        text = '「」『』（ ）〔〕［］｛｝〈〉《》【】〖〗〘〙〚〛｟｠⦅⦆«»〝〞〟‐–〜゠―—…‥ー'
+        text = '「」『』（ ）〔〕［］｛｝〈〉《》【】〖〗〘〙〚〛｟｠⦅⦆«»〝〞〟‐–〜～゠―—…‥ー'
         for font in ('MS Mincho', 'Yu Mincho'):
             for standard in (True, False):
                 with self.subTest(font=font, standard=standard):
@@ -56,7 +56,7 @@ class JapanesePunctuationTest(unittest.TestCase):
                             placed, index, 1, offset, orientation, 0.0
                         ).bounds
                         self.assertFalse(ink.isEmpty(), char)
-                        if char in '‐–〜゠―—…‥ー':
+                        if char in '‐–〜～゠―—…‥ー':
                             self.assertGreater(ink.height(), ink.width(), char)
                         self.assertTrue(
                             item.geometry_controller.source_paint_rect()
