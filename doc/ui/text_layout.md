@@ -67,6 +67,10 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
+세로쓰기의 `、。`는 영문 정렬 모드와 무관하게 글자 칸의 오른쪽 위에 배치한다.
+가운데점과 표준 영문 모드의 느낌표·물음표는 중앙 배치를 유지한다. 이 규칙은
+본문의 독립된 세로쓰기 칸에 적용하며, 세로 중 가로쓰기 묶음 내부에는 적용하지 않는다.
+
 Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Its
 layout ignores authored letter spacing and uses the font's half-width
 punctuation plus matching half-, third-, or quarter-width feature when

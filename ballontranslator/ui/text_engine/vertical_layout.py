@@ -76,6 +76,8 @@ PUNSET_HALF = {chr(i) for i in range(0x21, 0x7F)}
 PUNSET_PAUSEORSTOP = {
     '。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁈', '⁉',
 }
+# Japanese comma/full stop placement is independent of Roman orientation.
+PUNSET_IDEOGRAPHIC_STOP = {'、', '。'}
 PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
 # ‶ pairs with either 〟 or ″ as the closing mark.
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '‶', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '('}
@@ -473,6 +475,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         return _single_glyph_character(line, candidates) or source_char
 
     def centers_vertical_glyph(self, char: str) -> bool:
+        if char in PUNSET_IDEOGRAPHIC_STOP:
+            return False
         if char in PUNSET_PAUSEORSTOP:
             return self.fontformat.standard_vertical_roman_alignment
         if (
@@ -907,8 +911,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                                 ) / 2
                             )
                         elif char in PUNSET_PAUSEORSTOP:
-                            # CLREQ's Mainland convention places stop marks at
-                            # the upper-right of their full character frame.
+                            # Japanese 、。 and the alternate CLREQ punctuation
+                            # path share the upper-right character-frame anchor.
                             xoff = (
                                 -act_rect.left()
                                 + base_width
