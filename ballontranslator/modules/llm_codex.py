@@ -153,6 +153,24 @@ class _CodexSession:
                 raise CodexRequestError(f'Codex App Server exited before completion. {detail}')
             if isinstance(message, Exception):
                 raise message
+            params = message.get('params') or {}
+            error = message.get('error')
+            if isinstance(params, dict):
+                if message.get('method') == 'error':
+                    error = params.get('error')
+                elif message.get('method') == 'turn/completed':
+                    turn = params.get('turn') or {}
+                    if isinstance(turn, dict) and turn.get('status') == 'failed':
+                        error = turn.get('error')
+            if isinstance(error, dict):
+                detail = str(error.get('message', ''))
+                info = error.get('codexErrorInfo')
+                if (info == 'usageLimitExceeded'
+                        or (info != 'contextWindowExceeded' and any(
+                            marker in detail.lower() for marker in (
+                                'out of credits', 'usage limit reached', 'insufficient_quota')))):
+                    # Quota is terminal even when wrapped as a retryable event or 503.
+                    raise CodexRequestError(f'Codex quota exhausted: {detail}')
             if 'method' in message and 'id' in message:
                 # Translation/OCR never approves tool execution or interactive input.
                 self.outgoing.put({'id': message['id'], 'error': {

@@ -59,6 +59,16 @@ for line in sys.stdin:
     elif method == 'thread/start':
         result = {'thread': {'id': 'thread-1'}}
     elif method == 'turn/start':
+        if scenario.startswith('credits_'):
+            error = {'message': 'Your workspace is out of credits. Ask your workspace owner to refill in order to continue.',
+                     'codexErrorInfo': {'httpConnectionFailed': {'httpStatusCode': 503}}}
+            if scenario == 'credits_rpc':
+                emit({'id': request['id'], 'error': error})
+            elif scenario == 'credits_event':
+                event('error', error=error, willRetry=True)
+            else:
+                event('turn/completed', turn={'id': 'turn-1', 'status': 'failed', 'error': error})
+            continue
         if scenario == 'rpc_error':
             emit({'id': request['id'], 'error': {'code': -1, 'message': 'unsupported model'}})
             continue
@@ -434,6 +444,25 @@ class CodexTransportTest(unittest.TestCase):
                     self.assertIn('cumulative_total=250', lines[1])
                     self.assertIn('total_tokens=500,', run_usage)
                     self.assertIn('estimated_cost_usd=0.003044,', run_usage)
+
+    def test_workspace_credits_stop_translation_and_ocr_without_retry(self) -> None:
+        import numpy as np
+
+        with mock.patch.object(pcfg, 'module', ModuleConfig(
+            llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+        )):
+            translator = LLMTranslator('English', '繁體中文', **{'delay': 0})
+            ocr = LLMOCR(**{'delay': 0})
+            for scenario in ('credits_rpc', 'credits_event', 'credits_terminal', 'quota'):
+                self.scenario = scenario
+                for operation in (lambda: translator.translate(['first', 'second']),
+                                  lambda: ocr.ocr_img(np.zeros((12, 12, 3), dtype=np.uint8))):
+                    with self.subTest(scenario=scenario, operation=operation):
+                        count = len(self.processes)
+                        with self.assertRaisesRegex(CodexRequestError, 'Codex quota exhausted:'):
+                            operation()
+                        self.assertEqual(len(self.processes), count + 1)
+                        self.assertIsNotNone(self.processes[-1].poll())
 
     def test_real_translator_and_ocr_route_without_openai_client(self) -> None:
         import numpy as np
