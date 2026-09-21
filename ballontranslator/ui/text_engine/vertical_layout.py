@@ -54,6 +54,8 @@ from .rendering.indexing import (
     _utf16_slice,
 )
 from .rendering.tate_chu_yoko import (
+    TateChuYokoRun,
+    normalize_tate_chu_yoko_text,
     tate_chu_yoko_ink_bounds,
     tate_chu_yoko_natural_bounds,
     tate_chu_yoko_transform,
@@ -133,22 +135,6 @@ def _is_non_fullwidth_roman(char: str) -> bool:
         return False
     name = unicodedata.name(char, '')
     return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
-
-
-def _needs_tate_chu_yoko_spacing_fallback(text: str) -> bool:
-    """Return whether Qt 5 can narrow fullwidth punctuation safely.
-
-    >>> _needs_tate_chu_yoko_spacing_fallback('！？')
-    True
-    >>> _needs_tate_chu_yoko_spacing_fallback('漢字')
-    False
-    """
-    return len(text) > 1 and all(
-        unicodedata.category(char).startswith('P')
-        and unicodedata.east_asian_width(char) in {'F', 'W'}
-        and unicodedata.normalize('NFKC', char) != char
-        for char in text
-    )
 
 
 def _inseparable_punctuation_run(
@@ -334,6 +320,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.need_ideal_width = True
         self.per_char_records = []
         self.text_combine_ranges = []
+        self._tate_chu_yoko_runs: dict[Tuple[int, int], TateChuYokoRun] = {}
         self._ruby_metrics: List[RubyBlockMetrics] = []
         self._base_ink_bounds = QRectF()
         self._annotation_ink_bounds = QRectF()
@@ -671,6 +658,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_spaces_lst = []
         self.per_char_records = []
         self.text_combine_ranges = []
+        self._tate_chu_yoko_runs.clear()
         self._ruby_metrics = []
         self.shrink_height = 0
         self.shrink_width = 0
@@ -1585,6 +1573,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             return None
         text_combine_cell = self.tate_chu_yoko_cell_rect(block, line_number)
         if text_combine_cell is not None:
+            line = self._tate_chu_yoko_runs.get(
+                (block.blockNumber(), line.textStart()), line
+            )
             return (
                 line,
                 QPointF(),
@@ -1654,7 +1645,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     )
                     if placement is None:
                         return QRectF()
-                    _line, _offset, transform = placement
+                    line, _offset, transform = placement
                     cursor_x = self._line_cursor_x(line, cpos)
                     mapped_x = transform.map(
                         QPointF(cursor_x, line.y())
@@ -2023,15 +2014,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
     def _prepare_tate_chu_yoko_layout_formats(
         self,
         block: QTextBlock,
+        block_text: str,
         ranges: Tuple[Tuple[int, int, str], ...],
-    ) -> None:
+    ) -> dict[int, List[QTextLayout.FormatRange]]:
         """Apply transient W3C tate-chu-yoko shaping to one block.
 
         >>> callable(VerticalTextDocumentLayout._prepare_tate_chu_yoko_layout_formats)
         True
         """
         layout = block.layout()
-        previous = list(layout.formats())
+        previous = layout.formats()
         formats = [
             entry
             for entry in previous
@@ -2039,17 +2031,19 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 TATE_CHU_YOKO_LAYOUT_FORMAT_PROPERTY
             ))
         ]
+        shared_formats = tuple(formats)
+        run_formats = {}
         for start, length, _group_id in ranges:
             end = start + length
-            text = _utf16_slice(block.text(), start, length)
+            # Keep each run's overlays as they are built, so shaping does not
+            # copy and scan every other TCY run's formats in this paragraph.
+            run_formats[start] = [
+                entry for entry in shared_formats
+                if entry.start < end and entry.start + entry.length > start
+            ]
+            text = _utf16_slice(block_text, start, length)
             grapheme_count = _grapheme_count(text)
             feature_name = _TATE_CHU_YOKO_WIDTH_FEATURES.get(grapheme_count)
-            spacing = (
-                0.5
-                if not FONT_FEATURES_AVAILABLE
-                and _needs_tate_chu_yoko_spacing_fallback(text)
-                else 1.0
-            )
             source_ranges = self.fragment_format_ranges(
                 block.blockNumber(), start, end
             ) or ((start, end, block.charFormat()),)
@@ -2057,11 +2051,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 char_format = QTextCharFormat()
                 if abs(letter_spacing_value(
                     source_format, self.letter_spacing
-                ) - spacing) > 1e-9:
+                ) - 1.0) > 1e-9:
                     char_format.setFontLetterSpacingType(
                         QFont.SpacingType.PercentageSpacing
                     )
-                    char_format.setFontLetterSpacing(spacing * 100.0)
+                    char_format.setFontLetterSpacing(100.0)
                 if FONT_FEATURES_AVAILABLE and grapheme_count > 1:
                     features = dict(source_format.fontFeatures())
                     width_features = (
@@ -2084,8 +2078,62 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 entry.length = range_end - range_start
                 entry.format = char_format
                 formats.append(entry)
+                run_formats[start].append(entry)
         if ranges or len(formats) != len(previous):
             layout.setFormats(formats)
+        return run_formats
+
+    def _prepare_tate_chu_yoko_line(
+        self, block: QTextBlock, line: QTextLine, text: str,
+        layout_formats: List[QTextLayout.FormatRange],
+    ) -> QTextLine:
+        """Shape an isolated TCY run without changing document text or positions.
+
+        >>> callable(VerticalTextDocumentLayout._prepare_tate_chu_yoko_line)
+        True
+        """
+        # Native composition positions include transient preedit text. Keep Qt's
+        # layout authoritative until it commits instead of hiding the preedit.
+        if block.layout().preeditAreaText():
+            return line
+        start = line.textStart()
+        end = start + line.textLength()
+        if _grapheme_count(text) < 2:
+            return line
+        normalized_text = normalize_tate_chu_yoko_text(text)
+
+        # Shape narrow and full-width forms in the same isolated context,
+        # including bidi caret boundaries. The run maps its local indices back
+        # to this block; earlier text is not copied into the shaping layout.
+        normalized = QTextLayout(
+            normalized_text, self.document().defaultFont(), self.paintDevice()
+        )
+        formats = []
+        for range_start, range_end, char_format in self.fragment_format_ranges(
+            block.blockNumber(), start, end
+        ):
+            entry = QTextLayout.FormatRange()
+            entry.start = range_start - start
+            entry.length = range_end - range_start
+            entry.format = char_format
+            formats.append(entry)
+        for source in layout_formats:
+            range_start = max(start, source.start)
+            range_end = min(end, source.start + source.length)
+            if range_start < range_end:
+                entry = QTextLayout.FormatRange()
+                entry.start = range_start - start
+                entry.length = range_end - range_start
+                entry.format = source.format
+                formats.append(entry)
+        normalized.setFormats(formats)
+        normalized.beginLayout()
+        shaped_line = normalized.createLine()
+        shaped_line.setLineWidth(1_000_000.0)
+        normalized.endLayout()
+        run = TateChuYokoRun(normalized, start)
+        self._tate_chu_yoko_runs[(block.blockNumber(), start)] = run
+        return run
 
     def layoutBlock(self, block: QTextBlock) -> None:
         doc = self.document()
@@ -2106,8 +2154,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         custom_rendering = self.render_delegate is not None
         text_combine_ranges = text_combine_upright_ranges(block)
         self.text_combine_ranges.append(text_combine_ranges)
-        self._prepare_tate_chu_yoko_layout_formats(
-            block, text_combine_ranges
+        text_combine_formats = self._prepare_tate_chu_yoko_layout_formats(
+            block, blk_text, text_combine_ranges
         )
         ruby_metrics = vertical_ruby_metrics(
             block,
@@ -2188,7 +2236,13 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 combined_text = _utf16_slice(
                     blk_text, char_idx, text_combine_length
                 )
-                line.setNumColumns(max(1, _grapheme_count(combined_text)))
+                columns = max(1, _grapheme_count(combined_text))
+                line.setNumColumns(columns)
+                # A ligature can consume multiple characters as one column.
+                # Do not let it pull the following character into TCY.
+                while columns > 1 and line.textLength() > text_combine_length:
+                    columns -= 1
+                    line.setNumColumns(columns)
             else:
                 line.setNumColumns(1)
                 punctuation_run = _inseparable_punctuation_run(
@@ -2379,6 +2433,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     ).left()
 
                 if is_text_combine:
+                    shaped_line = self._prepare_tate_chu_yoko_line(
+                        block, line, text, text_combine_formats[char_idx]
+                    )
                     # Standard Roman mode keeps the shaped horizontal width;
                     # alternate mode retains the CSS-like one-em fit.
                     right_margin, left_margin = emphasis_margins(
@@ -2388,7 +2445,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     if self.fontformat.standard_vertical_roman_alignment:
                         text_combine_width = max(
                             text_combine_width,
-                            tate_chu_yoko_natural_bounds(line).width(),
+                            tate_chu_yoko_natural_bounds(shaped_line).width(),
                         )
                     text_combine_height = cfmt.tbr.height()
                     spacing_advance = 0.0

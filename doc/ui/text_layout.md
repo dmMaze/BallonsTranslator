@@ -67,10 +67,19 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
-Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Its
-layout ignores authored letter spacing and uses the font's half-width
-punctuation plus matching half-, third-, or quarter-width feature when
-available. Standard Roman mode keeps that shaped run's natural horizontal
+Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Multi-character
+runs shape explicit full-width forms as their narrow equivalents, preserving the
+original document text and UTF-16 positions. Single-character runs and unrelated
+compatibility characters stay unchanged. Normalized runs use the same placement
+for paint, effects, selection, and hit testing; their temporary shaping layouts
+contain only the run's text. `TateChuYokoRun` translates run-local glyph and cursor
+indices to block-local UTF-16 offsets at the Qt boundary. These runs are rebuilt
+with the owning vertical layout. Native IME composition remains authoritative
+until commit.
+
+TCY ignores authored letter spacing and uses the font's half-width punctuation
+plus matching half-, third-, or quarter-width feature when available.
+Standard Roman mode keeps that shaped run's natural horizontal
 width; the alternate mode horizontally scales any remaining excess to one em.
 The resulting visible ink is centered without changing the stored text. Glyph
 ink may overhang the column, but that overhang affects only painting and
