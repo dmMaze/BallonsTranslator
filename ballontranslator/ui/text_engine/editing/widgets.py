@@ -416,7 +416,7 @@ class SourceTextEdit(QTextEdit):
         if self.hasFocus() and not self.pre_editing and not self.highlighting and not self.in_acts:
             self.handle_content_change()
 
-    def handle_content_change(self):
+    def handle_content_change(self) -> None:
         if not self.in_redo_undo:
             
             change_from = self.change_from
@@ -441,9 +441,15 @@ class SourceTextEdit(QTextEdit):
                     self.input_method_from = -1
                     self.input_method_removed = 0
                 elif self.change_added > 0:
-                    cursor = self.textCursor()
+                    cursor = QTextCursor(self.document())
                     cursor.setPosition(change_from)
-                    cursor.setPosition(change_from + self.change_added, QTextCursor.MoveMode.KeepAnchor) 
+                    # Like TextBlkItem, exclude Qt's terminal paragraph
+                    # separator from whole-document changes (e.g. drops at 0).
+                    selection_end = min(
+                        change_from + self.change_added,
+                        self.document().characterCount() - 1,
+                    )
+                    cursor.setPosition(selection_end, QTextCursor.MoveMode.KeepAnchor)
                     added_text = cursor.selectedText()
 
             undo_steps = self.document().availableUndoSteps()
