@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump_program_config
 from ballontranslator.utils.llm_profiles import (
@@ -27,6 +28,31 @@ from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileMigrationTest(unittest.TestCase):
+    def test_title_link_persistence_and_missing_builtin_field(self) -> None:
+        with patch.dict(PROVIDER_DEFAULTS['OpenAI'], title_url='https://example.com'):
+            profile = default_profile('OpenAI')
+            self.assertEqual(profile.title_url, 'https://example.com')
+            exported = profile_to_export_dict(profile)
+            self.assertEqual(profiles_from_json(json.dumps(exported))[0].title_url, profile.title_url)
+            old_profile = profile_to_dict(profile)
+            del old_profile['title_url']
+            self.assertEqual(load_profiles([old_profile])[0].title_url, profile.title_url)
+            for url in ('', 'https://example.com/custom'):
+                old_profile['title_url'] = url
+                self.assertEqual(load_profiles([old_profile])[0].title_url, url)
+        self.assertEqual(load_profiles([{'name': 'Old custom'}])[0].title_url, '')
+
+    def test_invalid_title_url_does_not_discard_saved_profile(self) -> None:
+        for url in (None, 42, [], 'file:///tmp/file', 'https://', 'https://[bad'):
+            with self.subTest(url=url):
+                profile = load_profiles([{
+                    'id': 'custom', 'name': 'Saved', 'model': 'saved-model',
+                    'title_url': url,
+                }])[0]
+                self.assertEqual(profile.name, 'Saved')
+                self.assertEqual(profile.model, 'saved-model')
+                self.assertEqual(profile.title_url, '')
+
     def test_runtime_profile_selects_falls_back_and_returns_a_copy(self):
         first = default_profile('OpenAI')
         second = default_profile('Ollama')

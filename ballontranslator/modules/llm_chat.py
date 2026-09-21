@@ -76,12 +76,12 @@ def openai_chat_completion_args(
 
     Native OpenAI models default to ``max_completion_tokens`` so future model
     names do not need version-pattern guesses. Only explicitly listed older
-    models and compatibility endpoints retain ``max_tokens``. Native GPT-5.5+
-    models use the API's fixed default temperature, so omit that argument.
+    models and compatibility endpoints retain ``max_tokens``. GPT-5.5+ models
+    omit temperature and top_p regardless of the endpoint, including gateways.
 
     >>> profile = LLMProfile.from_provider('OpenAI')
     >>> openai_chat_completion_args(profile, 'gpt-5.5')
-    {'top_p': 1.0, 'max_completion_tokens': 8192}
+    {'max_completion_tokens': 8192}
     >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
     0.1
     """
@@ -92,7 +92,7 @@ def openai_chat_completion_args(
     )
     model_name = str(model or '').rsplit('/', 1)[-1].lower()
     is_native_openai = not base_url or base_url == openai_base_url
-    args: Dict[str, Any] = {'top_p': float(profile.top_p)}
+    args: Dict[str, Any] = {}
     version_match = re.match(
         r'^gpt-(\d+)(?:\.(\d+))?(?:-|$)', model_name
     )
@@ -101,7 +101,8 @@ def openai_chat_completion_args(
         if version_match
         else None
     )
-    if not is_native_openai or gpt_version is None or gpt_version < (5, 5):
+    if gpt_version is None or gpt_version < (5, 5):
+        args['top_p'] = float(profile.top_p)
         args['temperature'] = float(profile.temperature)
     token_limit_key = (
         'max_completion_tokens'

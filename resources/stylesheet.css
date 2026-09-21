@@ -564,6 +564,13 @@ QWidget#ConfigContentScrollContent QGroupBox#LLMProfileCard {
     font-size: 13px;
 }
 
+QGroupBox#LLMProfileCard QLabel#LLMProfileTitle {
+    background-color: transparent;
+    color: @qwidgetForegroundColor;
+    font-size: 13px;
+    padding: 0px 5px;
+}
+
 QLineEdit#LLMProfileNameEdit {
     border: 1px solid rgb(30, 147, 229);
     border-radius: 4px;

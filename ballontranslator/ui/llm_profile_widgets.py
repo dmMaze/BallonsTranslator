@@ -1,6 +1,7 @@
 import copy
 import json
 import uuid
+from html import escape
 from typing import get_type_hints
 
 from qtpy.QtWidgets import (
@@ -22,8 +23,8 @@ from qtpy.QtWidgets import (
     QStyle,
     QStyleOptionGroupBox,
 )
-from qtpy.QtCore import QEvent, QRectF, QTimer, Qt, Signal
-from qtpy.QtGui import QColor, QFont, QIcon, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from qtpy.QtCore import QEvent, QRectF, QTimer, Qt, QUrl, Signal
+from qtpy.QtGui import QColor, QDesktopServices, QFont, QIcon, QLinearGradient, QMouseEvent, QPaintEvent, QPainter, QPainterPath, QPen, QPixmap, QRegion
 
 try:
     from qtpy.QtGui import QAction
@@ -47,6 +48,8 @@ from ballontranslator.utils.llm_profiles import (
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
     LLMProfile,
+    is_profile_title_url,
+    parse_profile_title,
     copy_profile,
     profile_by_id,
     profile_to_export_dict,
@@ -134,10 +137,11 @@ class ProfileNameEdit(QLineEdit):
         if select_all:
             self.selectAll()
 
-    def finishEdit(self):
+    def finishEdit(self) -> None:
         if not self.isVisible():
             return
-        self.clearFocus()
+        # The card hides the editor. Clearing focus here re-enters this method
+        # through focusOutEvent and commits the title twice.
         self.resizeToContent()
         self.edit_finished.emit()
 
@@ -431,6 +435,16 @@ class ProfileCardWidget(QGroupBox):
         self.name_edit.edit_requested.connect(self.startNameEdit)
         self.name_edit.edit_finished.connect(self.on_name_edit_finished)
         self.name_edit.hide()
+        self.name_edit.setToolTip(self.tr('Use a plain name or [Name](https://example.com).'))
+        self.title_label = QLabel(self)
+        self.title_label.setObjectName('LLMProfileTitle')
+        self.title_label.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
+        self.title_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+        )
+        self.title_label.linkActivated.connect(self.openTitleLink)
+        self._refreshTitle()
 
         self.text_badge = CapabilityBadgeLabel(modality_badge_qcolor(LLM_MODALITY_TEXT_COLOR), self)
         self.text_badge.clicked.connect(self.toggleTextSupport)
@@ -843,12 +857,7 @@ class ProfileCardWidget(QGroupBox):
         self.summary_widget.setMinimumHeight(self.summary_layout.sizeHint().height())
         self.summary_widget.updateGeometry()
 
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self._selection_border_colors:
-            return
-
-        radius = 6
+    def paintEvent(self, event: QPaintEvent) -> None:
         style_option = QStyleOptionGroupBox()
         self.initStyleOption(style_option)
         frame_rect = self.style().subControlRect(
@@ -857,9 +866,28 @@ class ProfileCardWidget(QGroupBox):
             QStyle.SubControl.SC_GroupBoxFrame,
             self,
         )
+        style_option.text = ''
+        painter = QPainter(self)
+        painter.save()
+        if self.title():
+            # Leave only a gap in the top border, preserving the card background
+            # beneath the transparent label. The native title text is suppressed.
+            title_gap = self.title_label.geometry()
+            title_gap.setTop(frame_rect.top())
+            title_gap.setHeight(1)
+            painter.setClipRegion(
+                QRegion(self.rect()).subtracted(QRegion(title_gap))
+            )
+        self.style().drawComplexControl(
+            QStyle.ComplexControl.CC_GroupBox, style_option, painter, self,
+        )
+        painter.restore()
+        if not self._selection_border_colors:
+            return
+
+        radius = 6
         rect = QRectF(frame_rect).adjusted(0.5, 0.5, -0.5, -0.5)
 
-        painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         pen = QPen()
         pen.setWidthF(1.0)
@@ -877,12 +905,7 @@ class ProfileCardWidget(QGroupBox):
         path = QPainterPath()
         path.moveTo(rect.left() + radius, rect.top())
         if self.title():
-            title_rect = self.style().subControlRect(
-                QStyle.ComplexControl.CC_GroupBox,
-                style_option,
-                QStyle.SubControl.SC_GroupBoxLabel,
-                self,
-            )
+            title_rect = self.title_label.geometry()
             title_left = max(rect.left() + radius, title_rect.left() - 2)
             title_right = min(rect.right() - radius, title_rect.right() + 2)
             path.lineTo(title_left, rect.top())
@@ -963,22 +986,49 @@ class ProfileCardWidget(QGroupBox):
         if hasattr(widget, 'selectAll'):
             widget.selectAll()
 
-    def startNameEdit(self):
+    def _refreshTitle(self) -> None:
+        self.setTitle(self.profile.name)
+        if self.profile.title_url:
+            self.title_label.setTextFormat(Qt.TextFormat.RichText)
+            self.title_label.setText(
+                f'<a href="{escape(self.profile.title_url, quote=True)}" '
+                f'style="color: rgb(30, 147, 229); text-decoration: underline;">'
+                f'{escape(self.profile.name)}</a>'
+            )
+            self.title_label.setToolTip(
+                self.profile.title_url + '\n' + self.tr('Right click to edit the name or link.')
+            )
+        else:
+            self.title_label.setTextFormat(Qt.TextFormat.PlainText)
+            self.title_label.setText(self.profile.name)
+            self.title_label.setToolTip(self.tr('Double click the name to edit. Right click for profile actions.'))
+
+    def openTitleLink(self, url: str) -> None:
+        if is_profile_title_url(url):
+            QDesktopServices.openUrl(QUrl(url))
+
+    def startNameEdit(self) -> None:
         self._name_editing = True
-        self.name_edit.setText(self.profile.name or self.tr('LLM Profile'))
+        name = self.profile.name or self.tr('LLM Profile')
+        if self.profile.title_url:
+            name = f'[{name}]({self.profile.title_url})'
+        self.name_edit.setText(name)
         self.name_edit.resizeToContent()
         self._position_header_controls()
         self.setTitle('')
+        self.title_label.hide()
         self.name_edit.show()
         self.name_edit.raise_()
         self.name_edit.startEdit(select_all=True)
 
-    def on_name_edit_finished(self):
-        self.profile.name = self.name_edit.text().strip() or self.tr('LLM Profile')
+    def on_name_edit_finished(self) -> None:
+        name, self.profile.title_url = parse_profile_title(self.name_edit.text())
+        self.profile.name = name or self.tr('LLM Profile')
+        self._refreshTitle()
         self.name_edit.setText(self.profile.name)
-        self.setTitle(self.profile.name)
         self.name_edit.resizeToContent()
         self.name_edit.hide()
+        self.title_label.show()
         self._sync_minimum_width_with_content()
         self._position_header_controls()
         QTimer.singleShot(0, self._finishNameEditCycle)
@@ -999,7 +1049,17 @@ class ProfileCardWidget(QGroupBox):
         self.add_image_model_btn.setVisible(visible and bool(self.profile.support_image))
         self.remove_image_model_btn.setVisible(visible and bool(self.profile.support_image))
 
-    def _position_header_controls(self):
+    def _position_header_controls(self) -> None:
+        style_option = QStyleOptionGroupBox()
+        self.initStyleOption(style_option)
+        title_rect = self.style().subControlRect(
+            QStyle.ComplexControl.CC_GroupBox, style_option,
+            QStyle.SubControl.SC_GroupBoxLabel, self,
+        )
+        # The native title treats '&' as a mnemonic; the label displays names
+        # literally and owns the required width, including rich-text links.
+        title_rect.setWidth(self.title_label.sizeHint().width())
+        self.title_label.setGeometry(title_rect)
         border_y = 9
         title_y = border_y - self.name_edit.height() // 2
         self.name_edit.move(18, title_y)
@@ -1078,7 +1138,10 @@ class ProfileCardWidget(QGroupBox):
                 self.more_btn.setIcon(self.edit_icon)
         return super().eventFilter(obj, event)
 
-    def mouseDoubleClickEvent(self, event):
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if self.profile.title_url and self.title_label.geometry().contains(event.pos()):
+            event.accept()
+            return
         pos_y = event.position().y() if hasattr(event, 'position') else event.y()
         if pos_y <= 24:
             self.startNameEdit()

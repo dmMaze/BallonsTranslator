@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from typing import (
     Any,
@@ -15,6 +16,7 @@ from typing import (
     get_origin,
     get_type_hints,
 )
+from urllib.parse import urlsplit
 
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.secret_store import SecretStore
@@ -181,6 +183,7 @@ class LLMProfile(Config):
     id: str = ""
     profile_type = "llm"
     name: str = ""
+    title_url: str = ""
     built_in: bool = False
     base_url: str = ""
     api_key: Any = ""
@@ -210,6 +213,13 @@ class LLMProfile(Config):
     json_schema_response_format: bool = False
     low_vram_mode: bool = False
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.title_url, str) or (
+            self.title_url and not is_profile_title_url(self.title_url)
+        ):
+            LOGGER.warning('Discard invalid LLM profile title_url for %s.', self.id or self.name)
+            self.title_url = ''
+
     @classmethod
     def from_provider(cls, provider: str) -> "LLMProfile":
         provider = canonical_provider(provider)
@@ -218,6 +228,32 @@ class LLMProfile(Config):
 
     def to_dict(self) -> Dict:
         return copy.deepcopy(self.__dict__)
+
+
+def is_profile_title_url(value: str) -> bool:
+    try:
+        url = urlsplit(value)
+        return (
+            url.scheme in ('http', 'https') and bool(url.hostname)
+            and not any(character.isspace() for character in value)
+        )
+    except ValueError:
+        return False
+
+
+def parse_profile_title(text: str) -> Tuple[str, str]:
+    """Accept a plain title or one Markdown-style web link.
+
+    >>> parse_profile_title('[Example](https://example.com)')
+    ('Example', 'https://example.com')
+    >>> parse_profile_title('[Example](file:///tmp/example)')
+    ('[Example](file:///tmp/example)', '')
+    """
+    text = text.strip()
+    match = re.fullmatch(r'\[(.+)\]\((\S+)\)', text)
+    if match and match[1].strip() and is_profile_title_url(match[2]):
+        return match[1].strip(), match[2]
+    return text, ''
 
 
 def normalize_thinking_level(value: Any) -> str:
@@ -288,7 +324,13 @@ def profile_from_config(profile: Any) -> LLMProfile:
     if isinstance(profile, LLMProfile):
         loaded = copy.deepcopy(profile)
     elif isinstance(profile, Mapping):
-        loaded = LLMProfile(**copy.deepcopy(dict(profile)))
+        data = copy.deepcopy(dict(profile))
+        # Only missing fields inherit a new built-in link; an empty URL is a
+        # deliberate user choice and must survive subsequent loads.
+        if 'title_url' not in data:
+            provider = _provider_from_profile_id(_builtin_profile_id(profile))
+            data['title_url'] = PROVIDER_DEFAULTS.get(provider, {}).get('title_url', '')
+        loaded = LLMProfile(**data)
     else:
         raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
     return _normalize_profile_thinking(loaded)
