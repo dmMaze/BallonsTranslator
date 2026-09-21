@@ -1,14 +1,18 @@
 import json
-from typing import Callable
+from typing import Callable, List, Tuple
 
-from qtpy.QtCore import QEvent, QSize, Qt, Signal
-from qtpy.QtGui import QIcon, QPainter
+from qtpy.QtCore import QCoreApplication, QEvent, QSize, Qt, Signal
+from qtpy.QtGui import QIcon, QPaintEvent, QPainter, QPalette
 from qtpy.QtWidgets import (
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QMenu,
     QPushButton,
+    QStyle,
+    QStyleOptionToolButton,
     QToolButton,
+    QWidget,
     QWidgetAction,
 )
 
@@ -26,6 +30,7 @@ from .misc import themed_icon_path
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
+    LLMProfile,
     LLM_INPAINT_KEY,
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
@@ -43,25 +48,46 @@ class SmallConfigPutton(QPushButton):
     pass
 
 
-class BottomBarModuleToolButton(QToolButton):
-    """Bottom module selector with a cached themed dropdown chevron.
+class ModuleSelectionToolButton(QToolButton):
+    """Module selector button with a cached themed dropdown chevron.
 
-    >>> BottomBarModuleToolButton.__name__
-    'BottomBarModuleToolButton'
+    >>> ModuleSelectionToolButton.__name__
+    'ModuleSelectionToolButton'
     """
 
     CHEVRON_SIZE = 12
     CHEVRON_RIGHT_MARGIN = 8
 
-    def paintEvent(self, event):
-        super().paintEvent(event)
+    def paintEvent(self, event: QPaintEvent) -> None:
+        if self.icon().isNull():
+            # Qt centers text-only tool buttons, even with QSS text-align.
+            # Retain native button styling and align the label with its padding.
+            option = QStyleOptionToolButton()
+            self.initStyleOption(option)
+            text = option.text
+            option.text = ''
+            painter = QPainter(self)
+            self.style().drawComplexControl(
+                QStyle.ComplexControl.CC_ToolButton, option, painter, self,
+            )
+            text_rect = self.rect().adjusted(
+                8, 0, -(self.CHEVRON_RIGHT_MARGIN + self.CHEVRON_SIZE + 4), 0,
+            )
+            self.style().drawItemText(
+                painter, text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                option.palette, self.isEnabled(),
+                option.fontMetrics.elidedText(text, Qt.TextElideMode.ElideRight, text_rect.width()),
+                QPalette.ColorRole.ButtonText,
+            )
+        else:
+            super().paintEvent(event)
+            painter = QPainter(self)
         pixmap = render_svg_pixmap(
             themed_icon_path('chevron-down.svg'),
             self.CHEVRON_SIZE,
             self.CHEVRON_SIZE,
             self.devicePixelRatioF(),
         )
-        painter = QPainter(self)
         x = self.width() - self.CHEVRON_RIGHT_MARGIN - self.CHEVRON_SIZE
         y = (self.height() - self.CHEVRON_SIZE) // 2
         painter.drawPixmap(x, y, pixmap)
@@ -207,6 +233,211 @@ def _add_bottom_submenu(parent: QMenu, submenu: QMenu, text: str, checked: bool)
     return submenu
 
 
+class ModuleSelectionMenu(QMenu):
+    """Shared module and LLM-profile actions for bottom-bar and run selectors.
+
+    >>> ModuleSelectionMenu.__name__
+    'ModuleSelectionMenu'
+    """
+
+    llm_profile_changed = Signal(str)
+
+    def __init__(
+        self, selector: QComboBox, fallback_name: str,
+        llm_modality: str = '', parent: QWidget = None,
+    ) -> None:
+        super().__init__(parent)
+        self.selector = selector
+        self.fallback_name = fallback_name
+        self.llm_modality = llm_modality
+        if self._has_llm_modality():
+            self._configure_modality(llm_modality)
+        self.aboutToShow.connect(self.rebuildMenu)
+
+    def _has_llm_modality(self) -> bool:
+        return bool(self.llm_modality)
+
+    def _configure_modality(self, modality: str) -> None:
+        if modality == LLM_MODALITY_TEXT:
+            self.llm_key = LLM_TRANSLATOR_KEY
+            self.profile_id_attr = 'translator_llm_id'
+            self.profile_support_attr = 'support_text'
+            self.model_attr = 'model'
+            self.model_options_attr = 'model_options'
+            self.modality_color = LLM_MODALITY_TEXT_COLOR
+            self.module_attr_to_set = ''
+        elif modality == LLM_MODALITY_VISION:
+            self.llm_key = LLM_OCR_KEY
+            self.profile_id_attr = 'ocr_llm_id'
+            self.profile_support_attr = 'support_vision'
+            self.model_attr = 'vision_model'
+            self.model_options_attr = 'vision_model_options'
+            self.modality_color = LLM_MODALITY_VISION_COLOR
+            self.module_attr_to_set = ''
+        elif modality == LLM_MODALITY_IMAGE:
+            self.llm_key = LLM_INPAINT_KEY
+            self.profile_id_attr = 'inpaint_llm_id'
+            self.profile_support_attr = 'support_image'
+            self.model_attr = 'image_model'
+            self.model_options_attr = 'image_model_options'
+            self.modality_color = LLM_MODALITY_IMAGE_COLOR
+            self.module_attr_to_set = 'inpainter'
+        else:
+            raise ValueError('Unknown LLM modality: {}'.format(modality))
+
+    def _is_text_modality(self) -> bool:
+        return self.llm_modality == LLM_MODALITY_TEXT
+
+    def isCurrentLLM(self) -> bool:
+        return self._has_llm_modality() and self.selector.currentText() == self.llm_key
+
+    def selectedProfileId(self) -> str:
+        return getattr(pcfg.module, self.profile_id_attr)
+
+    def rebuildMenu(self) -> None:
+        # QMenu.clear() removes submenu actions but leaves their owned menus.
+        for action in self.actions():
+            submenu = action.menu()
+            if submenu is not None:
+                submenu.deleteLater()
+        self.clear()
+        current_module = self.selector.currentText()
+        if self._has_llm_modality():
+            _add_bottom_menu_section(self, self.fallback_name)
+        for i in range(self.selector.count()):
+            module = self.selector.itemText(i)
+            if self._has_llm_modality() and module == self.llm_key:
+                continue
+            _add_bottom_menu_action(
+                self,
+                module,
+                module == current_module,
+                module,
+                self._select_module_action,
+            )
+        if self._has_llm_modality():
+            self._addLlmProfileMenus(current_module)
+
+    def _addLlmProfileMenus(self, current_module: str) -> None:
+        _add_bottom_menu_section(self, QCoreApplication.translate('ModuleSelectionWidget', 'LLM'), color=self.modality_color)
+        added = False
+        for profile in pcfg.module.llm_profiles:
+            if not getattr(profile, self.profile_support_attr):
+                continue
+            added = True
+            profile_id = profile.id
+            profile_menu = _bottom_submenu(profile.name or profile_id, self)
+            _add_bottom_submenu(
+                self,
+                profile_menu,
+                profile.name or profile_id,
+                current_module == self.llm_key and self.selectedProfileId() == profile_id,
+            )
+            self._buildProfileMenu(profile_menu, profile)
+        if not added:
+            action = QAction(self._no_profiles_text(), self)
+            action.setEnabled(False)
+            self.addAction(action)
+
+    def _no_profiles_text(self) -> str:
+        if self.llm_modality == LLM_MODALITY_TEXT:
+            return QCoreApplication.translate('ModuleSelectionWidget', 'No text profiles')
+        if self.llm_modality == LLM_MODALITY_VISION:
+            return QCoreApplication.translate('ModuleSelectionWidget', 'No vision profiles')
+        return QCoreApplication.translate('ModuleSelectionWidget', 'No image profiles')
+
+    def _select_module_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if isinstance(action, QAction):
+            self.selector.setCurrentText(str(action.data()))
+
+    def selectLLMProfile(self, profile_id: str) -> None:
+        if not self._has_llm_modality():
+            return
+        setattr(pcfg.module, self.profile_id_attr, profile_id)
+        if self.module_attr_to_set:
+            setattr(pcfg.module, self.module_attr_to_set, self.llm_key)
+        if self.selector.currentText() != self.llm_key:
+            self.selector.setCurrentText(self.llm_key)
+        self.llm_profile_changed.emit(profile_id)
+
+    def selectLLMProfileSetting(self, profile_id: str, key: str, value: str) -> None:
+        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
+        if profile is not None:
+            setattr(profile, key, value)
+            if key == self.model_attr:
+                options = getattr(profile, self.model_options_attr)
+                if value and value not in options:
+                    options.insert(0, value)
+        self.selectLLMProfile(profile_id)
+
+    def _profile_menu_groups(self) -> List[Tuple[str, str, str]]:
+        if self.llm_modality == LLM_MODALITY_TEXT:
+            return [
+                (QCoreApplication.translate('ModuleSelectionWidget', 'Thinking Level'), 'thinking_level', 'thinking_level_options'),
+                (QCoreApplication.translate('ModuleSelectionWidget', 'Model'), self.model_attr, self.model_options_attr),
+            ]
+        if self.llm_modality == LLM_MODALITY_VISION:
+            return [
+                (QCoreApplication.translate('ModuleSelectionWidget', 'Vision Model'), self.model_attr, self.model_options_attr),
+                (QCoreApplication.translate('ModuleSelectionWidget', 'Vision Detail Level'), 'vision_detail_level', 'vision_detail_level_options'),
+            ]
+        return [
+            (QCoreApplication.translate('ModuleSelectionWidget', 'Image Model'), self.model_attr, self.model_options_attr),
+        ]
+
+    def _buildProfileMenu(self, menu: QMenu, profile: LLMProfile) -> None:
+        profile_id = profile.id
+        selected_profile = self.isCurrentLLM() and self.selectedProfileId() == profile_id
+        for section, value_attr, options_attr in self._profile_menu_groups():
+            _add_bottom_menu_section(menu, section, color=self.modality_color)
+            options = [str(option) for option in getattr(profile, options_attr) if str(option)]
+            current_value = str(getattr(profile, value_attr) or 'None')
+            for option in options:
+                _add_bottom_menu_action(
+                    menu,
+                    option,
+                    selected_profile and option == current_value,
+                    (profile_id, value_attr, option),
+                    self._select_profile_setting_action,
+                )
+
+    def _select_profile_setting_action(self, _checked: bool = False) -> None:
+        action = self.sender()
+        if not isinstance(action, QAction):
+            return
+        profile_id, key, value = action.data()
+        self.selectLLMProfileSetting(profile_id, key, value)
+
+    def _buttonTextForProfile(self, profile: LLMProfile) -> str:
+        if self._is_text_modality():
+            model_options = [str(option) for option in profile.model_options if str(option)]
+            model = str(profile.model or '').strip()
+            thinking_level = str(
+                profile.thinking_level or THINKING_AUTO
+            ).strip()
+            if model_options and model:
+                name = _simplify_llm_model_name(model)
+                if thinking_level and thinking_level != THINKING_AUTO:
+                    name = QCoreApplication.translate('ModuleSelectionWidget', '{model} {thinking_level}').format(model=name, thinking_level=thinking_level)
+                return name
+            return profile.name or self.llm_key
+
+        model = str(getattr(profile, self.model_attr) or '').strip()
+        return _simplify_llm_model_name(model) or profile.name or self.llm_key
+
+    def selectedText(self) -> str:
+        name = self.selector.currentText()
+        is_llm = self.isCurrentLLM()
+        if is_llm:
+            profile = profile_by_id(pcfg.module.llm_profiles, self.selectedProfileId())
+            if profile is not None:
+                name = self._buttonTextForProfile(profile)
+        if not name:
+            name = self.fallback_name
+        return name
+
+
 class ModuleSelectionWidget(Widget):
 
     cfg_clicked = Signal()
@@ -223,41 +454,41 @@ class ModuleSelectionWidget(Widget):
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.fallback_name = fallback_name
-        self.icon_filename = icon_filename
-        self.icon_color = icon_color
         self.llm_modality = llm_modality
-        if self._has_llm_modality():
-            self._configure_modality(llm_modality)
-        self.selector = SmallComboBox()
-        self.selector.setVisible(False)
+        self.selector = SmallComboBox(self)
+        self.selector.hide()
         self.selector.currentTextChanged.connect(self.updateButtonText)
-        if self._is_text_modality():
-            self.src_selector = SmallComboBox()
-            self.tgt_selector = SmallComboBox()
-            self.src_selector.setVisible(False)
-            self.tgt_selector.setVisible(False)
+        if llm_modality == LLM_MODALITY_TEXT:
+            self.src_selector = SmallComboBox(self)
+            self.tgt_selector = SmallComboBox(self)
+            self.src_selector.hide()
+            self.tgt_selector.hide()
 
-        self.tool_btn = BottomBarModuleToolButton(self)
+        self.tool_btn = ModuleSelectionToolButton(self)
         self.tool_btn.setObjectName('BottomBarModuleToolButton')
         self.tool_btn.setToolTip(fallback_name)
         self.tool_btn.setPopupMode(_instant_popup_mode())
-        _set_bottom_tool_button_visuals(
-            self.tool_btn,
-            self.icon_filename,
-            self.icon_color,
-        )
-        self.tool_btn.setText(fallback_name)
-        self.menu = QMenu(self.tool_btn)
+        self.menu = ModuleSelectionMenu(self.selector, fallback_name, llm_modality, self.tool_btn)
         self.tool_btn.setMenu(self.menu)
-        self.menu.aboutToShow.connect(self.rebuildMenu)
+        if llm_modality:
+            icon_filename = {
+                LLM_MODALITY_TEXT: 'text.svg',
+                LLM_MODALITY_VISION: 'eye.svg',
+                LLM_MODALITY_IMAGE: 'image.svg',
+            }[llm_modality]
+            icon_color = self.menu.modality_color
+        _set_bottom_tool_button_visuals(self.tool_btn, icon_filename, icon_color)
+        if llm_modality == LLM_MODALITY_TEXT:
+            self.menu.aboutToShow.connect(self._addLanguageMenus)
+        self.menu.llm_profile_changed.connect(self.llm_profile_changed.emit)
+        self.menu.llm_profile_changed.connect(self.updateButtonText)
 
-        self.cfg_btn = SmallConfigPutton()
+        self.cfg_btn = SmallConfigPutton(self)
         self.cfg_btn.clicked.connect(self.cfg_clicked)
-        self.cfg_btn.setVisible(False)
-        self.edit_btn = SmallConfigPutton()
+        self.cfg_btn.hide()
+        self.edit_btn = SmallConfigPutton(self)
         self.edit_btn.clicked.connect(self.onEditClicked)
-        self.edit_btn.setVisible(False)
+        self.edit_btn.hide()
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -266,52 +497,6 @@ class ModuleSelectionWidget(Widget):
         layout.addWidget(self.edit_btn)
         layout.addWidget(self.cfg_btn)
         self.updateButtonText()
-
-    def _has_llm_modality(self) -> bool:
-        return bool(self.llm_modality)
-
-    def _configure_modality(self, modality: str):
-        if modality == LLM_MODALITY_TEXT:
-            self.llm_key = LLM_TRANSLATOR_KEY
-            self.profile_id_attr = 'translator_llm_id'
-            self.profile_support_attr = 'support_text'
-            self.model_attr = 'model'
-            self.model_options_attr = 'model_options'
-            self.modality_color = LLM_MODALITY_TEXT_COLOR
-            self.icon_filename = 'text.svg'
-            self.icon_color = self.modality_color
-            self.module_attr_to_set = ''
-        elif modality == LLM_MODALITY_VISION:
-            self.llm_key = LLM_OCR_KEY
-            self.profile_id_attr = 'ocr_llm_id'
-            self.profile_support_attr = 'support_vision'
-            self.model_attr = 'vision_model'
-            self.model_options_attr = 'vision_model_options'
-            self.modality_color = LLM_MODALITY_VISION_COLOR
-            self.icon_filename = 'eye.svg'
-            self.icon_color = self.modality_color
-            self.module_attr_to_set = ''
-        elif modality == LLM_MODALITY_IMAGE:
-            self.llm_key = LLM_INPAINT_KEY
-            self.profile_id_attr = 'inpaint_llm_id'
-            self.profile_support_attr = 'support_image'
-            self.model_attr = 'image_model'
-            self.model_options_attr = 'image_model_options'
-            self.modality_color = LLM_MODALITY_IMAGE_COLOR
-            self.icon_filename = 'image.svg'
-            self.icon_color = self.modality_color
-            self.module_attr_to_set = 'inpainter'
-        else:
-            raise ValueError('Unknown LLM modality: {}'.format(modality))
-
-    def _is_text_modality(self) -> bool:
-        return self.llm_modality == LLM_MODALITY_TEXT
-
-    def _is_current_llm(self) -> bool:
-        return self._has_llm_modality() and self.selector.currentText() == self.llm_key
-
-    def _selected_profile_id(self) -> str:
-        return getattr(pcfg.module, self.profile_id_attr)
 
     def enterEvent(self, event: QEvent) -> None:
         show_edit = self.shouldShowEditButton()
@@ -331,7 +516,7 @@ class ModuleSelectionWidget(Widget):
 
     def blockSignals(self, block: bool):
         self.selector.blockSignals(block)
-        if self._is_text_modality():
+        if self.llm_modality == LLM_MODALITY_TEXT:
             self.src_selector.blockSignals(block)
             self.tgt_selector.blockSignals(block)
         super().blockSignals(block)
@@ -344,61 +529,8 @@ class ModuleSelectionWidget(Widget):
             self.blockSignals(False)
         self.updateButtonText()
 
-    def rebuildMenu(self):
-        self.menu.clear()
-        current_module = self.selector.currentText()
-        if self._has_llm_modality():
-            self._section(self.fallback_name)
-        for i in range(self.selector.count()):
-            module = self.selector.itemText(i)
-            if self._has_llm_modality() and module == self.llm_key:
-                continue
-            _add_bottom_menu_action(
-                self.menu,
-                module,
-                module == current_module,
-                module,
-                self._select_module_action,
-            )
-        if self._has_llm_modality():
-            self._addLlmProfileMenus(current_module)
-
-    def _addLlmProfileMenus(self, current_module: str):
-        self._section(self.tr('LLM'), color=self.modality_color)
-        added = False
-        for profile in pcfg.module.llm_profiles:
-            if not getattr(profile, self.profile_support_attr):
-                continue
-            added = True
-            profile_id = profile.id
-            profile_menu = _bottom_submenu(profile.name or profile_id, self.menu)
-            _add_bottom_submenu(
-                self.menu,
-                profile_menu,
-                profile.name or profile_id,
-                current_module == self.llm_key and self._selected_profile_id() == profile_id,
-            )
-            self._buildProfileMenu(profile_menu, profile)
-        if not added:
-            action = QAction(self._no_profiles_text(), self.menu)
-            action.setEnabled(False)
-            self.menu.addAction(action)
-
-        if self._is_text_modality():
-            self._addLanguageMenus()
-
-    def _section(self, text: str, color: str = ''):
-        _add_bottom_menu_section(self.menu, text, color=color)
-
-    def _no_profiles_text(self) -> str:
-        if self.llm_modality == LLM_MODALITY_TEXT:
-            return self.tr('No text profiles')
-        if self.llm_modality == LLM_MODALITY_VISION:
-            return self.tr('No vision profiles')
-        return self.tr('No image profiles')
-
     def _addLanguageMenus(self):
-        self._section(self.tr('Language'))
+        _add_bottom_menu_section(self.menu, self.tr('Language'))
         source_menu = _bottom_submenu(
             self.tr('Source - {language}').format(language=self.src_selector.currentText()),
             self.menu,
@@ -429,11 +561,6 @@ class ModuleSelectionWidget(Widget):
                 self._select_target_language_action,
             )
 
-    def _select_module_action(self, _checked: bool = False) -> None:
-        action = self.sender()
-        if isinstance(action, QAction):
-            self.selector.setCurrentText(str(action.data()))
-
     def _select_source_language_action(self, _checked: bool = False) -> None:
         action = self.sender()
         if isinstance(action, QAction):
@@ -444,104 +571,20 @@ class ModuleSelectionWidget(Widget):
         if isinstance(action, QAction):
             self.tgt_selector.setCurrentText(str(action.data()))
 
-    def selectLLMProfile(self, profile_id: str):
-        if not self._has_llm_modality():
-            return
-        setattr(pcfg.module, self.profile_id_attr, profile_id)
-        if self.module_attr_to_set:
-            setattr(pcfg.module, self.module_attr_to_set, self.llm_key)
-        if self.selector.currentText() != self.llm_key:
-            self.selector.setCurrentText(self.llm_key)
-        self.llm_profile_changed.emit(profile_id)
-        self.updateButtonText()
-
-    def selectLLMProfileSetting(self, profile_id: str, key: str, value: str):
-        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
-        if profile is not None:
-            setattr(profile, key, value)
-            if key == self.model_attr:
-                options = getattr(profile, self.model_options_attr)
-                if value and value not in options:
-                    options.insert(0, value)
-        self.selectLLMProfile(profile_id)
-
-    def _profile_menu_groups(self):
-        if self.llm_modality == LLM_MODALITY_TEXT:
-            return [
-                (self.tr('Thinking Level'), 'thinking_level', 'thinking_level_options'),
-                (self.tr('Model'), self.model_attr, self.model_options_attr),
-            ]
-        if self.llm_modality == LLM_MODALITY_VISION:
-            return [
-                (self.tr('Vision Model'), self.model_attr, self.model_options_attr),
-                (self.tr('Vision Detail Level'), 'vision_detail_level', 'vision_detail_level_options'),
-            ]
-        return [
-            (self.tr('Image Model'), self.model_attr, self.model_options_attr),
-        ]
-
-    def _buildProfileMenu(self, menu: QMenu, profile):
-        profile_id = profile.id
-        selected_profile = self._is_current_llm() and self._selected_profile_id() == profile_id
-        for section, value_attr, options_attr in self._profile_menu_groups():
-            _add_bottom_menu_section(menu, section, color=self.modality_color)
-            options = [str(option) for option in getattr(profile, options_attr) if str(option)]
-            current_value = str(getattr(profile, value_attr) or 'None')
-            for option in options:
-                _add_bottom_menu_action(
-                    menu,
-                    option,
-                    selected_profile and option == current_value,
-                    (profile_id, value_attr, option),
-                    self._select_profile_setting_action,
-                )
-
-    def _select_profile_setting_action(self, _checked: bool = False) -> None:
-        action = self.sender()
-        if not isinstance(action, QAction):
-            return
-        profile_id, key, value = action.data()
-        self.selectLLMProfileSetting(profile_id, key, value)
-
-    def _buttonTextForProfile(self, profile) -> str:
-        if self._is_text_modality():
-            model_options = [str(option) for option in profile.model_options if str(option)]
-            model = str(profile.model or '').strip()
-            thinking_level = str(
-                profile.thinking_level or THINKING_AUTO
-            ).strip()
-            if model_options and model:
-                name = _simplify_llm_model_name(model)
-                if thinking_level and thinking_level != THINKING_AUTO:
-                    name = self.tr('{model} {thinking_level}').format(model=name, thinking_level=thinking_level)
-                return name
-            return profile.name or self.llm_key
-
-        model = str(getattr(profile, self.model_attr) or '').strip()
-        return _simplify_llm_model_name(model) or profile.name or self.llm_key
-
-    def updateButtonText(self, *args):
-        name = self.selector.currentText()
-        is_llm = self._is_current_llm()
-        if is_llm:
-            profile = profile_by_id(pcfg.module.llm_profiles, self._selected_profile_id())
-            if profile is not None:
-                name = self._buttonTextForProfile(profile)
-        if not name:
-            name = self.fallback_name
-        self.tool_btn.setText(_bottom_tool_button_text(name))
-        if self._has_llm_modality():
+    def updateButtonText(self, *args) -> None:
+        self.tool_btn.setText(_bottom_tool_button_text(self.menu.selectedText()))
+        if self.llm_modality:
             _set_bottom_aux_button_visible(self.edit_btn, self.shouldShowEditButton() and self.underMouse())
 
     def shouldShowEditButton(self) -> bool:
-        return self._is_current_llm()
+        return self.menu.isCurrentLLM()
 
     def onEditClicked(self):
-        if self._is_current_llm():
-            self.edit_clicked.emit(self._selected_profile_id())
+        if self.menu.isCurrentLLM():
+            self.edit_clicked.emit(self.menu.selectedProfileId())
 
     def setTranslatorMetadata(self, name: str, supported_src_list, supported_tgt_list, lang_source: str, lang_target: str):
-        if not self._is_text_modality():
+        if self.llm_modality != LLM_MODALITY_TEXT:
             return
         self.blockSignals(True)
         self.src_selector.clear()

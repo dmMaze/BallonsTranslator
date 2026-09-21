@@ -1092,8 +1092,7 @@ QFrame#RunPipelineStages QAbstractButton#RunPipelineModuleButton:hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-QFrame#RunPipelineStages QToolButton#RunPipelineModuleConfigButton,
-QFrame#RunPipelineStages QToolButton#RunPipelineModuleDeactivateButton {
+QFrame#RunPipelineStages QToolButton#RunPipelineModuleConfigButton {
     min-width: 22px;
     max-width: 22px;
     min-height: 22px;
@@ -1104,8 +1103,7 @@ QFrame#RunPipelineStages QToolButton#RunPipelineModuleDeactivateButton {
     border-radius: 4px;
 }
 
-QFrame#RunPipelineStages QToolButton#RunPipelineModuleConfigButton:hover,
-QFrame#RunPipelineStages QToolButton#RunPipelineModuleDeactivateButton:hover {
+QFrame#RunPipelineStages QToolButton#RunPipelineModuleConfigButton:hover {
     background-color: rgba(30, 147, 229, 20%);
 }
 
@@ -1802,39 +1800,33 @@ QCheckBox#TransChecker::indicator:hover {
 }
 
 QToolButton#BottomBarModuleToolButton,
-QComboBox#RunPipelineModuleSelector {
+QToolButton#RunPipelineModuleSelector {
     min-height: 22px;
     border: none;
     border-radius: 5px;
     background-color: rgba(0, 0, 0, 0);
     color: @qwidgetForegroundColor;
     font-size: 13px;
-}
-
-QToolButton#BottomBarModuleToolButton {
     padding: 1px 24px 1px 8px;
-}
-
-QComboBox#RunPipelineModuleSelector {
-    padding: 1px 0px 1px 8px;
 }
 
 QToolButton#BottomBarModuleToolButton:hover,
 QToolButton#BottomBarModuleToolButton:pressed,
 QToolButton#BottomBarModuleToolButton:open,
-QComboBox#RunPipelineModuleSelector:hover,
-QComboBox#RunPipelineModuleSelector:on {
+QToolButton#RunPipelineModuleSelector:hover,
+QToolButton#RunPipelineModuleSelector:open {
     border: none;
     background-color: rgba(30, 147, 229, 20%);
 }
 
-QComboBox#RunPipelineModuleSelector[moduleActive="false"],
-QComboBox#RunPipelineModuleSelector[moduleActive="false"]:hover {
+QToolButton#RunPipelineModuleSelector[moduleActive="false"],
+QToolButton#RunPipelineModuleSelector[moduleActive="false"]:hover {
     color: @borderColor;
     background-color: transparent;
 }
 
-QToolButton#BottomBarModuleToolButton::menu-indicator {
+QToolButton#BottomBarModuleToolButton::menu-indicator,
+QToolButton#RunPipelineModuleSelector::menu-indicator {
     image: none;
     width: 11px;
     height: 11px;
