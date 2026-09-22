@@ -1176,6 +1176,11 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="817"/>
+        <source>Reload fonts</source>
+        <translation>重载字体</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="877"/>
         <source>Font Family</source>
         <translation>字体</translation>
@@ -1413,14 +1418,6 @@
         <location filename="../../ballontranslator/ui/font_refresh.py" line="227"/>
         <source>Immediate system font refresh is unavailable. With the usual fontconfig settings, try again after about 30 seconds; if fonts are still missing, restart the application.</source>
         <translation>无法立即刷新系统字体。使用常规 Fontconfig 设置时，请等待约 30 秒后重试；如果仍有字体缺失，请重启应用程序。</translation>
-    </message>
-</context>
-<context>
-    <name>FontReloadButton</name>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="812"/>
-        <source>Reload fonts</source>
-        <translation>重载字体</translation>
     </message>
 </context>
 <context>

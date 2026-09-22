@@ -102,6 +102,10 @@ QStackedWidget#ConfigContent,
 QScrollArea#ConfigContentScrollArea,
 QWidget#ConfigContentViewport,
 QWidget#ConfigContentScrollContent,
+QWidget#CodexSettingsPanel,
+QWidget#CodexAccountControls,
+QWidget#CodexModelSettings,
+QWidget#CodexRequestSettings,
 QWidget#ConfigContentScrollContent Widget,
 QWidget#ConfigContentScrollContent QLabel,
 QWidget#ConfigContentScrollContent QCheckBox,
@@ -1299,17 +1303,20 @@ QPushButton#RunPipelineSecondaryButton {
     font-size: 12px;
 }
 
-QPushButton#RunPipelinePrimaryButton {
+QPushButton#RunPipelinePrimaryButton,
+QWidget#CodexAccountControls QPushButton#CodexSignInButton {
     color: white;
     border: 1px solid rgb(30, 147, 229);
     background-color: rgb(30, 147, 229);
 }
 
-QPushButton#RunPipelinePrimaryButton:hover {
+QPushButton#RunPipelinePrimaryButton:hover,
+QWidget#CodexAccountControls QPushButton#CodexSignInButton:hover:enabled {
     background-color: #4ba7ee;
 }
 
-QPushButton#RunPipelinePrimaryButton:pressed {
+QPushButton#RunPipelinePrimaryButton:pressed,
+QWidget#CodexAccountControls QPushButton#CodexSignInButton:pressed:enabled {
     background-color: #187fc3;
 }
 
@@ -1321,6 +1328,22 @@ QPushButton#RunPipelineSecondaryButton {
 
 QPushButton#RunPipelineSecondaryButton:hover {
     border-color: rgb(30, 147, 229);
+}
+
+QWidget#CodexAccountControls QPushButton#CodexSignInButton,
+QWidget#CodexAccountControls QPushButton#CodexSignOutButton {
+    border-radius: 12px;
+    padding: 1px 12px;
+}
+
+QWidget#CodexAccountControls QPushButton#CodexSignOutButton {
+    color: @qwidgetForegroundColor;
+    border: 1px solid @borderColor;
+    background-color: transparent;
+}
+
+QWidget#CodexAccountControls QPushButton#CodexSignOutButton:pressed:enabled {
+    color: rgb(30, 147, 229);
 }
 
 QPushButton#LLMProfileRestoreButton {
@@ -1481,7 +1504,7 @@ QFontChecker::indicator::checked {
     background-color: rgb(30, 147, 229);
 }
 
-QToolButton#FontReloadButton {
+QToolButton#RefreshButton {
     min-width: 19px;
     max-width: 19px;
     min-height: 19px;
@@ -1492,12 +1515,12 @@ QToolButton#FontReloadButton {
     background-color: transparent;
 }
 
-QToolButton#FontReloadButton:hover:enabled,
-QToolButton#FontReloadButton:focus:enabled {
+QToolButton#RefreshButton:hover:enabled,
+QToolButton#RefreshButton:focus:enabled {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-QToolButton#FontReloadButton:pressed:enabled {
+QToolButton#RefreshButton:pressed:enabled {
     border-color: rgb(30, 147, 229);
     background-color: rgb(30, 147, 229);
 }

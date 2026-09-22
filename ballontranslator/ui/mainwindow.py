@@ -204,6 +204,11 @@ class MainWindow(mainwindow_cls):
         # The callbacks cannot run until construction returns to the event loop.
         QTimer.singleShot(0, start_effect_paint_numba_warmup)
         QTimer.singleShot(0, start_grid_numba_warmup)
+        if not shared.HEADLESS:
+            from .codex_account import CodexAccountController
+            # Restore persisted sign-in after all profile/selector listeners
+            # exist. Credential IO and HTTP stay in the account worker.
+            QTimer.singleShot(0, CodexAccountController.instance().restoreSession)
 
     def setupThread(self):
         self.imsave_thread = ImgSaveThread()
@@ -519,6 +524,8 @@ class MainWindow(mainwindow_cls):
 
         self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
         self.configPanel.llm_profiles_panel.profile_summary_changed.connect(self.on_llm_profile_summary_changed)
+        self.configPanel.codex_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
+        self.configPanel.codex_panel.profile_summary_changed.connect(self.on_llm_profile_summary_changed)
         self.configPanel.llm_profiles_panel.set_translator_requested.connect(
             self.bottomBar.trans_selector.menu.selectLLMProfile
         )
@@ -1811,7 +1818,7 @@ class MainWindow(mainwindow_cls):
     def on_llm_profile_changed(self, profile_id: str) -> None:
         if profile_id:
             pcfg.module.translator_llm_id = profile_id
-            self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+            self.configPanel.syncLLMProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('translator', profile_id)
         self.bottomBar.trans_selector.updateButtonText()
         self.llm_profile_selection_changed.emit()
@@ -1819,7 +1826,7 @@ class MainWindow(mainwindow_cls):
     def on_ocr_llm_profile_changed(self, profile_id: str) -> None:
         if profile_id:
             pcfg.module.ocr_llm_id = profile_id
-            self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+            self.configPanel.syncLLMProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('ocr', profile_id)
         self.bottomBar.ocr_selector.updateButtonText()
         self.llm_profile_selection_changed.emit()
@@ -1827,7 +1834,7 @@ class MainWindow(mainwindow_cls):
     def on_inpaint_llm_profile_changed(self, profile_id: str) -> None:
         if profile_id:
             pcfg.module.inpaint_llm_id = profile_id
-            self.configPanel.llm_profiles_panel.syncProfile(profile_id)
+            self.configPanel.syncLLMProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('inpainter', profile_id)
         self.bottomBar.inpaint_selector.updateButtonText()
         self.llm_profile_selection_changed.emit()
@@ -1906,7 +1913,7 @@ class MainWindow(mainwindow_cls):
         )
         return True
 
-    def on_imgtrans_pipeline_finished(self):
+    def on_imgtrans_pipeline_finished(self) -> None:
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
@@ -1918,7 +1925,12 @@ class MainWindow(mainwindow_cls):
         if shared.args.export_source_txt:
             self.on_export_txt('source')
         if shared.HEADLESS:
-            self.run_next_dir()
+            if self.module_manager.imgtrans_thread.isStopRequested():
+                LOGGER.error('Batch translation stopped; remaining directories were not processed.')
+                self.imsave_thread.wait()
+                self.app.quit()
+            else:
+                self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
         if not is_cjk(pcfg.module.translate_target):

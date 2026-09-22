@@ -175,8 +175,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             pcfg.module.llm_profiles,
             pcfg.module.translator_llm_id,
         )
-        if profile.backend == 'codex' and not profile.model_options:
-            raise LLMUserActionRequiredError('Sign in with ChatGPT and refresh models in the Codex profile card.')
         if not profile.support_text:
             raise RuntimeError(f'LLM profile "{profile.name}" does not have text translation enabled.')
         self._text_model(profile)
@@ -357,6 +355,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         if empty_page_summary and not request_summary:
             return []
+        if pcfg.module.translator_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         if not self.all_model_loaded():
             self.load_model()
         profile = self.profile

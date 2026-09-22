@@ -1,21 +1,34 @@
-"""Shared, asynchronous account controls for Codex profile cards."""
+"""Shared, asynchronous account controls for Codex settings."""
 
 from __future__ import annotations
 
-import importlib
 import threading
 
-from qtpy.QtCore import QObject, QThread, QUrl, Qt, Signal
-from qtpy.QtGui import QDesktopServices
-from qtpy.QtWidgets import QApplication, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from typing import Dict, Optional, TYPE_CHECKING
 
-from ballontranslator.modules.codex import (
-    HTTP_REQUIREMENT, account, http_client_available,
-)
-from ballontranslator.modules.exceptions import LLMRequestStopped, LLMUserActionRequiredError
+from qtpy.QtCore import QObject, QThread, QUrl, Signal
+from qtpy.QtGui import QDesktopServices
+from qtpy.QtWidgets import QApplication, QMessageBox
+
+from ballontranslator.modules.codex import account
+from ballontranslator.modules.exceptions import CodexSignInRequiredError, LLMRequestStopped, LLMUserActionRequiredError
+from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import sync_codex_profile
-from .package_manager import create_package_manager
+from ballontranslator.utils.llm_profiles import profile_by_id, sync_codex_profile
+from ballontranslator.utils.logger import logger as LOGGER
+
+if TYPE_CHECKING:
+    from .codex_sign_in import CodexSignInDialog
+
+
+def show_codex_sign_in_required(error: CodexSignInRequiredError) -> None:
+    """Forward worker failures to the existing GUI account owner without doing IO."""
+    LOGGER.error(str(error))
+    if shared.HEADLESS:
+        return
+    controller = getattr(QApplication.instance(), '_codex_account_controller', None)
+    if controller is not None:
+        controller.sign_in_required.emit(error.invalid)
 
 
 class CodexAccountWorker(QThread):
@@ -31,31 +44,32 @@ class CodexAccountWorker(QThread):
         super().__init__(parent)
         self.action = action
         self.stop_event = threading.Event()
-        self.account = ''
-        self.models = {}
-        self.error = ''
+        self.account: Optional[str] = None
+        self.models: Optional[Dict] = None
+        self.error: Optional[Exception] = None
 
     def run(self) -> None:
         try:
-            if self.action == 'install':
-                result = create_package_manager().install([HTTP_REQUIREMENT])
-                if not result.ok:
-                    self.error = self.tr('HTTP client installation failed. Check the package manager settings and try again.')
-                importlib.invalidate_caches()
-                return
             if self.action == 'logout':
                 account.logout(self.stop_event)
                 return
             if self.action == 'login':
                 account.login(self.stop_event, self.login_url.emit)
-            self.account, self.models = account.catalog(self.stop_event)
+            self.models = account.catalog(self.stop_event)
         except LLMRequestStopped:
             pass
+        except CodexSignInRequiredError as error:
+            # Startup discovers local state silently; explicit refresh requires sign-in.
+            if self.action != 'restore' or error.invalid:
+                self.error = error.with_traceback(None)
         except LLMUserActionRequiredError as error:
-            self.error = str(error)
+            self.error = error.with_traceback(None)
         except Exception:
             # HTTP diagnostics can contain OAuth URLs; do not surface them.
-            self.error = self.tr('Codex could not connect. Check the network, then refresh or sign in again.')
+            self.error = RuntimeError(self.tr('Codex could not connect. Check the network, then refresh or sign in again.'))
+        finally:
+            # Login/logout can commit before a later refresh failure or cancel.
+            self.account = account.cached_account_label
 
 
 class CodexAccountController(QObject):
@@ -67,12 +81,14 @@ class CodexAccountController(QObject):
 
     changed = Signal()
     catalog_changed = Signal()
+    sign_in_required = Signal(bool)
 
     def __init__(self, parent: QApplication) -> None:
         super().__init__(parent)
         self.worker = None
-        self.account = ''
-        self.status = self.unavailableMessage() or self.tr('Refresh to check the ChatGPT connection.')
+        self.account = account.cached_account_label or ''
+        self._sign_in_dialog: Optional[CodexSignInDialog] = None
+        self.sign_in_required.connect(self.showSignInRequired)
         parent.aboutToQuit.connect(self.shutdown)
 
     @classmethod
@@ -84,37 +100,32 @@ class CodexAccountController(QObject):
             app._codex_account_controller = controller
         return controller
 
+    def restoreSession(self) -> None:
+        """Restore saved sign-in through the normal background catalog refresh."""
+        self.start('restore')
+
     def start(self, action: str) -> None:
         if self.worker is not None:
             return
-        if action in ('login', 'refresh') and not http_client_available():
-            self.status = self.unavailableMessage()
-            self.changed.emit()
+        if action == 'refresh' and account.cached_account_label == '':
+            self.sign_in_required.emit(account.auth_invalid)
             return
         self.worker = CodexAccountWorker(action, self)
         self.worker.login_url.connect(self.openLoginUrl)
         self.worker.finished.connect(self.finish)
-        self.status = self.tr('Installing HTTP client...') if action == 'install' else self.tr('Connecting to Codex...')
         self.changed.emit()
         self.worker.start()
-
-    def unavailableMessage(self) -> str:
-        if http_client_available():
-            return ''
-        return self.tr('Install the HTTP client from this card to connect to Codex.')
 
     def openLoginUrl(self, url: str) -> None:
         if self.worker is None or self.worker.stop_event.is_set():
             return
-        self.status = self.tr('Complete ChatGPT sign-in in your browser.')
         if not QDesktopServices.openUrl(QUrl(url)):
-            self.status = self.tr('Could not open the browser. Cancel and try signing in again.')
-        self.changed.emit()
+            self.cancel()
+            self.showAccountError(self.tr('Could not open the browser. Check your default browser settings and try signing in again.'))
 
     def cancel(self) -> None:
-        if self.worker is not None and self.worker.action != 'install':
+        if self.worker is not None:
             self.worker.stop_event.set()
-            self.status = self.tr('Cancelling...')
             self.changed.emit()
 
     def finish(self) -> None:
@@ -122,85 +133,58 @@ class CodexAccountController(QObject):
         if worker is None:
             return
         self.worker = None
-        if worker.action == 'install':
-            self.status = worker.error or self.tr('HTTP client installed. Sign in with ChatGPT to continue.')
-        elif worker.stop_event.is_set():
-            self.status = self.tr('Cancelled. Refresh to check the connection.')
-        elif worker.error:
-            self.status = worker.error
-        else:
+        if worker.account is not None:
             self.account = worker.account
-            self.status = self.tr('Connected: ') + self.account if self.account else self.tr('Not signed in.')
-            if pcfg.module.codex_models != worker.models:
-                pcfg.module.codex_models = worker.models
-                for profile in pcfg.module.llm_profiles:
-                    sync_codex_profile(profile, pcfg.module.codex_models)
-                self.catalog_changed.emit()
+        # Public model metadata survives logout; only an authenticated catalog
+        # result replaces it, including a successful empty response.
+        models = worker.models if worker.account else None
+        if models is not None and (
+            pcfg.module.codex_models != models
+            or (worker.action == 'login' and not worker.error and not worker.stop_event.is_set())
+        ):
+            pcfg.module.codex_models = models
+            sync_codex_profile(profile_by_id(pcfg.module.llm_profiles, 'codex'), models)
+            self.catalog_changed.emit()
+        error = None if worker.stop_event.is_set() else worker.error
         worker.deleteLater()
         self.changed.emit()
+        if isinstance(error, CodexSignInRequiredError):
+            self.sign_in_required.emit(error.invalid)
+        elif error:
+            self.showAccountError(str(error))
+
+    def showSignInRequired(self, invalid: bool) -> None:
+        from .codex_sign_in import CodexSignInDialog
+
+        self.account = account.cached_account_label or ''
+        self.changed.emit()
+        if self._sign_in_dialog is None:
+            # Controller ownership keeps recovery alive after a worker or progress dialog closes.
+            self._sign_in_dialog = CodexSignInDialog(self, invalid)
+            self._sign_in_dialog.finished.connect(self._clearSignInDialog)
+            self._sign_in_dialog.show()
+        else:
+            self._sign_in_dialog.setSignInRequired(invalid)
+        self._sign_in_dialog.raise_()
+        self._sign_in_dialog.activateWindow()
+
+    def _clearSignInDialog(self) -> None:
+        dialog = self._sign_in_dialog
+        self._sign_in_dialog = None
+        if dialog is not None:
+            dialog.deleteLater()
+
+    def showAccountError(self, message: str) -> None:
+        if self._sign_in_dialog is not None:
+            self._sign_in_dialog.showError(message)
+        else:
+            QMessageBox.warning(QApplication.activeWindow(), self.tr('Codex'), message)
 
     def shutdown(self) -> None:
+        if self._sign_in_dialog is not None:
+            self._sign_in_dialog.reject()
         account.invalidate()
         if self.worker is not None:
             self.worker.stop_event.set()
             # Network awaits are cancelled by the account generation change.
-            # Package installation must finish before Qt exits.
             self.worker.wait()
-
-
-class CodexAccountWidget(QWidget):
-    """Display the shared account without network or credential IO during construction.
-
-    >>> CodexAccountWidget.__name__
-    'CodexAccountWidget'
-    """
-
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent)
-        self.controller = CodexAccountController.instance()
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        self.status_label = QLabel(self)
-        self.status_label.setObjectName('LLMProfileFieldLabel')
-        self.status_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.status_label.setWordWrap(True)
-        layout.addWidget(self.status_label)
-        row = QHBoxLayout()
-        self.buttons = {}
-        for action, text in (
-            ('install', self.tr('Install HTTP client')),
-            ('login', self.tr('Sign in with ChatGPT')),
-            ('refresh', self.tr('Refresh models')),
-            ('logout', self.tr('Sign out')),
-            ('cancel', self.tr('Cancel')),
-        ):
-            button = QPushButton(text, self)
-            button.setProperty('codexAction', action)
-            button.clicked.connect(self.performAction)
-            row.addWidget(button)
-            self.buttons[action] = button
-        row.addStretch(1)
-        layout.addLayout(row)
-        self.controller.changed.connect(self.refresh)
-        self.refresh()
-
-    def performAction(self) -> None:
-        action = self.sender().property('codexAction')
-        if action == 'cancel':
-            self.controller.cancel()
-        else:
-            self.controller.start(action)
-
-    def refresh(self) -> None:
-        unavailable = not http_client_available()
-        worker = self.controller.worker
-        self.status_label.setText(self.controller.status)
-        for action, button in self.buttons.items():
-            if action == 'install':
-                button.setVisible(bool(unavailable))
-                button.setEnabled(worker is None)
-            elif action == 'cancel':
-                button.setVisible(worker is not None and worker.action != 'install')
-                button.setEnabled(worker is not None and not worker.stop_event.is_set())
-            else:
-                button.setEnabled(worker is None and (action == 'logout' or not unavailable))

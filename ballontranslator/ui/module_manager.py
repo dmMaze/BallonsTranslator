@@ -17,6 +17,7 @@ from ballontranslator.utils.imgproc_utils import enlarge_window, get_block_mask
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.modules.translators import MissingTranslatorParams
 from ballontranslator.modules.exceptions import (
+    CodexSignInRequiredError,
     LLMApiKeyRequiredError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
@@ -122,6 +123,10 @@ def _show_llm_user_action_required_dialog(
     >>> issubclass(LLMApiKeyRequiredError, LLMUserActionRequiredError)
     True
     """
+    if isinstance(error, CodexSignInRequiredError):
+        from .codex_account import show_codex_sign_in_required
+        show_codex_sign_in_required(error)
+        return
     if isinstance(error, LLMApiKeyRequiredError):
         _show_llm_key_required_dialog(error)
         return
@@ -413,14 +418,18 @@ class InpaintThread(ModuleThread):
         self.job = lambda : self._set_module(inpainter)
         self.start()
 
-    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None):
+    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None) -> None:
+        # A canvas request must not inherit a stopped pipeline's event.
+        self.pipeline_stop_event = threading.Event()
         self.job = lambda : self._inpaint(img, mask, img_key, inpaint_rect)
         self.start()
     
-    def _inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None):
+    def _inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None) -> None:
         inpaint_dict = {}
         self.inpainting = True
         try:
+            if hasattr(self.inpainter, 'set_stop_event'):
+                self.inpainter.set_stop_event(self.pipeline_stop_event)
             inpainted = self.inpainter.inpaint(img, mask)
             inpaint_dict = {
                 'inpainted': inpainted,
@@ -698,6 +707,9 @@ class TranslateThread(ModuleThread):
                 # self.pipeline_pagekey_queue = []
                 # return
             self.blockSignals(False)
+            if stop_event.is_set():
+                self.module_thread_stopped.emit()
+                break
             self.finished_counter += 1
             self.progress_changed.emit(self.finished_counter)
 
@@ -964,6 +976,8 @@ class ImgtransThread(QThread):
                         self.translator,
                     )
             self.finish_blktrans.emit(mode, blk_ids)
+        if self.isStopRequested():
+            return
         if mode > 1:
             if hasattr(self.inpaint_thread.inpainter, 'set_stop_event'):
                 self.inpaint_thread.inpainter.set_stop_event(self.stop_event)
@@ -971,6 +985,8 @@ class ImgtransThread(QThread):
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
             for ii, blk in enumerate(blk_list):
+                if self.isStopRequested():
+                    break
                 xyxy_ori = np.array(blk.xyxy, dtype=np.int64)
                 xyxy_ori[::2] = np.clip(xyxy_ori[::2], 0, im_w)
                 xyxy_ori[1::2] = np.clip(xyxy_ori[1::2], 0, im_h)
@@ -1203,6 +1219,8 @@ class ImgtransThread(QThread):
                         imgname,
                         blk_list,
                     )
+                    if self.isStopRequested():
+                        break
                     self.translate_counter += 1
                     self.update_translate_progress.emit(self.translate_counter)
 
@@ -1264,6 +1282,8 @@ class ImgtransThread(QThread):
                     imgname,
                     blk_list,
                 )
+                if self.isStopRequested():
+                    break
                 self.translate_counter += 1
                 self.update_translate_progress.emit(self.translate_counter)
 
@@ -1978,12 +1998,14 @@ class ModuleManager(QObject):
             return
         self.inpaint_thread.inpaint(img, mask, img_key, inpaint_rect)
 
-    def terminateRunningThread(self):
+    def terminateRunningThread(self) -> None:
         if self.textdetect_thread.isRunning():
             self.textdetect_thread.quit()
         if self.ocr_thread.isRunning():
             self.ocr_thread.quit()
         if self.inpaint_thread.isRunning():
+            if self.inpaint_thread.pipeline_stop_event is not None:
+                self.inpaint_thread.pipeline_stop_event.set()
             self.inpaint_thread.quit()
         if self.translate_thread.isRunning():
             self.translate_thread.quit()
@@ -2201,8 +2223,9 @@ class ModuleManager(QObject):
             return True
         return False
 
-    def finishImgtransPipeline(self):
-        if self.proj_finished():
+    def finishImgtransPipeline(self) -> None:
+        # Stopped runs finish through the worker shutdown path, not progress.
+        if not self.imgtrans_thread.isStopRequested() and self.proj_finished():
             self.progress_msgbox.hide()
             self.imgtrans_pipeline_finished.emit()
     
@@ -2449,3 +2472,5 @@ class ModuleManager(QObject):
             self._pending_canvas_inpaint = None
             self.run_canvas_inpaint = False
             self._canvas_inpaint_source = None
+            if self.inpaint_thread.pipeline_stop_event is not None:
+                self.inpaint_thread.pipeline_stop_event.set()

@@ -619,6 +619,70 @@ class LLMImageRequester:
         self._raise_for_response(profile, response)
         return self._decode_response_image(response.json())
 
+    def _request_codex_image(
+        self,
+        profile: LLMProfile,
+        image: Optional[np.ndarray],
+        mask: Optional[np.ndarray],
+        prompt: Optional[str],
+        model: Optional[str],
+    ) -> np.ndarray:
+        """Send aligned references and undo padding on extreme crop shapes.
+
+        >>> pixels = requester._request_codex_image(profile, crop, mask, None, None)  # doctest: +SKIP
+        """
+        from .codex import request_image
+
+        image_bytes = None
+        mask_bytes = None
+        padding = (0, 0, 0, 0)
+        if image is not None:
+            height, width = image.shape[:2]
+            if mask is not None and mask.shape != image.shape[:2]:
+                # Area coverage keeps thin marks that nearest sampling loses.
+                mask = cv2.resize(
+                    (mask > 127).astype(np.float32), (width, height),
+                    interpolation=cv2.INTER_AREA,
+                )
+                mask = (mask > 0).astype(np.uint8) * 255
+            # gpt-image-2 caps extreme aspect ratios at 3:1. Preserve source
+            # geometry by padding the canvas, then stripping it from the result.
+            extra_h = max(0, (width + 2) // 3 - height)
+            extra_w = max(0, (height + 2) // 3 - width)
+            padding = (extra_h // 2, extra_h - extra_h // 2,
+                       extra_w // 2, extra_w - extra_w // 2)
+            if any(padding):
+                image = cv2.copyMakeBorder(image, *padding, cv2.BORDER_REPLICATE)
+                if mask is not None:
+                    mask = cv2.copyMakeBorder(mask, *padding, cv2.BORDER_CONSTANT, value=0)
+            with self._png_image_file(image) as image_file:
+                image_bytes = image_file.getvalue()
+        instructions = profile.image_prompt if prompt is None else prompt
+        if mask is not None:
+            # The subscription endpoint has reference images, but no native
+            # mask parameter. Local compositing remains the pixel boundary.
+            mask_rgb = np.repeat((mask > 127)[..., None], 3, axis=2).astype(np.uint8) * 255
+            with self._png_image_file(mask_rgb) as mask_file:
+                mask_bytes = mask_file.getvalue()
+            instructions += (
+                '\nImage 1 is the source image. Image 2 is a mask: white marks '
+                'the editable region and black marks pixels to preserve. '
+                'Apply the requested cleanup only inside the white region. '
+                'Return only the edited image 1, preserving its framing, '
+                'aspect ratio, artwork, and positions. Do not include the mask.'
+            )
+        raw = request_image(
+            self._image_model(profile, model), instructions, image_bytes, mask_bytes,
+            self.stop_event, proxy=self._request_param('proxy') or '',
+            timeout=self._request_timeout(),
+        )
+        result = self._decode_image_bytes(raw)
+        if any(padding):
+            result = cv2.resize(result, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_LINEAR)
+            top, _, left, _ = padding
+            result = result[top:top + height, left:left + width]
+        return result
+
     def request_image(
         self,
         profile: LLMProfile,
@@ -627,18 +691,24 @@ class LLMImageRequester:
         model: Optional[str] = None,
         *,
         resize_to_input: bool = False,
+        mask: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """Return one generated RGB(A) image for optional input context."""
         if self.stop_event is not None and self.stop_event.is_set():
             raise LLMRequestStopped()
-        client = self._initialize_client(profile)
+        if mask is not None and (image is None or mask.shape != image.shape[:2]):
+            raise ValueError('The inpaint mask must match the input image dimensions.')
+        if profile.backend == 'codex':
+            from .codex import account
+            account.require_sign_in(self.stop_event)
+        client = None if profile.backend == 'codex' else self._initialize_client(profile)
         original_shape = None if image is None else image.shape[:2]
         request_image = (
             None if image is None else self._scale_image_for_request(image)
         )
         image_file = (
             None
-            if request_image is None
+            if request_image is None or profile.backend == 'codex'
             else self._png_image_file(request_image)
         )
         try:
@@ -647,8 +717,12 @@ class LLMImageRequester:
                 # A reserved slot remains counted, but Stop must still win
                 # before the synchronous provider call begins.
                 raise LLMRequestStopped()
-            base_url = self._image_base_url(profile)
-            if self._is_gemini_url(base_url):
+            base_url = '' if profile.backend == 'codex' else self._image_base_url(profile)
+            if profile.backend == 'codex':
+                result = self._request_codex_image(
+                    profile, request_image, mask, prompt, model
+                )
+            elif self._is_gemini_url(base_url):
                 result = self._request_gemini_image(
                     client, profile, image_file, prompt=prompt, model=model
                 )
@@ -660,6 +734,8 @@ class LLMImageRequester:
                 result = self._request_openai_compatible_image(
                     client, profile, image_file, prompt=prompt, model=model
                 )
+            if self.stop_event is not None and self.stop_event.is_set():
+                raise LLMRequestStopped()
             if (
                 resize_to_input
                 and original_shape is not None
@@ -680,9 +756,11 @@ class LLMImageRequester:
         profile: LLMProfile,
         img: np.ndarray,
         prompt: Optional[str] = None,
+        *,
+        mask: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         result = self.request_image(
-            profile, img, prompt=prompt, resize_to_input=True
+            profile, img, prompt=prompt, resize_to_input=True, mask=mask
         )
         channels = img.shape[2]
         if result.shape[2] != channels:

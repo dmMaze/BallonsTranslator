@@ -1,6 +1,5 @@
 from typing import Dict, List
 
-import cv2
 import numpy as np
 
 from .base import InpainterBase, register_inpainter
@@ -101,7 +100,8 @@ class LLMInpaint(LLMImageRequester, InpainterBase):
                 f'LLM profile "{profile.name}" does not have image cleanup enabled.'
             )
         self._image_model(profile)
-        self._image_base_url(profile)
+        if profile.backend != 'codex':
+            self._image_base_url(profile)
         return profile
 
     def _sync_inpaint_by_block(self) -> None:
@@ -122,22 +122,22 @@ class LLMInpaint(LLMImageRequester, InpainterBase):
         textblock_list: List[TextBlock] = None,
     ) -> np.ndarray:
         del textblock_list
+        if self.stop_event is not None and self.stop_event.is_set():
+            raise LLMRequestStopped()
+        masked = mask > 127
+        if not np.any(masked):
+            return img.copy()
+        if pcfg.module.inpaint_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         profile = self.profile
         retry_attempt = 0
-        mask_original = (mask > 127)[..., None].astype(np.uint8)
         while True:
             if self.stop_event is not None and self.stop_event.is_set():
                 raise LLMRequestStopped()
             try:
-                result = self._request_inpaint(profile, img)
-                if result.shape[:2] != img.shape[:2]:
-                    result = cv2.resize(
-                        result,
-                        (img.shape[1], img.shape[0]),
-                        interpolation=cv2.INTER_LINEAR,
-                    )
-                result = result.astype(np.uint8, copy=False)
-                return result * mask_original + img * (1 - mask_original)
+                result = self._request_inpaint(profile, img, mask=mask)
+                return np.where(masked[..., None], result, img)
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as error:

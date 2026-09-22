@@ -130,8 +130,6 @@ class LLMOCR(LLMChatRequester, OCRBase):
             pcfg.module.llm_profiles,
             pcfg.module.ocr_llm_id,
         )
-        if profile.backend == 'codex' and not profile.vision_model_options:
-            raise LLMUserActionRequiredError('Sign in with ChatGPT and select a vision model in the Codex profile card.')
         if not profile.support_vision:
             raise RuntimeError(f'LLM profile "{profile.name}" does not have vision enabled.')
         self._vision_model(profile)
@@ -344,6 +342,9 @@ class LLMOCR(LLMChatRequester, OCRBase):
         prompt: Optional[str] = None,
         **kwargs,
     ) -> str:
+        if pcfg.module.ocr_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         profile = self.profile
         messages = self._messages(img, profile, prompt=prompt)
         return self._normalized_text(self._request_with_retries(
@@ -408,6 +409,9 @@ class LLMOCR(LLMChatRequester, OCRBase):
         if not pcfg.module.ocr_llm_page_level or not full_page or not blk_list:
             return super()._ocr_blk_list(img, blk_list, *args, **kwargs)
 
+        if pcfg.module.ocr_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         self.logger.info(f"Performing Page-level LLM OCR on {len(blk_list)} blocks...")
         mask_non_text = pcfg.module.ocr_llm_mask_non_text
         sort_reading_order = pcfg.module.ocr_llm_sort_reading_order

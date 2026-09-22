@@ -11,7 +11,7 @@ import threading
 import time
 import unittest
 import weakref
-from types import SimpleNamespace
+from typing import Callable, TYPE_CHECKING
 from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -26,10 +26,16 @@ from ballontranslator.modules.llm_image import LLMImageRequester
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump_program_config, pcfg
-from ballontranslator.utils.llm_profiles import default_profile, normalize_codex_models, profile_to_export_dict, sync_codex_profile
+from ballontranslator.utils.llm_profiles import PROVIDER_DEFAULTS, default_profile, normalize_codex_models, profile_to_export_dict, sync_codex_profile
+
+if TYPE_CHECKING:
+    from ballontranslator.ui.codex_settings import CodexSettingsPanel
 
 CATALOG = {'vision-model': {'modalities': ['text', 'image'], 'efforts': ['low', 'high']},
            'text-model': {'modalities': ['text'], 'efforts': ['none']}}
+PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
+PNG_BYTES = base64.b64decode(PNG_BASE64)
+PNG_URL = 'data:image/png;base64,' + PNG_BASE64
 
 
 def jwt(claims: dict) -> str:
@@ -71,6 +77,7 @@ class CodexHTTPTest(unittest.TestCase):
         for patcher in (
             patch.object(codex, 'account', self.account),
             patch.object(self.account, '_path', return_value=self.path),
+            patch.object(codex, '_system_keyring', side_effect=ImportError),
             patch.object(codex, '_http_client', side_effect=lambda proxy='': httpx.AsyncClient(transport=httpx.MockTransport(self.responder))),
             patch.object(pcfg.module, 'codex_models', copy.deepcopy(CATALOG)),
             patch.object(LLMTranslator, 'params', copy.deepcopy(LLMTranslator.params)),
@@ -114,6 +121,141 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(payload['prompt_cache_key'], self.requests[0].headers['session_id'])
         self.assertEqual(self.requests[0].headers['Authorization'], 'Bearer access')
         self.assertNotIn('previous_response_id', payload)
+
+    def test_image_edit_preserves_references_and_refreshes_once_with_same_payload(self) -> None:
+        received = []
+
+        def respond(request):
+            received.append(request)
+            if request.url.path.endswith('/oauth/token'):
+                return httpx.Response(200, json={'access_token': 'rotated', 'expires_in': 3600})
+            if request.headers['Authorization'] == 'Bearer access':
+                return httpx.Response(401, json={'error': {'code': 'token_expired'}})
+            return httpx.Response(200, json={'data': [{'b64_json': PNG_BASE64}]})
+
+        self.responder = respond
+        result = codex.request_image('gpt-image-2', 'Edit image 1 using mask image 2.',
+                                     PNG_BYTES, PNG_BYTES, None, timeout=23.0)
+        self.assertEqual(result, base64.b64decode(PNG_BASE64))
+        self.assertEqual(received[0].content, received[2].content)
+        image_request = received[2]
+        self.assertEqual(str(image_request.url), codex.API_URL + '/images/edits')
+        self.assertEqual(image_request.headers['Authorization'], 'Bearer rotated')
+        self.assertEqual(image_request.headers['ChatGPT-Account-Id'], 'account-one')
+        self.assertEqual(image_request.headers['Accept'], 'application/json')
+        self.assertEqual(image_request.extensions['timeout']['read'], 23.0)
+        self.assertEqual(json.loads(image_request.content), {
+            'model': 'gpt-image-2', 'prompt': 'Edit image 1 using mask image 2.',
+            'images': [{'image_url': PNG_URL}, {'image_url': PNG_URL}],
+            'n': 1, 'background': 'auto', 'quality': 'auto', 'size': 'auto',
+        })
+
+    def test_image_generation_uses_verified_sibling_endpoint(self) -> None:
+        def respond(request):
+            self.requests.append(request)
+            return httpx.Response(200, json={'data': [{'b64_json': PNG_BASE64}]})
+
+        self.responder = respond
+        self.assertEqual(codex.request_image('gpt-image-2', 'A plain white background.', None, None, None),
+                         base64.b64decode(PNG_BASE64))
+        self.assertTrue(str(self.requests[0].url).endswith('/images/generations'))
+        self.assertNotIn('images', json.loads(self.requests[0].content))
+
+    def test_invalid_image_inputs_never_reach_network(self) -> None:
+        for model, image, mask, expected in (
+            ('vision-model', PNG_BYTES, None, LLMUserActionRequiredError),
+            ('gpt-image-2', None, PNG_BYTES, ValueError),
+            ('gpt-image-2', 'https://untrusted.example/image.png', None, ValueError),
+            ('gpt-image-2', b'not a PNG', None, ValueError),
+            ('gpt-image-2', b'', None, ValueError),
+        ):
+            with self.subTest(model=model, image=image), self.assertRaises(expected):
+                codex.request_image(model, 'Edit.', image, mask, None)
+        stopped = threading.Event()
+        stopped.set()
+        with self.assertRaises(LLMRequestStopped):
+            codex.request_image('invalid', '', None, None, stopped)
+        with patch.object(codex, '_MAX_IMAGE_BYTES', 16), self.assertRaises(ValueError):
+            codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
+        self.assertEqual(self.requests, [])
+
+    def test_invalid_image_output_never_downloads_response_urls(self) -> None:
+        for payload in (None, {}, {'data': []}, {'data': [{'url': 'https://untrusted.example/image.png'}]},
+                        {'data': [{'b64_json': '%%%'}]}, {'data': [{'b64_json': ''}]},
+                        {'data': [{'b64_json': PNG_BASE64}, {'b64_json': PNG_BASE64}]}):
+            with self.subTest(payload=payload):
+                self.requests = []
+
+                def respond(request):
+                    self.requests.append(request)
+                    return httpx.Response(200, json=payload)
+
+                self.responder = respond
+                with self.assertRaises(RuntimeError):
+                    codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
+                self.assertEqual(len(self.requests), 1)
+                self.assertEqual(self.requests[0].url.host, 'chatgpt.com')
+
+    def test_image_body_is_bounded_and_timeout_errors_are_sanitized(self) -> None:
+        self.responder = lambda request: httpx.Response(200, content=b' ' * 128)
+        with patch.object(codex, '_MAX_IMAGE_RESPONSE_BYTES', 64), self.assertRaisesRegex(LLMUserActionRequiredError, 'oversized'):
+            codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
+
+        def timed_out(request):
+            self.requests.append(request)
+            raise httpx.ReadTimeout('sensitive response details', request=request)
+
+        self.responder = timed_out
+        with self.assertRaises(RuntimeError) as caught:
+            codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
+        self.assertNotIn('sensitive', str(caught.exception))
+        self.assertEqual(len(self.requests), 1)
+        self.responder = lambda request: httpx.Response(403, json={'error': {'code': 'usage_limit_reached'}})
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'usage limit'):
+            codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
+
+    def test_image_cancellation_and_account_change_close_stalled_response(self) -> None:
+        for invalidate_account in (False, True):
+            with self.subTest(invalidate_account=invalidate_account):
+                stopped, entered, closed = threading.Event(), threading.Event(), threading.Event()
+
+                class Stalled(httpx.AsyncByteStream):
+                    async def __aiter__(self):
+                        entered.set()
+                        await asyncio.Event().wait()
+                        yield b''
+
+                    async def aclose(self):
+                        closed.set()
+
+                self.responder = lambda request: httpx.Response(200, stream=Stalled())
+                errors = []
+
+                def run():
+                    try:
+                        codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, stopped, timeout=None)
+                    except Exception as error:
+                        errors.append(error)
+
+                worker = threading.Thread(target=run)
+                worker.start()
+                self.assertTrue(entered.wait(2))
+                self.account.invalidate() if invalidate_account else stopped.set()
+                worker.join(2)
+                self.assertFalse(worker.is_alive())
+                self.assertTrue(closed.is_set())
+                self.assertIsInstance(errors[0], LLMRequestStopped)
+
+    def test_image_account_change_during_decoding_rejects_late_result(self) -> None:
+        self.responder = lambda request: httpx.Response(200, json={'data': [{'b64_json': PNG_BASE64}]})
+        decode = base64.b64decode
+
+        def invalidate_during_decode(value, **kwargs):
+            self.account.invalidate()
+            return decode(value, **kwargs)
+
+        with patch.object(codex.base64, 'b64decode', side_effect=invalidate_during_decode), self.assertRaises(LLMRequestStopped):
+            codex.request_image('gpt-image-2', 'Generate.', None, None, None)
 
     def test_completed_items_and_final_phase_are_used_without_committing_commentary(self) -> None:
         final = completion()['response']['output'][0]
@@ -238,7 +380,10 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(first['refresh_token'], 'refresh')
         self.assertEqual(first['access_token'], 'rotated-access')
         self.assertEqual(self.account.generation, old_generation)
-        self.assertEqual(json.loads(self.path.read_text()), first)
+        restarted = codex.CodexAccount()
+        with patch.object(restarted, '_path', return_value=self.path):
+            restarted._load()
+        self.assertEqual(restarted._credentials, first)
         if os.name != 'nt':
             self.assertEqual(self.path.stat().st_mode & 0o777, 0o600)
 
@@ -260,7 +405,10 @@ class CodexHTTPTest(unittest.TestCase):
         result = asyncio.run(run())
         self.assertEqual(len(refreshes), 1)
         self.assertEqual(result['refresh_token'], 'new-refresh')
-        self.assertEqual(json.loads(self.path.read_text())['refresh_token'], 'new-refresh')
+        restarted = codex.CodexAccount()
+        with patch.object(restarted, '_path', return_value=self.path):
+            restarted._load()
+        self.assertEqual(restarted._credentials['refresh_token'], 'new-refresh')
         self.assertEqual(list(self.path.parent.glob('.http-auth-*')), [])
 
     def test_unauthorized_request_refreshes_once_without_changing_payload_or_cache_key(self) -> None:
@@ -291,8 +439,8 @@ class CodexHTTPTest(unittest.TestCase):
                 {'slug': 'hidden-model', 'visibility': 'hide'},
             ]})
         self.responder = respond
-        label, models = self.account.catalog(threading.Event())
-        self.assertEqual(label, 'demo@example.com')
+        models = self.account.catalog(threading.Event())
+        self.assertEqual(self.account.cached_account_label, 'demo@example.com')
         self.assertEqual(models['vision-model']['modalities'], ['text', 'image'])
         self.assertEqual(models['text-model']['modalities'], ['text'])
         self.assertNotIn('hidden-model', models)
@@ -494,6 +642,38 @@ class CodexHTTPTest(unittest.TestCase):
 
 
 class CodexConfigTest(unittest.TestCase):
+    def test_codex_capabilities_and_saved_model_options_need_no_account_io(self) -> None:
+        defaults = list(PROVIDER_DEFAULTS['Codex']['model_options'])
+        for model, vision_model in (('', ''), ('saved-text', ''), ('saved-text', 'saved-vision'),
+                                    ('gpt-5.6-luna', 'gpt-5.6-sol')):
+            with self.subTest(model=model, vision_model=vision_model), \
+                    patch.object(codex.account, '_load', side_effect=AssertionError('Unexpected credential IO')), \
+                    patch.object(codex, '_http_client', side_effect=AssertionError('Unexpected HTTP')):
+                module = ModuleConfig(llm_profiles=[{
+                    'id': 'codex', 'backend': 'codex', 'model': model, 'vision_model': vision_model,
+                    'support_text': False, 'support_vision': False, 'support_image': False,
+                    'image_model_options': [],
+                }], codex_models={})
+                profile = module.llm_profiles[0]
+                self.assertTrue(profile.support_text)
+                self.assertTrue(profile.support_vision)
+                self.assertTrue(profile.support_image)
+                text_options = defaults + ([model] if model and model not in defaults else [])
+                vision_options = defaults + ([vision_model] if vision_model and vision_model not in defaults else [])
+                self.assertEqual(profile.model_options, text_options)
+                self.assertEqual(profile.vision_model_options, vision_options)
+                self.assertEqual(profile.image_model_options, ['gpt-image-2'])
+                sync_codex_profile(profile, CATALOG)
+                self.assertEqual(profile.model_options, list(CATALOG))
+                self.assertEqual(profile.vision_model_options, ['vision-model'])
+                self.assertEqual((profile.model, profile.vision_model), (model, vision_model))
+                sync_codex_profile(profile, {})
+                self.assertEqual(profile.model_options, text_options)
+                self.assertEqual(profile.vision_model_options, vision_options)
+                self.assertTrue(profile.support_image)
+        self.assertEqual(PROVIDER_DEFAULTS['Codex']['model_options'], defaults)
+        self.assertEqual(PROVIDER_DEFAULTS['Codex']['vision_model_options'], defaults)
+
     def test_explicit_proxy_routes_requests_even_with_environment_proxy(self) -> None:
         routed = []
 
@@ -511,7 +691,7 @@ class CodexConfigTest(unittest.TestCase):
             asyncio.run(request())
         self.assertEqual(routed, [(b'module-proxy.test', 'backend.test')])
 
-    def test_catalog_is_single_persistent_source_and_selections_survive_logout(self) -> None:
+    def test_catalog_is_single_persistent_source_and_selections_survive_missing_catalog(self) -> None:
         profile = default_profile('Codex')
         profile.model = profile.vision_model = 'vision-model'
         profile.api_key = 'must-not-export'
@@ -523,7 +703,8 @@ class CodexConfigTest(unittest.TestCase):
         self.assertEqual(profile_to_export_dict(profile)['api_key'], '')
         sync_codex_profile(profile, {})
         self.assertEqual((profile.model, profile.vision_model), ('vision-model', 'vision-model'))
-        self.assertFalse(profile.support_image)
+        self.assertTrue(profile.support_image)
+        self.assertEqual(profile.image_model_options, ['gpt-image-2'])
 
     def test_malformed_catalog_discards_only_invalid_optional_data(self) -> None:
         self.assertEqual(normalize_codex_models({'good': {'modalities': ['text', 'bad'], 'efforts': ['high', None]}, 'bad': None}),
@@ -538,57 +719,467 @@ class CodexConfigTest(unittest.TestCase):
                 requester._initialize_client(profile)
 
 
-class CodexAccountWidgetTest(unittest.TestCase):
+class CodexSettingsAccountTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         from qtpy.QtWidgets import QApplication
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self) -> None:
-        from ballontranslator.ui.codex_account import CodexAccountController
+        from ballontranslator.ui import codex_account
+        from qtpy.QtWidgets import QMessageBox
+        self.account = codex.CodexAccount()
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        for patcher in (
+            patch.object(codex, 'account', self.account),
+            patch.object(codex_account, 'account', self.account),
+            patch.object(self.account, '_path', return_value=Path(self.directory.name) / 'http-auth.json'),
+            patch.object(codex, '_system_keyring', side_effect=ImportError),
+            patch.object(pcfg.module, 'codex_models', copy.deepcopy(CATALOG)),
+            patch.object(pcfg.module, 'llm_profiles', [default_profile('Codex')]),
+            patch('ballontranslator.ui.codex_settings.QMessageBox.question', return_value=QMessageBox.StandardButton.Yes),
+            patch('ballontranslator.ui.codex_account.QMessageBox.warning', return_value=QMessageBox.StandardButton.Ok),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.warning = QMessageBox.warning
+        CodexAccountController = codex_account.CodexAccountController
         self.controller = CodexAccountController.instance()
         self.controller.account = ''
 
+    def tearDown(self) -> None:
+        from qtpy.QtCore import QCoreApplication, QEvent
+        self.doCleanups()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        super().tearDown()
+
+    def finish_worker(self) -> None:
+        worker = self.controller.worker
+        self.assertIsNotNone(worker)
+        self.assertTrue(worker.wait(2000))
+        self.app.processEvents()
+        self.assertIsNone(self.controller.worker)
+
+    def make_panel(self) -> 'CodexSettingsPanel':
+        from ballontranslator.ui.codex_settings import CodexSettingsPanel
+        panel = CodexSettingsPanel()
+        self.addCleanup(panel.deleteLater)
+        return panel
+
     def test_config_rendering_never_loads_credentials_or_starts_http(self) -> None:
-        from ballontranslator.ui.llm_profile_widgets import ProfileCardWidget
-        profile = default_profile('Codex')
+        from ballontranslator.ui.codex_settings import CodexSettingsPanel
+        profile = pcfg.module.llm_profiles[0]
         profile.model = 'vision-model'
+        sync_codex_profile(profile, CATALOG)
         with patch.object(pcfg.module, 'codex_models', CATALOG), patch.object(codex.account, '_load') as load:
-            card = ProfileCardWidget(profile)
-            self.addCleanup(card.deleteLater)
-            card.toggleImageSupport()
-            self.assertFalse(profile.support_image)
+            panel = CodexSettingsPanel()
+            self.addCleanup(panel.deleteLater)
+            self.assertTrue(profile.support_image)
+            self.assertEqual(profile.image_model_options, ['gpt-image-2'])
             self.assertEqual(profile.vision_model_options, ['vision-model'])
-            card.model_combo.setCurrentText('text-model')
+            panel.param_widgets['model'].setCurrentText('text-model')
             self.assertEqual(profile.thinking_level_options, ['Auto', 'Disabled'])
+            self.assertIsNone(self.account.cached_account_label)
+            self.assertFalse(panel.account_buttons['login'].isHidden())
+            self.assertTrue(panel.account_buttons['logout'].isHidden())
             load.assert_not_called()
+
+    def test_startup_restores_persisted_signin_and_renews_expired_tokens_without_browser_login(self) -> None:
+        from qtpy.QtCore import QTimer
+
+        panel = self.make_panel()
+        for expired in (False, True):
+            with self.subTest(expired=expired):
+                saved = tokens(expiry=time.time() - 60 if expired else None)
+                path = self.account._path()
+                self.account._credentials = saved
+                self.account._save()
+                original = path.read_bytes()
+                self.account._loaded = False
+                self.account._credentials = None
+                self.controller.account = ''
+                self.controller.changed.emit()
+                requests = []
+                ui_thread = threading.get_ident()
+
+                def respond(request: httpx.Request) -> httpx.Response:
+                    self.assertNotEqual(threading.get_ident(), ui_thread)
+                    requests.append(request)
+                    if request.url.path.endswith('/oauth/token'):
+                        self.assertIn(b'grant_type=refresh_token', request.content)
+                        return httpx.Response(200, json={
+                            'access_token': 'renewed-access', 'refresh_token': 'renewed-refresh', 'expires_in': 3600,
+                        })
+                    self.assertTrue(request.url.path.endswith('/models'))
+                    return httpx.Response(200, json={'models': [{
+                        'slug': 'available-after-restart', 'input_modalities': ['text', 'image'],
+                        'supported_reasoning_levels': [{'effort': 'high'}],
+                    }]})
+
+                with patch.object(codex, '_http_client', side_effect=lambda proxy='': httpx.AsyncClient(
+                    transport=httpx.MockTransport(respond)
+                )), patch.object(self.account, 'login', side_effect=AssertionError('Browser login was requested')):
+                    # MainWindow schedules this after its construction; opening
+                    # the panel itself still performs no account or network IO.
+                    QTimer.singleShot(0, self.controller.restoreSession)
+                    self.app.processEvents()
+                    self.finish_worker()
+
+                self.assertEqual(self.controller.account, saved['email'])
+                self.assertFalse(panel.account_buttons['logout'].isHidden())
+                self.assertTrue(panel.account_buttons['login'].isHidden())
+                self.assertEqual(list(pcfg.module.codex_models), ['available-after-restart'])
+                self.assertEqual(requests[-1].headers['Authorization'], 'Bearer renewed-access' if expired else 'Bearer access')
+                if expired:
+                    restarted = codex.CodexAccount()
+                    with patch.object(restarted, '_path', return_value=path):
+                        restarted._load()
+                    self.assertEqual(restarted._credentials['refresh_token'], 'renewed-refresh')
+                else:
+                    self.assertEqual(path.read_bytes(), original)
+
+    def test_startup_without_saved_credentials_does_not_use_network(self) -> None:
+        from qtpy.QtTest import QSignalSpy
+        profile = pcfg.module.llm_profiles[0]
+        profile.model = 'text-model'
+        profile.vision_model = 'vision-model'
+        sync_codex_profile(profile, CATALOG)
+        published = QSignalSpy(self.controller.catalog_changed)
+        panel = self.make_panel()
+        with patch.object(codex, '_http_client', side_effect=AssertionError('Unexpected network')):
+            self.controller.restoreSession()
+            self.finish_worker()
+        self.assertFalse(panel.account_buttons['login'].isHidden())
+        self.assertTrue(panel.account_buttons['logout'].isHidden())
+        self.assertEqual(pcfg.module.codex_models, CATALOG)
+        self.assertEqual(profile.model_options, list(CATALOG))
+        self.assertEqual(profile.vision_model_options, ['vision-model'])
+        self.assertEqual((profile.model, profile.vision_model), ('text-model', 'vision-model'))
+        self.assertEqual(len(published), 0)
+
+    def test_authenticated_empty_catalog_replaces_stale_options_without_hiding_codex(self) -> None:
+        from qtpy.QtTest import QSignalSpy
+        self.account._loaded = True
+        self.account._credentials = tokens()
+        profile = pcfg.module.llm_profiles[0]
+        profile.model = 'saved-text'
+        profile.vision_model = 'saved-vision'
+        sync_codex_profile(profile, CATALOG)
+        published = QSignalSpy(self.controller.catalog_changed)
+        with patch.object(codex, '_http_client', side_effect=lambda proxy='': httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(200, json={'models': []}))
+        )):
+            self.controller.restoreSession()
+            self.finish_worker()
+        self.assertEqual(self.controller.account, 'demo@example.com')
+        self.assertEqual(pcfg.module.codex_models, {})
+        self.assertEqual(len(published), 1)
+        self.assertEqual(profile.model_options, PROVIDER_DEFAULTS['Codex']['model_options'] + ['saved-text'])
+        self.assertEqual(profile.vision_model_options, PROVIDER_DEFAULTS['Codex']['vision_model_options'] + ['saved-vision'])
+        self.assertEqual((profile.model, profile.vision_model), ('saved-text', 'saved-vision'))
+        self.assertTrue(profile.support_text)
+        self.assertTrue(profile.support_vision)
+        self.assertTrue(profile.support_image)
+        self.assertEqual(profile.image_model_options, ['gpt-image-2'])
+
+    def test_startup_ignores_plaintext_and_shows_signed_out_without_error(self) -> None:
+        path = self.account._path()
+        path.write_text(json.dumps(tokens()))
+        unchanged = path.read_bytes()
+        panel = self.make_panel()
+        with patch.object(codex, '_http_client', side_effect=AssertionError('Unexpected network')), \
+                patch.object(codex, '_system_keyring', side_effect=AssertionError('Unexpected vault access')):
+            self.controller.restoreSession()
+            self.finish_worker()
+        self.assertEqual(self.controller.account, '')
+        self.warning.assert_not_called()
+        self.assertFalse(panel.account_buttons['login'].isHidden())
+        self.assertTrue(panel.account_buttons['logout'].isHidden())
+        self.assertTrue(panel.account_buttons['login'].isEnabled())
+        self.assertEqual(pcfg.module.codex_models, CATALOG)
+        self.assertEqual(path.read_bytes(), unchanged)
+
+    def test_account_actions_switch_login_and_logout_without_showing_both(self) -> None:
+        panel = self.make_panel()
+        sign_in, sign_out = panel.account_buttons['login'], panel.account_buttons['logout']
+        self.assertEqual(sign_in.text(), panel.tr('Sign in'))
+        self.assertEqual(sign_out.text(), panel.tr('Sign out'))
+        self.assertFalse(sign_in.icon().isNull())
+        self.assertTrue(sign_out.icon().isNull())
+        self.assertFalse(sign_out.isEnabled())
+
+        def login(stop_event, show_url):
+            self.account._loaded = True
+            self.account._credentials = tokens()
+
+        with patch.object(self.account, 'login', side_effect=login), patch.object(
+            self.account, 'catalog', return_value=copy.deepcopy(CATALOG),
+        ) as catalog:
+            sign_in.click()
+            self.finish_worker()
+        self.assertEqual(catalog.call_count, 1)
+        self.assertFalse(panel.account_buttons['logout'].isHidden())
+        self.assertTrue(panel.account_buttons['login'].isHidden())
+        self.assertFalse(sign_in.isEnabled())
+        self.assertTrue(sign_out.isEnabled())
+        sign_out.click()
+        self.finish_worker()
+        self.assertFalse(panel.account_buttons['login'].isHidden())
+        self.assertTrue(panel.account_buttons['logout'].isHidden())
+        self.assertEqual(self.controller.account, '')
+        self.assertEqual(pcfg.module.codex_models, CATALOG)
+
+    def test_login_commit_is_visible_even_when_catalog_fails_or_is_cancelled(self) -> None:
+        panel = self.make_panel()
+        for cancelled in (False, True):
+            with self.subTest(cancelled=cancelled):
+                self.account._loaded = False
+                self.account._credentials = None
+                self.controller.account = ''
+                self.controller.changed.emit()
+
+                def login(stop_event, show_url):
+                    self.account._loaded = True
+                    self.account._credentials = tokens()
+
+                def catalog(stop_event):
+                    if cancelled:
+                        stop_event.set()
+                        raise LLMRequestStopped()
+                    raise RuntimeError('Temporary model-list failure')
+
+                with patch.object(self.account, 'login', side_effect=login), \
+                        patch.object(self.account, 'catalog', side_effect=catalog):
+                    panel.account_buttons['login'].click()
+                    self.finish_worker()
+                self.assertEqual(self.controller.account, 'demo@example.com')
+                self.assertFalse(panel.account_buttons['logout'].isHidden())
+                self.assertTrue(panel.account_buttons['login'].isHidden())
+                self.assertEqual(pcfg.module.codex_models, CATALOG)
+
+    def test_failed_logout_and_refresh_keep_signout_but_committed_cancel_clears_it(self) -> None:
+        self.account._loaded = True
+        self.account._credentials = tokens()
+        self.controller.account = 'demo@example.com'
+        panel = self.make_panel()
+        with patch.object(self.account, 'logout', side_effect=LLMUserActionRequiredError('Could not remove credentials')):
+            panel.account_buttons['logout'].click()
+            self.finish_worker()
+        self.assertFalse(panel.account_buttons['logout'].isHidden())
+        self.assertTrue(panel.account_buttons['login'].isHidden())
+        with patch.object(self.account, 'catalog', side_effect=RuntimeError('Temporary connection failure')):
+            panel.account_buttons['refresh'].click()
+            self.finish_worker()
+        self.assertFalse(panel.account_buttons['logout'].isHidden())
+        self.assertTrue(panel.account_buttons['login'].isHidden())
+        self.assertEqual(pcfg.module.codex_models, CATALOG)
+
+        def logout(stop_event):
+            self.account._credentials = None
+            stop_event.set()
+            raise LLMRequestStopped()
+
+        with patch.object(self.account, 'logout', side_effect=logout):
+            panel.account_buttons['logout'].click()
+            self.finish_worker()
+        self.assertFalse(panel.account_buttons['login'].isHidden())
+        self.assertTrue(panel.account_buttons['logout'].isHidden())
+        self.assertEqual(pcfg.module.codex_models, CATALOG)
+
+    def test_cancelled_unknown_refresh_keeps_previously_known_account(self) -> None:
+        self.controller.account = 'previous@example.com'
+        panel = self.make_panel()
+
+        def cancelled(stop_event):
+            stop_event.set()
+            raise LLMRequestStopped()
+
+        with patch.object(self.account, 'catalog', side_effect=cancelled):
+            panel.account_buttons['refresh'].click()
+            self.finish_worker()
+        self.assertEqual(self.controller.account, 'previous@example.com')
+        self.assertFalse(panel.account_buttons['logout'].isHidden())
+        self.assertTrue(panel.account_buttons['login'].isHidden())
+        self.assertEqual(pcfg.module.codex_models, CATALOG)
+
+    def test_worker_errors_show_after_controls_restore_and_cancellation_suppresses_them(self) -> None:
+        self.account._loaded = True
+        self.account._credentials = tokens()
+        self.controller.account = 'demo@example.com'
+        panel = self.make_panel()
+        warning_states = []
+        self.warning.side_effect = lambda parent, title, message: warning_states.append((
+            panel.refresh_button.isEnabled(), panel.account_buttons['logout'].isEnabled(),
+            self.controller.worker is None,
+        ))
+        for failure, cancelled in (
+            (RuntimeError('private provider URL'), False),
+            (LLMUserActionRequiredError('Sign in again to refresh models.'), False),
+            (RuntimeError('private provider URL'), True),
+        ):
+            with self.subTest(cancelled=cancelled, error=type(failure).__name__):
+                self.warning.reset_mock()
+                warning_states.clear()
+
+                def catalog(stop_event: threading.Event) -> dict:
+                    if cancelled:
+                        stop_event.set()
+                    raise failure
+
+                with patch.object(self.account, 'catalog', side_effect=catalog):
+                    self.controller.start('refresh')
+                    self.finish_worker()
+                self.assertTrue(panel.refresh_button.isEnabled())
+                self.assertTrue(panel.account_buttons['logout'].isEnabled())
+                self.assertEqual(self.controller.account, 'demo@example.com')
+                self.assertEqual(pcfg.module.codex_models, CATALOG)
+                if cancelled:
+                    self.warning.assert_not_called()
+                else:
+                    self.warning.assert_called_once()
+                    message = self.warning.call_args.args[2]
+                    self.assertEqual(warning_states, [(True, True, True)])
+                    self.assertNotIn('private provider URL', message)
+                    if isinstance(failure, LLMUserActionRequiredError):
+                        self.assertEqual(message, str(failure))
+
+    def test_browser_open_failure_cancels_login_and_shows_only_actionable_browser_error(self) -> None:
+        from ballontranslator.ui import codex_account
+
+        panel = self.make_panel()
+        submitted = threading.Event()
+        cancelled = threading.Event()
+
+        def login(stop_event: threading.Event, show_url: Callable[[str], None]) -> None:
+            show_url('https://auth.openai.com/authorize?sensitive=private-value')
+            submitted.set()
+            if stop_event.wait(2):
+                cancelled.set()
+            raise RuntimeError('private provider failure after browser cancellation')
+
+        with patch.object(codex_account.QDesktopServices, 'openUrl', return_value=False), \
+                patch.object(self.account, 'login', side_effect=login), \
+                patch.object(self.account, 'catalog', side_effect=AssertionError('Unexpected catalog request')):
+            self.controller.start('login')
+            self.assertTrue(submitted.wait(2))
+            self.app.processEvents()
+            if self.controller.worker is not None:
+                self.finish_worker()
+        self.assertTrue(cancelled.is_set())
+        self.warning.assert_called_once()
+        message = self.warning.call_args.args[2]
+        self.assertIn('browser', message)
+        self.assertIn('try signing in again', message)
+        self.assertNotIn('private', message)
+        self.assertEqual(self.controller.account, '')
+        self.assertTrue(panel.account_buttons['login'].isEnabled())
+
+    def test_browser_open_succeeds_and_ignores_url_after_cancellation(self) -> None:
+        from ballontranslator.ui import codex_account
+
+        worker = codex_account.CodexAccountWorker('login', self.controller)
+        self.controller.worker = worker
+        worker.login_url.connect(self.controller.openLoginUrl)
+        try:
+            with patch.object(codex_account.QDesktopServices, 'openUrl', return_value=True) as open_url:
+                worker.login_url.emit('https://auth.openai.com/authorize')
+                self.assertTrue(open_url.called)
+                self.assertFalse(worker.stop_event.is_set())
+                worker.stop_event.set()
+                open_url.reset_mock()
+                worker.login_url.emit('https://auth.openai.com/authorize')
+                open_url.assert_not_called()
+            self.warning.assert_not_called()
+        finally:
+            self.controller.worker = None
+            worker.deleteLater()
+
+    def test_login_refreshes_catalog_once_and_publishes_even_an_unchanged_list(self) -> None:
+        from qtpy.QtCore import QCoreApplication, QEvent
+        from qtpy.QtTest import QSignalSpy
+        from ballontranslator.ui.codex_settings import CodexSettingsPanel
+
+        for cached in ({}, CATALOG):
+            with self.subTest(cached=bool(cached)), \
+                    patch.object(pcfg.module, 'codex_models', copy.deepcopy(cached)), \
+                    patch.object(pcfg.module, 'llm_profiles', [default_profile('Codex')]):
+                profile = pcfg.module.llm_profiles[0]
+                profile.model = 'vision-model'
+                panel = CodexSettingsPanel()
+                published = QSignalSpy(self.controller.catalog_changed)
+                ui_updated = QSignalSpy(panel.profile_ui_updated)
+                operations = []
+                ui_thread = threading.get_ident()
+
+                def login(stop_event, show_url) -> None:
+                    self.assertNotEqual(threading.get_ident(), ui_thread)
+                    operations.append('login')
+                    self.account._loaded = True
+                    self.account._credentials = {**tokens(), 'email': 'signed-in@example.com'}
+
+                def catalog(stop_event: threading.Event) -> dict:
+                    self.assertNotEqual(threading.get_ident(), ui_thread)
+                    self.assertEqual(operations, ['login'])
+                    operations.append('catalog')
+                    return copy.deepcopy(CATALOG)
+
+                try:
+                    with patch.object(codex.account, 'login', side_effect=login), \
+                            patch.object(codex.account, 'catalog', side_effect=catalog):
+                        self.controller.start('login')
+                        worker = self.controller.worker
+                        self.assertTrue(worker.wait(2000))
+                        self.app.processEvents()
+                    self.assertIsNone(self.controller.worker)
+                    self.assertEqual(operations, ['login', 'catalog'])
+                    self.assertEqual(len(published), 1)
+                    self.assertEqual(len(ui_updated), 1)
+                    self.assertEqual(self.controller.account, 'signed-in@example.com')
+                    self.assertEqual(pcfg.module.codex_models, CATALOG)
+                    self.assertEqual(profile.model, 'vision-model')
+                    self.assertEqual(profile.model_options, list(CATALOG))
+                    self.assertEqual(profile.vision_model_options, ['vision-model'])
+                    self.assertTrue(profile.support_image)
+                    self.assertEqual(panel.param_widgets['model'].currentText(), 'vision-model')
+                finally:
+                    panel.deleteLater()
+                    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
     def test_failed_refresh_keeps_catalog_and_deleted_widget_does_not_own_worker(self) -> None:
         from qtpy.QtCore import QCoreApplication, QEvent
-        from ballontranslator.ui.codex_account import CodexAccountWidget, CodexAccountWorker
+        from ballontranslator.ui.codex_settings import CodexSettingsPanel
         release = threading.Event()
 
-        def delayed_failure(worker):
+        def delayed_failure(stop_event: threading.Event) -> None:
             release.wait(2)
-            worker.error = 'Temporary connection failure.'
+            raise RuntimeError('Temporary connection failure.')
 
-        with patch.object(CodexAccountWorker, 'run', delayed_failure), patch.object(pcfg.module, 'codex_models', CATALOG):
-            widget = CodexAccountWidget(None)
+        with patch.object(self.account, 'catalog', side_effect=delayed_failure):
+            widget = CodexSettingsPanel()
             ref = weakref.ref(widget)
             self.controller.account = 'previous@example.com'
             self.controller.start('refresh')
             worker = self.controller.worker
-            widget.deleteLater()
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-            del widget
-            gc.collect()
-            self.assertIsNone(ref())
-            release.set()
-            self.assertTrue(worker.wait(2000))
-            self.app.processEvents()
+            worker_ref = weakref.ref(worker)
+            try:
+                widget.deleteLater()
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                del widget
+                gc.collect()
+                self.assertIsNone(ref())
+            finally:
+                release.set()
+                self.assertTrue(worker.wait(2000))
+                self.app.processEvents()
             self.assertIsNone(self.controller.worker)
             self.assertEqual(pcfg.module.codex_models, CATALOG)
             self.assertEqual(self.controller.account, 'previous@example.com')
+            del worker
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            gc.collect()
+            self.assertIsNone(worker_ref())
 
     def test_new_pipeline_job_uses_a_new_event_without_reviving_old_cancellation(self) -> None:
         from ballontranslator.ui.module_manager import ImgtransThread, InpaintThread, OCRThread, TextDetectThread, TranslateThread

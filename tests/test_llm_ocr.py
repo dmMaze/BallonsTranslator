@@ -119,25 +119,26 @@ class LLMOCRTest(unittest.TestCase):
         self.assertNotIn(DEFAULT_OCR_PROMPT, builtin_prompt)
         self.assertNotIn('"order"', builtin_prompt)
 
-    def test_vision_enabled_profile_requires_model(self):
-        profile = default_profile('OpenAI')
-        profile.api_key = 'sk-demo'
-        profile.model = ''
-        profile.vision_model = ''
-        pcfg.module.llm_profiles = [profile]
-        pcfg.module.ocr_llm_id = profile.id
+    def test_vision_enabled_profile_requires_model(self) -> None:
+        for provider in ('OpenAI', 'Codex'):
+            with self.subTest(provider=provider):
+                profile = default_profile(provider)
+                profile.model = ''
+                profile.vision_model = ''
+                pcfg.module.llm_profiles = [profile]
+                pcfg.module.ocr_llm_id = profile.id
 
-        with self.assertRaises(LLMModelRequiredError):
-            _ = self.ocr.profile
-        with self.assertRaises(LLMModelRequiredError):
-            self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
+                with self.assertRaises(LLMModelRequiredError):
+                    _ = self.ocr.profile
+                with self.assertRaises(LLMModelRequiredError):
+                    self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
 
-        profile.vision_model = 'stale-vision-model'
-        profile.vision_model_options = []
-        with self.assertRaises(LLMModelRequiredError):
-            _ = self.ocr.profile
-        with self.assertRaises(LLMModelRequiredError):
-            self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
+                profile.vision_model = 'stale-vision-model'
+                profile.vision_model_options = []
+                with self.assertRaises(LLMModelRequiredError):
+                    _ = self.ocr.profile
+                with self.assertRaises(LLMModelRequiredError):
+                    self.ocr._api_args(profile, [{'role': 'user', 'content': 'x'}])
 
     def test_profile_rejects_a_non_vision_capability(self):
         profile = default_profile('DeepSeek')

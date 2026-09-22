@@ -16,6 +16,12 @@ CORE_IMPORT_PROBES = (
     ('PIL', ()),
     ('pillow_jxl', ()),
     ('requests', ()),
+    ('httpx', ('AsyncClient',)),
+    # HTTPX may already be installed without its transport/decoder extras.
+    ('socksio', ()),
+    ('brotli' if sys.implementation.name == 'cpython' else 'brotlicffi', ()),
+    ('keyring', ('get_keyring',)),
+    ('cryptography.fernet', ('Fernet',)),
     ('tqdm', ()),
     ('natsort', ()),
     ('cv2', ('IMREAD_COLOR', 'IMREAD_GRAYSCALE', 'cvtColor')),

@@ -40,6 +40,7 @@ from ballontranslator.utils.shared import (
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.modules.lazy_registry import probe_torch_package
 from .llm_profile_widgets import LLMProfilesWidget
+from .codex_settings import CodexSettingsPanel
 from .framelesswindow import (
     DialogCloseButton,
     FramelessWindow,
@@ -736,6 +737,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
 
         pipelineConfigPanel = self.addConfigBlock(label_pipeline, moduleTableItem, 'pipeline')
         llmProfileConfigPanel = self.addConfigBlock(label_llm_profile, moduleTableItem, 'llm_profile')
+        codexConfigPanel = self.addConfigBlock(self.tr('Codex'), moduleTableItem, 'codex')
         applicationConfigPanel = self.addConfigBlock(label_application, generalTableItem, 'application')
         typesettingConfigPanel = self.addConfigBlock(label_typesetting, generalTableItem, 'typesetting')
         spellcheckConfigPanel = self.addConfigBlock(label_spellcheck, generalTableItem, 'spellcheck')
@@ -832,6 +834,8 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         pipelineConfigPanel.vlayout.addWidget(pipeline_options)
         self.llm_profiles_panel = LLMProfilesWidget(scrollWidget=self)
         llmProfileConfigPanel.addBlockWidget(self.llm_profiles_panel)
+        self.codex_panel = CodexSettingsPanel(scrollWidget=self)
+        codexConfigPanel.addBlockWidget(self.codex_panel)
 
         update_status_widget = QWidget()
         update_status_widget.setObjectName('ConfigInlineRow')
@@ -1729,7 +1733,17 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.font_list_changed.emit(pcfg.let_show_only_custom_fonts_flag)
         self.save_config.emit()
 
-    def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True, target: str = 'api_key'):
+    def syncLLMProfile(self, profile_id: str) -> None:
+        if profile_id == 'codex':
+            self.codex_panel.syncFromProfile()
+        else:
+            self.llm_profiles_panel.syncProfile(profile_id)
+
+    def focusOnLLMProfile(self, profile_id: str, expand_details: bool = True, target: str = 'api_key') -> None:
+        if profile_id == 'codex':
+            self.showConfigDialog('codex')
+            self.codex_panel.focusControl(target)
+            return
         self.showConfigDialog('llm_profile')
         self.llm_profiles_panel.focusProfileControl(profile_id, target=target, expand_details=expand_details)
 

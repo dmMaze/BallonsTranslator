@@ -9,9 +9,10 @@ from qtpy.QtGui import QContextMenuEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QMenu, QVBoxLayout, QWidget
 
-from ballontranslator.ui.llm_profile_widgets import ProfileCardWidget
+from ballontranslator.ui.llm_profile_widgets import LLMProfilesWidget, ProfileCardWidget
 from ballontranslator.ui.misc import parse_stylesheet
-from ballontranslator.utils.llm_profiles import LLMProfile
+from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.llm_profiles import LLMProfile, default_profile
 
 
 class LLMProfileModelSelectorTest(unittest.TestCase):
@@ -146,6 +147,29 @@ class LLMProfileTitleTest(unittest.TestCase):
                 self.assertEqual(card.profile.name, text)
                 self.assertEqual(card.profile.title_url, '')
                 self.assertEqual(card.title_label.textFormat(), Qt.TextFormat.PlainText)
+
+
+class APIProfilesPanelTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_codex_is_excluded_from_profile_editing_copy_and_delete(self) -> None:
+        codex = default_profile('Codex')
+        api = default_profile('OpenAI')
+        with patch.object(pcfg.module, 'llm_profiles', [codex, api]):
+            panel = LLMProfilesWidget()
+            self.addCleanup(panel.deleteLater)
+            self.assertNotIn(codex.id, panel.rows)
+            self.assertIn('base_url', panel.rows[api.id].details.param_widgets)
+            panel.rows[api.id].toggleVisionSupport()
+            self.assertFalse(api.support_vision)
+            previous_clipboard = QApplication.clipboard().text()
+            panel.copyProfileAsJson(codex.id)
+            self.assertEqual(QApplication.clipboard().text(), previous_clipboard)
+            panel.copyProfile(codex.id)
+            panel.deleteProfile(codex.id)
+            self.assertEqual(pcfg.module.llm_profiles, [codex, api])
 
 
 if __name__ == '__main__':

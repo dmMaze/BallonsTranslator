@@ -13,6 +13,9 @@ einops
 opencv-python>=4.8.1.78
 pillow-jxl-plugin>=1.3.4
 requests>=2.32.4
+httpx[socks,brotli]
+keyring
+cryptography
 tqdm>=4.66.3
 py7zr
 shapely

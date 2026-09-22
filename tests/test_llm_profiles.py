@@ -27,6 +27,168 @@ from ballontranslator.utils.llm_profiles import (
 from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
+class CodexProfileConfigTest(unittest.TestCase):
+    def test_fresh_codex_config_has_independent_offline_model_defaults(self) -> None:
+        expected = ['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5',
+                    'gpt-5.4', 'gpt-5.4-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4o-mini']
+        with patch.dict(PROVIDER_DEFAULTS['OpenAI'], model_options=['api-text'],
+                        vision_model_options=['api-vision']):
+            module = ModuleConfig()
+            profile = profile_by_id(module.llm_profiles, 'codex')
+        self.assertEqual(module.codex_models, {})
+        self.assertEqual(profile.model_options, expected)
+        self.assertEqual(profile.vision_model_options, expected)
+        self.assertEqual((profile.model, profile.vision_model), ('', ''))
+        self.assertEqual(profile.image_model_options, ['gpt-image-2'])
+        profile.model_options.append('custom-text')
+        self.assertEqual(profile.vision_model_options, expected)
+        self.assertEqual(default_profile('Codex').model_options, expected)
+        self.assertEqual(default_profile('Codex').vision_model_options, expected)
+
+    def test_module_config_keeps_one_canonical_codex_and_valid_api_profiles(self) -> None:
+        api = LLMProfile(
+            id='api-custom', name='My API', base_url='https://api.example/v1',
+            api_key='api-key', model='api-model', prompt='API prompt',
+        )
+        canonical = default_profile('Codex')
+        canonical.model = 'saved-codex-model'
+        canonical.prompt = 'Saved Codex prompt'
+        duplicate = profile_to_dict(canonical)
+        duplicate['model'] = 'duplicate-model'
+        module = ModuleConfig(
+            llm_profiles=[api, canonical, duplicate],
+            translator_llm_id='codex',
+            ocr_llm_id=api.id,
+            inpaint_llm_id='codex',
+        )
+
+        self.assertEqual([profile.id for profile in module.llm_profiles], ['api-custom', 'codex'])
+        self.assertEqual(profile_to_dict(module.llm_profiles[0]), profile_to_dict(api))
+        codex = profile_by_id(module.llm_profiles, 'codex')
+        self.assertEqual((codex.backend, codex.name, codex.built_in), ('codex', 'Codex', True))
+        self.assertEqual(codex.title_url, '')
+        self.assertEqual(codex.model, 'saved-codex-model')
+        self.assertEqual(codex.prompt, 'Saved Codex prompt')
+        self.assertEqual((module.translator_llm_id, module.ocr_llm_id, module.inpaint_llm_id),
+                         ('codex', api.id, 'codex'))
+
+    def test_missing_codex_settings_use_canonical_defaults(self) -> None:
+        for payload in ({}, {'codex_models': {}}, {'llm_profiles': []},
+                        {'llm_profiles': [profile_to_dict(default_profile('Ollama'))], 'codex_models': {}}):
+            with self.subTest(payload=payload), tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+                json.dump({'module': payload}, temp)
+                temp.flush()
+                loaded = ProgramConfig.load(temp.name).module
+                codex_profiles = [profile for profile in loaded.llm_profiles if profile.backend == 'codex']
+                self.assertEqual(len(codex_profiles), 1)
+                self.assertEqual(codex_profiles[0].id, 'codex')
+                self.assertEqual(codex_profiles[0].prompt, DEFAULT_TRANSLATION_PROMPT)
+
+    def test_canonical_codex_settings_survive_serialization_and_restart(self) -> None:
+        codex = default_profile('Codex')
+        settings = {
+            'model': 'text-model', 'vision_model': 'vision-model',
+            'prompt': 'Translate custom', 'vision_prompt': 'Recognize custom',
+            'image_prompt': 'Inpaint custom', 'thinking_level': 'high',
+            'vision_detail_level': 'high', 'max_tokens': 1024,
+        }
+        for key, value in settings.items():
+            setattr(codex, key, value)
+        catalog = {
+            'text-model': {'modalities': ['text'], 'efforts': ['high']},
+            'vision-model': {'modalities': ['text', 'image'], 'efforts': ['low']},
+        }
+        module = ModuleConfig(llm_profiles=[codex], codex_models=catalog, translator_llm_id='codex')
+        serialized = json_dump_program_config(ProgramConfig(module=module))
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            temp.write(serialized)
+            temp.flush()
+            restarted = ProgramConfig.load(temp.name).module
+        saved = profile_by_id(restarted.llm_profiles, 'codex')
+        self.assertEqual({key: getattr(saved, key) for key in settings}, settings)
+        self.assertTrue(saved.support_text)
+        self.assertTrue(saved.support_vision)
+        self.assertTrue(saved.support_image)
+        self.assertEqual(restarted.codex_models, catalog)
+        self.assertEqual(json_dump_program_config(ProgramConfig(module=restarted)), serialized)
+
+    def test_malformed_codex_fields_do_not_discard_valid_settings_or_api_profiles(self) -> None:
+        module = ModuleConfig(llm_profiles=[None, {
+            'id': 'codex', 'backend': 'codex', 'model': ['bad-model'],
+            'thinking_level': {}, 'prompt': 'Keep this prompt',
+            'vision_model': 'valid-vision-model', 'max_tokens': 'invalid',
+            'unknown_optional_field': {'obsolete': True},
+        }, {'id': 'api-custom', 'name': 'Saved API', 'api_key': 'saved-api-key'}])
+        codex = profile_by_id(module.llm_profiles, 'codex')
+        self.assertEqual(codex.model, '')
+        self.assertEqual(codex.thinking_level, THINKING_AUTO)
+        self.assertEqual(codex.prompt, 'Keep this prompt')
+        self.assertEqual(codex.vision_model, 'valid-vision-model')
+        self.assertEqual(codex.max_tokens, LLMProfile().max_tokens)
+        self.assertEqual(profile_by_id(module.llm_profiles, 'api-custom').api_key, 'saved-api-key')
+
+    def test_minimal_and_malformed_codex_lists_keep_defaults_and_valid_entries(self) -> None:
+        for fields, expected in (
+            ({}, VISION_DETAIL_LEVEL_OPTIONS),
+            ({'vision_detail_level_options': None}, VISION_DETAIL_LEVEL_OPTIONS),
+            ({'vision_detail_level_options': [None, 42]}, VISION_DETAIL_LEVEL_OPTIONS),
+            ({'vision_detail_level_options': ['high', None, 'low']}, ['high', 'low']),
+            ({'vision_detail_level_options': []}, []),
+        ):
+            with self.subTest(fields=fields):
+                module = ModuleConfig(llm_profiles=[{
+                    'id': 'codex', 'backend': 'codex', 'prompt': 'Saved prompt', **fields,
+                }])
+                codex = profile_by_id(module.llm_profiles, 'codex')
+                self.assertEqual(codex.vision_detail_level_options, expected)
+                self.assertEqual(codex.prompt, 'Saved prompt')
+                self.assertEqual(codex.vision_prompt, DEFAULT_OCR_PROMPT)
+                restarted = ModuleConfig(**json.loads(json_dump_program_config(module)))
+                self.assertEqual(profile_by_id(restarted.llm_profiles, 'codex').vision_detail_level_options,
+                                 expected)
+
+    def test_invalid_codex_identity_is_discarded_without_converting_credentials(self) -> None:
+        for invalid in (
+            {'id': 'codex', 'backend': 'openai', 'api_key': 'invalid-entry-key'},
+            {'id': 'not-codex', 'backend': 'codex', 'prompt': 'Invalid identity'},
+        ):
+            with self.subTest(identity=invalid['id']), self.assertLogs('BallonTranslator', level='WARNING'):
+                profiles = load_profiles([invalid, {'id': 'api', 'api_key': 'valid-api-key'}])
+            self.assertEqual([profile.id for profile in profiles], ['api', 'codex'])
+            self.assertEqual(profiles[0].api_key, 'valid-api-key')
+            self.assertEqual(profiles[1].api_key, '')
+            self.assertEqual(profiles[1].prompt, DEFAULT_TRANSLATION_PROMPT)
+
+    def test_restore_api_builtins_preserves_canonical_codex_settings(self) -> None:
+        codex = default_profile('Codex')
+        codex.model = 'saved-model'
+        codex.vision_model = 'saved-vision-model'
+        codex.prompt = 'Saved translation prompt'
+        codex.vision_prompt = 'Saved OCR prompt'
+        codex.image_prompt = 'Saved inpaint prompt'
+        codex.thinking_level = 'high'
+        canonical = ModuleConfig(llm_profiles=[codex], codex_models={
+            'saved-model': {'modalities': ['text', 'image'], 'efforts': ['high']},
+        }).llm_profiles[0]
+        expected = profile_to_dict(canonical)
+        restored = restore_builtin_profiles([canonical])
+        self.assertEqual(sum(profile.backend == 'codex' for profile in restored), 1)
+        self.assertIs(profile_by_id(restored, 'codex'), canonical)
+        self.assertEqual(profile_to_dict(profile_by_id(restored, 'codex')), expected)
+        self.assertTrue(canonical.support_text)
+        self.assertTrue(canonical.support_vision)
+        self.assertTrue(canonical.support_image)
+        self.assertEqual(canonical.model_options, ['saved-model'])
+
+    def test_clipboard_import_ignores_codex_entries_and_keeps_api_profiles(self) -> None:
+        codex = profile_to_export_dict(default_profile('Codex'))
+        api = profile_to_export_dict(LLMProfile(id='api-custom', api_key='copied-api-key'))
+        self.assertEqual(profiles_from_json(json.dumps(codex)), [])
+        imported = profiles_from_json(json.dumps([codex, api]))
+        self.assertEqual([profile.id for profile in imported], ['api-custom'])
+        self.assertEqual(imported[0].api_key, 'copied-api-key')
+
+
 class LLMProfileMigrationTest(unittest.TestCase):
     def test_title_link_persistence_and_missing_builtin_field(self) -> None:
         with patch.dict(PROVIDER_DEFAULTS['OpenAI'], title_url='https://example.com'):

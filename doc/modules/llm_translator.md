@@ -38,22 +38,30 @@ are disposable runtime snapshots; neither replaces project state.
 
 ## Codex backend
 
-The **Codex** profile card signs in with ChatGPT using browser OAuth and PKCE.
-It uses the existing optional HTTP client; a missing client can be installed from
-the card. No Codex SDK, native process, or LiteLLM dependency is required.
+**Modules → Codex** signs in with ChatGPT using browser OAuth and PKCE.
+Its HTTP client (`httpx[socks,brotli]`) and credential-storage libraries (`keyring`
+and `cryptography`) are core dependencies, installed and checked by the normal
+startup dependency flow. No Codex SDK, native process, or LiteLLM dependency is required.
 The direct subscription protocol follows the Codex backend and may require
 updates when that service changes.
 
 [`codex.py`](../../ballontranslator/modules/codex.py) owns OAuth, credential
-rotation, and the direct ChatGPT Responses transport. Credentials are stored
-atomically in the app's `config/codex/http-auth.json`, with private file permissions
-on POSIX systems. This is a local credential file, not encrypted storage; protection
-on Windows follows the user's directory permissions. Existing SDK/CLI credentials
-are neither imported nor changed. Config and profile exports contain no tokens.
+rotation, and the direct ChatGPT Responses and image transports. Credentials are
+encrypted with Fernet in `config/codex/http-auth.json`; a small random encryption
+key is held by the native system credential store through `keyring`. When secure
+storage is unavailable during a save, the existing portable obfuscation is used
+instead. Obfuscation is reversible and is not encryption; its use is logged.
+Windows Credential Manager, macOS Keychain, and Linux
+Secret Service (including KDE's bridge) are supported; file-based keyring plugins
+are not treated as secure storage. File writes are atomic, with private POSIX permissions.
+An unreadable encrypted file is preserved and reported; reads never replace a
+missing key or downgrade protection. Legacy plaintext files are ignored and show
+a signed-out state; a new sign-in replaces them. Existing SDK/CLI credentials are neither imported
+nor changed. Config and profile exports contain no tokens.
 Token rotation is serialized; a failed save retains the rotated token in memory
 and requires successful persistence before reuse.
 
-Requests are stateless: only the supplied instructions, history, current input,
+Translator and OCR requests are stateless: only the supplied instructions, history, current input,
 and images are sent, with tools disabled. The existing pipeline job boundary owns
 cancellation. Each requester assigns a cache/session key per job, profile, model,
 and account generation; pages, ordinary retries, context recovery, and compaction
@@ -62,12 +70,37 @@ token does not change identity. There is no hidden conversational history or
 agent mode. Cancellation interrupts network waits and rejects late results.
 
 [`codex_account.py`](../../ballontranslator/ui/codex_account.py) owns asynchronous
-GUI account operations. `module.codex_models` is the single saved catalog;
-profile option lists and modality flags are derived from it. Sign-in and explicit
-refresh retrieve the authenticated account's model catalog. Failed refreshes keep
-the cache; sign-out clears availability while preserving selected models. Viewing
-or selecting a profile performs no network or credential IO. Requests require the
+GUI account operations; [`CodexSettingsPanel`](../../ballontranslator/ui/codex_settings.py)
+owns the dedicated account, model, and request settings UI. One canonical
+`LLMProfile` with ID `codex` retains the existing requester and shared-selector
+contract. It is excluded from the API profile editor and clipboard imports.
+Config loading accepts only that canonical Codex identity; malformed entries are
+discarded without converting profiles or remapping their IDs. Restoring API
+profiles preserves Codex settings.
+Account state follows committed credential changes independently of model refresh
+success, so refresh failures do not incorrectly switch the account button.
+`module.codex_models` is the single saved public catalog and supplies text/vision
+model options. Without a catalog, Codex's own built-in offline model lists seed both
+selectors, with saved custom selections retained. These defaults do not read API
+profiles; a nonempty authenticated catalog replaces them according to its modalities.
+Text, vision, and image capabilities remain available in the UI independently of
+sign-in. Sign-in and explicit refresh retrieve the authenticated account's model
+catalog; a successful empty result replaces stale metadata. Failed refreshes and
+sign-out retain the cache and selected models. Viewing or selecting settings
+performs no network or credential IO. After GUI startup,
+the account worker restores saved sign-in and refreshes models, renewing an expired
+access token when needed. Headless requests restore credentials on demand.
+Requests require the
 app's ChatGPT account and cannot fall back to API billing.
+
+`CodexSignInRequiredError` distinguishes missing sign-in from rejected authentication
+and stops retries and the current Run, including remaining headless directories.
+HTTP 401 receives one token-renewal attempt before becoming an invalid sign-in;
+permission, quota, and model-access failures remain separate. Invalid authentication
+is cached in memory until successful sign-in, without deleting the saved credentials.
+The GUI account controller owns one recovery dialog shared by refresh and module
+failures. Signing in updates that dialog but never replays interrupted work.
+Startup without saved credentials remains quiet.
 
 Translator and OCR use the existing retry, token-reporting, and project-persistence
 paths. Their feature owners define prompts and response contracts. Explicit
@@ -76,8 +109,25 @@ module's HTTP proxy; account operations use
 standard environment proxy settings. Unsupported sampling and output-token controls
 remain hidden. Only a completed final response reaches the parser; truncation,
 authentication, and quota failures require user action, while context overflow uses
-the existing optional-history recovery. Inpainting remains unavailable until an
-image-edit capability and its image-result transport are verified together.
+the existing optional-history recovery.
+
+Inpainting uses `LLMInpaint` and the shared `LLMImageRequester`, with Codex's fixed
+`gpt-image-2` model offered independently of the text/vision catalog and sign-in state.
+The image transport follows the [native Codex image API](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/endpoint/images.rs):
+PNG references go to `/images/edits`, while existing Image-card requests without
+context use `/images/generations`. Only inline image results are accepted.
+The module's proxy, timeout, shared throttle, retries, and cancellation apply.
+
+The subscription endpoint has no native mask parameter. Inpainting sends the
+source crop and a labelled black/white mask reference; downscaling preserves thin
+marked regions. Crops beyond the model's 3:1 aspect limit are padded before the
+request and unpadded afterward to preserve alignment. The existing crop pipeline
+owns context margins and alpha handling.
+Returned images are resized to the input crop and composited only into the original
+mask, so model changes outside it are discarded. Empty masks require no request.
+Image calls are independent of translation history and consume the ChatGPT
+subscription allowance; there is no API-billing fallback. Generative reconstruction
+inside the mask can vary, especially on fine screentones or line art.
 
 ## Request contract
 
@@ -341,11 +391,14 @@ Preserve these contracts when changing the subsystem:
 - `+history` requests remain sequential for deterministic window state.
 
 Focused specifications live in `tests/test_llm_translation_*.py`,
-`tests/test_llm_translator.py`, `tests/test_llm_chat.py`, `tests/test_codex.py`, and
-`tests/test_proj_imgtrans_translation_context.py`.
+`tests/test_llm_translator.py`, `tests/test_llm_chat.py`, `tests/test_codex*.py`, and
+`tests/test_proj_imgtrans_translation_context.py`. Image transport, mask geometry,
+and canvas cancellation are covered by `tests/test_llm_inpaint.py` and
+`tests/test_canvas_inpaint_lifecycle.py`; selector integration lives in
+`tests/test_module_selection_menu.py`.
 
 ```bash
 QT_QPA_PLATFORM=offscreen /opt/miniconda3/envs/common/bin/python \
   -m pytest -q tests/test_llm_translation_*.py tests/test_llm_translator.py \
-  tests/test_llm_chat.py tests/test_codex.py tests/test_proj_imgtrans_translation_context.py
+  tests/test_llm_chat.py tests/test_codex*.py tests/test_proj_imgtrans_translation_context.py
 ```

@@ -15,8 +15,6 @@ from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import (
     LLMProfile,
-    default_profiles,
-    load_profiles,
     migrate_module_llm_profiles,
     profile_by_id,
     profile_to_dict,
@@ -199,7 +197,7 @@ class ModuleConfig(Config):
     def all_stages_disabled(self):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         for setting_name, default in (
             ('ocr_llm_page_level', False),
             ('ocr_llm_mask_non_text', True),
@@ -229,13 +227,9 @@ class ModuleConfig(Config):
             or self.llm_prior_context_token_budget <= 0
         ):
             self.llm_prior_context_token_budget = 4096
-        if not self.llm_profiles:
-            self.llm_profiles = default_profiles()
-        else:
-            self.llm_profiles = load_profiles(self.llm_profiles)
+        migrate_module_llm_profiles(self.__dict__)
         self.codex_models = normalize_codex_models(self.codex_models)
-        for profile in self.llm_profiles:
-            sync_codex_profile(profile, self.codex_models)
+        sync_codex_profile(profile_by_id(self.llm_profiles, 'codex'), self.codex_models)
         if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:
             self.translator_llm_id = self.llm_profiles[0].id
         if (not self.ocr_llm_id or not profile_by_id(self.llm_profiles, self.ocr_llm_id)) and self.llm_profiles:
@@ -498,7 +492,6 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
-            migrate_module_llm_profiles(module_cfg)
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:

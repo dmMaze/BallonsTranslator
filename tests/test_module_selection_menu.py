@@ -20,13 +20,19 @@ from ballontranslator.ui.llm_modality import (
     LLM_MODALITY_IMAGE, LLM_MODALITY_TEXT, LLM_MODALITY_VISION,
 )
 from ballontranslator.ui.llm_profile_widgets import LLMProfilesWidget
+from ballontranslator.ui.codex_settings import CodexSettingsPanel
+from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.ui.run_pipeline_dialog import RunPipelineDialog
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, default_profile, sync_codex_profile
+from ballontranslator.utils.llm_profiles import CODEX_IMAGE_MODEL, LLMProfile, default_profile, sync_codex_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+
+
+class SelectionConfigPanel(SimpleNamespace):
+    syncLLMProfile = ConfigPanel.syncLLMProfile
 
 
 class SelectionWindow(QWidget):
@@ -48,7 +54,10 @@ class SelectionWindow(QWidget):
         self.imgtrans_proj = ProjImgTrans()
         self.module_manager = ModuleManager(self.imgtrans_proj, self)
         self.module_manager.translate_thread = SimpleNamespace(translator=None)
-        self.configPanel = SimpleNamespace(llm_profiles_panel=LLMProfilesWidget(parent=self))
+        self.configPanel = SelectionConfigPanel(
+            llm_profiles_panel=LLMProfilesWidget(parent=self),
+            codex_panel=CodexSettingsPanel(parent=self),
+        )
         self.drawingPanel = SimpleNamespace(setInpainter=Mock())
         self.show_module_param_dialog = Mock()
         self.bottomBar = SimpleNamespace()
@@ -78,7 +87,7 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         profile = default_profile('OpenAI')
         profile.image_model = 'image-one'
         profile.image_model_options = ['image-one', 'image-two']
-        pcfg.module.llm_profiles = [profile]
+        pcfg.module.llm_profiles = [profile, default_profile('Codex')]
         pcfg.module.translator = next(name for name in GET_VALID_TRANSLATORS() if name != 'LLMTranslator')
         self.window = SelectionWindow()
         self.save_patch = patch('ballontranslator.ui.run_pipeline_dialog.save_config')
@@ -152,7 +161,7 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         for activator in dialog.module_activators:
             activator.menu.rebuildMenu()
             titles = [action.menu().title() for action in activator.menu.actions() if action.menu() is not None]
-            expected = ['OpenAI', 'Text only'] if activator.module_type == 'translator' else ['OpenAI']
+            expected = ['OpenAI', 'Codex', 'Text only'] if activator.module_type == 'translator' else ['OpenAI', 'Codex']
             if activator.module_type == 'textdetector':
                 expected = []
             self.assertEqual(titles, expected)
@@ -165,37 +174,51 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         self.assertIn('Target - English', titles)
         dialog.deleteLater()
 
-    def test_codex_catalog_enables_text_and_vision_selection_without_image_edit(self) -> None:
+    def test_codex_remains_selectable_in_all_roles_without_cached_catalog(self) -> None:
         profile = default_profile('Codex')
         pcfg.module.llm_profiles = [profile]
-        panel = self.window.configPanel.llm_profiles_panel
-        panel.addProfileRow(profile)
+        panel = self.window.configPanel.codex_panel
         pcfg.module.codex_models = {
             'text-model': {'modalities': ['text'], 'efforts': ['high']},
             'vision-model': {'modalities': ['text', 'image'], 'efforts': ['low']},
         }
         sync_codex_profile(profile, pcfg.module.codex_models)
-        panel.syncCodexProfiles()
+        panel.syncFromProfile()
         for bottom_name, field, model, role, llm_key in (
             ('trans_selector', 'model', 'text-model', 'translator', 'LLMTranslator'),
             ('ocr_selector', 'vision_model', 'vision-model', 'ocr', 'LLMOCR'),
+            ('inpaint_selector', 'image_model', CODEX_IMAGE_MODEL, 'inpainter', 'LLMInpaint'),
         ):
             bottom = getattr(self.window.bottomBar, bottom_name)
             self.choose(bottom.menu, ('codex', field, model))
             self.assertEqual(getattr(pcfg.module, role), llm_key)
-            self.assertEqual(getattr(pcfg.module, role + '_llm_id'), 'codex')
+            selected_id = 'inpaint_llm_id' if role == 'inpainter' else role + '_llm_id'
+            self.assertEqual(getattr(pcfg.module, selected_id), 'codex')
             self.assertIn(model, bottom.tool_btn.text())
         self.choose(self.window.bottomBar.ocr_selector.menu, ('codex', 'vision_detail_level', 'high'))
         self.assertEqual(profile.vision_detail_level, 'high')
-        inpaint = self.window.bottomBar.inpaint_selector.menu
-        inpaint.rebuildMenu()
-        self.assertFalse(any(action.menu() is not None for action in inpaint.actions()))
+        self.assertIn('image_prompt', panel.param_widgets)
+        self.assertNotIn('image_base_url', panel.param_widgets)
         pcfg.module.codex_models = {}
         sync_codex_profile(profile, pcfg.module.codex_models)
-        panel.syncCodexProfiles()
+        panel.syncFromProfile()
         self.assertEqual((profile.model, profile.vision_model), ('text-model', 'vision-model'))
-        self.assertFalse(profile.support_text)
-        self.assertFalse(profile.support_vision)
+        self.assertTrue(profile.support_text)
+        self.assertTrue(profile.support_vision)
+        self.assertTrue(profile.support_image)
+        self.assertEqual(profile.image_model, CODEX_IMAGE_MODEL)
+        dialog = RunPipelineDialog(self.window)
+        for bottom_name, field, model, role in (
+            ('trans_selector', 'model', 'text-model', 'translator'),
+            ('ocr_selector', 'vision_model', 'vision-model', 'ocr'),
+            ('inpaint_selector', 'image_model', CODEX_IMAGE_MODEL, 'inpainter'),
+        ):
+            bottom = getattr(self.window.bottomBar, bottom_name)
+            activator = next(a for a in dialog.module_activators if a.module_type == role)
+            for menu in (bottom.menu, activator.menu):
+                with self.subTest(role=role, menu=type(menu).__name__):
+                    self.choose(menu, ('codex', field, model))
+                    self.assertEqual(menu.selectedProfileId(), 'codex')
 
     def test_inactive_selector_first_click_activates_without_opening_menu(self) -> None:
         dialog = RunPipelineDialog(self.window)

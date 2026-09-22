@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -34,6 +35,39 @@ class FakeProcess:
 
 
 class CoreRequirementsTests(unittest.TestCase):
+
+    def test_missing_subscription_library_uses_core_startup_repair(self) -> None:
+        repo_root = str(Path(__file__).resolve().parents[1])
+        for missing_name in ('httpx', 'keyring', 'cryptography'):
+            with self.subTest(package=missing_name), mock.patch(
+                'ballontranslator.utils.py_package_manager.PyPackageManager._requirement_satisfied',
+                side_effect=lambda requirement: requirement.name != missing_name,
+            ), mock.patch(
+                'ballontranslator.utils.py_package_manager.PyPackageManager._import_available',
+                return_value=True,
+            ), mock.patch.object(core_requirements, 'check_core_imports', return_value=[]), \
+                    mock.patch.object(core_requirements, 'install_core_requirements',
+                                      return_value=InstallResult(True, ['pip'])) as install, \
+                    mock.patch.object(core_requirements, '_drop_probe_modules'):
+                self.assertTrue(core_requirements.ensure_core_requirements(repo_root=repo_root))
+                self.assertEqual(install.call_args.args[0], str(Path(repo_root) / 'requirements.txt'))
+
+    def test_missing_http_extra_or_broken_storage_import_uses_core_repair(self) -> None:
+        brotli_module = 'brotli' if core_requirements.sys.implementation.name == 'cpython' else 'brotlicffi'
+        for missing_name in ('socksio', brotli_module, 'keyring', 'cryptography.fernet'):
+            def import_module(name: str) -> mock.Mock:
+                if name == missing_name:
+                    raise ImportError('Broken core dependency')
+                return mock.Mock()
+
+            with self.subTest(module=missing_name), \
+                    mock.patch.object(core_requirements, 'check_core_requirements_file', return_value=[]), \
+                    mock.patch.object(core_requirements.importlib, 'import_module', side_effect=import_module), \
+                    mock.patch.object(core_requirements, 'install_core_requirements',
+                                      return_value=InstallResult(True, ['pip'])) as install, \
+                    mock.patch.object(core_requirements, '_drop_probe_modules'):
+                self.assertTrue(core_requirements.ensure_core_requirements(repo_root='/tmp/repo'))
+                self.assertTrue(install.called)
 
     def test_missing_win32gui_forces_pywin32_reinstall(self):
         with mock.patch.object(core_requirements.sys, 'platform', 'win32'), mock.patch(

@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 
 import numpy as np
+import httpx
 from PIL import Image
 
 from ballontranslator.modules.exceptions import (
@@ -17,14 +18,14 @@ from ballontranslator.modules.exceptions import (
     LLMUserActionRequiredError,
 )
 from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
-from ballontranslator.modules import llm_image
+from ballontranslator.modules import codex, llm_image
 from ballontranslator.modules.llm_image import (
     LLMImageRequester,
     LLMImageRequestPolicy,
     _SharedLLMImageThrottle,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import default_profile, sync_codex_profile
 
 
 def _encoded_png() -> str:
@@ -223,6 +224,15 @@ class LLMImageThrottleTest(unittest.TestCase):
 
 class LLMInpaintTest(unittest.TestCase):
     def setUp(self):
+        account = codex.CodexAccount()
+        account._loaded = True
+        account._credentials = {
+            'access_token': 'test-access', 'refresh_token': 'test-refresh',
+            'account_id': 'test-account', 'expires_at': time.time() + 3600,
+        }
+        account_patch = patch.object(codex, 'account', account)
+        account_patch.start()
+        self.addCleanup(account_patch.stop)
         self._old_profiles = copy.deepcopy(pcfg.module.llm_profiles)
         self._old_inpaint_llm_id = pcfg.module.inpaint_llm_id
         profile = default_profile('OpenRouter')
@@ -511,6 +521,137 @@ class LLMInpaintTest(unittest.TestCase):
         self.assertIn('input_references', call['json'])
         self.assertTrue(call['json']['input_references'][0]['image_url']['url'].startswith('data:image/png;base64,'))
         self.assertNotIn('mask', call['json'])
+
+    def test_codex_inpaint_sends_aligned_mask_and_preserves_unmasked_rgba_pixels(self) -> None:
+        profile = default_profile('Codex')
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.inpaint_llm_id = profile.id
+        inpainter = LLMInpaint()
+        inpainter.params = copy.deepcopy(inpainter.params)
+        inpainter.set_param_value('delay', 0)
+        inpainter.set_param_value('max requests per minute', 0)
+        inpainter.set_param_value('max resolution', 4)
+        image = np.arange(8 * 12 * 4, dtype=np.uint8).reshape(8, 12, 4)
+        image[:, :, 3] = 255
+        image[0, :, 3] = 100
+        mask = np.zeros((8, 12), dtype=np.uint8)
+        mask[2:6, 3:9] = 255
+        original_mask = mask.copy()
+        stop = threading.Event()
+        inpainter.set_stop_event(stop)
+
+        with patch('ballontranslator.modules.codex.request_image', return_value=_png_bytes()) as request, \
+                patch.object(inpainter, '_http_client', side_effect=AssertionError('API fallback')):
+            result = inpainter.inpaint(image, mask)
+
+        np.testing.assert_array_equal(result[mask == 0], image[mask == 0])
+        np.testing.assert_array_equal(result[mask > 0, :3], np.tile([255, 0, 0], (24, 1)))
+        np.testing.assert_array_equal(result[:, :, 3], image[:, :, 3])
+        np.testing.assert_array_equal(mask, original_mask)
+        self.assertEqual(result.shape, image.shape)
+        self.assertEqual(request.call_args.args[0], 'gpt-image-2')
+        self.assertIn('white marks the editable region', request.call_args.args[1])
+        sent_image = Image.open(io.BytesIO(request.call_args.args[2]))
+        sent_mask = Image.open(io.BytesIO(request.call_args.args[3]))
+        self.assertEqual(sent_image.size, (4, 3))
+        self.assertEqual(sent_mask.size, sent_image.size)
+        np.testing.assert_array_equal(np.array(sent_mask)[:, :, 0], [[0, 255, 255, 0], [0, 255, 255, 0], [0, 255, 255, 0]])
+        self.assertIs(request.call_args.args[4], stop)
+        self.assertEqual(request.call_args.kwargs['timeout'], 180.0)
+
+    def test_codex_empty_masks_skip_requests_and_stop_wins(self) -> None:
+        inpainter = LLMInpaint()
+        image = np.zeros((3, 5, 3), np.uint8)
+        with patch.object(inpainter, '_request_inpaint', side_effect=AssertionError('empty request')):
+            np.testing.assert_array_equal(inpainter.inpaint(image, np.zeros((3, 5), np.uint8)), image)
+            stop = threading.Event()
+            stop.set()
+            inpainter.set_stop_event(stop)
+            with self.assertRaises(LLMRequestStopped):
+                inpainter.inpaint(image, np.zeros((3, 5), np.uint8))
+
+    def test_codex_downscaling_retains_single_pixel_mask(self) -> None:
+        profile = default_profile('Codex')
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, max_resolution=4,
+        ))
+        mask = np.zeros((8, 8), np.uint8)
+        mask[1, 1] = 255
+        with patch('ballontranslator.modules.codex.request_image', return_value=_png_bytes()) as request:
+            requester.request_image(profile, np.zeros((8, 8, 3), np.uint8), mask=mask)
+        with Image.open(io.BytesIO(request.call_args.args[3])) as sent:
+            self.assertEqual(sent.size, (4, 4))
+            self.assertEqual(sent.getpixel((0, 0)), (255, 255, 255))
+            self.assertEqual(int(np.array(sent)[:, :, 0].sum()), 255)
+
+    def test_codex_extreme_aspect_edits_unpad_without_moving_pixels(self) -> None:
+        profile = default_profile('Codex')
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, max_resolution=0,
+        ))
+        for height, width in ((6, 25), (25, 6)):
+            with self.subTest(shape=(height, width)):
+                source = np.arange(height * width * 3, dtype=np.uint8).reshape(height, width, 3)
+                mask = np.zeros((height, width), np.uint8)
+                mask[1, 1] = mask[-2, -2] = 255
+
+                def edit(model, prompt, image_bytes, mask_bytes, stop, **kwargs) -> bytes:
+                    with Image.open(io.BytesIO(image_bytes)) as image, Image.open(io.BytesIO(mask_bytes)) as sent_mask:
+                        self.assertLessEqual(max(image.size) / min(image.size), 3)
+                        pixels = np.array(image)
+                        marked = np.array(sent_mask)[:, :, 0] > 127
+                    self.assertEqual(int(marked.sum()), 2)
+                    pixels[marked] = [17, 29, 43]
+                    # Provider returns a larger canvas. Unpadding must happen
+                    # in that canvas's coordinates, after restoring its size.
+                    doubled = np.repeat(np.repeat(pixels, 2, axis=0), 2, axis=1)
+                    with requester._png_image_file(doubled) as generated:
+                        return generated.getvalue()
+
+                with patch('ballontranslator.modules.codex.request_image', side_effect=edit):
+                    result = requester._request_inpaint(profile, source, mask=mask)
+                expected = source.copy()
+                expected[mask > 0] = [17, 29, 43]
+                np.testing.assert_array_equal(result, expected)
+
+    def test_codex_logged_out_requires_sign_in_before_inpainting(self) -> None:
+        pcfg.module.llm_profiles = [default_profile('Codex')]
+        pcfg.module.inpaint_llm_id = 'codex'
+        account = codex.CodexAccount()
+        account._loaded = True
+        with patch.object(codex, 'account', account), \
+                patch.object(llm_image, '_LLM_IMAGE_THROTTLE', _SharedLLMImageThrottle()), \
+                patch.object(httpx.AsyncClient, 'send', side_effect=AssertionError('Unexpected HTTP')) as send:
+            with self.assertRaisesRegex(LLMUserActionRequiredError, 'Sign in with ChatGPT'):
+                LLMInpaint().inpaint(np.zeros((3, 5, 3), np.uint8), np.full((3, 5), 255, np.uint8))
+            send.assert_not_called()
+
+    def test_codex_image_card_requests_and_failures_use_existing_policy(self) -> None:
+        profile = default_profile('Codex')
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, retry_attempts=2, retry_timeout=0,
+        ))
+        with patch('ballontranslator.modules.codex.request_image', side_effect=[b'broken image', _png_bytes()]) as request:
+            result = requester.request_image_with_retries(profile, None, 'Draw paper.', 'gpt-image-2')
+        self.assertEqual(result[0, 0].tolist(), [255, 0, 0])
+        self.assertEqual(request.call_args.args[1:4], ('Draw paper.', None, None))
+        for error in (LLMUserActionRequiredError('Sign in.'), LLMRequestStopped()):
+            with self.subTest(error=error), patch('ballontranslator.modules.codex.request_image', side_effect=error) as request:
+                with self.assertRaises(type(error)):
+                    requester.request_image_with_retries(profile, None, 'Draw paper.', 'gpt-image-2')
+                request.assert_called_once()
+
+    def test_codex_mismatched_mask_fails_before_request(self) -> None:
+        with patch('ballontranslator.modules.codex.request_image') as request:
+            with self.assertRaisesRegex(ValueError, 'mask must match'):
+                LLMImageRequester().request_image(
+                    default_profile('Codex'), np.zeros((3, 5, 3), np.uint8), mask=np.zeros((5, 3), np.uint8)
+                )
+            request.assert_not_called()
 
     def test_authentication_error_becomes_required_key_error(self):
         inpainter = FakeInpaint(FakeResponse(status_code=401, json_data={'error': {'message': 'bad key'}}))

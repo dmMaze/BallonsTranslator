@@ -72,26 +72,28 @@ class LLMTranslatorTest(unittest.TestCase):
             pcfg.module.llm_profiles = old_profiles
             pcfg.module.translator_llm_id = old_translator_llm_id
 
-    def test_text_enabled_profile_requires_model(self):
+    def test_text_enabled_profile_requires_model(self) -> None:
         old_profiles = pcfg.module.llm_profiles
         old_translator_llm_id = pcfg.module.translator_llm_id
-        profile = default_profile('OpenAI')
-        profile.model = ''
         try:
-            pcfg.module.llm_profiles = [profile]
-            pcfg.module.translator_llm_id = profile.id
+            for provider in ('OpenAI', 'Codex'):
+                with self.subTest(provider=provider):
+                    profile = default_profile(provider)
+                    profile.model = ''
+                    pcfg.module.llm_profiles = [profile]
+                    pcfg.module.translator_llm_id = profile.id
 
-            with self.assertRaises(LLMModelRequiredError):
-                _ = self.translator.profile
-            with self.assertRaises(LLMModelRequiredError):
-                self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+                    with self.assertRaises(LLMModelRequiredError):
+                        _ = self.translator.profile
+                    with self.assertRaises(LLMModelRequiredError):
+                        self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
 
-            profile.model = 'stale-model'
-            profile.model_options = []
-            with self.assertRaises(LLMModelRequiredError):
-                _ = self.translator.profile
-            with self.assertRaises(LLMModelRequiredError):
-                self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
+                    profile.model = 'stale-model'
+                    profile.model_options = []
+                    with self.assertRaises(LLMModelRequiredError):
+                        _ = self.translator.profile
+                    with self.assertRaises(LLMModelRequiredError):
+                        self.translator._api_args(profile, [{'role': 'user', 'content': 'x'}])
         finally:
             pcfg.module.llm_profiles = old_profiles
             pcfg.module.translator_llm_id = old_translator_llm_id

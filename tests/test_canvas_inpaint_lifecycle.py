@@ -1,4 +1,6 @@
 import os
+import io
+import copy
 import threading
 import time
 import unittest
@@ -8,6 +10,7 @@ from unittest.mock import patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import numpy as np
+from PIL import Image
 from qtpy.QtCore import QCoreApplication, QEvent
 from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import QApplication, QWidget
@@ -16,6 +19,7 @@ from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.custom_widget import ImgtransProgressMessageBox
 from ballontranslator.ui import module_manager as M
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.llm_profiles import default_profile, sync_codex_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -160,6 +164,62 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
         self.manager.canvas_inpaint(self.request())
         self.wait_until(lambda: len(self.completed) == 1)
         np.testing.assert_array_equal(self.completed[0][0]['inpainted'], 11)
+
+    def test_codex_canvas_recovers_after_pipeline_stop_and_cancels_old_page(self) -> None:
+        from ballontranslator.modules import codex
+        from ballontranslator.modules.exceptions import LLMRequestStopped
+        from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
+
+        account = codex.CodexAccount()
+        account._loaded = True
+        account._credentials = {
+            'access_token': 'test-access', 'refresh_token': 'test-refresh',
+            'account_id': 'test-account', 'expires_at': time.time() + 3600,
+        }
+        profile = default_profile('Codex')
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.inpaint_llm_id = profile.id
+        pcfg.module.inpainter = 'LLMInpaint'
+        inpainter = LLMInpaint()
+        inpainter.params = copy.deepcopy(inpainter.params)
+        inpainter.set_param_value('delay', 0)
+        inpainter.set_param_value('max requests per minute', 0)
+        previous_stop = threading.Event()
+        previous_stop.set()
+        inpainter.set_stop_event(previous_stop)
+        self.manager.inpaint_thread.module = inpainter
+        self.manager.inpaint_thread.pipeline_stop_event = previous_stop
+        entered = threading.Event()
+        cancelled = threading.Event()
+        png = io.BytesIO()
+        Image.new('RGB', (8, 8), (40, 50, 60)).save(png, format='PNG')
+
+        def request(model, prompt, image, mask, stop_event, **kwargs) -> bytes:
+            with Image.open(io.BytesIO(image)) as sent:
+                first_page = sent.getpixel((0, 0)) == (10, 10, 10)
+            if first_page:
+                entered.set()
+                if not stop_event.wait(3):
+                    raise TimeoutError('Page change did not cancel the image request.')
+                cancelled.set()
+                raise LLMRequestStopped()
+            self.assertFalse(stop_event.is_set())
+            return png.getvalue()
+
+        with patch.object(codex, 'account', account), \
+                patch.object(codex, 'request_image', side_effect=request):
+            self.manager.canvas_inpaint(self.request())
+            self.wait_until(entered.is_set)
+            self.project.inpainted_array = np.full((8, 8, 3), 20, np.uint8)
+            self.manager.handle_page_changed()
+            self.manager.canvas_inpaint(self.request())
+            self.wait_until(lambda: len(self.completed) == 1)
+
+        self.assertTrue(cancelled.is_set())
+        self.assertFalse(self.failed)
+        np.testing.assert_array_equal(self.completed[0][0]['inpainted'], np.full((8, 8, 3), (40, 50, 60), np.uint8))
+        np.testing.assert_array_equal(self.project.inpainted_array, 20)
 
 
 if __name__ == '__main__':
