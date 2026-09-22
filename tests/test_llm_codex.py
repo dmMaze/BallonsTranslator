@@ -377,7 +377,8 @@ class CodexTransportTest(unittest.TestCase):
         self.assertFalse(self.processes)
 
     def test_unsupported_thinking_is_rejected_before_launch(self) -> None:
-        for model, effort in (('gpt-6-astra', 'Disabled'), ('gpt-5.6-sol', 'minimal'),
+        for model, effort in (('gpt-6-astra', 'Disabled'), ('gpt-6-sol', 'ultra'),
+                              ('gpt-6-luna', 'ultra'), ('gpt-5.6-sol', 'minimal'),
                               ('gpt-5.6-luna', 'ultra'), ('gpt-5.5', 'max'),
                               ('custom-model', 'low'), ('gpt-6-astra', 'Auto'),
                               ('gpt-5.5', ''), ('custom-model', 'Auto'), ('gpt-6-astra', 'none')):
@@ -389,7 +390,8 @@ class CodexTransportTest(unittest.TestCase):
         self.assertFalse(self.processes)
 
     def test_supported_thinking_values_reach_turn_start(self) -> None:
-        for model, effort in (('gpt-6-astra', 'ultra'), ('gpt-5.6-sol', 'max'),
+        for model, effort in (('gpt-6-astra', 'ultra'), ('gpt-6-sol', 'max'),
+                              ('gpt-6-luna', 'none'), ('gpt-5.6-sol', 'max'),
                               ('gpt-5.6-luna', 'max'), ('gpt-5.5', 'xhigh'),
                               ('gpt-5.5', 'medium'), ('gpt-5.6-sol', 'none'),
                               ('gpt-5.6-terra', 'none'), ('gpt-5.6-luna', 'none'), ('gpt-5.5', 'none')):

@@ -161,7 +161,7 @@ class LLMProfileMigrationTest(unittest.TestCase):
         saved.model = 'custom-model'
         loaded = load_profiles([saved.to_dict()])[0]
 
-        for model in ('gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
+        for model in ('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
             self.assertIn(model, loaded.model_options)
             self.assertIn(model, loaded.vision_model_options)
         self.assertNotIn('gpt-5.6', loaded.model_options)

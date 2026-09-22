@@ -50,7 +50,7 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
                     self.assertIsNotNone(codex_menu, f'Codex missing from {modality} menu')
                     selected = mock.Mock()
                     widget.llm_profile_changed.connect(selected)
-                    for model in ('gpt-5.5', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
+                    for model in ('gpt-5.5', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
                         with self.subTest(model=model):
                             selected.reset_mock()
                             model_action = next(action for action in codex_menu.actions()

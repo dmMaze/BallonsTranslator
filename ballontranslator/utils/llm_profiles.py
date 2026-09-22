@@ -43,6 +43,8 @@ THINKING_LEVEL_OPTIONS = [
 CODEX_REASONING_EFFORTS = ('none', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra')
 CODEX_MODEL_REASONING_EFFORTS = {
     'gpt-6-astra': CODEX_REASONING_EFFORTS[1:],
+    'gpt-6-sol': CODEX_REASONING_EFFORTS[:-1],
+    'gpt-6-luna': CODEX_REASONING_EFFORTS[:-1],
     'gpt-5.6-sol': CODEX_REASONING_EFFORTS,
     'gpt-5.6-terra': CODEX_REASONING_EFFORTS,
     'gpt-5.6-luna': CODEX_REASONING_EFFORTS[:-1],
@@ -63,11 +65,13 @@ PROVIDER_DEFAULTS = {
         "vision_model": "gpt-5.5",
         "vision_detail_level": "auto",
         "model_options": [
+            "gpt-6-sol", "gpt-6-luna",
             "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
             "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
             "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
         ],
         "vision_model_options": [
+            "gpt-6-sol", "gpt-6-luna",
             "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
             "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
             "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
@@ -148,10 +152,10 @@ PROVIDER_DEFAULTS = {
         "thinking_level": "none",
         "vision_thinking_level": "none",
         "model": "gpt-5.6-sol",
-        "model_options": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+        "model_options": ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
         "support_vision": True,
         "vision_model": "gpt-5.6-sol",
-        "vision_model_options": ["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
+        "vision_model_options": ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5"],
         "json_schema_response_format": True,
     },
 }

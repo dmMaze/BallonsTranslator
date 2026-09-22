@@ -17,7 +17,8 @@ from ballontranslator.ui.module_manager import ModuleManager
 class LLMRunUsageTest(unittest.TestCase):
     def test_prices_cache_reasoning_long_context_and_unknown_usage(self) -> None:
         counts = {'prompt': 1000, 'completion': 100}
-        for model, cost in (('gpt-6-astra', '0.015'), ('gpt-5.6-sol', '0.006'),
+        for model, cost in (('gpt-6-astra', '0.015'), ('gpt-6-sol', '0.003'),
+                            ('gpt-6-luna', '0.00015'), ('gpt-5.6-sol', '0.006'),
                             ('gpt-5.6-terra', '0.0032'), ('gpt-5.6-luna', '0.00032'),
                             ('gpt-5.5', '0.008')):
             with self.subTest(model=model):

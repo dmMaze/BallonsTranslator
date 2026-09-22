@@ -175,12 +175,14 @@ def format_completion_token_usage(completion) -> str:
     return format_token_usage(_usage_member(completion, 'usage'))
 
 
-# USD per million tokens, verified 2026-09-11; Standard API equivalents, not
+# USD per million tokens; Standard API equivalents, not
 # subscription charges. https://developers.openai.com/api/docs/pricing
 # GPT-5.5: https://developers.openai.com/api/docs/models/gpt-5.5
 OPENAI_STANDARD_PRICES = {
     # Input, cached input, output. Cache writes for 5.6/Astra cost 1.25x input.
     'gpt-6-astra': ('10', '1', '50'),
+    'gpt-6-sol': ('2', '0.2', '10'),
+    'gpt-6-luna': ('0.1', '0.01', '0.5'),
     'gpt-5.6-sol': ('4', '0.4', '20'),
     'gpt-5.6-terra': ('2', '0.2', '12'),
     'gpt-5.6-luna': ('0.2', '0.02', '1.2'),
