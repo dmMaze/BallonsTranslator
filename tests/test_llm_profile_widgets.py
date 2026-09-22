@@ -3,12 +3,17 @@ import json
 import tempfile
 import unittest
 from unittest import mock
+from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtWidgets import QApplication, QMenu
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QContextMenuEvent
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import QApplication, QMenu, QVBoxLayout, QWidget
 
 from ballontranslator.ui.llm_profile_widgets import ProfileCardWidget
+from ballontranslator.ui.misc import parse_stylesheet
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, pcfg
 from ballontranslator.utils.llm_profiles import LLMProfile, default_profile
@@ -39,7 +44,7 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
                     widget = ModuleSelectionWidget(modality, icon, llm_modality=modality)
                     self.addCleanup(widget.deleteLater)
                     widget.selector.addItem(module)
-                    widget.rebuildMenu()
+                    widget.menu.rebuildMenu()
                     codex_menu = next((action.menu() for action in widget.menu.actions()
                                        if action.menu() and action.menu().title() == 'Codex'), None)
                     self.assertIsNotNone(codex_menu, f'Codex missing from {modality} menu')
@@ -162,7 +167,7 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
                 self.addCleanup(widget.deleteLater)
                 widget.selector.addItem(module)
                 menu = QMenu(widget)
-                widget._buildProfileMenu(menu, profile)
+                widget.menu._buildProfileMenu(menu, profile)
                 choices = {action.data()[2]: action for action in menu.actions()
                            if action.data() and action.data()[1] == effort_attr}
                 self.assertEqual(set(choices), {'low', 'medium', 'high', 'xhigh', 'max', 'ultra'})
@@ -170,17 +175,17 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
                                      for action in menu.actions()))
                 choices['ultra'].trigger()
                 self.assertEqual(getattr(profile, effort_attr), 'ultra')
-                widget.selectLLMProfileSetting('codex', model_attr, 'gpt-5.6-luna')
+                widget.menu.selectLLMProfileSetting('codex', model_attr, 'gpt-5.6-luna')
                 self.assertEqual(getattr(profile, effort_attr), 'none')
                 menu.clear()
-                widget._buildProfileMenu(menu, profile)
+                widget.menu._buildProfileMenu(menu, profile)
                 choices = {action.data()[2]: action for action in menu.actions()
                            if action.data() and action.data()[1] == effort_attr}
                 self.assertEqual(set(choices), {'none', 'low', 'medium', 'high', 'xhigh', 'max'})
                 self.assertIn('\u2713', choices['none'].text())
                 choices['max'].trigger()
                 self.assertEqual(getattr(profile, effort_attr), 'max')
-                widget.selectLLMProfileSetting('codex', model_attr, 'gpt-5.5')
+                widget.menu.selectLLMProfileSetting('codex', model_attr, 'gpt-5.5')
                 self.assertEqual(getattr(profile, effort_attr), 'none')
 
     def test_http_ocr_menu_preserves_vision_detail_options(self) -> None:
@@ -188,7 +193,7 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
         widget = ModuleSelectionWidget('OCR', 'eye.svg', llm_modality='vision')
         self.addCleanup(widget.deleteLater)
         menu = QMenu(widget)
-        widget._buildProfileMenu(menu, profile)
+        widget.menu._buildProfileMenu(menu, profile)
         choices = [action.data()[2] for action in menu.actions()
                    if action.data() and action.data()[1] == 'vision_detail_level']
         self.assertEqual(choices, ['None', 'auto', 'low', 'high'])
@@ -231,6 +236,95 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
         card.vision_model_combo.lineEdit().setText('shared-model')
         card.finishVisionModelEdit()
         self.assertEqual(profile.model_options.count('shared-model'), 1)
+
+
+class LLMProfileTitleTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_title_preserves_background_above_and_below_card_border(self) -> None:
+        for theme in ('eva-light', 'eva-dark'):
+            with self.subTest(theme=theme):
+                panel = QWidget()
+                self.addCleanup(panel.deleteLater)
+                panel.setObjectName('ConfigContentScrollContent')
+                panel.setStyleSheet(parse_stylesheet(theme))
+                layout = QVBoxLayout(panel)
+                card = ProfileCardWidget(LLMProfile(name='Example', title_url='https://example.com'))
+                layout.addWidget(card)
+                panel.show()
+                self.app.processEvents()
+                title_rect = card.title_label.geometry().translated(card.pos())
+                rendered = panel.grab().toImage()
+                # Compare empty title padding with its surroundings, on both
+                # sides of the border. Neither background may become a patch.
+                title_x = title_rect.right() - 1
+                beside_x = title_rect.right() + 5
+                above = title_rect.top()
+                below = title_rect.bottom()
+                self.assertNotEqual(
+                    rendered.pixelColor(beside_x, above),
+                    rendered.pixelColor(beside_x, below),
+                )
+                for y in (above, below):
+                    self.assertEqual(
+                        rendered.pixelColor(title_x, y),
+                        rendered.pixelColor(beside_x, y),
+                    )
+                panel.close()
+
+    def test_link_click_and_single_field_edit_roundtrip(self) -> None:
+        profile = LLMProfile(name='Example', title_url='https://example.com')
+        url = profile.title_url
+        card = ProfileCardWidget(profile)
+        self.addCleanup(card.deleteLater)
+        card.show()
+        self.app.processEvents()
+
+        with patch('ballontranslator.ui.llm_profile_widgets.QDesktopServices.openUrl') as open_url:
+            QTest.mouseClick(card.title_label, Qt.MouseButton.LeftButton)
+            self.assertEqual(open_url.call_args[0][0].toString(), url)
+            self.assertFalse(card.name_edit.isVisible())
+
+        with patch.object(QMenu, 'exec', lambda menu, *args: menu.actions()[0]):
+            position = card.title_label.rect().center()
+            self.app.sendEvent(card.title_label, QContextMenuEvent(
+                QContextMenuEvent.Reason.Mouse, position,
+                card.title_label.mapToGlobal(position),
+            ))
+        self.assertTrue(card.name_edit.isVisible())
+        self.assertEqual(card.name_edit.text(), f'[Example]({url})')
+        card.name_edit.setText(f'[A & <B>]({url})')
+        QTest.keyClick(card.name_edit, Qt.Key.Key_Return)
+        self.assertEqual(profile.name, 'A & <B>')
+        self.assertEqual(profile.title_url, url)
+        self.assertIn('A &amp; &lt;B&gt;', card.title_label.text())
+        card.startNameEdit()
+        self.assertEqual(card.name_edit.text(), f'[A & <B>]({url})')
+        card.name_edit.setText('Plain <title>')
+        QTest.mouseClick(card.model_combo.lineEdit(), Qt.MouseButton.LeftButton)
+        self.assertEqual(profile.name, 'Plain <title>')
+        self.assertEqual(profile.title_url, '')
+        self.assertEqual(card.title_label.textFormat(), Qt.TextFormat.PlainText)
+        with patch('ballontranslator.ui.llm_profile_widgets.QDesktopServices.openUrl') as open_url:
+            QTest.mouseClick(card.title_label, Qt.MouseButton.LeftButton)
+            open_url.assert_not_called()
+        QTest.mouseDClick(card.title_label, Qt.MouseButton.LeftButton)
+        self.assertTrue(card.name_edit.isVisible())
+        card.close()
+
+    def test_malformed_or_non_web_links_remain_plain_text(self) -> None:
+        card = ProfileCardWidget(LLMProfile(name='Original'))
+        self.addCleanup(card.deleteLater)
+        for text in ('[Broken](https://)', '[Local](file:///tmp/file)', '[Broken](https://[bad)', '<b>Plain</b>'):
+            with self.subTest(text=text):
+                card.startNameEdit()
+                card.name_edit.setText(text)
+                card.on_name_edit_finished()
+                self.assertEqual(card.profile.name, text)
+                self.assertEqual(card.profile.title_url, '')
+                self.assertEqual(card.title_label.textFormat(), Qt.TextFormat.PlainText)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+import copy
 import os
 import math
 import unittest
@@ -16,6 +17,7 @@ from qtpy.QtGui import (
     QFont,
     QFontInfo,
     QImage,
+    QInputMethodEvent,
     QPainter,
     QPen,
     QPixmap,
@@ -29,6 +31,7 @@ from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication,
     QGraphicsScene,
+    QGraphicsView,
     QHBoxLayout,
     QWidget,
 )
@@ -95,7 +98,7 @@ from ballontranslator.ui.text_engine.rendering.emphasis import (
     draw_emphasis_marks,
     emphasis_ink_bounds,
 )
-from ballontranslator.ui.text_engine.rendering.indexing import _grapheme_ranges
+from ballontranslator.ui.text_engine.rendering.indexing import _grapheme_ranges, _utf16_length
 from ballontranslator.ui.text_engine.rendering.native_document import (
     NATIVE_DOCUMENT_CACHE,
     NATIVE_DOCUMENT_CACHE_MAX_ENTRIES,
@@ -1648,7 +1651,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         block = item.document().firstBlock()
         text_layout = block.layout()
         self.assertEqual(text_layout.lineCount(), 2)
-        line = text_layout.lineAt(1)
+        line, _offset, _transform = item.layout.vertical_line_placement(block, 1)
         self.assertEqual((line.textStart(), line.textLength()), (1, 2))
         cell = item.layout.tate_chu_yoko_cell_rect(block, 1)
         self.assertIsNotNone(cell)
@@ -1742,6 +1745,304 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertAlmostEqual(roman_transform.m11(), 1.0)
         self.assertLess(alternate_cell.width(), alternate_natural.width())
         self.assertLess(alternate_transform.m11(), 1.0)
+
+    def test_fullwidth_text_combine_matches_narrow_rendering_and_interaction(self) -> None:
+        for full, narrow in (
+            ('！！', '!!'), ('！？', '!?'), ('１２', '12'), ('ＡＢ', 'AB'),
+            ('！!', '!!'), ('！\u3000？', '! ?'), ('①㍿漢字', '①㍿漢字'),
+            ('（Ａ）', '(A)'), ('￥＄', '¥$'), ('Ａאב', 'Aאב'),
+            ('！', '！'), ('！\u0301', '！\u0301'),
+        ):
+            for standard_roman in (False, True):
+                with self.subTest(full=full, standard_roman=standard_roman):
+                    items = []
+                    images = []
+                    for text in (full, narrow):
+                        # A supplementary prefix verifies that the normalized
+                        # run keeps document-local UTF-16 positions.
+                        item = self._make_item(True, text='年😀' + text + '月')
+                        item.setFontFamily('Noto Sans CJK SC')
+                        item.setStandardVerticalRomanAlignment(standard_roman)
+                        cursor = QTextCursor(item.document())
+                        cursor.setPosition(3)
+                        cursor.setPosition(3 + len(text), QTextCursor.MoveMode.KeepAnchor)
+                        if full == '！？':
+                            styled = QTextCursor(cursor)
+                            styled.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+                            char_format = QTextCharFormat()
+                            char_format.setFontPointSize(36)
+                            char_format.setForeground(QColor('#c02040'))
+                            styled.mergeCharFormat(char_format)
+                        apply_text_combine_upright(cursor, True)
+                        item.layout.reLayout()
+                        items.append(item)
+                        document = item.document()
+                        before = (item.toPlainText(), item.toHtml(), document.availableUndoSteps())
+                        for selected in (False, True):
+                            context = QAbstractTextDocumentLayout.PaintContext()
+                            if selected:
+                                selection = QAbstractTextDocumentLayout.Selection()
+                                selection.cursor = QTextCursor(cursor)
+                                selection.format.setBackground(QColor('#205080'))
+                                selection.format.setForeground(QColor('white'))
+                                context.selections = [selection]
+                            image = QImage(700, 500, QImage.Format.Format_ARGB32_Premultiplied)
+                            image.fill(Qt.GlobalColor.transparent)
+                            painter = QPainter(image)
+                            item.layout.draw(painter, context)
+                            painter.end()
+                            images.append(image)
+                        self.assertEqual(
+                            (item.toPlainText(), item.toHtml(), document.availableUndoSteps()), before
+                        )
+                    self.assertEqual(images[0], images[2])
+                    self.assertEqual(images[1], images[3])
+                    for position in range(3, 3 + len(full)):
+                        carets = [item.layout.source_cursor_rect(position) for item in items]
+                        self.assertEqual(carets[0], carets[1])
+                        self.assertEqual(
+                            items[0].layout.hitTest(carets[0].center(), Qt.HitTestAccuracy.FuzzyHit),
+                            items[1].layout.hitTest(carets[1].center(), Qt.HitTestAccuracy.FuzzyHit),
+                        )
+                    if full == '！！':
+                        for item in items:
+                            item.setStrokeWidth(0.15)
+                            item.repaint_background()
+                        self.assertEqual(
+                            items[0].effect_renderer.background_pixmap.toImage(),
+                            items[1].effect_renderer.background_pixmap.toImage(),
+                        )
+
+    def test_fullwidth_text_combine_preserves_distinct_run_styles_and_effects(self) -> None:
+        items = []
+        for text in ('年！！月ＡＢ日１２', '年!!月AB日12'):
+            item = self._make_item(True, text=text)
+            item.setFontFamily('Noto Sans CJK SC')
+            for start, size, color in ((1, 24, 'red'), (4, 36, 'blue'), (7, 18, 'green')):
+                cursor = QTextCursor(item.document())
+                cursor.setPosition(start)
+                cursor.setPosition(start + 2, QTextCursor.MoveMode.KeepAnchor)
+                char_format = QTextCharFormat()
+                char_format.setFontPointSize(size)
+                char_format.setForeground(QColor(color))
+                cursor.mergeCharFormat(char_format)
+                apply_text_combine_upright(cursor, True)
+            item.setStrokeWidth(0.15)
+            items.append(item)
+
+        for angle in (0.0, 11.0, 0.0):
+            with self.subTest(angle=angle):
+                images = []
+                strokes = []
+                for item in items:
+                    item.set_text_transform(TextTransformStack((), angle))
+                    item.repaint_background()
+                    strokes.append(item.effect_renderer.background_pixmap.toImage())
+                    image = QImage(700, 500, QImage.Format.Format_ARGB32_Premultiplied)
+                    image.fill(Qt.GlobalColor.transparent)
+                    painter = QPainter(image)
+                    item.layout.draw(painter, QAbstractTextDocumentLayout.PaintContext())
+                    painter.end()
+                    images.append(image)
+                self.assertEqual(images[0], images[1])
+                self.assertEqual(strokes[0], strokes[1])
+
+    def test_text_combine_geometry_tracks_font_changes(self) -> None:
+        item = self._make_item(True, text='年！！月')
+        cursor = QTextCursor(item.document())
+        cursor.setPosition(1)
+        cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+        apply_text_combine_upright(cursor, True)
+        for size, family in ((24, 'Noto Sans CJK SC'), (48, 'DejaVu Serif'), (18, 'Noto Sans CJK SC')):
+            with self.subTest(size=size, family=family):
+                item.setFontSize(size)
+                item.setFontFamily(family)
+                # A fresh item must agree with an already measured run after
+                # live font edits; stale source bounds shift ink and carets.
+                restored = TextBlkItem(TextBlock(
+                    [0, 0, 600, 300], _bounding_rect=[0, 0, 600, 300],
+                    vertical=True, translation=item.toPlainText(),
+                    rich_text=item.toHtml(), fontformat=copy.deepcopy(item.fontformat),
+                    text_layout_version=1,
+                ), 1)
+                images = []
+                for source in (item, restored):
+                    image = QImage(700, 500, QImage.Format.Format_ARGB32_Premultiplied)
+                    image.fill(Qt.GlobalColor.transparent)
+                    painter = QPainter(image)
+                    source.layout.draw(painter, QAbstractTextDocumentLayout.PaintContext())
+                    painter.end()
+                    images.append(image)
+                self.assertEqual(images[0], images[1])
+                for position in (1, 2, 3):
+                    self.assertEqual(
+                        item.layout.source_cursor_rect(position),
+                        restored.layout.source_cursor_rect(position),
+                    )
+
+    def test_fullwidth_text_combine_preserves_text_and_formatting_history(self) -> None:
+        item = self._make_item(True, text='年！！月\nＡＢ日')
+        item.setFontFamily('Noto Sans CJK SC')
+        item.startEdit()
+        cursor = item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        original = item.toPlainText()
+        original_html = item.toHtml()
+        item.setTateChuYoko(True)
+        combined_html = item.toHtml()
+        self.assertEqual(item.toPlainText(), original)
+        self.assertEqual(create_rich_text_mime(item.textCursor()).text(), '！！')
+
+        # Rendering and repeated layout must not add document edit commands.
+        undo_steps = item.document().availableUndoSteps()
+        item.layout.reLayout()
+        item.repaint_background()
+        self.assertEqual(item.document().availableUndoSteps(), undo_steps)
+        item.undo()
+        self.assertEqual(item.toHtml(), original_html)
+        item.redo()
+        self.assertEqual(item.toHtml(), combined_html)
+
+        item.setTateChuYoko(False)
+        self.assertEqual(item.toPlainText(), original)
+        self.assertEqual(text_combine_upright_ranges(item.document().firstBlock()), ())
+        item.undo()
+        self.assertEqual(item.toHtml(), combined_html)
+        cursor = item.textCursor()
+        cursor.setPosition(5)
+        cursor.setPosition(7, QTextCursor.MoveMode.KeepAnchor)
+        item.setTextCursor(cursor)
+        item.setTateChuYoko(True)
+        # Mixed sizes/colors and multiple paragraphs must survive the derived
+        # shaping layout as well as project HTML restoration.
+        char_format = QTextCharFormat()
+        char_format.setFontPointSize(36)
+        char_format.setForeground(QColor('#c02040'))
+        cursor.mergeCharFormat(char_format)
+        item.endEdit(keep_focus=False)
+        saved_html = item.toHtml()
+        restored = TextBlkItem(TextBlock(
+            [0, 0, 600, 300], _bounding_rect=[0, 0, 600, 300],
+            vertical=True, translation=original, rich_text=saved_html,
+            fontformat=copy.deepcopy(item.fontformat), text_layout_version=1,
+        ), 1)
+        self.assertEqual(restored.toPlainText(), original)
+        self.assertEqual(_format_at(restored.document(), 5).foreground().color(), QColor('#c02040'))
+        for source in (item, restored):
+            before = source.toPlainText()
+            source.setVertical(False)
+            source.setVertical(True)
+            self.assertEqual(source.toPlainText(), before)
+        images = []
+        for source in (item, restored):
+            image = QImage(700, 500, QImage.Format.Format_ARGB32_Premultiplied)
+            image.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(image)
+            source.layout.draw(painter, QAbstractTextDocumentLayout.PaintContext())
+            painter.end()
+            images.append(image)
+        self.assertEqual(images[0], images[1])
+
+    def test_text_combine_offsets_preserve_inline_paint_and_cursor_ranges(self) -> None:
+        reference_images = None
+        reference_carets = None
+        for prefix in ('', '年', '😀漢' * 40):
+            with self.subTest(prefix=prefix):
+                item = self._make_item(True, text='前段\n' + prefix + 'ＡＢ')
+                item.setFontFamily('Noto Sans CJK SC')
+                block = item.document().findBlockByNumber(1)
+                start = _utf16_length(prefix)
+                cursor = QTextCursor(item.document())
+                for index, (size, color) in enumerate(((36, '#c02040'), (20, '#205080'))):
+                    cursor.setPosition(block.position() + start + index)
+                    cursor.setPosition(cursor.position() + 1, QTextCursor.MoveMode.KeepAnchor)
+                    char_format = QTextCharFormat()
+                    char_format.setFontPointSize(size)
+                    char_format.setForeground(QColor(color))
+                    cursor.mergeCharFormat(char_format)
+                cursor.setPosition(block.position() + start)
+                cursor.setPosition(cursor.position() + 2, QTextCursor.MoveMode.KeepAnchor)
+                apply_text_combine_upright(cursor, True)
+                number = block.layout().lineForTextPosition(start).lineNumber()
+                line, _offset, _transform = item.layout.vertical_line_placement(block, number)
+                self.assertEqual((line.textStart(), line.textLength()), (start, 2))
+                self.assertFalse(line.glyphRuns(0, start))
+                carets = [item.layout._line_cursor_x(line, start + i) for i in range(3)]
+                for index, x in enumerate(carets):
+                    self.assertEqual(line.xToCursor(x), start + index)
+                images = []
+                for selected in (False, True):
+                    context = QAbstractTextDocumentLayout.PaintContext()
+                    if selected:
+                        selection = QAbstractTextDocumentLayout.Selection()
+                        selection.cursor = QTextCursor(cursor)
+                        selection.cursor.setPosition(block.position() + start + 1, QTextCursor.MoveMode.KeepAnchor)
+                        selection.format.setBackground(QColor('#406020'))
+                        selection.format.setForeground(QColor('white'))
+                        context.selections = [selection]
+                    image = QImage(200, 120, QImage.Format.Format_ARGB32_Premultiplied)
+                    image.fill(Qt.GlobalColor.transparent)
+                    painter = QPainter(image)
+                    glyph_rendering.draw_slanted_line(
+                        painter, block, line, QPointF(), QTransform(), 0.0, context
+                    )
+                    painter.end()
+                    images.append(image)
+                if reference_images is None:
+                    reference_images = images
+                    reference_carets = carets
+                else:
+                    self.assertEqual(images, reference_images)
+                    self.assertEqual(carets, reference_carets)
+
+    def test_fullwidth_text_combine_keeps_ime_preedit_visible(self) -> None:
+        item = self._make_item(True, text='年！！月')
+        item.setFontFamily('Noto Sans CJK SC')
+        scene = QGraphicsScene()
+        scene.addItem(item)
+        view = QGraphicsView(scene)
+        try:
+            view.show()
+            view.setFocus()
+            item.startEdit()
+            self.app.processEvents()
+            self.assertTrue(item.hasFocus())
+            cursor = item.textCursor()
+            cursor.setPosition(1)
+            cursor.setPosition(3, QTextCursor.MoveMode.KeepAnchor)
+            item.setTextCursor(cursor)
+            item.setTateChuYoko(True)
+            cursor.setPosition(2)
+            item.setTextCursor(cursor)
+            item.inputMethodEvent(QInputMethodEvent('pin', []))
+            block = item.document().firstBlock()
+            self.assertEqual(block.layout().preeditAreaText(), 'pin')
+            displayed = set()
+            expected = set()
+            for number in range(block.layout().lineCount()):
+                for run in block.layout().lineAt(number).glyphRuns():
+                    expected.update(
+                        (run.rawFont().familyName(), glyph) for glyph in run.glyphIndexes()
+                    )
+                line, _offset, _transform = item.layout.vertical_line_placement(block, number)
+                for run in line.glyphRuns():
+                    displayed.update(
+                        (run.rawFont().familyName(), glyph) for glyph in run.glyphIndexes()
+                    )
+            self.assertEqual(displayed, expected)
+            self.assertEqual(item.toPlainText(), '年！！月')
+            commit = QInputMethodEvent('', [])
+            commit.setCommitString('字')
+            item.inputMethodEvent(commit)
+            self.assertEqual(item.toPlainText(), '年！字！月')
+            item.undo()
+            self.assertEqual(item.toPlainText(), '年！！月')
+        finally:
+            item.endEdit(keep_focus=False)
+            view.close()
+            scene.clear()
 
     def test_text_combine_ignores_letter_spacing(self):
         def metrics(spacing: float) -> tuple[float, QRectF, QRectF]:

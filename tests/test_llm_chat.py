@@ -65,7 +65,7 @@ class LLMChatRequesterTest(unittest.TestCase):
     def test_provider_args_preserve_native_openai_compatibility(self):
         self.assertEqual(
             openai_chat_completion_args(self.profile, 'gpt-5.5'),
-            {'top_p': 1.0, 'max_completion_tokens': 8192},
+            {'max_completion_tokens': 8192},
         )
         self.assertEqual(
             openai_chat_completion_args(self.profile, 'gpt-4o'),
@@ -79,11 +79,7 @@ class LLMChatRequesterTest(unittest.TestCase):
         self.profile.base_url = 'https://openrouter.ai/api/v1'
         self.assertEqual(
             openai_chat_completion_args(self.profile, 'openai/gpt-5.5'),
-            {
-                'top_p': 1.0,
-                'temperature': 0.1,
-                'max_tokens': 8192,
-            },
+            {'max_tokens': 8192},
         )
 
         self.profile.base_url = (
@@ -91,8 +87,24 @@ class LLMChatRequesterTest(unittest.TestCase):
         )
         self.assertEqual(
             openai_chat_completion_args(self.profile, 'gpt-5.5'),
-            {'top_p': 1.0, 'max_completion_tokens': 8192},
+            {'max_completion_tokens': 8192},
         )
+
+    def test_gpt_sampling_omission_is_endpoint_independent(self) -> None:
+        for provider in ('OpenAI', 'OpenRouter', 'LM Studio'):
+            profile = default_profile(provider)
+            for model in ('gpt-5.5', 'gpt-5.6-luna', 'gpt-6-astra', 'openai/gpt-5.6-luna'):
+                with self.subTest(provider=provider, model=model):
+                    args = openai_chat_completion_args(profile, model)
+                    self.assertNotIn('temperature', args)
+                    self.assertNotIn('top_p', args)
+                    token_key = 'max_completion_tokens' if provider == 'OpenAI' else 'max_tokens'
+                    self.assertEqual(args, {token_key: profile.max_tokens})
+            for model in ('gpt-5.4', 'gpt-4o', 'deepseek-v4-flash'):
+                with self.subTest(provider=provider, model=model):
+                    args = openai_chat_completion_args(profile, model)
+                    self.assertEqual(args['temperature'], profile.temperature)
+                    self.assertEqual(args['top_p'], profile.top_p)
 
     def test_reasoning_control_maps_provider_specific_disable_requests(self):
         self.profile.thinking_level = 'None'

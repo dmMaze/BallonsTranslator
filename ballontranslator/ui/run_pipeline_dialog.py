@@ -37,6 +37,7 @@ from qtpy.QtWidgets import (
 
 from .icon_rendering import render_svg_pixmap
 from .misc import themed_icon_path
+from .module_tool_button import ModuleSelectionToolButton, ModuleSelectionMenu
 from .framelesswindow import DialogCloseButton, FramelessMoveResize
 from .llm_modality import (
     LLM_MODALITY_IMAGE,
@@ -167,6 +168,7 @@ class PipelineModuleActivator(QWidget):
     """
 
     module_selected = Signal(str, str)
+    llm_profile_selected = Signal(str, str)
     config_requested = Signal(str, str)
 
     def __init__(
@@ -207,49 +209,49 @@ class PipelineModuleActivator(QWidget):
         self.config_button.setToolTip(self.tr('Config'))
         self.config_button.setAccessibleName(self.tr('Config'))
         self.config_button.clicked.connect(self._request_config)
-        self.deactivate_button = QToolButton(self)
-        self.deactivate_button.setObjectName('RunPipelineModuleDeactivateButton')
-        self.deactivate_button.setIcon(
-            QIcon(themed_icon_path('titlebar_close.svg'))
-        )
-        self.deactivate_button.setIconSize(QSize(12, 12))
-        self.deactivate_button.setToolTip(self.tr('Deactivate module'))
-        self.deactivate_button.setAccessibleName(self.tr('Deactivate module'))
-        self.deactivate_button.clicked.connect(self._deactivate)
-        self.selector = BottomBorderComboBox(self)
+        self.module_combo = QComboBox(self)
+        self.module_combo.hide()
+        self.module_combo.addItems(options)
+        self.module_combo.setCurrentText(module_name)
+        self.selector = ModuleSelectionToolButton(self)
         self.selector.setObjectName('RunPipelineModuleSelector')
-        self.selector.setFixedWidth(136)
-        self.selector.addItems(options)
-        self.selector.setCurrentText(module_name)
-        self.selector.setToolTip(module_name)
-        self.selector.currentTextChanged.connect(self._on_module_selected)
+        self.selector.setMinimumWidth(136)
+        self.selector.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed,
+        )
+        self.selector.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.menu = ModuleSelectionMenu(
+            self.module_combo, text,
+            '' if module_type == 'textdetector' else modality, self.selector,
+        )
+        self.selector.setMenu(self.menu)
+        self.module_combo.currentTextChanged.connect(self._on_module_selected)
+        self.menu.llm_profile_changed.connect(self._on_profile_selected)
+        self.refreshSelection()
         self.selector.installEventFilter(self)
-        layout.addWidget(self.selector)
-        layout.addStretch(1)
+        layout.addWidget(self.selector, 1)
         layout.addWidget(self.config_button)
-        layout.addWidget(self.deactivate_button)
 
         self.button.toggled.connect(self._refresh_active_state)
         self._refresh_active_state(self.button.isChecked())
 
     def enterEvent(self, event) -> None:
         self._hovered = True
-        self._refresh_aux_buttons()
+        self._refresh_config_button()
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         self._hovered = False
-        self._refresh_aux_buttons()
+        self._refresh_config_button()
         super().leaveEvent(event)
 
-    def _refresh_aux_buttons(self, _checked: bool = False) -> None:
+    def _refresh_config_button(self) -> None:
         active = self.button.isChecked()
         visible = self._hovered and active
         self.config_button.setVisible(visible)
-        self.deactivate_button.setVisible(visible)
 
     def _refresh_active_state(self, active: bool) -> None:
-        self._refresh_aux_buttons()
+        self._refresh_config_button()
         for widget in (self, self.selector):
             widget.setProperty('moduleActive', active)
             widget.style().unpolish(widget)
@@ -279,26 +281,31 @@ class PipelineModuleActivator(QWidget):
             return
         super().mousePressEvent(event)
 
-    def _deactivate(self, _checked: bool = False) -> None:
-        self.button.setChecked(False)
-
     def _request_config(self, _checked: bool = False) -> None:
         self.config_requested.emit(
             self.module_type,
-            self.selector.currentText(),
+            self.module_combo.currentText(),
         )
 
     def _on_module_selected(self, module_name: str) -> None:
-        self.selector.setToolTip(module_name)
+        self.refreshSelection()
         self.module_selected.emit(self.module_type, module_name)
 
+    def _on_profile_selected(self, profile_id: str) -> None:
+        self.refreshSelection()
+        self.llm_profile_selected.emit(self.module_type, profile_id)
+
+    def refreshSelection(self) -> None:
+        text = self.menu.selectedText()
+        self.selector.setText(text)
+        self.selector.setToolTip(text)
+
     def setModule(self, module_name: str) -> None:
-        if self.selector.currentText() == module_name:
-            return
-        blocker = QSignalBlocker(self.selector)
-        self.selector.setCurrentText(module_name)
-        del blocker
-        self.selector.setToolTip(module_name)
+        if self.module_combo.currentText() != module_name:
+            blocker = QSignalBlocker(self.module_combo)
+            self.module_combo.setCurrentText(module_name)
+            del blocker
+        self.refreshSelection()
 
 
 class GlossaryPathEdit(QLineEdit):
@@ -346,6 +353,7 @@ class RunPipelineDialog(QDialog):
     translate_source_changed = Signal(str)
     translate_target_changed = Signal(str)
     module_selected = Signal(str, str)
+    llm_profile_selected = Signal(str, str)
     module_config_requested = Signal(str, str)
     RESIZE_BORDER_WIDTH = 5
     _module_settings_expanded = (False, False, False, False)
@@ -654,6 +662,7 @@ class RunPipelineDialog(QDialog):
             button.setProperty('sectionIndex', display_index)
             button.toggled.connect(self._on_stage_button_toggled)
             activator.module_selected.connect(self.module_selected.emit)
+            activator.llm_profile_selected.connect(self.llm_profile_selected.emit)
             activator.config_requested.connect(self.module_config_requested.emit)
             stage_layout.addWidget(
                 activator,
@@ -1449,6 +1458,10 @@ class RunPipelineDialog(QDialog):
             if activator.module_type == module_type:
                 activator.setModule(module_name)
                 return
+
+    def refreshLLMSelections(self) -> None:
+        for activator in self.module_activators:
+            activator.refreshSelection()
 
     def _set_module_settings_expanded(
         self,

@@ -12,9 +12,11 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
+    QDragEnterEvent,
+    QDropEvent,
     QImage,
     QInputMethodEvent,
     QKeyEvent,
@@ -1772,6 +1774,114 @@ class TextTransformUndoTest(TextTransformTestBase):
                             self.assertEqual(edit.toPlainText(), history[-1])
                         finally:
                             item.endEdit()
+                            manager.clearSceneTextitems()
+                            host.close()
+                            host.deleteLater()
+                            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                            self.app.processEvents()
+                            C.active_format = active_format
+
+    def test_pair_editor_drop_preserves_sync_and_canvas_history(self) -> None:
+        for vertical in (False, True):
+            for original in ('012345', 'ab😀\ncdEF'):
+                for operation in ('move_start', 'move_end', 'drop'):
+                    with self.subTest(vertical=vertical, original=original, operation=operation):
+                        host = QWidget()
+                        canvas = Canvas(host)
+                        canvas.editor_index = 1
+                        canvas.imgtrans_proj = ProjImgTrans()
+                        with patch.object(shared, 'register_view_widget', create=True):
+                            panel = TextPanel(self.app, host)
+                        panel.formatpanel.global_format = FontFormat()
+                        manager = SceneTextManager(self.app, host, canvas, panel, parent=host)
+                        layout = QVBoxLayout(host)
+                        layout.addWidget(canvas.gv)
+                        layout.addWidget(panel)
+                        item = manager.addTextBlock(TextBlock(
+                            [0, 0, 300, 180], _bounding_rect=[0, 0, 300, 180],
+                            translation=original, vertical=vertical,
+                        ))
+                        edit = manager.pairwidget_list[0].e_trans
+                        stack = canvas.text_undo_stack
+                        active_format = C.active_format
+                        try:
+                            host.show()
+                            host.activateWindow()
+                            edit.setFocus()
+                            self.app.processEvents()
+                            self.assertTrue(edit.hasFocus())
+                            cursor = edit.textCursor()
+                            cursor.movePosition(QTextCursor.MoveOperation.End)
+                            edit.setTextCursor(cursor)
+                            QTest.keyClicks(edit, '!')
+                            before = original + '!'
+                            self.assertEqual(stack.count(), 1)
+                            mime = QMimeData()
+                            cursor = edit.textCursor()
+                            if operation == 'drop':
+                                mime.setText('X😀\n')
+                                cursor.setPosition(0)
+                                edit.setTextCursor(cursor)
+                                position = edit.cursorRect(cursor).center()
+                                enter = QDragEnterEvent(
+                                    position, Qt.DropAction.CopyAction, mime,
+                                    Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                                )
+                                QApplication.sendEvent(edit.viewport(), enter)
+                                drop = QDropEvent(
+                                    QPointF(position), Qt.DropAction.CopyAction, mime,
+                                    Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+                                )
+                                QApplication.sendEvent(edit.viewport(), drop)
+                                self.assertTrue(drop.isAccepted())
+                                after = mime.text() + before
+                            else:
+                                end = edit.document().characterCount() - 1
+                                to_start = operation == 'move_start'
+                                cursor.setPosition(end - 3 if to_start else 0)
+                                cursor.setPosition(end if to_start else 2, QTextCursor.MoveMode.KeepAnchor)
+                                edit.setTextCursor(cursor)
+                                mime = edit.createMimeDataFromSelection()
+                                # Replay Qt's internal move: remove and insert MIME
+                                # data in one native edit block, without an OS drag loop.
+                                cursor.beginEditBlock()
+                                cursor.removeSelectedText()
+                                cursor.movePosition(
+                                    QTextCursor.MoveOperation.Start if to_start
+                                    else QTextCursor.MoveOperation.End
+                                )
+                                edit.setTextCursor(cursor)
+                                edit.insertFromMimeData(mime)
+                                cursor.endEditBlock()
+                                after = before[-3:] + before[:-3] if to_start else before[2:] + before[:2]
+                            self.assertEqual(stack.count(), 2)
+                            self.assertEqual(edit.toPlainText(), after)
+                            self.assertEqual(item.toPlainText(), after)
+                            cursor = edit.textCursor()
+                            cursor.movePosition(QTextCursor.MoveOperation.Start)
+                            edit.setTextCursor(cursor)
+                            QTest.keyClicks(edit, '?')
+                            self.assertEqual(stack.count(), 3)
+                            self.assertEqual(edit.toPlainText(), '?' + after)
+                            self.assertEqual(item.toPlainText(), '?' + after)
+                            for expected in (after, before, original):
+                                QTest.keyClick(edit, Qt.Key.Key_Z, Qt.KeyboardModifier.ControlModifier)
+                                self.assertEqual(edit.toPlainText(), expected)
+                                self.assertEqual(item.toPlainText(), expected)
+                            self.assertFalse(stack.canUndo())
+                            for expected in (before, after, '?' + after):
+                                QTest.keyClick(edit, Qt.Key.Key_Y, Qt.KeyboardModifier.ControlModifier)
+                                self.assertEqual(edit.toPlainText(), expected)
+                                self.assertEqual(item.toPlainText(), expected)
+                            self.assertFalse(stack.canRedo())
+                            stack.undo()
+                            QTest.keyClicks(edit, '#')
+                            self.assertFalse(stack.canRedo())
+                            self.assertEqual(edit.toPlainText(), item.toPlainText())
+                            stack.undo()
+                            self.assertEqual(edit.toPlainText(), after)
+                            self.assertEqual(item.toPlainText(), after)
+                        finally:
                             manager.clearSceneTextitems()
                             host.close()
                             host.deleteLater()

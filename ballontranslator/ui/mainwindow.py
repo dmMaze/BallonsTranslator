@@ -7,9 +7,9 @@ from functools import partial
 import time
 
 from tqdm import tqdm
-from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QWidget
+from qtpy.QtWidgets import QAction, QFileDialog, QMenu, QHBoxLayout, QVBoxLayout, QApplication, QStackedWidget, QSplitter, QListWidget, QShortcut, QListWidgetItem, QMessageBox, QTextEdit, QPlainTextEdit, QDialog, QWidget, QColorDialog
 from qtpy.QtCore import Qt, QPoint, QSize, QEvent, Signal, QTimer
-from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard
+from qtpy.QtGui import QContextMenuEvent, QTextCursor, QGuiApplication, QIcon, QCloseEvent, QKeySequence, QPainter, QClipboard, QColor
 
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.text_processing import is_cjk
@@ -51,6 +51,8 @@ from .mainwindowbars import TitleBar, LeftBar, BottomBar
 from .menu_style import install_app_style_filters
 from .io_thread import ImgSaveThread, ImportDocThread, ExportDocThread
 from .update_thread import UpdateCheckThread
+from .font_change_detection import FontChangeDetector
+from .font_refresh import FontRefreshController
 from .update_dialog import UpdateReleaseDialog
 from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import ScrollBar, Widget, ViewWidget
@@ -71,6 +73,21 @@ from .keywordsubwidget import KeywordSubWidget
 from .module_parse_widgets import ModuleParamDialog
 from . import shared_widget as SW
 from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
+
+
+def _restore_custom_colors(colors: List[str]) -> None:
+    for index, color_name in enumerate(colors[:QColorDialog.customCount()]):
+        color = QColor(color_name)
+        if color.isValid():
+            QColorDialog.setCustomColor(index, color)
+
+
+def _current_custom_colors() -> List[str]:
+    return [
+        QColorDialog.customColor(index).name()
+        for index in range(QColorDialog.customCount())
+    ]
+
 
 class PageListView(QListWidget):
 
@@ -119,11 +136,13 @@ class MainWindow(mainwindow_cls):
     show_llm_key_dialog = Signal(str, str)
     show_llm_model_dialog = Signal(str, str, str)
     show_llm_base_url_dialog = Signal(str, str, str)
+    llm_profile_selection_changed = Signal()
     
     def __init__(self, app: QApplication, config: ProgramConfig, open_dir='', **exec_args) -> None:
         super().__init__()
 
         self.app = app
+        _restore_custom_colors(pcfg.custom_colors)
         install_app_style_filters(self.app)
         self.resetStyleSheet()
 
@@ -501,13 +520,13 @@ class MainWindow(mainwindow_cls):
         self.configPanel.llm_profiles_panel.profile_ui_updated.connect(self.on_llm_profile_ui_updated)
         self.configPanel.llm_profiles_panel.profile_summary_changed.connect(self.on_llm_profile_summary_changed)
         self.configPanel.llm_profiles_panel.set_translator_requested.connect(
-            self.bottomBar.trans_selector.selectLLMProfile
+            self.bottomBar.trans_selector.menu.selectLLMProfile
         )
         self.configPanel.llm_profiles_panel.set_ocr_requested.connect(
-            self.bottomBar.ocr_selector.selectLLMProfile
+            self.bottomBar.ocr_selector.menu.selectLLMProfile
         )
         self.configPanel.llm_profiles_panel.set_inpainter_requested.connect(
-            self.bottomBar.inpaint_selector.selectLLMProfile
+            self.bottomBar.inpaint_selector.menu.selectLLMProfile
         )
 
         self.drawingPanel.maskTransperancySlider.setValue(int(pcfg.mask_transparency * 100))
@@ -553,6 +572,22 @@ class MainWindow(mainwindow_cls):
             self.apply_auto_tate_chu_yoko_to_project
         )
         self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+        self.font_refresh = FontRefreshController(self)
+        self.font_change_detector = None
+        if self.font_refresh.enabled:
+            self.font_change_detector = FontChangeDetector(self)
+            self.font_change_detector.system_fonts_changed.connect(
+                self.font_refresh.request_system_refresh
+            )
+            self.font_change_detector.qt_database_changed.connect(
+                self.font_refresh.request_database_sync
+            )
+        self.font_refresh.refreshed.connect(self.on_fonts_refreshed)
+        self.font_refresh.busy_changed.connect(self.on_font_refresh_busy)
+        self.font_refresh.status_changed.connect(self.on_font_refresh_status)
+        self.textPanel.formatpanel.reload_fonts_requested.connect(
+            self.font_refresh.request_manual_refresh
+        )
 
         textblock_mode = pcfg.imgtrans_textblock
         if pcfg.imgtrans_textedit:
@@ -727,6 +762,21 @@ class MainWindow(mainwindow_cls):
             pcfg.text_styles_path = text_style_path
             save_text_styles()
 
+    def on_fonts_refreshed(self) -> None:
+        for item in self.st_manager.textblk_item_list:
+            item.refresh_font_metrics()
+        self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
+
+    def on_font_refresh_status(self, label: str, detail: str) -> None:
+        button = self.textPanel.formatpanel.reloadFontsButton
+        if button is not None:
+            button.setToolTip(detail)
+
+    def on_font_refresh_busy(self, busy: bool) -> None:
+        button = self.textPanel.formatpanel.reloadFontsButton
+        if button is not None:
+            button.set_busy(busy)
+
     def on_show_only_custom_font(self, only_custom: bool) -> None:
         registry = shared.FONT_REGISTRY
         entries = registry.entries(only_custom, pcfg.excluded_fonts)
@@ -840,6 +890,9 @@ class MainWindow(mainwindow_cls):
         save_config()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self.font_change_detector is not None:
+            self.font_change_detector.stop()
+        self.font_refresh.shutdown()
         # Pending numeric edits are not dirty until they commit. Resolve them
         # before the close-time dirty check and final config snapshot.
         self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
@@ -856,6 +909,7 @@ class MainWindow(mainwindow_cls):
         self.st_manager.hovering_transwidget = None
         self.st_manager.blockSignals(True)
         self.canvas.prepareClose()
+        pcfg.custom_colors = _current_custom_colors()
         self.save_config()
         return super().closeEvent(event)
 
@@ -1733,6 +1787,13 @@ class MainWindow(mainwindow_cls):
                 self.module_manager.translator_metadata(module_name)
             )
 
+    def on_run_llm_profile_selected(self, module_type: str, profile_id: str) -> None:
+        {
+            'translator': self.on_llm_profile_changed,
+            'ocr': self.on_ocr_llm_profile_changed,
+            'inpainter': self.on_inpaint_llm_profile_changed,
+        }[module_type](profile_id)
+
     def on_textdet_changed(self):
         module = self.bottomBar.textdet_selector.selector.currentText()
         self.module_manager.selectTextDetector(module)
@@ -1747,36 +1808,41 @@ class MainWindow(mainwindow_cls):
         self.module_manager.selectTranslator(module)
         self.bottomBar.trans_selector.updateButtonText()
 
-    def on_llm_profile_changed(self, profile_id: str):
+    def on_llm_profile_changed(self, profile_id: str) -> None:
         if profile_id:
             pcfg.module.translator_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('translator', profile_id)
         self.bottomBar.trans_selector.updateButtonText()
+        self.llm_profile_selection_changed.emit()
 
-    def on_ocr_llm_profile_changed(self, profile_id: str):
+    def on_ocr_llm_profile_changed(self, profile_id: str) -> None:
         if profile_id:
             pcfg.module.ocr_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('ocr', profile_id)
         self.bottomBar.ocr_selector.updateButtonText()
+        self.llm_profile_selection_changed.emit()
 
-    def on_inpaint_llm_profile_changed(self, profile_id: str):
+    def on_inpaint_llm_profile_changed(self, profile_id: str) -> None:
         if profile_id:
             pcfg.module.inpaint_llm_id = profile_id
             self.configPanel.llm_profiles_panel.syncProfile(profile_id)
             self.configPanel.llm_profiles_panel.setSelectedProfile('inpainter', profile_id)
         self.bottomBar.inpaint_selector.updateButtonText()
+        self.llm_profile_selection_changed.emit()
 
-    def on_llm_profile_ui_updated(self):
+    def on_llm_profile_ui_updated(self) -> None:
         self.bottomBar.trans_selector.updateButtonText()
         self.bottomBar.ocr_selector.updateButtonText()
         self.bottomBar.inpaint_selector.updateButtonText()
+        self.llm_profile_selection_changed.emit()
 
-    def on_llm_profile_summary_changed(self):
+    def on_llm_profile_summary_changed(self) -> None:
         self.bottomBar.trans_selector.updateButtonText()
         self.bottomBar.ocr_selector.updateButtonText()
         self.bottomBar.inpaint_selector.updateButtonText()
+        self.llm_profile_selection_changed.emit()
 
     def on_trans_src_changed(self, text: str = None):
         sender = self.sender()
@@ -2092,7 +2158,7 @@ class MainWindow(mainwindow_cls):
             pcfg.display_lang = lang
             self.set_display_lang(lang)
     
-    def run_imgtrans(self):
+    def run_imgtrans(self) -> None:
         dialog = RunPipelineDialog(
             self,
             project=self.imgtrans_proj,
@@ -2101,6 +2167,8 @@ class MainWindow(mainwindow_cls):
         dialog.translate_source_changed.connect(self.on_trans_src_changed)
         dialog.translate_target_changed.connect(self.on_trans_tgt_changed)
         dialog.module_selected.connect(self.on_run_module_selected)
+        dialog.llm_profile_selected.connect(self.on_run_llm_profile_selected)
+        self.llm_profile_selection_changed.connect(dialog.refreshLLMSelections)
         dialog.module_config_requested.connect(self.show_module_param_dialog)
         self.module_manager.module_selection_changed.connect(
             dialog.setModuleSelection

@@ -254,7 +254,7 @@ class DynamicCallbackLifecycleTest(unittest.TestCase):
         widget.selector.addItems(['First', 'Second'])
         widget.selector.setCurrentText('First')
 
-        widget.rebuildMenu()
+        widget.menu.rebuildMenu()
         second_action = next(
             action for action in widget.menu.actions()
             if action.data() == 'Second'

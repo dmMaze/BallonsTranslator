@@ -294,6 +294,7 @@ def main():
     app.setApplicationVersion(APP_VERSION)
 
     if not args.headless:
+        app.setWindowIcon(QIcon(shared.ICON_PATH))
         ps = QGuiApplication.primaryScreen()
         shared.LDPI = ps.logicalDotsPerInch()
         shared.SCREEN_W = ps.geometry().width()
@@ -391,7 +392,6 @@ def main():
     BT.restart_signal.connect(restart)
 
     if not args.headless:
-        ballontrans.setWindowIcon(QIcon(shared.ICON_PATH))
         ballontrans.show()
         if shared.ON_WINDOWS:
             from ballontranslator.ui.framelesswindow import FramelessMoveResize

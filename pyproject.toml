@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ballontranslator"
-version = "1.5.15"
+version = "1.5.16"
 description = "PyQt desktop app for comic image translation"
 readme = "README.md"
 requires-python = ">=3.8,<3.13"
@@ -19,3 +19,6 @@ include = ["ballontranslator*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.setuptools.package-data]
+ballontranslator = ["assets/font_refresh/*"]

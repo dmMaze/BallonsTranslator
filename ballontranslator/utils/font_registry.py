@@ -230,6 +230,13 @@ class ResolvedFont:
 
 
 @dataclass
+class RegisteredCustomFont:
+    font_id: int
+    fingerprint: tuple[int, int]
+    faces: List[FontFace]
+
+
+@dataclass
 class FontRegistry:
     """Runtime-only font registry.
 
@@ -246,6 +253,7 @@ class FontRegistry:
         default_factory=dict
     )
     export_family_by_key: Dict[str, str] = field(default_factory=dict)
+    registrations: Dict[str, RegisteredCustomFont] = field(default_factory=dict)
     _weight_alias_base_by_key: Dict[str, str] = field(
         default_factory=dict,
         init=False,
@@ -566,7 +574,15 @@ def _parse_name_table(data: bytes) -> List[Dict[str, Any]]:
 
 
 def parse_font_names(path: Path) -> List[Dict[str, Any]]:
-    data = path.read_bytes()
+    return parse_font_name_data(path.read_bytes())
+
+
+def parse_font_name_data(data: bytes) -> List[Dict[str, Any]]:
+    """Parse an already-read font snapshot without further filesystem IO.
+
+    >>> parse_font_name_data(b"")
+    []
+    """
     faces = []
     for face_index, sfnt_offset in enumerate(_sfnt_offsets(data)):
         os2_weight = _parse_os2_weight(data, sfnt_offset)
@@ -987,7 +1003,10 @@ def load_system_alias_table(
     return table
 
 
-def collect_custom_faces(font_paths: Iterable[str], qfont_db: Any, locale: str) -> List[FontFace]:
+def collect_custom_faces(
+    font_paths: Iterable[str], qfont_db: Any, locale: str,
+    registrations: Optional[Dict[str, RegisteredCustomFont]] = None,
+) -> List[FontFace]:
     faces = []
     for font_path_str in font_paths:
         font_path = Path(font_path_str).resolve()
@@ -1002,6 +1021,8 @@ def collect_custom_faces(font_paths: Iterable[str], qfont_db: Any, locale: str) 
             if family and family.strip()
         ]
         if font_id < 0 or not qt_families:
+            if font_id >= 0:
+                qfont_db.removeApplicationFont(font_id)
             LOGGER.warning('Unable to register custom font %s', font_path)
             continue
         try:
@@ -1016,10 +1037,19 @@ def collect_custom_faces(font_paths: Iterable[str], qfont_db: Any, locale: str) 
                 'error': 'unsupported font metadata format',
                 'names': [],
             }]
+        file_faces = []
         for parsed_face in parsed_faces:
             candidate = _candidate_from_parsed_face(font_path, parsed_face, qt_families, qfont_db, locale)
             if candidate is not None:
                 faces.append(candidate)
+                file_faces.append(candidate)
+        if registrations is not None:
+            try:
+                stat = font_path.stat()
+                fingerprint = (stat.st_size, stat.st_mtime_ns)
+            except OSError:
+                fingerprint = (-1, -1)
+            registrations[str(font_path)] = RegisteredCustomFont(font_id, fingerprint, file_faces)
     return faces
 
 
@@ -1262,11 +1292,12 @@ def build_font_registry(
     system_alias_table = load_system_alias_table(
         font_registry_path, locale
     )
-    custom_faces = collect_custom_faces(font_paths, qfont_db, locale)
+    registrations: Dict[str, RegisteredCustomFont] = {}
+    custom_faces = collect_custom_faces(font_paths, qfont_db, locale, registrations)
     custom_entries = build_custom_entries(custom_faces, custom_group_table)
     system_entries = [_system_entry(qfont_db, family) for family in sorted(system_families, key=str.casefold)]
     system_entries = merge_system_alias_entries(system_entries, system_alias_table)
-    registry = FontRegistry(custom_entries=custom_entries, system_entries=system_entries)
+    registry = FontRegistry(custom_entries=custom_entries, system_entries=system_entries, registrations=registrations)
     registry._font_database = qfont_db
     registry._display_locale = locale
     return registry

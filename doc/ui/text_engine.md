@@ -39,6 +39,8 @@ Project JSON
 subsystem. Extend the existing annotation, layout, effect, geometry, or scene
 owner instead of adding a parallel path.
 
+See [Runtime font refresh](font_refresh.md) for font discovery, registration ownership, and metrics invalidation.
+
 ## State boundaries
 
 - **Persistent state:** `TextBlock` and `FontFormat`; only this belongs in

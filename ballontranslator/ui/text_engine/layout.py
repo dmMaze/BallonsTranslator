@@ -114,6 +114,13 @@ def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bo
     fm = _font_metrics(ffamily, size, weight, italic)
     return fm.horizontalAdvance(char)
 
+
+def clear_font_metrics_cache() -> None:
+    """Discard metrics that may have been measured using a fallback font."""
+    get_char_width.cache_clear()
+    get_punc_rect.cache_clear()
+
+
 def _block_cursor_position(block: QTextBlock, cursor_position: int) -> int:
     layout = block.layout()
     if cursor_position < -1:

@@ -606,22 +606,22 @@ class RunPipelineDialogTests(unittest.TestCase):
             lambda *args: config_requests.append(args)
         )
 
-        if activator.selector.count() > 1:
-            activator.selector.setCurrentIndex(
-                (activator.selector.currentIndex() + 1)
-                % activator.selector.count()
+        if activator.module_combo.count() > 1:
+            activator.module_combo.setCurrentIndex(
+                (activator.module_combo.currentIndex() + 1)
+                % activator.module_combo.count()
             )
             self.assertEqual(
                 selections[-1],
-                ('textdetector', activator.selector.currentText()),
+                ('textdetector', activator.module_combo.currentText()),
             )
         activator.config_button.click()
         self.assertEqual(
             config_requests[-1],
-            ('textdetector', activator.selector.currentText()),
+            ('textdetector', activator.module_combo.currentText()),
         )
         activator.button.setChecked(True)
-        activator.deactivate_button.click()
+        activator.button.click()
         self.assertFalse(activator.button.isChecked())
         activator.button.click()
         self.assertTrue(activator.button.isChecked())
@@ -1106,6 +1106,8 @@ class RunPipelineDialogTests(unittest.TestCase):
             on_trans_src_changed=lambda _source: None,
             on_trans_tgt_changed=lambda _target: None,
             on_run_module_selected=lambda _module_type, _module_name: None,
+            on_run_llm_profile_selected=lambda _module_type, _profile_id: None,
+            llm_profile_selection_changed=FakeSignal(),
             show_module_param_dialog=lambda _module_type, _module_name: None,
         )
 
@@ -1125,6 +1127,7 @@ class RunPipelineDialogTests(unittest.TestCase):
                 self.translate_source_changed = FakeSignal()
                 self.translate_target_changed = FakeSignal()
                 self.module_selected = FakeSignal()
+                self.llm_profile_selected = FakeSignal()
                 self.module_config_requested = FakeSignal()
                 self.render_without_text_style_update = SimpleNamespace(
                     isChecked=lambda: self.preserve_style
@@ -1137,6 +1140,9 @@ class RunPipelineDialogTests(unittest.TestCase):
                 return self.pages
 
             def setModuleSelection(self, _module_type, _module_name):
+                pass
+
+            def refreshLLMSelections(self):
                 pass
 
             def deleteLater(self):

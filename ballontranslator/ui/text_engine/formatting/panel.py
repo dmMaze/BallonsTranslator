@@ -14,7 +14,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qtpy.QtCore import QLocale, QModelIndex, QSignalBlocker, Signal, Qt
+from qtpy.QtCore import QElapsedTimer, QLocale, QModelIndex, QSignalBlocker, QTimer, Signal, Qt
 from qtpy.QtGui import (
     QActionGroup,
     QColor,
@@ -25,6 +25,8 @@ from qtpy.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
+    QPaintEvent,
+    QShowEvent,
     QPen,
     QPixmap,
     QStandardItemModel,
@@ -41,6 +43,7 @@ from ballontranslator.utils.fontformat import (
     font_weight_to_qt,
 )
 from ballontranslator.utils.font_registry import FontEntry
+from ballontranslator.utils.font_refresh import runtime_font_refresh_supported
 from ...custom_widget import (
     AlignmentChecker,
     CheckableLabel,
@@ -51,6 +54,8 @@ from ...custom_widget import (
     TextCheckerLabel,
     Widget,
 )
+from ...icon_rendering import render_svg_pixmap
+from ...misc import themed_icon_path
 from ..item import TextBlkItem
 from ..font_family import qfont_with_family
 from ..annotations import (
@@ -676,7 +681,7 @@ class FontFamilyComboBox(QComboBox):
     def update_font_entries(self, entries: Iterable[FontEntry]) -> None:
         """Display localized entries and retain canonical storage values."""
         entries = list(entries)
-        current_family = self.current_storage_family()
+        current_family = self.current_storage_family() or self._last_valid_family or self.currentText().strip()
         self.currentIndexChanged.disconnect(self.on_fontfamily_changed)
         try:
             self.clear()
@@ -789,7 +794,72 @@ class FontFamilyComboBox(QComboBox):
             self.apply_fontfamily()
 
 
+class FontReloadButton(QToolButton):
+    """Show the themed reload SVG and animate only while busy and visible.
+
+    >>> issubclass(FontReloadButton, QToolButton)
+    True
+    """
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setObjectName('FontReloadButton')
+        self._busy = False
+        self._angle = 0.0
+        self._elapsed = QElapsedTimer()
+        self._rotation_timer = QTimer(self)
+        self._rotation_timer.setInterval(30)
+        self._rotation_timer.timeout.connect(self._advance_rotation)
+        self.setAccessibleName(self.tr('Reload fonts'))
+
+    def set_busy(self, busy: bool) -> None:
+        if self._busy == busy:
+            return
+        self._busy = busy
+        self.setEnabled(not busy)
+        if busy and self.isVisible():
+            self._elapsed.start()
+            self._rotation_timer.start()
+        else:
+            self._rotation_timer.stop()
+        self._angle = 0.0
+        self.update()
+
+    def _advance_rotation(self) -> None:
+        self._angle = (self._elapsed.elapsed() % 900) * 360.0 / 900
+        self.update()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._busy:
+            self._elapsed.start()
+            self._rotation_timer.start()
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        self._rotation_timer.stop()
+        super().hideEvent(event)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        super().paintEvent(event)
+        icon = (
+            'fontfmt_reload_activate.svg'
+            if self.isDown() and self.isEnabled()
+            else 'fontfmt_reload.svg'
+        )
+        pixmap = render_svg_pixmap(
+            themed_icon_path(icon), 20, 20, self.devicePixelRatioF(),
+        )
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.translate(self.width() / 2, self.height() / 2)
+        painter.rotate(self._angle)
+        if not self.isEnabled():
+            painter.setOpacity(0.45)
+        painter.drawPixmap(-10, -10, pixmap)
+        painter.end()
+
+
 class FontFormatPanel(Widget):
+    reload_fonts_requested = Signal()
     
     textblk_item: TextBlkItem = None
     text_cursor: QTextCursor = None
@@ -807,6 +877,12 @@ class FontFormatPanel(Widget):
         self.familybox.setToolTip(self.tr("Font Family"))
         self.familybox.param_changed.connect(self.on_font_family_changed)
         self.familybox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        self.reloadFontsButton = None
+        if runtime_font_refresh_supported():
+            self.reloadFontsButton = FontReloadButton(self)
+            self.reloadFontsButton.setToolTip(self.tr('Reload system fonts and fonts folder'))
+            self.reloadFontsButton.clicked.connect(self.reload_fonts_requested)
 
         self.fontWeightBox = FontWeightComboBox(self)
         self.fontWeightBox.setObjectName('FontWeightBox')
@@ -963,13 +1039,15 @@ class FontFormatPanel(Widget):
         vl0.setContentsMargins(0, 0, 0, 0)
         hl1 = QHBoxLayout()
         font_selector_layout = QHBoxLayout()
+        font_selector_layout.addWidget(self.colorPicker)
         font_selector_layout.addWidget(self.familybox, 1)
-        font_selector_layout.addWidget(self.fontWeightBox)
-        font_selector_layout.setSpacing(7)
+        if self.reloadFontsButton is not None:
+            font_selector_layout.addWidget(self.reloadFontsButton)
+        font_selector_layout.setSpacing(4)
         font_selector_layout.setContentsMargins(0, 0, 0, 0)
-        hl1.addWidget(self.colorPicker)
         hl1.addLayout(font_selector_layout, 1)
-        hl1.setSpacing(4)
+        hl1.addWidget(self.fontWeightBox)
+        hl1.setSpacing(7)
         hl1.setContentsMargins(0, 11, 0, 0)
         hl2 = QHBoxLayout()
         hl2.setAlignment(Qt.AlignmentFlag.AlignCenter)
