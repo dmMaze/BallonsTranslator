@@ -748,8 +748,10 @@ class ImgtransThread(QThread):
     def isStopRequested(self):
         return self.stop_event.is_set()
 
-    def clearStopRequest(self):
-        self.stop_event.clear()
+    def clearStopRequest(self) -> None:
+        # Each job has its own cancellation and transport-cache identity; late
+        # work from the previous job must retain its previous stop signal.
+        self.stop_event = threading.Event()
         self._pipeline_stop_emitted = False
 
     def _emit_pipeline_stopped_if_ready(self, imgtrans_running: bool):

@@ -131,6 +131,16 @@ PROVIDER_DEFAULTS = {
         "model_options": ["llama3.1", "qwen2.5", "mistral"],
         "vision_model_options": ["llama3.1", "qwen2.5", "mistral"],
     },
+    "Codex": {
+        "id": "codex",
+        "backend": "codex",
+        "require_api_key": False,
+        "model": "",
+        "model_options": [],
+        "support_text": False,
+        "vision_detail_level": "auto",
+        "json_schema_response_format": True,
+    },
 }
 
 DEFAULT_TRANSLATION_PROMPT = (
@@ -183,6 +193,7 @@ class LLMProfile(Config):
     id: str = ""
     profile_type = "llm"
     name: str = ""
+    backend: str = "openai"
     title_url: str = ""
     built_in: bool = False
     base_url: str = ""
@@ -214,6 +225,15 @@ class LLMProfile(Config):
     low_vram_mode: bool = False
 
     def __post_init__(self) -> None:
+        if self.backend not in ('openai', 'codex', 'unavailable'):
+            LOGGER.warning('Discard invalid LLM profile backend for %s.', self.id or self.name)
+            # An unknown backend must never fall through to a paid API request.
+            self.backend = 'unavailable'
+        if self.backend == 'codex':
+            self.api_key = ''
+            self.require_api_key = False
+            self.support_image = False
+            self.json_schema_response_format = True
         if not isinstance(self.title_url, str) or (
             self.title_url and not is_profile_title_url(self.title_url)
         ):
@@ -227,7 +247,14 @@ class LLMProfile(Config):
         return cls(**info, name=provider, built_in=True)
 
     def to_dict(self) -> Dict:
-        return copy.deepcopy(self.__dict__)
+        data = copy.deepcopy(self.__dict__)
+        if self.backend == 'codex':
+            data['api_key'] = ''
+            # Catalog-derived fields have one persistent owner: module.codex_models.
+            for key in ('model_options', 'vision_model_options', 'image_model_options',
+                        'thinking_level_options', 'support_text', 'support_vision', 'support_image'):
+                data.pop(key, None)
+        return data
 
 
 def is_profile_title_url(value: str) -> bool:
@@ -353,7 +380,7 @@ def profile_to_export_dict(profile: Any) -> Dict:
 
     exported = profile_to_dict(profile)
     exported['profile_type'] = LLMProfile.profile_type
-    exported['api_key'] = resolve_api_key(profile)
+    exported['api_key'] = '' if exported.get('backend') == 'codex' else resolve_api_key(profile)
     return exported
 
 
@@ -470,6 +497,66 @@ def profile_by_id(
         if _profile_value(profile, "id") == profile_id:
             return profile
     return None
+
+
+def normalize_codex_models(value: Any) -> Dict[str, Dict[str, List[str]]]:
+    """Keep only public, usable catalog metadata; never persist account data.
+
+    >>> normalize_codex_models({'m': {'modalities': ['text'], 'efforts': ['high']}})
+    {'m': {'modalities': ['text'], 'efforts': ['high']}}
+    """
+    if not isinstance(value, dict):
+        LOGGER.warning('Discard invalid Codex model catalog.')
+        return {}
+    models = {}
+    for model, entry in value.items():
+        if not isinstance(model, str) or not model.strip() or not isinstance(entry, dict):
+            LOGGER.warning('Discard invalid Codex model catalog entry.')
+            continue
+        if set(entry) - {'modalities', 'efforts'}:
+            LOGGER.warning('Discard unknown fields from Codex model catalog entry.')
+        clean = {}
+        for key, allowed in (('modalities', ('text', 'image')),
+                             ('efforts', ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'))):
+            items = entry.get(key, [])
+            if not isinstance(items, list):
+                LOGGER.warning('Discard invalid Codex model %s for %s.', key, model)
+                items = []
+            clean[key] = list(dict.fromkeys(item for item in items if isinstance(item, str) and item in allowed))
+            if clean[key] != items:
+                LOGGER.warning('Discard invalid Codex model %s entries for %s.', key, model)
+        if clean['modalities']:
+            models[model] = clean
+    return models
+
+
+def codex_thinking_options(profile: LLMProfile, models: Dict) -> List[str]:
+    return [THINKING_AUTO] + [
+        THINKING_DISABLED if effort == 'none' else effort
+        for effort in models.get(profile.model, {}).get('efforts', [])
+    ]
+
+
+def sync_codex_profile(profile: LLMProfile, models: Dict) -> None:
+    """Project the shared catalog into existing selector fields without changing selections.
+
+    >>> profile = default_profile('Codex')
+    >>> sync_codex_profile(profile, {'m': {'modalities': ['text'], 'efforts': ['high']}})
+    >>> profile.model, profile.model_options
+    ('', ['m'])
+    """
+    if profile.backend != 'codex':
+        return
+    profile.api_key = ''
+    profile.require_api_key = False
+    profile.model_options = [model for model, entry in models.items() if 'text' in entry['modalities']]
+    profile.vision_model_options = [model for model, entry in models.items() if 'image' in entry['modalities']]
+    profile.support_text = bool(profile.model_options)
+    profile.support_vision = bool(profile.vision_model_options)
+    # Input images are not evidence of a supported image-edit result transport.
+    profile.support_image = False
+    profile.image_model_options = []
+    profile.thinking_level_options = codex_thinking_options(profile, models)
 
 
 def runtime_profile(
@@ -788,5 +875,7 @@ def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = No
     elif profiles_were_missing:
         profiles = default_profiles()
 
+    if 'codex_models' not in module_cfg and not any(p.backend == 'codex' for p in profiles):
+        profiles.append(default_profile('Codex'))
     module_cfg["llm_profiles"] = profiles
     return module_cfg

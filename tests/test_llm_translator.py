@@ -96,7 +96,7 @@ class LLMTranslatorTest(unittest.TestCase):
             pcfg.module.llm_profiles = old_profiles
             pcfg.module.translator_llm_id = old_translator_llm_id
 
-    def test_dynamic_schema_stays_out_of_cacheable_message_prefix(self):
+    def test_legacy_provider_keeps_page_id_schema_and_message_content(self):
         profile = default_profile('LM Studio')
         messages = [{'role': 'system', 'content': 'stable prefix'}]
 

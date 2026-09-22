@@ -280,6 +280,8 @@ class LLMImageRequester:
         return api_key
 
     def _initialize_client(self, profile: LLMProfile):
+        if profile.backend != 'openai':
+            raise LLMUserActionRequiredError('Image editing is unavailable for this LLM profile backend.')
         api_key = self._api_key_for_profile(profile)
         base_url = self._image_base_url(profile)
         proxy = self._request_param('proxy') or ''

@@ -175,6 +175,54 @@ class LLMTranslationContractTest(unittest.TestCase):
         self.assertEqual(numeric.translations, ('heart', 'spirit'))
         self.assertEqual(legacy.translations, ('heart', 'spirit'))
 
+    def test_array_contract_keeps_schema_prompt_and_history_consistent(self) -> None:
+        for summary in (False, True):
+            with self.subTest(summary=summary):
+                schema = translation_json_schema(1, summary_enabled=summary, array_response=True)
+                self.assertEqual(schema, translation_json_schema(13, summary_enabled=summary, array_response=True))
+                if summary:
+                    self.assertEqual(schema, translation_json_schema(0, summary_enabled=True, array_response=True))
+                expected_properties = ['page_summary', 'translations'] if summary else ['translations']
+                self.assertEqual(list(schema['properties']), expected_properties)
+                self.assertEqual(schema['properties']['translations'], {
+                    'type': 'array', 'items': {
+                        'type': 'object',
+                        'properties': {'id': {'type': 'integer'}, 'translation': {'type': 'string'}},
+                        'required': ['id', 'translation'], 'additionalProperties': False,
+                    },
+                })
+                prompt = translation_system_prompt('', 'English', history_enabled=True,
+                                                   summary_enabled=summary, array_response=True)
+                self.assertIn('"translations":[{"id":1,"translation":"Translated text"}]', prompt)
+                self.assertNotIn('as keys', prompt)
+                self.assertNotIn('object keys', prompt)
+                spec = TranslationPromptSpec('Japanese', 'English', prompt, summary, True, True)
+                page = render_history_page(HistoryPage('001.png', ('心',), ('heart',), 'Scene.'), 'test', spec)
+                parsed = json.loads(page.messages[1][1])
+                self.assertEqual(list(parsed), expected_properties)
+                self.assertEqual(parsed['translations'], [{'id': 1, 'translation': 'heart'}])
+                self.assertEqual(parse_translation_response(page.messages[1][1], 1, array_response=True).translations, ('heart',))
+
+    def test_array_parser_rejects_duplicate_missing_extra_and_coerced_items(self) -> None:
+        valid = {'id': 1, 'translation': 'heart'}
+        for items in (
+            [valid, valid], [], [valid, {'id': 2, 'translation': 'extra'}],
+            [{'id': True, 'translation': 'heart'}],
+            [{'id': 1.0, 'translation': 'heart'}], [{'id': '1', 'translation': 'heart'}],
+            [{'id': 1, 'translation': 3}], [{'id': 1, 'translation': None}],
+            [None], {'1': 'heart'},
+        ):
+            with self.subTest(items=items), self.assertRaises((InvalidNumTranslations, ValueError)):
+                parse_translation_response(json.dumps({'translations': items}), 1, array_response=True)
+        parsed = parse_translation_response(
+            '{"translations":[{"id":2,"translation":"second"},{"id":1,"translation":"first"}]}',
+            2, array_response=True,
+        )
+        self.assertEqual(parsed.translations, ('first', 'second'))
+        self.assertEqual(parse_translation_response(
+            '{"page_summary":"Scene.","translations":[]}', 0, array_response=True,
+        ).page_summary, 'Scene.')
+
     def test_parser_normalizes_without_truncating_optional_summary(self) -> None:
         body = ' '.join(['detail'] * 501)
         summary = '  scene\n\tmemory  ' + body

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -14,6 +15,7 @@ from .exceptions import (
     LLMApiKeyRequiredError,
     LLMOutputLimitError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
@@ -85,7 +87,8 @@ def openai_chat_completion_args(
     >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
     0.1
     """
-
+    if profile.backend == 'codex':
+        return {}
     base_url = _normalized_base_url(_openai_sdk_base_url(profile.base_url))
     openai_base_url = _normalized_base_url(
         PROVIDER_DEFAULTS['OpenAI']['base_url']
@@ -189,11 +192,14 @@ class LLMChatRequester:
         self.request_count_minute = 0
         self.minute_start_time = time.time()
         self.stop_event: Optional[threading.Event] = None
+        self._codex_cache_keys: Dict[Tuple[str, str, int], str] = {}
 
     def set_stop_event(
         self,
         stop_event: Optional[threading.Event],
     ) -> None:
+        if stop_event is not self.stop_event:
+            self._codex_cache_keys.clear()
         self.stop_event = stop_event
 
     def _wait(self, seconds: float) -> None:
@@ -304,6 +310,18 @@ class LLMChatRequester:
         api_args: Dict[str, Any],
     ) -> LLMChatResult:
         """Perform one request; feature owners decide whether to retry it."""
+        if profile.backend == 'codex':
+            from .codex import account, request_chat_completion
+            self._respect_delay()
+            identity = (profile.id, str(api_args['model']), account.generation)
+            if identity not in self._codex_cache_keys:
+                self._codex_cache_keys[identity] = str(uuid.uuid4())
+            return request_chat_completion(
+                profile, api_args, self.stop_event,
+                self._codex_cache_keys[identity], str(self.get_param_value('proxy') or ''),
+            )
+        if profile.backend != 'openai':
+            raise LLMUserActionRequiredError('This LLM profile backend is unavailable.')
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay()

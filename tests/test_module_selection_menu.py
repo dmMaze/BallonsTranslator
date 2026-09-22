@@ -25,7 +25,7 @@ from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.ui.run_pipeline_dialog import RunPipelineDialog
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, default_profile
+from ballontranslator.utils.llm_profiles import LLMProfile, default_profile, sync_codex_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -164,6 +164,38 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         self.assertIn('Source - Japanese', titles)
         self.assertIn('Target - English', titles)
         dialog.deleteLater()
+
+    def test_codex_catalog_enables_text_and_vision_selection_without_image_edit(self) -> None:
+        profile = default_profile('Codex')
+        pcfg.module.llm_profiles = [profile]
+        panel = self.window.configPanel.llm_profiles_panel
+        panel.addProfileRow(profile)
+        pcfg.module.codex_models = {
+            'text-model': {'modalities': ['text'], 'efforts': ['high']},
+            'vision-model': {'modalities': ['text', 'image'], 'efforts': ['low']},
+        }
+        sync_codex_profile(profile, pcfg.module.codex_models)
+        panel.syncCodexProfiles()
+        for bottom_name, field, model, role, llm_key in (
+            ('trans_selector', 'model', 'text-model', 'translator', 'LLMTranslator'),
+            ('ocr_selector', 'vision_model', 'vision-model', 'ocr', 'LLMOCR'),
+        ):
+            bottom = getattr(self.window.bottomBar, bottom_name)
+            self.choose(bottom.menu, ('codex', field, model))
+            self.assertEqual(getattr(pcfg.module, role), llm_key)
+            self.assertEqual(getattr(pcfg.module, role + '_llm_id'), 'codex')
+            self.assertIn(model, bottom.tool_btn.text())
+        self.choose(self.window.bottomBar.ocr_selector.menu, ('codex', 'vision_detail_level', 'high'))
+        self.assertEqual(profile.vision_detail_level, 'high')
+        inpaint = self.window.bottomBar.inpaint_selector.menu
+        inpaint.rebuildMenu()
+        self.assertFalse(any(action.menu() is not None for action in inpaint.actions()))
+        pcfg.module.codex_models = {}
+        sync_codex_profile(profile, pcfg.module.codex_models)
+        panel.syncCodexProfiles()
+        self.assertEqual((profile.model, profile.vision_model), ('text-model', 'vision-model'))
+        self.assertFalse(profile.support_text)
+        self.assertFalse(profile.support_vision)
 
     def test_inactive_selector_first_click_activates_without_opening_menu(self) -> None:
         dialog = RunPipelineDialog(self.window)

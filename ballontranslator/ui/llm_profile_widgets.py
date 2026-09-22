@@ -57,6 +57,8 @@ from ballontranslator.utils.llm_profiles import (
     restore_builtin_profiles,
     resolve_api_key,
     store_api_key,
+    sync_codex_profile,
+    codex_thinking_options,
 )
 
 
@@ -373,6 +375,7 @@ class ProfileCardWidget(QGroupBox):
         super().__init__(*args, **kwargs)
         self.setObjectName('LLMProfileCard')
         self.profile = profile
+        sync_codex_profile(profile, pcfg.module.codex_models)
         self.setTitle(profile.name)
         self.setToolTip(self.tr('Double click the name to edit. Right click for profile actions.'))
         self.scrollWidget = scrollWidget
@@ -430,6 +433,10 @@ class ProfileCardWidget(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 18, 16, 14)
         layout.setSpacing(8)
+        if profile.backend == 'codex':
+            from .codex_account import CodexAccountWidget
+            self.codex_account = CodexAccountWidget(self)
+            layout.addWidget(self.codex_account)
 
         self.name_edit = ProfileNameEdit(profile.name, self)
         self.name_edit.edit_requested.connect(self.startNameEdit)
@@ -715,6 +722,8 @@ class ProfileCardWidget(QGroupBox):
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
         self.refreshSelectionBorder()
+        if profile.backend == 'codex':
+            self.syncFromProfile()
 
     def _install_detail_editor_scrollbars(self):
         for editor in self.details.findChildren(QPlainTextEdit):
@@ -749,19 +758,28 @@ class ProfileCardWidget(QGroupBox):
     def _syncComboBox(self, combo: ParamComboBox, options, value: str):
         combo.blockSignals(True)
         option_texts = [str(option) for option in options if str(option)]
+        available_options = set(option_texts)
+        value = str(value or '')
+        if value and value not in option_texts:
+            option_texts.append(value)
         current_options = [combo.itemText(i) for i in range(combo.count())]
         if current_options != option_texts:
             combo.clear()
             combo.addItems(option_texts)
-        value = str(value or '')
-        if value and combo.findText(value) < 0:
-            combo.addItem(value)
+        if self.profile.backend == 'codex':
+            for index, option in enumerate(option_texts):
+                # Keep a removed selection visible, without offering it as an
+                # available model or silently replacing it during refresh.
+                combo.model().item(index).setEnabled(option in available_options)
+        combo.setCurrentIndex(combo.findText(value))
         combo.setCurrentText(value)
         combo.blockSignals(False)
 
     def _detail_params(self, param_defs):
         params = {}
         for key, widget_type in param_defs:
+            if self.profile.backend == 'codex' and key not in ('thinking_level', 'prompt', 'vision_prompt', 'vision_detail_level'):
+                continue
             value = getattr(self.profile, key)
             display_name = self.profile_param_display_names.get(key, key)
             description = self.profile_param_descriptions.get(key, '')
@@ -1042,6 +1060,7 @@ class ProfileCardWidget(QGroupBox):
         self._action_buttons_visible = visible
         self.more_btn.setVisible(visible)
         self.delete_btn.setVisible(visible)
+        visible = visible and self.profile.backend != 'codex'
         self.add_model_btn.setVisible(visible and bool(self.profile.support_text))
         self.remove_model_btn.setVisible(visible and bool(self.profile.support_text))
         self.add_vision_model_btn.setVisible(visible and bool(self.profile.support_vision))
@@ -1153,6 +1172,10 @@ class ProfileCardWidget(QGroupBox):
         if self._model_editing:
             return
         self.profile.model = value
+        if self.profile.backend == 'codex':
+            self.profile.thinking_level_options = codex_thinking_options(self.profile, pcfg.module.codex_models)
+            thinking_combo = self.details.param_widgets.get('thinking_level')
+            self._syncComboBox(thinking_combo, self.profile.thinking_level_options, self.profile.thinking_level)
         options = self.profile.model_options
         if value and value not in options:
             options.append(value)
@@ -1425,6 +1448,8 @@ class ProfileCardWidget(QGroupBox):
             self.profile_summary_changed.emit()
 
     def toggleVisionSupport(self):
+        if self.profile.backend == 'codex':
+            return
         self.profile.support_vision = not bool(self.profile.support_vision)
         if self.profile.support_vision and not self.profile.vision_model:
             self.profile.vision_model = self.profile.model
@@ -1440,6 +1465,8 @@ class ProfileCardWidget(QGroupBox):
         self.profile_summary_changed.emit()
 
     def toggleTextSupport(self):
+        if self.profile.backend == 'codex':
+            return
         self.profile.support_text = not bool(self.profile.support_text)
         if self.profile.support_text and not self.profile.model:
             options = [str(option) for option in self.profile.model_options if str(option)]
@@ -1456,6 +1483,8 @@ class ProfileCardWidget(QGroupBox):
         self.profile_summary_changed.emit()
 
     def toggleImageSupport(self):
+        if self.profile.backend == 'codex':
+            return
         self.profile.support_image = not bool(self.profile.support_image)
         if self.profile.support_image and not self.profile.image_model:
             options = [str(option) for option in self.profile.image_model_options if str(option)]
@@ -1539,6 +1568,11 @@ class ProfileCardWidget(QGroupBox):
         self.details.setSectionVisible('vision', support_vision)
         self.details.setSectionVisible('image', support_image)
         self.refreshKeyStatus()
+        if self.profile.backend == 'codex':
+            for widget in (self.text_badge, self.vision_badge, self.image_badge,
+                           self.model_label, self.vision_model_label, self.image_model_label):
+                widget.setToolTip(self.tr('Codex capabilities are supplied by the discovered model catalog.'))
+            self.image_badge.setToolTip(self.tr('Codex image editing is not available through this integration.'))
         self._sync_summary_grid()
         self._sync_minimum_width_with_content()
 
@@ -1619,7 +1653,16 @@ class LLMProfilesWidget(QWidget):
         self.layout.addLayout(self.rows_layout)
         self.restore_btn.clicked.connect(self.restoreBuiltins)
         self.filter_edit.textChanged.connect(self.applyFilter)
+        from .codex_account import CodexAccountController
+        CodexAccountController.instance().catalog_changed.connect(self.syncCodexProfiles)
         self.rebuild()
+
+    def syncCodexProfiles(self) -> None:
+        for row in self.rows.values():
+            if row.profile.backend == 'codex':
+                row.syncFromProfile()
+                self.applyFilterToRow(row)
+        self.profile_ui_updated.emit()
 
     def clearRows(self):
         while self.rows_layout.count():

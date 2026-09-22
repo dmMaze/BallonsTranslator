@@ -36,24 +36,82 @@ worker
 `ProjImgTrans` is authoritative. `_history_window` and every `RequestContext`
 are disposable runtime snapshots; neither replaces project state.
 
+## Codex backend
+
+The **Codex** profile card signs in with ChatGPT using browser OAuth and PKCE.
+It uses the existing optional HTTP client; a missing client can be installed from
+the card. No Codex SDK, native process, or LiteLLM dependency is required.
+The direct subscription protocol follows the Codex backend and may require
+updates when that service changes.
+
+[`codex.py`](../../ballontranslator/modules/codex.py) owns OAuth, credential
+rotation, and the direct ChatGPT Responses transport. Credentials are stored
+atomically in the app's `config/codex/http-auth.json`, with private file permissions
+on POSIX systems. This is a local credential file, not encrypted storage; protection
+on Windows follows the user's directory permissions. Existing SDK/CLI credentials
+are neither imported nor changed. Config and profile exports contain no tokens.
+Token rotation is serialized; a failed save retains the rotated token in memory
+and requires successful persistence before reuse.
+
+Requests are stateless: only the supplied instructions, history, current input,
+and images are sent, with tools disabled. The existing pipeline job boundary owns
+cancellation. Each requester assigns a cache/session key per job, profile, model,
+and account generation; pages, ordinary retries, context recovery, and compaction
+retain that key. A new job or account change gets a new key. Refreshing an access
+token does not change identity. There is no hidden conversational history or
+agent mode. Cancellation interrupts network waits and rejects late results.
+
+[`codex_account.py`](../../ballontranslator/ui/codex_account.py) owns asynchronous
+GUI account operations. `module.codex_models` is the single saved catalog;
+profile option lists and modality flags are derived from it. Sign-in and explicit
+refresh retrieve the authenticated account's model catalog. Failed refreshes keep
+the cache; sign-out clears availability while preserving selected models. Viewing
+or selecting a profile performs no network or credential IO. Requests require the
+app's ChatGPT account and cannot fall back to API billing.
+
+Translator and OCR use the existing retry, token-reporting, and project-persistence
+paths. Their feature owners define prompts and response contracts. Explicit
+model/reasoning choices are validated. Requests honor image detail and the owning
+module's HTTP proxy; account operations use
+standard environment proxy settings. Unsupported sampling and output-token controls
+remain hidden. Only a completed final response reaches the parser; truncation,
+authentication, and quota failures require user action, while context overflow uses
+the existing optional-history recovery. Inpainting remains unavailable until an
+image-edit capability and its image-result transport are verified together.
+
 ## Request contract
 
 `LLMTranslator.concate_text` is `False`. Each non-empty source block becomes a
-one-based item in the current JSON array. The ordinary response is:
+one-based item in the current JSON array. OpenAI-compatible profiles retain the
+numeric-map response:
 
 ```json
 {"1":"Translated text"}
 ```
 
-When the request asks for a page summary, it requests that field first:
+Codex uses a fixed strict schema with integer IDs and string translations:
+
+```json
+{"translations":[{"id":1,"translation":"Translated text"}]}
+```
+
+Its schema is independent of the current block count, avoiding a changing schema
+before the reusable message prefix. Prompt instructions and history examples use
+the same shape. Cache hits still depend on the backend; stable requests do not
+guarantee reuse, and the subscription endpoint does not support the API's
+`prompt_cache_options` diagnostics.
+
+With Summary enabled, `page_summary` precedes `translations`.
+The latter keeps the provider's map or array shape; for example:
 
 ```json
 {"page_summary":"Short factual page summary","translations":{"1":"Translated text"}}
 ```
 
 `parse_translation_response()` owns compatibility response shapes. For text
-pages, accepted responses must contain exactly IDs `1..N`. A missing or malformed
-summary never discards an otherwise complete translation map.
+pages, accepted responses must contain exactly IDs `1..N`, once each. Codex array
+items reject coerced IDs and non-string translations. A missing or malformed
+summary never discards an otherwise complete set of translations.
 Parsing accepts either field order for compatibility; the prompt, schema, and
 history examples put `page_summary` before `translations`.
 
@@ -99,8 +157,9 @@ A prior page is eligible when it precedes the current page, has
 `FIN_TRANSLATE`, and every source-bearing block has a stored translation.
 Pages without source text are eligible when the summary response contract is
 active and they have a saved summary; their history pairs use an empty input
-array and translation map. Explicit `translation_target` metadata must
-match the active target; missing metadata remains accepted for older projects.
+array and an empty translation map or array for the selected contract. Explicit
+`translation_target` metadata must match the active target; missing metadata
+remains accepted for older projects.
 Snapshots contain immutable strings after configured source preprocessing and
 use the finalized translations stored in the project.
 
@@ -131,8 +190,8 @@ that append. A page larger than the available full budget is skipped.
 through the current page can guide translation even when their pages are
 incomplete or history is disabled.
 
-The prompt first requests a factual summary of the current page's key events
-or new information useful for understanding the current and later dialogue,
+When a new summary is needed, the prompt first requests a factual summary of the
+current page's key events or new information useful for understanding the current and later dialogue,
 grounded in its text or image and using established character names. It then
 instructs the model to use that newly written summary, saved summaries, compact
 memory, and any attached image as context for translating each line. Both
@@ -146,7 +205,9 @@ summary suffix; their saved project records remain intact. Remaining summaries
 form the newest chronological suffix that fits the shared context budget.
 
 The translation request asks for a new target-language summary only when the
-current page has none. `Overwrite Existing Summary` instead omits the raw
+current page has none. Otherwise, the current-page instructions request an empty
+`page_summary`; any unwanted generated replacement is ignored.
+`Overwrite Existing Summary` instead omits the raw
 current summary, requests a replacement, and stores it only if usable summary
 text is returned. A generated summary remains pending until a page completes.
 The request-start record is compared before saving, so an edit or clear made
@@ -218,9 +279,10 @@ page 3: S | U1 | A1 | U2 | A2 | U3
 ```
 
 Bulk low-water eviction changes an early prefix once, then leaves room for more
-append-only requests. A memory change starts a new cache epoch. Requests that
-ask for `page_summary` use a different system/response contract from requests
-that do not, so those contracts intentionally do not share the full prefix.
+append-only requests. A memory change starts a new cache epoch. Turning Summary
+on or off changes the system/response contract. While enabled, pages with and
+without saved summaries share that contract and the same history response shape;
+the per-page summary-generation decision belongs only to the current user suffix.
 
 `All` glossary mode is cache-friendly while the complete glossary is unchanged.
 `Matching` glossary entries belong to the volatile current-page suffix; later
@@ -257,8 +319,9 @@ fails explicitly.
   Debug response content can contain project or glossary text.
 - `_history_window` is cleared on unload and can always rebuild from project
   state after restart.
-- An in-flight synchronous provider call cannot be interrupted; the stop event
-  prevents subsequent attempts and interrupts waits.
+- An in-flight OpenAI-compatible synchronous call cannot be interrupted; the
+  stop event prevents subsequent attempts and interrupts waits. Codex also
+  cancels in-flight HTTP and sign-in waits.
 
 A healthy contiguous `+history` run usually reports
 `empty/rebuild -> grow ... -> evict -> grow`. Missing provider cache fields mean
@@ -278,11 +341,11 @@ Preserve these contracts when changing the subsystem:
 - `+history` requests remain sequential for deterministic window state.
 
 Focused specifications live in `tests/test_llm_translation_*.py`,
-`tests/test_llm_translator.py`, `tests/test_llm_chat.py`, and
+`tests/test_llm_translator.py`, `tests/test_llm_chat.py`, `tests/test_codex.py`, and
 `tests/test_proj_imgtrans_translation_context.py`.
 
 ```bash
 QT_QPA_PLATFORM=offscreen /opt/miniconda3/envs/common/bin/python \
   -m pytest -q tests/test_llm_translation_*.py tests/test_llm_translator.py \
-  tests/test_llm_chat.py tests/test_proj_imgtrans_translation_context.py
+  tests/test_llm_chat.py tests/test_codex.py tests/test_proj_imgtrans_translation_context.py
 ```

@@ -130,6 +130,8 @@ class LLMOCR(LLMChatRequester, OCRBase):
             pcfg.module.llm_profiles,
             pcfg.module.ocr_llm_id,
         )
+        if profile.backend == 'codex' and not profile.vision_model_options:
+            raise LLMUserActionRequiredError('Sign in with ChatGPT and select a vision model in the Codex profile card.')
         if not profile.support_vision:
             raise RuntimeError(f'LLM profile "{profile.name}" does not have vision enabled.')
         self._vision_model(profile)

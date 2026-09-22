@@ -20,6 +20,8 @@ from .llm_profiles import (
     migrate_module_llm_profiles,
     profile_by_id,
     profile_to_dict,
+    normalize_codex_models,
+    sync_codex_profile,
 )
 from .secret_store import SecretStore
 from .text_effects import without_project_raster_effects
@@ -103,6 +105,7 @@ class ModuleConfig(Config):
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
     llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
+    codex_models: Dict = field(default_factory=dict)
     translator_llm_id: str = ''
     ocr_llm_id: str = ''
     inpaint_llm_id: str = ''
@@ -230,6 +233,9 @@ class ModuleConfig(Config):
             self.llm_profiles = default_profiles()
         else:
             self.llm_profiles = load_profiles(self.llm_profiles)
+        self.codex_models = normalize_codex_models(self.codex_models)
+        for profile in self.llm_profiles:
+            sync_codex_profile(profile, self.codex_models)
         if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:
             self.translator_llm_id = self.llm_profiles[0].id
         if (not self.ocr_llm_id or not profile_by_id(self.llm_profiles, self.ocr_llm_id)) and self.llm_profiles:

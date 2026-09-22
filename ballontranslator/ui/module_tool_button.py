@@ -36,6 +36,7 @@ from ballontranslator.utils.llm_profiles import (
     LLM_TRANSLATOR_KEY,
     THINKING_AUTO,
     profile_by_id,
+    codex_thinking_options,
 )
 
 if shared.FLAG_QT6:
@@ -365,6 +366,8 @@ class ModuleSelectionMenu(QMenu):
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
         if profile is not None:
             setattr(profile, key, value)
+            if profile.backend == 'codex' and key == 'model':
+                profile.thinking_level_options = codex_thinking_options(profile, pcfg.module.codex_models)
             if key == self.model_attr:
                 options = getattr(profile, self.model_options_attr)
                 if value and value not in options:

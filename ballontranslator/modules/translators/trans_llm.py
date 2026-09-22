@@ -175,6 +175,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             pcfg.module.llm_profiles,
             pcfg.module.translator_llm_id,
         )
+        if profile.backend == 'codex' and not profile.model_options:
+            raise LLMUserActionRequiredError('Sign in with ChatGPT and refresh models in the Codex profile card.')
         if not profile.support_text:
             raise RuntimeError(f'LLM profile "{profile.name}" does not have text translation enabled.')
         self._text_model(profile)
@@ -358,6 +360,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         if not self.all_model_loaded():
             self.load_model()
         profile = self.profile
+        array_response = profile.backend == 'codex'
         target_language_name = self._translated_lang(target_language)
         prompt_spec = TranslationPromptSpec(
             source_language=self._translated_lang(source_language),
@@ -366,10 +369,13 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 profile.prompt,
                 target_language_name,
                 history_enabled=history_enabled,
-                summary_enabled=request_summary,
+                summary_enabled=summary_memory_enabled,
+                array_response=array_response,
             ),
-            summary_enabled=request_summary,
+            summary_enabled=summary_memory_enabled,
             history_enabled=history_enabled,
+            array_response=array_response,
+            generate_summary=request_summary,
         )
         vision_request = None
         if (
@@ -1078,6 +1084,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 translation_json_schema(
                     expected_translations,
                     summary_enabled=summary_enabled,
+                    array_response=profile.backend == 'codex',
                 )
                 if profile.json_schema_response_format
                 else {}
@@ -1176,7 +1183,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         """
         queries = tuple(src_list)
         if not queries and not (
-            prompt_spec.summary_enabled and vision_request is not None
+            prompt_spec.summary_enabled and prompt_spec.generate_summary
+            and vision_request is not None
         ):
             return []
         if profile is None:
@@ -1236,6 +1244,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     parsed = parse_translation_response(
                         raw_response,
                         len(queries),
+                        array_response=prompt_spec.array_response,
                     )
                 except Exception:
                     safe_page_key = str(usage_page_key or '-').replace(
@@ -1296,6 +1305,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window
             and page_key is not None
             and summary_enabled
+            and prompt_spec.generate_summary
             and parsed.page_summary
         ):
             self._pending_visual_summaries[str(page_key)] = (
@@ -1309,6 +1319,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window
             and page_key is not None
             and summary_enabled
+            and prompt_spec.generate_summary
             and not parsed.page_summary
         ):
             safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
