@@ -118,7 +118,9 @@ QWidget#ConfigContentScrollContent QComboBox,
 QWidget#ConfigContentScrollContent QPlainTextEdit,
 QWidget#ModuleParamContent QLineEdit,
 QWidget#ModuleParamContent QComboBox,
-QWidget#ModuleParamContent QPlainTextEdit {
+QWidget#ModuleParamContent QPlainTextEdit,
+QWidget#DrawingPanel QComboBox,
+QWidget#DrawingPanel QPlainTextEdit {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 6px;
@@ -128,7 +130,8 @@ QWidget#ModuleParamContent QPlainTextEdit {
 QWidget#ConfigContentScrollContent QLineEdit,
 QWidget#ConfigContentScrollContent QComboBox,
 QWidget#ModuleParamContent QLineEdit,
-QWidget#ModuleParamContent QComboBox {
+QWidget#ModuleParamContent QComboBox,
+QWidget#DrawingPanel QComboBox {
     height: 26px;
 }
 
@@ -138,12 +141,14 @@ QWidget#ModuleParamContent QLineEdit {
 }
 
 QWidget#ConfigContentScrollContent QComboBox,
-QWidget#ModuleParamContent QComboBox {
+QWidget#ModuleParamContent QComboBox,
+QWidget#DrawingPanel QComboBox {
     padding-left: 8px;
 }
 
 QWidget#ConfigContentScrollContent QPlainTextEdit,
-QWidget#ModuleParamContent QPlainTextEdit {
+QWidget#ModuleParamContent QPlainTextEdit,
+QWidget#DrawingPanel QPlainTextEdit {
     padding: 4px 8px;
 }
 
@@ -154,13 +159,17 @@ QWidget#ConfigContentScrollContent QPlainTextEdit:focus,
 QWidget#ModuleParamContent QLineEdit:focus,
 QWidget#ModuleParamContent QComboBox:hover,
 QWidget#ModuleParamContent QComboBox:focus,
-QWidget#ModuleParamContent QPlainTextEdit:focus {
+QWidget#ModuleParamContent QPlainTextEdit:focus,
+QWidget#DrawingPanel QComboBox:hover,
+QWidget#DrawingPanel QComboBox:focus,
+QWidget#DrawingPanel QPlainTextEdit:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QWidget#ConfigContentScrollContent QComboBox::drop-down,
-QWidget#ModuleParamContent QComboBox::drop-down {
+QWidget#ModuleParamContent QComboBox::drop-down,
+QWidget#DrawingPanel QComboBox::drop-down {
     border: none;
 }
 
@@ -309,6 +318,23 @@ QPushButton#DrawingInpainterConfigButton {
 
 QPushButton#DrawingInpainterConfigButton:hover {
     background-color: rgba(30, 147, 229, 20%);
+}
+
+QWidget#DrawingPanel QLabel,
+QWidget#DrawingPanel QCheckBox,
+QWidget#DrawingPanel QPushButton,
+QWidget#DrawingPanel QSpinBox {
+    font-size: 13px;
+}
+
+QWidget#DrawingPanel QComboBox:disabled {
+    color: @borderColor;
+    background-color: @emptyContentBackgroundColor;
+    border-bottom: 1px solid @borderColor;
+}
+
+QWidget#DrawingPanel QLabel:disabled {
+    color: @borderColor;
 }
 
 QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
@@ -659,7 +685,8 @@ QLineEdit#LLMProfileApiKeyEditor:focus {
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
-QComboBox#LLMProfileModelCombo {
+QComboBox#LLMProfileModelCombo,
+QToolButton#DrawingInpainterSelector {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 6px;
@@ -670,7 +697,10 @@ QComboBox#LLMProfileModelCombo {
 }
 
 QComboBox#LLMProfileModelCombo:hover,
-QComboBox#LLMProfileModelCombo:focus {
+QComboBox#LLMProfileModelCombo:focus,
+QToolButton#DrawingInpainterSelector:hover,
+QToolButton#DrawingInpainterSelector:focus,
+QToolButton#DrawingInpainterSelector:open {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
@@ -1848,7 +1878,12 @@ QToolButton#RunPipelineModuleSelector[moduleActive="false"]:hover {
     background-color: transparent;
 }
 
+QToolButton#DrawingInpainterSelector {
+    padding-right: 24px;
+}
+
 QToolButton#BottomBarModuleToolButton::menu-indicator,
+QToolButton#DrawingInpainterSelector::menu-indicator,
 QToolButton#RunPipelineModuleSelector::menu-indicator {
     image: none;
     width: 11px;

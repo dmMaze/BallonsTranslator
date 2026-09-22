@@ -437,7 +437,7 @@ class MainWindow(mainwindow_cls):
             metadata['lang_source'],
             metadata['lang_target'],
         )
-    def on_module_selection_changed(self, module_key: str, module_name: str):
+    def on_module_selection_changed(self, module_key: str, module_name: str) -> None:
         profile_id = ''
         if module_key == 'translator':
             self.setTranslatorSelectionFromMetadata(module_name)
@@ -449,12 +449,11 @@ class MainWindow(mainwindow_cls):
             profile_id = pcfg.module.ocr_llm_id
         elif module_key == 'inpainter':
             self.bottomBar.inpaint_selector.setSelectedValue(module_name)
-            self.drawingPanel.setInpainter(module_name)
             profile_id = pcfg.module.inpaint_llm_id
         if profile_id:
             self.configPanel.llm_profiles_panel.refreshSelectionBorders(profile_id)
 
-    def validateModuleSelections(self):
+    def validateModuleSelections(self) -> None:
         def valid_or_first(value, valid_values):
             if not valid_values:
                 return value
@@ -462,7 +461,11 @@ class MainWindow(mainwindow_cls):
 
         pcfg.module.textdetector = valid_or_first(pcfg.module.textdetector, GET_VALID_TEXTDETECTORS())
         pcfg.module.ocr = valid_or_first(pcfg.module.ocr, GET_VALID_OCR())
-        pcfg.module.inpainter = valid_or_first(pcfg.module.inpainter, GET_VALID_INPAINTERS())
+        inpainters = GET_VALID_INPAINTERS()
+        pcfg.module.inpainter = valid_or_first(pcfg.module.inpainter, inpainters)
+        if inpainters and pcfg.drawpanel.inpainter not in inpainters:
+            LOGGER.warning('Discard unavailable draw-panel inpainter %r.', pcfg.drawpanel.inpainter)
+            pcfg.drawpanel.inpainter = inpainters[0]
         pcfg.module.translator = valid_or_first(pcfg.module.translator, GET_VALID_TRANSLATORS())
 
     def setupConfig(self):
@@ -476,10 +479,7 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.textdet_selector.setSelectedValue(pcfg.module.textdetector)
         self.bottomBar.ocr_selector.setSelectedValue(pcfg.module.ocr)
         self.bottomBar.inpaint_selector.setSelectedValue(pcfg.module.inpainter)
-        self.drawingPanel.setInpainterOptions(
-            GET_VALID_INPAINTERS(),
-            pcfg.module.inpainter,
-        )
+        self.drawingPanel.setInpainterOptions(GET_VALID_INPAINTERS())
 
         self.module_manager = module_manager = ModuleManager(self.imgtrans_proj)
         module_manager.imgtrans_pipeline_finished.connect(self.on_imgtrans_pipeline_finished)
@@ -517,8 +517,8 @@ class MainWindow(mainwindow_cls):
         self.bottomBar.ocr_selector.edit_clicked.connect(self.focus_llm_profile)
         self.bottomBar.ocr_selector.selector.currentTextChanged.connect(self.on_ocr_changed)
         self.bottomBar.ocr_selector.llm_profile_changed.connect(self.on_ocr_llm_profile_changed)
-        self.drawingPanel.inpainter_changed.connect(module_manager.selectInpainter)
-        self.drawingPanel.inpainter_config_requested.connect(self.to_inpaint_config)
+        self.drawingPanel.inpainter_config_requested.connect(self.to_drawing_inpaint_config)
+        self.llm_profile_selection_changed.connect(self.drawingPanel.refreshInpainterSelection)
         for idx, action in enumerate(self.titleBar.moduleVisibilityActions):
             self._set_module_tool_visibility(idx, action.isChecked())
 
@@ -1710,6 +1710,9 @@ class MainWindow(mainwindow_cls):
 
     def to_inpaint_config(self):
         self.show_module_param_dialog('inpainter', pcfg.module.inpainter)
+
+    def to_drawing_inpaint_config(self) -> None:
+        self.show_module_param_dialog('inpainter', pcfg.drawpanel.inpainter)
 
     def to_ocr_config(self):
         self.show_module_param_dialog('ocr', pcfg.module.ocr)

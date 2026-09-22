@@ -522,13 +522,17 @@ def normalize_codex_models(value: Any) -> Dict[str, Dict[str, List[str]]]:
         if set(entry) - {'modalities', 'efforts'}:
             LOGGER.warning('Discard unknown fields from Codex model catalog entry.')
         clean = {}
-        for key, allowed in (('modalities', ('text', 'image')),
-                             ('efforts', ('none', 'minimal', 'low', 'medium', 'high', 'xhigh'))):
+        # Reasoning levels belong to the model catalog and can grow independently
+        # of this app; supported input modalities are an application constraint.
+        for key, allowed in (('modalities', ('text', 'image')), ('efforts', None)):
             items = entry.get(key, [])
             if not isinstance(items, list):
                 LOGGER.warning('Discard invalid Codex model %s for %s.', key, model)
                 items = []
-            clean[key] = list(dict.fromkeys(item for item in items if isinstance(item, str) and item in allowed))
+            clean[key] = list(dict.fromkeys(
+                item for item in items
+                if isinstance(item, str) and item.strip() and (allowed is None or item in allowed)
+            ))
             if clean[key] != items:
                 LOGGER.warning('Discard invalid Codex model %s entries for %s.', key, model)
         if clean['modalities']:

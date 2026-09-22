@@ -26,6 +26,7 @@ from ballontranslator.modules.llm_image import (
 )
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import default_profile, sync_codex_profile
+from ballontranslator.utils.textblock import TextBlock
 
 
 def _encoded_png() -> str:
@@ -522,6 +523,46 @@ class LLMInpaintTest(unittest.TestCase):
         self.assertTrue(call['json']['input_references'][0]['image_url']['url'].startswith('data:image/png;base64,'))
         self.assertNotIn('mask', call['json'])
 
+    def test_explicit_profile_applies_to_each_crop_without_changing_pipeline_profile(self) -> None:
+        run_profile = self.inpainter.profile
+        draw_profile = copy.deepcopy(run_profile)
+        draw_profile.image_model = 'drawing-model'
+        draw_profile.image_prompt = 'Drawing prompt.'
+        image = np.zeros((12, 24, 4), dtype=np.uint8)
+        image[:, :, 3] = 255
+        mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        mask[3:6, 3:6] = mask[3:6, 18:21] = 255
+        blocks = [TextBlock(xyxy=[3, 3, 6, 6]), TextBlock(xyxy=[18, 3, 21, 6])]
+        with (
+            patch.object(pcfg.module, 'check_need_inpaint', False),
+            patch.object(self.inpainter, '_request_inpaint',
+                         side_effect=lambda profile, crop, **kwargs: np.full_like(crop, 99)) as request,
+        ):
+            result = self.inpainter.inpaint(image, mask.copy(), blocks, profile=draw_profile)
+            self.assertEqual(request.call_count, 2)
+            self.assertTrue(all(call.args[0] is draw_profile for call in request.call_args_list))
+            np.testing.assert_array_equal(result[mask == 0], image[mask == 0])
+            np.testing.assert_array_equal(result[mask > 0, :3], 99)
+            np.testing.assert_array_equal(result[:, :, 3], image[:, :, 3])
+            self.inpainter.inpaint(image, mask.copy())
+            pipeline_profile = request.call_args.args[0]
+        self.assertEqual(pipeline_profile.image_model, run_profile.image_model)
+        self.assertEqual(pipeline_profile.image_prompt, run_profile.image_prompt)
+        self.assertEqual(self.inpainter.profile, run_profile)
+
+    def test_explicit_profile_auth_uses_its_backend_instead_of_run_selection(self) -> None:
+        profile = self.inpainter.profile
+        pcfg.module.inpaint_llm_id = 'codex'
+        with patch.object(codex.account, 'require_sign_in', side_effect=AssertionError('Run auth leaked')), \
+                patch.object(self.inpainter, '_request_inpaint', side_effect=lambda profile, img, **kwargs: img):
+            self.inpainter.inpaint(np.zeros((2, 2, 3), np.uint8), np.full((2, 2), 255, np.uint8), profile=profile)
+
+        pcfg.module.inpaint_llm_id = profile.id
+        codex_profile = default_profile('Codex')
+        with patch.object(codex.account, 'require_sign_in', side_effect=LLMUserActionRequiredError('Sign in with ChatGPT')):
+            with self.assertRaisesRegex(LLMUserActionRequiredError, 'Sign in with ChatGPT'):
+                self.inpainter.inpaint(np.zeros((2, 2, 3), np.uint8), np.full((2, 2), 255, np.uint8), profile=codex_profile)
+
     def test_codex_inpaint_sends_aligned_mask_and_preserves_unmasked_rgba_pixels(self) -> None:
         profile = default_profile('Codex')
         sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
@@ -570,6 +611,24 @@ class LLMInpaintTest(unittest.TestCase):
             inpainter.set_stop_event(stop)
             with self.assertRaises(LLMRequestStopped):
                 inpainter.inpaint(image, np.zeros((3, 5), np.uint8))
+
+    def test_codex_unmasked_edit_omits_mask_and_keeps_the_entire_result(self) -> None:
+        profile = default_profile('Codex')
+        inpainter = LLMInpaint()
+        inpainter.params = copy.deepcopy(inpainter.params)
+        inpainter.set_param_value('delay', 0)
+        inpainter.set_param_value('max requests per minute', 0)
+        image = np.full((3, 5, 3), 37, np.uint8)
+        for marked in (False, True):
+            mask = np.zeros((3, 5), np.uint8)
+            if marked:
+                mask[1, 2] = 255
+            with self.subTest(marked=marked), patch.object(codex, 'request_image', return_value=_png_bytes()) as request:
+                result = inpainter.inpaint(image, mask, profile=profile, use_mask=False)
+            np.testing.assert_array_equal(result, np.full_like(image, [255, 0, 0]))
+            self.assertIsNone(request.call_args.args[3])
+            self.assertNotIn('white marks the editable region', request.call_args.args[1])
+            np.testing.assert_array_equal(image, np.full_like(image, 37))
 
     def test_codex_downscaling_retains_single_pixel_mask(self) -> None:
         profile = default_profile('Codex')

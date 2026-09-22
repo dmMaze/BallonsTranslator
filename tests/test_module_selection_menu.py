@@ -174,6 +174,25 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         self.assertIn('Target - English', titles)
         dialog.deleteLater()
 
+    def test_local_setting_value_drives_text_and_checkmarks_without_profile_edits(self) -> None:
+        profile = pcfg.module.llm_profiles[0]
+        menu = self.window.bottomBar.inpaint_selector.menu
+        menu.selector.setCurrentText('LLMInpaint')
+        pcfg.module.inpaint_llm_id = profile.id
+
+        def local_value(profile: LLMProfile, key: str) -> str:
+            return 'image-two' if key == 'image_model' else getattr(profile, key)
+
+        with patch.object(menu, '_profileSettingValue', side_effect=local_value):
+            menu.rebuildMenu()
+            self.assertEqual(menu.selectedText(), 'image-two')
+            profile_menu = next(action.menu() for action in menu.actions() if action.menu() is not None)
+            selected = [action.data() for action in profile_menu.actions() if '\u2713' in action.text()]
+            self.assertEqual(selected, [(profile.id, 'image_model', 'image-two')])
+        self.assertEqual(profile.image_model, 'image-one')
+        self.assertEqual(pcfg.module.inpaint_llm_id, profile.id)
+        self.assertEqual(menu.selectedText(), 'image-one')
+
     def test_codex_remains_selectable_in_all_roles_without_cached_catalog(self) -> None:
         profile = default_profile('Codex')
         pcfg.module.llm_profiles = [profile]

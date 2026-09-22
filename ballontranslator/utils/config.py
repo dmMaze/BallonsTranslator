@@ -256,6 +256,10 @@ class DrawPanelConfig(Config):
     pentool_color: List = field(default_factory=lambda: [0, 0, 0])
     pentool_width: float = 30.
     pentool_shape: int = 0
+    inpainter: str = 'lama_large_512px'
+    inpaint_llm_id: str = ''
+    inpaint_llm_model: str = ''
+    inpaint_prompt_override: str = ''
     inpainter_width: float = 30.
     inpainter_shape: int = 0
     magicwand_tolerance: int = 32
@@ -263,10 +267,24 @@ class DrawPanelConfig(Config):
     magicwand_fill_mode: int = 0
     current_tool: int = 0
     rectool_auto: bool = False
+    rectool_use_mask: bool = True
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
 
     def __post_init__(self) -> None:
+        if not isinstance(self.rectool_use_mask, bool):
+            LOGGER.warning('Discard invalid drawpanel.rectool_use_mask config.')
+            self.rectool_use_mask = True
+        for name, default in (
+            ('inpainter', 'lama_large_512px'),
+            ('inpaint_llm_id', ''),
+            ('inpaint_llm_model', ''),
+            ('inpaint_prompt_override', ''),
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or (name == 'inpainter' and not value.strip()):
+                LOGGER.warning('Discard invalid drawpanel.%s config.', name)
+                setattr(self, name, default)
         for name, default, minimum, maximum in (
             ('inpainter_shape', 0, 0, 2),
             ('magicwand_tolerance', 32, 0, 255),

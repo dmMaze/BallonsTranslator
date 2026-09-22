@@ -2205,6 +2205,14 @@
 <context>
     <name>InpainterSelectorRow</name>
     <message>
+        <source>Prompt override</source>
+        <translation type="unfinished">提示詞覆寫</translation>
+    </message>
+    <message>
+        <source>Leave blank to use the selected profile’s inpainting prompt.</source>
+        <translation type="unfinished">留空以使用所選設定的影像修復提示詞。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="167"/>
         <source>Inpainter</source>
         <translation>修復工具</translation>
@@ -2831,6 +2839,10 @@ All existing translation results will be cleared!</source>
 </context>
 <context>
     <name>ModuleManager</name>
+    <message>
+        <source>The drawing LLM profile is unavailable. Select a profile in the drawing panel.</source>
+        <translation type="unfinished">繪圖工具所選的 LLM 設定不可用，請在繪圖面板中重新選擇。</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1404"/>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1733"/>
@@ -4877,6 +4889,18 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 </context>
 <context>
     <name>RectPanel</name>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation type="unfinished">勾選「使用遮罩」後即可變更遮罩擷取方法與膨脹程度。</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation type="unfinished">使用遮罩</translation>
+    </message>
+    <message>
+        <source>When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. Local inpainters treat the entire rectangle as masked.</source>
+        <translation type="unfinished">取消勾選後，LLM 修復模型不接收遮罩，並取代整個矩形區域。本地修復模型則將整個矩形視為遮罩區域。</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="400"/>
         <source>Dilate</source>

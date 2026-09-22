@@ -1,5 +1,5 @@
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
-from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
+from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
 
 from typing import Union, Tuple, List
@@ -14,17 +14,19 @@ from ballontranslator.utils.imgproc_utils import (
     magic_wand_preview_overlay,
     MagicWandFillMode,
 )
-from ballontranslator.utils.textblock_mask import canny_flood, connected_canny_flood
+from ballontranslator.utils.textblock_mask import canny_flood, connected_canny_flood, region_mask
 from ballontranslator.utils.logger import logger
-from ballontranslator.utils.config import pcfg
 from .cursor import magic_wand_cursor
 from .funcmaps import get_maskseg_method
 from .module_manager import ModuleManager
+from .module_tool_button import ModuleSelectionMenu, ModuleSelectionToolButton
+from .llm_modality import LLM_MODALITY_IMAGE
 from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
 from .misc import ndarray2pixmap, themed_icon_path
 from ballontranslator.utils.config import DrawPanelConfig, pcfg
+from ballontranslator.utils.llm_profiles import LLMProfile, LLM_INPAINT_KEY, profile_by_id
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from ballontranslator.utils.logger import logger as LOGGER
 from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
@@ -150,26 +152,69 @@ def _labeled_paint_slider(
     return row, slider
 
 
+class DrawingInpainterMenu(ModuleSelectionMenu):
+    """Use shared menu rendering with draw-panel-owned selection values.
+
+    >>> DrawingInpainterMenu.__name__
+    'DrawingInpainterMenu'
+    """
+
+    def selectedProfileId(self) -> str:
+        return pcfg.drawpanel.inpaint_llm_id
+
+    def _profileSettingValue(self, profile: LLMProfile, key: str) -> str:
+        if key == 'image_model' and profile.id == self.selectedProfileId():
+            return pcfg.drawpanel.inpaint_llm_model or profile.image_model
+        return super()._profileSettingValue(profile, key)
+
+    def selectLLMProfile(self, profile_id: str, *, model: str | None = None) -> None:
+        profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
+        if profile is None or not profile.support_image:
+            return
+        if model is not None:
+            pcfg.drawpanel.inpaint_llm_model = model
+        elif profile_id != self.selectedProfileId():
+            pcfg.drawpanel.inpaint_llm_model = profile.image_model
+        pcfg.drawpanel.inpaint_llm_id = profile_id
+        pcfg.drawpanel.inpainter = LLM_INPAINT_KEY
+        with QSignalBlocker(self.selector):
+            self.selector.setCurrentText(LLM_INPAINT_KEY)
+        self.llm_profile_changed.emit(profile_id)
+
+    def selectLLMProfileSetting(self, profile_id: str, key: str, value: str) -> None:
+        if key == 'image_model':
+            self.selectLLMProfile(profile_id, model=value)
+
+
 class InpainterSelectorRow(Widget):
-    """An independently owned selector for the one global inpainter choice.
+    """Shared draw-tool selection and optional per-request prompt override.
 
     >>> InpainterSelectorRow.__name__
     'InpainterSelectorRow'
     """
 
-    selection_changed = Signal(str)
+    selection_changed = Signal()
+    prompt_changed = Signal()
     config_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(ToolNameLabel(100, self.tr('Inpainter')))
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        row = QHBoxLayout()
+        row.addWidget(ToolNameLabel(100, self.tr('Inpainter')))
         self.selector = QComboBox(self)
-        self.selector.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
-        self.selector.setFixedWidth(CONFIG_COMBOBOX_SHORT)
-        self.selector.currentTextChanged.connect(self.selection_changed)
-        layout.addWidget(self.selector)
+        self.selector.hide()
+        self.selector.currentTextChanged.connect(self._onSelectionChanged)
+        self.tool_button = ModuleSelectionToolButton(self)
+        self.tool_button.setObjectName('DrawingInpainterSelector')
+        self.tool_button.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
+        self.tool_button.setMinimumWidth(CONFIG_COMBOBOX_SHORT)
+        self.tool_button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.tool_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.menu = DrawingInpainterMenu(self.selector, self.tr('Inpainter'), LLM_MODALITY_IMAGE, self.tool_button)
+        self.menu.llm_profile_changed.connect(self._onSelectionChanged)
+        self.tool_button.setMenu(self.menu)
+        row.addWidget(self.tool_button, 1)
         self.config_button = QPushButton(self)
         self.config_button.setObjectName('DrawingInpainterConfigButton')
         self.config_button.setFixedSize(24, 24)
@@ -179,20 +224,52 @@ class InpainterSelectorRow(Widget):
         self.config_button.setToolTip(self.tr('Config'))
         self.config_button.setAccessibleName(self.tr('Config'))
         self.config_button.clicked.connect(self.config_requested)
-        layout.addWidget(self.config_button)
-        layout.addStretch()
+        row.addWidget(self.config_button)
 
-    def setOptions(self, options, selected: str) -> None:
+        self.prompt_panel = Widget(self)
+        self.prompt_panel.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        prompt_layout = QVBoxLayout(self.prompt_panel)
+        prompt_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_label = QLabel(self.tr('Prompt override'), self.prompt_panel)
+        prompt_layout.addWidget(prompt_label)
+        self.prompt_edit = QPlainTextEdit(self.prompt_panel)
+        self.prompt_edit.setPlaceholderText(self.tr('Leave blank to use the selected profile’s inpainting prompt.'))
+        self.prompt_edit.setFixedHeight(90)
+        self.prompt_edit.textChanged.connect(self._onPromptChanged)
+        prompt_layout.addWidget(self.prompt_edit)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(row)
+        self.syncFromConfig()
+
+    def setOptions(self, options: list[str]) -> None:
         with QSignalBlocker(self.selector):
             self.selector.clear()
             self.selector.addItems(options)
-            self.selector.setCurrentText(selected)
+            self.selector.setCurrentText(pcfg.drawpanel.inpainter)
+        self.syncFromConfig()
 
-    def setSelectedValue(self, value: str) -> None:
-        if self.selector.currentText() == value:
-            return
-        with QSignalBlocker(self.selector):
-            self.selector.setCurrentText(value)
+    def syncFromConfig(self) -> None:
+        if self.selector.currentText() != pcfg.drawpanel.inpainter:
+            with QSignalBlocker(self.selector):
+                self.selector.setCurrentText(pcfg.drawpanel.inpainter)
+        text = self.menu.selectedText()
+        self.tool_button.setText(text)
+        self.tool_button.setToolTip(text)
+        self.prompt_panel.setVisible(self.menu.isCurrentLLM())
+        prompt = pcfg.drawpanel.inpaint_prompt_override
+        if self.prompt_edit.toPlainText() != prompt:
+            with QSignalBlocker(self.prompt_edit):
+                self.prompt_edit.setPlainText(prompt)
+
+    def _onSelectionChanged(self) -> None:
+        pcfg.drawpanel.inpainter = self.selector.currentText()
+        self.selection_changed.emit()
+
+    def _onPromptChanged(self) -> None:
+        pcfg.drawpanel.inpaint_prompt_override = self.prompt_edit.toPlainText()
+        self.prompt_changed.emit()
 
 
 class InpaintPanel(Widget):
@@ -268,6 +345,7 @@ class InpaintPanel(Widget):
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.inpainter_selector)
+        layout.addWidget(self.inpainter_selector.prompt_panel)
         layout.addWidget(self.thickness_row)
         layout.addLayout(shape_layout)
         layout.addWidget(self.fill_mode_row)
@@ -391,7 +469,7 @@ class PenConfigPanel(Widget):
 
 class RectPanel(Widget):
     dilate_ksize_changed = Signal()
-    method_changed = Signal(int)
+    mask_changed = Signal()
     delete_btn_clicked = Signal()
     inpaint_btn_clicked = Signal()
     def __init__(self, *args, **kwargs) -> None:
@@ -410,6 +488,14 @@ class RectPanel(Widget):
             self.tr('Use Existing Mask')
         ])
         self.methodComboBox.activated.connect(self.on_inpaint_seg_method_changed)
+        self.use_mask_checker = QCheckBox(self.tr('Use mask'))
+        self.use_mask_checker.setToolTip(self.tr(
+            'When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. '
+            'Local inpainters treat the entire rectangle as masked.'
+        ))
+        self.use_mask_checker.setChecked(pcfg.drawpanel.rectool_use_mask)
+        self.use_mask_checker.toggled.connect(self.on_use_mask_changed)
+        self.on_use_mask_changed()
         self.autoChecker = QCheckBox(self.tr("Auto"))
         self.autoChecker.setToolTip(self.tr("run inpainting automatically."))
         self.autoChecker.stateChanged.connect(self.on_auto_changed)
@@ -430,16 +516,28 @@ class RectPanel(Widget):
         glayout.addWidget(self.dilate_slider, 0, 1)
         glayout.addWidget(self.autoChecker, 1, 0)
         glayout.addWidget(self.methodComboBox, 1, 1)
+        glayout.addWidget(self.use_mask_checker, 2, 0, 1, 2)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self.inpainter_selector)
         layout.addLayout(glayout)
+        layout.addWidget(self.inpainter_selector.prompt_panel)
         layout.addLayout(self.btnlayout)
         layout.setSpacing(14)
 
-    def on_inpaint_seg_method_changed(self):
+    def on_inpaint_seg_method_changed(self) -> None:
         pcfg.drawpanel.rectool_method = self.methodComboBox.currentIndex()
+        self.mask_changed.emit()
+
+    def on_use_mask_changed(self) -> None:
+        use_mask = self.use_mask_checker.isChecked()
+        pcfg.drawpanel.rectool_use_mask = use_mask
+        hint = '' if use_mask else self.tr('Enable Use mask to change the mask method and dilation.')
+        for control in (self.dilate_label, self.dilate_slider, self.methodComboBox):
+            control.setEnabled(use_mask)
+            control.setToolTip(hint)
+        self.mask_changed.emit()
 
     def on_auto_changed(self):
         if self.autoChecker.isChecked():
@@ -467,11 +565,11 @@ class RectPanel(Widget):
 class DrawingPanel(Widget):
 
     scale_tool_pos: QPointF = None
-    inpainter_changed = Signal(str)
     inpainter_config_requested = Signal()
 
     def __init__(self, canvas: Canvas, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
+        self.setObjectName('DrawingPanel')
         self.module_manager: ModuleManager = None
         self.canvas = canvas
         self.inpaint_stroke: StrokeImgItem = None
@@ -543,8 +641,10 @@ class DrawingPanel(Widget):
         self.rectPanel.inpaint_btn_clicked.connect(self.on_rect_inpaintbtn_clicked)
         self.rectPanel.delete_btn_clicked.connect(self.on_rect_deletebtn_clicked)
         self.rectPanel.dilate_ksize_changed.connect(self.on_rectool_ksize_changed)
+        self.rectPanel.mask_changed.connect(self._update_rect_mask)
         for selector_row in self._inpainter_selector_rows():
-            selector_row.selection_changed.connect(self._on_inpainter_changed)
+            selector_row.selection_changed.connect(self.refreshInpainterSelection)
+            selector_row.prompt_changed.connect(self.refreshInpainterSelection)
             selector_row.config_requested.connect(
                 self.inpainter_config_requested
             )
@@ -598,17 +698,13 @@ class DrawingPanel(Widget):
             self.rectPanel.inpainter_selector,
         )
 
-    def setInpainterOptions(self, options, selected: str) -> None:
+    def setInpainterOptions(self, options: list[str]) -> None:
         for selector_row in self._inpainter_selector_rows():
-            selector_row.setOptions(options, selected)
+            selector_row.setOptions(options)
 
-    def setInpainter(self, inpainter: str) -> None:
+    def refreshInpainterSelection(self) -> None:
         for selector_row in self._inpainter_selector_rows():
-            selector_row.setSelectedValue(inpainter)
-
-    def _on_inpainter_changed(self, inpainter: str) -> None:
-        self.setInpainter(inpainter)
-        self.inpainter_changed.emit(inpainter)
+            selector_row.syncFromConfig()
 
     def setCurrentToolByName(self, tool_name: str):
         try:
@@ -899,7 +995,8 @@ class DrawingPanel(Widget):
         self.setCrossCursor()
         self._sync_magic_wand_hover_tracking()
 
-    def set_config(self, config: DrawPanelConfig):
+    def set_config(self, config: DrawPanelConfig) -> None:
+        self.refreshInpainterSelection()
         self.setPenToolWidth(config.pentool_width)
         self.setPenToolColor(config.pentool_color)
         self.penConfigPanel.thicknessSlider.setValue(int(config.pentool_width))
@@ -917,6 +1014,7 @@ class DrawingPanel(Widget):
         self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
         self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
+        self.rectPanel.use_mask_checker.setChecked(config.rectool_use_mask)
         if config.current_tool == ImageEditMode.HandTool:
             self.handTool.setChecked(True)
         elif config.current_tool == ImageEditMode.InpaintTool:
@@ -1232,7 +1330,7 @@ class DrawingPanel(Widget):
         else:
             self.toolConfigStackwidget.show()
 
-    def on_end_create_rect(self, rect: QRectF, mode: int):
+    def on_end_create_rect(self, rect: QRectF, mode: int) -> None:
         if self.currentTool == self.rectTool:
             self.canvas.image_edit_mode = ImageEditMode.NONE
             img = self.canvas.imgtrans_proj.inpainted_array
@@ -1248,27 +1346,12 @@ class DrawingPanel(Widget):
                 return
             if mode == 0:
                 im = np.copy(img[y1: y2, x1: x2])
-                maskseg_method = get_maskseg_method()
-                inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=self.canvas.imgtrans_proj.mask_array[y1: y2, x1: x2])
-                mask = self.rectPanel.post_process_mask(inpaint_mask_array)
-
-                bground_rgb = bub_dict['bground_rgb']
-                need_inpaint = bub_dict['need_inpaint']
-
-                inpaint_dict = {'img': im, 'mask': mask, 'inpaint_rect': [x1, y1, x2, y2]}
-                inpaint_dict['need_inpaint'] = need_inpaint
-                inpaint_dict['bground_rgb'] = bground_rgb
-                inpaint_dict['ballon_mask'] = ballon_mask
-                user_preview_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-                user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
-                self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_preview_mask))
+                self.rect_inpaint_dict = {'img': im, 'inpaint_rect': [x1, y1, x2, y2]}
+                self._update_rect_mask()
                 self.inpaint_mask_item.setParentItem(self.canvas.baseLayer)
                 self.inpaint_mask_item.setPos(x1, y1)
                 if self.rectPanel.auto():
-                    self.inpaintRect(inpaint_dict)
-                else:
-                    self.inpaint_mask_array = inpaint_mask_array
-                    self.rect_inpaint_dict = inpaint_dict
+                    self.inpaintRect(self.rect_inpaint_dict)
             else:   # erasing
                 mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
                 erased = self.canvas.imgtrans_proj.img_array[y1: y2, x1: x2]
@@ -1276,13 +1359,28 @@ class DrawingPanel(Widget):
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
             self.setCrossCursor()
 
-    def inpaintRect(self, inpaint_dict):
+    def _update_rect_mask(self) -> None:
+        if self.rect_inpaint_dict is None:
+            return
+        request = self.rect_inpaint_dict
+        x1, y1, x2, y2 = request['inpaint_rect']
+        use_mask = self.rectPanel.use_mask_checker.isChecked()
+        method = get_maskseg_method() if use_mask else region_mask
+        self.inpaint_mask_array, balloon_mask, info = method(
+            request['img'], mask=self.canvas.imgtrans_proj.mask_array[y1:y2, x1:x2],
+        )
+        request.update(use_mask=use_mask, need_inpaint=info['need_inpaint'],
+                       bground_rgb=info['bground_rgb'], ballon_mask=balloon_mask)
+        self._update_rect_mask_preview()
+
+    def inpaintRect(self, inpaint_dict: dict) -> None:
         img = inpaint_dict['img']
         mask = inpaint_dict['mask']
         need_inpaint = inpaint_dict['need_inpaint']
         bground_rgb = inpaint_dict['bground_rgb']
         ballon_mask = inpaint_dict['ballon_mask']
-        if not need_inpaint and pcfg.module.check_need_inpaint:
+        if (inpaint_dict['use_mask'] and pcfg.drawpanel.inpainter != LLM_INPAINT_KEY
+                and not need_inpaint and pcfg.module.check_need_inpaint):
             bg_pixel_value = [bground_rgb[ii] for ii in range(3)]
             balloon_areas = np.where(ballon_mask > 0)
             if len(img.shape) == 3 and img.shape[2] == 4:
@@ -1292,6 +1390,8 @@ class DrawingPanel(Widget):
             bg_pixel_value = np.array(np.round(bg_pixel_value), dtype=np.uint8)
             img[balloon_areas] = bg_pixel_value
             self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, img, mask, inpaint_dict['inpaint_rect'], merge_existing_mask=True))
+            LOGGER.info('Draw inpaint completed: background fill, rectangle=%s, use_mask=True',
+                        inpaint_dict['inpaint_rect'])
             self._finish_inpaint()
         else:
             self.runInpaint(inpaint_dict=inpaint_dict)
@@ -1303,11 +1403,15 @@ class DrawingPanel(Widget):
     def on_rect_deletebtn_clicked(self) -> None:
         self._finish_inpaint()
 
-    def on_rectool_ksize_changed(self):
+    def on_rectool_ksize_changed(self) -> None:
         pcfg.drawpanel.recttool_dilate_ksize = self.rectPanel.dilate_slider.value()
-        if self.currentTool != self.rectTool or self.inpaint_mask_array is None or self.inpaint_mask_item is None:
+        self._update_rect_mask_preview()
+
+    def _update_rect_mask_preview(self) -> None:
+        if self.rect_inpaint_dict is None or self.inpaint_mask_array is None:
             return
-        mask = self.rectPanel.post_process_mask(self.inpaint_mask_array)
+        mask = (self.rectPanel.post_process_mask(self.inpaint_mask_array)
+                if self.rect_inpaint_dict['use_mask'] else self.inpaint_mask_array)
         self.rect_inpaint_dict['mask'] = mask
         user_preview_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
         user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)

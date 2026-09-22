@@ -445,6 +445,31 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(models['text-model']['modalities'], ['text'])
         self.assertNotIn('hidden-model', models)
 
+    def test_catalog_reasoning_levels_survive_refresh_save_reload_and_requests(self) -> None:
+        efforts = ['low', 'high', 'max', 'ultra', 'future-level']
+        self.responder = lambda request: httpx.Response(200, json={'models': [{
+            'slug': 'vision-model', 'input_modalities': ['text', 'image'],
+            'supported_reasoning_levels': [{'effort': effort} for effort in efforts],
+        }]})
+        with self.assertNoLogs('BallonTranslator', level='WARNING'):
+            models = self.account.catalog(threading.Event())
+            module = ModuleConfig(llm_profiles=[self.profile], codex_models=models)
+            saved = json.loads(json_dump_program_config(ProgramConfig(module=module)))
+            restored = ModuleConfig(**saved['module'])
+        self.assertEqual(restored.codex_models['vision-model']['efforts'], efforts)
+        self.profile = restored.llm_profiles[0]
+        self.assertEqual(self.profile.thinking_level_options, ['Auto', *efforts])
+        pcfg.module.codex_models = restored.codex_models
+        self.responder = self.respond
+        for effort in ('max', 'ultra', 'future-level'):
+            with self.subTest(effort=effort):
+                self.profile.thinking_level = effort
+                self.request()
+                self.assertEqual(json.loads(self.requests[-1].content)['reasoning'], {'effort': effort})
+        self.profile.thinking_level = 'not-advertised'
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'does not support this thinking level'):
+            self.request()
+
     def test_browser_login_checks_state_and_pkce_and_cancellation_preserves_credentials(self) -> None:
         responses, authorization, exchanged = [], {}, []
         legacy = self.path.with_name('auth.json')
@@ -707,8 +732,12 @@ class CodexConfigTest(unittest.TestCase):
         self.assertEqual(profile.image_model_options, ['gpt-image-2'])
 
     def test_malformed_catalog_discards_only_invalid_optional_data(self) -> None:
-        self.assertEqual(normalize_codex_models({'good': {'modalities': ['text', 'bad'], 'efforts': ['high', None]}, 'bad': None}),
-                         {'good': {'modalities': ['text'], 'efforts': ['high']}})
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            models = normalize_codex_models({
+                'good': {'modalities': ['text', 'bad'], 'efforts': ['high', None, '', '  ', 3, {}]},
+                'bad': None,
+            })
+        self.assertEqual(models, {'good': {'modalities': ['text'], 'efforts': ['high']}})
 
     def test_image_backend_never_falls_through_to_api(self) -> None:
         requester = LLMImageRequester()

@@ -123,11 +123,28 @@ source crop and a labelled black/white mask reference; downscaling preserves thi
 marked regions. Crops beyond the model's 3:1 aspect limit are padded before the
 request and unpadded afterward to preserve alignment. The existing crop pipeline
 owns context margins and alpha handling.
-Returned images are resized to the input crop and composited only into the original
+Masked results are resized to the input crop and composited only into the original
 mask, so model changes outside it are discarded. Empty masks require no request.
 Image calls are independent of translation history and consume the ChatGPT
 subscription allowance; there is no API-billing fallback. Generative reconstruction
 inside the mask can vary, especially on fine screentones or line art.
+
+Brush and rectangle inpainting share a selection stored in `drawpanel`, independent
+of Run's module, profile, and model. Their menus reuse `ModuleSelectionMenu` with
+local selection values. A nonempty stripped prompt override replaces the selected
+profile's inpainting prompt for drawing requests; blank overrides use that prompt.
+Rectangle edits use the selected segmentation method when `Use mask` is checked.
+Unchecking it skips segmentation, omits LLM mask conditioning, and applies the full
+returned crop; local inpainters instead receive a full-rectangle mask. The whole
+rectangle is recorded as edited for undo and erasing. Drawing LLM edits bypass
+the native flat-background fill shortcut.
+`ModuleManager.canvas_inpaint()` snapshots the draw module and copied profile when
+submitted, so queued requests retain their model, prompt, and mask mode without
+changing saved profiles. Canvas and Run prepare and use the same inpainter only after its worker
+is idle; a page change discards queued canvas work and obsolete results.
+Draw request logs report the backend, model, rectangle, mask mode, and elapsed
+worker time without logging prompts or image data; local background fills are
+logged in the drawing panel.
 
 ## Request contract
 
@@ -395,7 +412,7 @@ Focused specifications live in `tests/test_llm_translation_*.py`,
 `tests/test_proj_imgtrans_translation_context.py`. Image transport, mask geometry,
 and canvas cancellation are covered by `tests/test_llm_inpaint.py` and
 `tests/test_canvas_inpaint_lifecycle.py`; selector integration lives in
-`tests/test_module_selection_menu.py`.
+`tests/test_module_selection_menu.py` and `tests/test_drawing_inpainter.py`.
 
 ```bash
 QT_QPA_PLATFORM=offscreen /opt/miniconda3/envs/common/bin/python \

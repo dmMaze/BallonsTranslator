@@ -34,8 +34,6 @@ from ballontranslator.ui.run_pipeline_dialog import (
     RunPipelineDialog,
 )
 from ballontranslator.ui.configpanel import ConfigPanel
-from ballontranslator.ui.drawingpanel import DrawingPanel
-from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.module_parse_widgets import ModuleParamDialog
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import TitleBar
@@ -963,21 +961,6 @@ class RunPipelineDialogTests(unittest.TestCase):
             gc.collect()
             self.assertIsNone(dialog_ref())
         outside.close()
-
-    def test_drawing_inpainter_selectors_are_independent_and_synchronized(self):
-        panel = DrawingPanel(Canvas())
-        panel.setInpainterOptions(['first', 'second'], 'first')
-        brush_row, rect_row = panel._inpainter_selector_rows()
-        self.assertIsNot(brush_row.selector, rect_row.selector)
-
-        changes = []
-        panel.inpainter_changed.connect(changes.append)
-        brush_row.selector.setCurrentText('second')
-
-        self.assertEqual(rect_row.selector.currentText(), 'second')
-        self.assertEqual(changes, ['second'])
-        panel.close()
-
 
     def test_dialog_uses_platform_move_resize_backend(self):
         dialog = RunPipelineDialog()

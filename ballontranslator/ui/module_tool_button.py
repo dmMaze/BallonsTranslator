@@ -295,6 +295,10 @@ class ModuleSelectionMenu(QMenu):
     def selectedProfileId(self) -> str:
         return getattr(pcfg.module, self.profile_id_attr)
 
+    def _profileSettingValue(self, profile: LLMProfile, key: str) -> str:
+        """Let local selectors display choices without editing shared profiles."""
+        return getattr(profile, key)
+
     def rebuildMenu(self) -> None:
         # QMenu.clear() removes submenu actions but leaves their owned menus.
         for action in self.actions():
@@ -395,7 +399,7 @@ class ModuleSelectionMenu(QMenu):
         for section, value_attr, options_attr in self._profile_menu_groups():
             _add_bottom_menu_section(menu, section, color=self.modality_color)
             options = [str(option) for option in getattr(profile, options_attr) if str(option)]
-            current_value = str(getattr(profile, value_attr) or 'None')
+            current_value = str(self._profileSettingValue(profile, value_attr) or 'None')
             for option in options:
                 _add_bottom_menu_action(
                     menu,
@@ -415,9 +419,9 @@ class ModuleSelectionMenu(QMenu):
     def _buttonTextForProfile(self, profile: LLMProfile) -> str:
         if self._is_text_modality():
             model_options = [str(option) for option in profile.model_options if str(option)]
-            model = str(profile.model or '').strip()
+            model = str(self._profileSettingValue(profile, 'model') or '').strip()
             thinking_level = str(
-                profile.thinking_level or THINKING_AUTO
+                self._profileSettingValue(profile, 'thinking_level') or THINKING_AUTO
             ).strip()
             if model_options and model:
                 name = _simplify_llm_model_name(model)
@@ -426,7 +430,7 @@ class ModuleSelectionMenu(QMenu):
                 return name
             return profile.name or self.llm_key
 
-        model = str(getattr(profile, self.model_attr) or '').strip()
+        model = str(self._profileSettingValue(profile, self.model_attr) or '').strip()
         return _simplify_llm_model_name(model) or profile.name or self.llm_key
 
     def selectedText(self) -> str:
