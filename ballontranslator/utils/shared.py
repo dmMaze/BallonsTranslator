@@ -26,7 +26,7 @@ def _resolve_program_path() -> str:
 PROGRAM_PATH = _resolve_program_path()
 RESOURCE_DIR = osp.join(PROGRAM_PATH, 'resources')
 ICON_DIR = osp.join(RESOURCE_DIR, 'icons')
-ICON_PATH = osp.join(ICON_DIR, 'icon.icns')
+ICON_PATH = osp.join(ICON_DIR, 'logo.svg')
 LOGGING_PATH = osp.join(PROGRAM_PATH, 'logs')
 
 LIBS_PATH = osp.join(PROGRAM_PATH, 'data/libs')
