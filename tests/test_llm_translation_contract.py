@@ -1,3 +1,4 @@
+import copy
 import json
 import unittest
 from unittest import mock
@@ -19,11 +20,47 @@ from ballontranslator.modules.translators.llm_translation_contract import (
     parse_translation_response,
     render_history_page,
     translation_json_schema,
+    translation_cache_messages,
     translation_system_prompt,
 )
 
 
 class LLMTranslationContractTest(unittest.TestCase):
+    def test_cache_boundaries_survive_growth_and_leave_volatile_input_unmarked(self) -> None:
+        prefix = [
+            {'role': 'system', 'content': 'contract'},
+            {'role': 'system', 'content': 'glossary'},
+            {'role': 'system', 'content': 'memory'},
+        ]
+        current = {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'current page'},
+            {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,AA=='}},
+        ]}
+        previous = None
+        for count in range(5):
+            messages = prefix + [
+                message for page in range(count) for message in (
+                    {'role': 'user', 'content': f'source {page}'},
+                    {'role': 'assistant', 'content': f'translation {page}'},
+                )
+            ] + [current]
+            original = copy.deepcopy(messages)
+            marked = translation_cache_messages(messages)
+            self.assertEqual(messages, original)
+            self.assertIs(marked[-1], current)
+            boundaries = [i for i, message in enumerate(marked)
+                          if isinstance(message['content'], list)
+                          and 'prompt_cache_breakpoint' in message['content'][0]]
+            self.assertLessEqual(len(boundaries), 4)
+            self.assertEqual(boundaries[:2], [1, 2])
+            for index in boundaries:
+                self.assertIn(marked[index]['role'], ('system', 'user'))
+                self.assertEqual(marked[index]['content'][0]['text'], original[index]['content'])
+            if previous is not None:
+                old_boundary = previous[-1]
+                self.assertIn(old_boundary, boundaries)
+            previous = boundaries
+
     def test_disabled_features_keep_numeric_response_contract(self):
         profile_prompt = 'Keep JSON example {"x": 1}.'
         spec = TranslationPromptSpec(

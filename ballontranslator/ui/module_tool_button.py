@@ -37,6 +37,8 @@ from ballontranslator.utils.llm_profiles import (
     THINKING_AUTO,
     profile_by_id,
     codex_thinking_options,
+    image_model_choices,
+    split_image_model_selection,
 )
 
 if shared.FLAG_QT6:
@@ -374,8 +376,9 @@ class ModuleSelectionMenu(QMenu):
                 profile.thinking_level_options = codex_thinking_options(profile, pcfg.module.codex_models)
             if key == self.model_attr:
                 options = getattr(profile, self.model_options_attr)
-                if value and value not in options:
-                    options.insert(0, value)
+                option = split_image_model_selection(value)[1] if key == 'image_model' else value
+                if option and option not in options:
+                    options.insert(0, option)
         self.selectLLMProfile(profile_id)
 
     def _profile_menu_groups(self) -> List[Tuple[str, str, str]]:
@@ -398,7 +401,8 @@ class ModuleSelectionMenu(QMenu):
         selected_profile = self.isCurrentLLM() and self.selectedProfileId() == profile_id
         for section, value_attr, options_attr in self._profile_menu_groups():
             _add_bottom_menu_section(menu, section, color=self.modality_color)
-            options = [str(option) for option in getattr(profile, options_attr) if str(option)]
+            options = (image_model_choices(profile) if value_attr == 'image_model'
+                       else [str(option) for option in getattr(profile, options_attr) if str(option)])
             current_value = str(self._profileSettingValue(profile, value_attr) or 'None')
             for option in options:
                 _add_bottom_menu_action(

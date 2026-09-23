@@ -15,7 +15,7 @@ from ballontranslator.modules.exceptions import (
     CodexSignInRequiredError, LLMRequestStopped, LLMUserActionRequiredError,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile
 
 
 class CodexAuthenticationTest(unittest.TestCase):
@@ -30,7 +30,7 @@ class CodexAuthenticationTest(unittest.TestCase):
             'account_id': 'test-account', 'email': 'test@example.com',
             'expires_at': time.time() + 3600,
         }
-        self.profile = default_profile('Codex')
+        self.profile = default_codex_profile()
         self.profile.model = 'test-model'
         self.requests = []
         self.respond = self.success

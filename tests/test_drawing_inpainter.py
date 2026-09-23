@@ -22,7 +22,7 @@ from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.utils.config import DrawPanelConfig, pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -38,7 +38,7 @@ class DrawingInpainterTest(unittest.TestCase):
         self.api = default_profile('OpenAI')
         self.api.image_model = 'run-image'
         self.api.image_model_options = ['run-image', 'draw-image', 'another-image']
-        pcfg.module.llm_profiles = [self.api, default_profile('Codex')]
+        pcfg.module.llm_profiles = [self.api, default_codex_profile()]
         pcfg.module.inpainter = 'lama_large_512px'
         pcfg.module.inpaint_llm_id = 'openai'
         self.canvas = Canvas()
@@ -85,7 +85,8 @@ class DrawingInpainterTest(unittest.TestCase):
             self.assertEqual(pcfg.module.inpainter, 'lama_large_512px')
             self.assertEqual(pcfg.module.inpaint_llm_id, 'openai')
             self.assertEqual(self.api.image_model, 'run-image')
-            self.choose(self.brush.menu, ('codex', 'image_model', 'gpt-image-2'))
+            codex_model = pcfg.module.llm_profiles[1].image_model
+            self.choose(self.brush.menu, ('codex', 'image_model', codex_model))
             self.assertEqual(self.rect.menu.selectedProfileId(), 'codex')
             self.assertEqual(pcfg.module.inpaint_llm_id, 'openai')
 
@@ -108,6 +109,17 @@ class DrawingInpainterTest(unittest.TestCase):
         self.assertEqual(pcfg.module.inpainter, 'opencv-tela')
         self.assertEqual(pcfg.drawpanel.inpainter, 'LLMInpaint')
         self.assertEqual(self.rect.tool_button.text(), 'draw-image')
+
+    def test_gpt_image_combinations_keep_drawing_and_run_choices_independent(self) -> None:
+        self.api.image_model_options = ['gpt-image-2']
+        self.api.vision_model_options = ['gpt-draw', 'gpt-run', 'other-vision-model']
+        self.choose(self.brush.menu, ('openai', 'image_model', 'gpt-draw → gpt-image-2'))
+        self.choose(self.run.menu, ('openai', 'image_model', 'gpt-run → gpt-image-2'))
+        self.panel.refreshInpainterSelection()
+        self.assertEqual(pcfg.drawpanel.inpaint_llm_model, 'gpt-draw → gpt-image-2')
+        self.assertEqual(self.api.image_model, 'gpt-run → gpt-image-2')
+        self.assertEqual(self.api.image_model_options, ['gpt-image-2'])
+        self.assertIn('gpt-draw', self.rect.tool_button.text())
 
     def test_prompt_editors_share_raw_text_preserve_undo_and_hide_for_native(self) -> None:
         self.assertTrue(self.brush.prompt_panel.isHidden())

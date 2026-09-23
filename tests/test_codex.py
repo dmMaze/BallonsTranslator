@@ -19,14 +19,14 @@ import httpx
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from ballontranslator.modules import codex
+from ballontranslator.modules import codex, image_generation
 from ballontranslator.modules.context.errors import ContextLengthError
 from ballontranslator.modules.exceptions import LLMRequestStopped, LLMUserActionRequiredError
 from ballontranslator.modules.llm_image import LLMImageRequester
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump_program_config, pcfg
-from ballontranslator.utils.llm_profiles import PROVIDER_DEFAULTS, default_profile, normalize_codex_models, profile_to_export_dict, sync_codex_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile, normalize_codex_models, profile_to_dict, sync_codex_profile
 
 if TYPE_CHECKING:
     from ballontranslator.ui.codex_settings import CodexSettingsPanel
@@ -56,6 +56,12 @@ def completion(text: str = '{"1":"hello"}') -> dict:
     }}
 
 
+def image_completion() -> dict:
+    return {'type': 'response.completed', 'response': {'status': 'completed', 'output': [
+        {'type': 'image_generation_call', 'id': 'image-one', 'status': 'completed', 'result': PNG_BASE64},
+    ]}}
+
+
 def sse(*events: dict) -> str:
     return ': keepalive\n\n' + ''.join('data: ' + json.dumps(event) + '\n\n' for event in events)
 
@@ -71,7 +77,7 @@ class CodexHTTPTest(unittest.TestCase):
         self.requests = []
         self.events = [completion()]
         self.responder = self.respond
-        self.profile = default_profile('Codex')
+        self.profile = default_codex_profile()
         self.profile.model = self.profile.vision_model = 'vision-model'
         sync_codex_profile(self.profile, CATALOG)
         for patcher in (
@@ -104,11 +110,15 @@ class CodexHTTPTest(unittest.TestCase):
 
     def test_stateless_payload_preserves_roles_images_schema_usage_and_omits_tools(self) -> None:
         self.profile.thinking_level = 'high'
+        diagnostics = {'type': 'cache_miss', 'reason': 'input_changed',
+                       'comparison_reusable_tokens': 2048, 'cache_missed_tokens': 1024}
+        self.events[0]['response']['prompt_cache_diagnostics'] = diagnostics
         self.events.insert(0, {'type': 'response.output_text.delta', 'delta': 'partial garbage'})
         result = self.request()
         self.assertEqual(result.content, '{"1":"hello"}')
         self.assertEqual(result.usage.total_tokens, 15)
         self.assertEqual(result.usage.prompt_tokens_details['cached_tokens'], 8)
+        self.assertEqual(result.prompt_cache_diagnostics, diagnostics)
         payload = json.loads(self.requests[0].content)
         self.assertEqual(payload['instructions'], 'Translate numbered blocks.\n\nKnown names.')
         self.assertEqual([item['role'] for item in payload['input']], ['user', 'assistant', 'user'])
@@ -121,6 +131,64 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(payload['prompt_cache_key'], self.requests[0].headers['session_id'])
         self.assertEqual(self.requests[0].headers['Authorization'], 'Bearer access')
         self.assertNotIn('previous_response_id', payload)
+        self.assertNotIn('prompt_cache_options', payload)
+
+    def test_gpt_subscription_translation_keeps_implicit_cache_and_fixed_schema(self) -> None:
+        model = 'gpt-6-astra'
+        self.profile.model = model
+        self.profile.model_options = [model]
+        translator = LLMTranslator('日本語', 'English')
+        messages = self.args()['messages']
+        messages.insert(2, {'role': 'system', 'content': 'Project memory.'})
+        original = copy.deepcopy(messages)
+        with patch.dict(pcfg.module.codex_models, {model: CATALOG['vision-model']}), \
+                patch.object(translator, '_respect_delay'):
+            for count in (1, 3):
+                args = translator._api_args(self.profile, messages, expected_translations=count)
+                translator.request_chat_completion(self.profile, args)
+        self.assertEqual(messages, original)
+        first, second = [json.loads(request.content) for request in self.requests]
+        self.assertEqual(first, second)
+        self.assertNotIn('prompt_cache_options', first)
+        self.assertNotIn('prompt_cache_breakpoint', json.dumps(first))
+        self.assertEqual(first['instructions'], 'Translate numbered blocks.\n\nKnown names.\n\nProject memory.')
+        self.assertEqual([item['role'] for item in first['input']],
+                         ['user', 'assistant', 'user'])
+        self.assertEqual(first['input'][1]['content'][0],
+                         {'type': 'output_text', 'text': 'old translation'})
+        self.assertEqual(first['input'][-1]['content'][-1]['image_url'],
+                         original[-1]['content'][-1]['image_url']['url'])
+        self.assertEqual(first['text']['format']['schema']['required'], ['translations'])
+        self.assertEqual(first['prompt_cache_key'], self.requests[0].headers['session_id'])
+        with patch.dict(pcfg.module.__dict__, {'llm_profiles': [self.profile],
+                                             'translator_llm_id': self.profile.id}):
+            self.assertIn("prompt_cache='implicit'", translator.translation_run_description())
+
+    def test_parameter_rejection_is_not_misclassified_as_model_unavailable(self) -> None:
+        for parameter in ('prompt_cache_options', 'prompt_cache_breakpoint', 'private input with spaces'):
+            for streamed in (False, True):
+                with self.subTest(parameter=parameter, streamed=streamed):
+                    received = []
+
+                    def respond(request: httpx.Request) -> httpx.Response:
+                        received.append(request)
+                        error = {'error': {
+                            'message': f'{parameter} is not supported on this model: private server details',
+                            'type': 'invalid_request_error', 'param': parameter, 'code': 'invalid_parameter',
+                        }}
+                        return (httpx.Response(200, text=sse({'type': 'response.failed', 'response': error}))
+                                if streamed else httpx.Response(400, json=error))
+
+                    self.responder = respond
+                    with self.assertRaisesRegex(LLMUserActionRequiredError, 'request parameter') as caught:
+                        self.request()
+                    message = str(caught.exception)
+                    if parameter.startswith('prompt_cache_'):
+                        self.assertIn(parameter, message)
+                    self.assertNotIn('model is unavailable', message)
+                    self.assertNotIn('private', message)
+                    self.assertEqual(len(received), 1)
+                    self.assertFalse(self.account.auth_invalid)
 
     def test_image_edit_preserves_references_and_refreshes_once_with_same_payload(self) -> None:
         received = []
@@ -161,9 +229,146 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertTrue(str(self.requests[0].url).endswith('/images/generations'))
         self.assertNotIn('images', json.loads(self.requests[0].content))
 
+    def test_assisted_edit_forces_image_tool_and_preserves_references_on_auth_retry(self) -> None:
+        received = []
+
+        def respond(request):
+            received.append(request)
+            if request.url.path.endswith('/oauth/token'):
+                return httpx.Response(200, json={'access_token': 'rotated', 'expires_in': 3600})
+            if request.headers['Authorization'] == 'Bearer access':
+                return httpx.Response(401, json={'error': {'code': 'token_expired'}})
+            return httpx.Response(200, text=sse(image_completion()))
+
+        with patch.object(codex, '_http_client', side_effect=lambda proxy: httpx.AsyncClient(
+            transport=httpx.MockTransport(respond),
+        )) as factory:
+            result = codex.request_image('gpt-image-2', 'Keep every frame.\nUse mask image 2.',
+                                         PNG_BYTES, PNG_BYTES, None, reasoning_model='vision-model',
+                                         proxy='socks5://proxy.example:1080', timeout=23.0, cache_key='image-job-cache')
+        self.assertEqual(result, PNG_BYTES)
+        factory.assert_called_once_with('socks5://proxy.example:1080')
+        self.assertEqual(len(received), 3)
+        self.assertEqual(received[0].content, received[2].content)
+        self.assertEqual(received[0].headers['session_id'], received[2].headers['session_id'])
+        request = received[2]
+        self.assertEqual(str(request.url), codex.API_URL + '/responses')
+        self.assertEqual(request.headers['Accept'], 'text/event-stream')
+        self.assertEqual(request.headers['Authorization'], 'Bearer rotated')
+        self.assertEqual(request.extensions['timeout']['read'], 23.0)
+        body = json.loads(request.content)
+        self.assertEqual(body['model'], 'vision-model')
+        self.assertEqual(body['tools'], [{'type': 'image_generation', 'model': 'gpt-image-2',
+                                         'action': 'edit', 'quality': 'auto', 'size': 'auto'}])
+        self.assertEqual(body['tool_choice'], {'type': 'image_generation'})
+        self.assertEqual(body['prompt_cache_key'], 'image-job-cache')
+        self.assertEqual(body['prompt_cache_key'], request.headers['session_id'])
+        self.assertEqual(body['input'], [{'type': 'message', 'role': 'user', 'content': [
+            {'type': 'input_text', 'text': 'Keep every frame.\nUse mask image 2.'},
+            {'type': 'input_image', 'image_url': PNG_URL, 'detail': 'high'},
+            {'type': 'input_image', 'image_url': PNG_URL, 'detail': 'high'},
+        ]}])
+        self.assertFalse(body['store'])
+        self.assertTrue(body['stream'])
+        self.assertNotIn('reasoning', body)
+        self.assertNotIn('previous_response_id', body)
+
+    def test_assisted_generation_has_no_source_and_validates_cached_vision_model(self) -> None:
+        self.events = [image_completion()]
+        self.assertEqual(codex.request_image('gpt-image-2', 'A blank panel.', None, None, None,
+                                             reasoning_model='vision-model'), PNG_BYTES)
+        body = json.loads(self.requests[0].content)
+        self.assertEqual(body['tools'][0]['action'], 'generate')
+        self.assertEqual(body['input'][0]['content'], [{'type': 'input_text', 'text': 'A blank panel.'}])
+        self.requests.clear()
+        for model in ('missing-model', 'text-model'):
+            with self.subTest(model=model), self.assertRaises(LLMUserActionRequiredError):
+                codex.request_image('gpt-image-2', 'Generate.', None, None, None, reasoning_model=model)
+        self.assertFalse(self.requests)
+
+    def test_assisted_stream_accepts_completed_item_fallback_and_duplicate_final_image(self) -> None:
+        for repeat_image in (False, True):
+            with self.subTest(repeat_image=repeat_image):
+                final = image_completion()
+                item = final['response']['output'][0]
+                if not repeat_image:
+                    final['response']['output'] = []
+                body = sse({'type': 'response.output_item.done', 'item': item}, final).replace('\n', '\r\n').encode()
+
+                class Chunks(httpx.AsyncByteStream):
+                    async def __aiter__(self):
+                        for index in range(0, len(body), 17):
+                            yield body[index:index + 17]
+
+                self.responder = lambda request: httpx.Response(200, stream=Chunks())
+                # A single-image body budget must allow both SSE representations.
+                with patch.object(image_generation, 'MAX_IMAGE_RESPONSE_BYTES', len(body) // 2 + 1):
+                    self.assertEqual(codex.request_image('gpt-image-2', 'Generate.', None, None, None,
+                                                         reasoning_model='vision-model'), PNG_BYTES)
+
+    def test_assisted_output_requires_one_completed_inline_image_and_rejects_refusals(self) -> None:
+        item = image_completion()['response']['output'][0]
+        refusal = {'type': 'message', 'role': 'assistant', 'content': [{'type': 'refusal', 'refusal': 'private details'}]}
+        for output in (
+            [], [None], completion()['response']['output'], [item, item], [refusal, item],
+            [{**item, 'status': 'failed'}], [{**item, 'result': None}], [{**item, 'result': ''}],
+            [{**item, 'result': '%%%'}], [{**item, 'result': 'https://untrusted.example/image.png'}],
+        ):
+            with self.subTest(output=output):
+                self.requests.clear()
+                self.events = [{'type': 'response.completed', 'response': {'status': 'completed', 'output': output}}]
+                with self.assertRaises(LLMUserActionRequiredError) as caught:
+                    codex.request_image('gpt-image-2', 'Generate.', None, None, None, reasoning_model='vision-model')
+                self.assertNotIn('private details', str(caught.exception))
+                self.assertEqual(len(self.requests), 1)
+        self.events = [image_completion()]
+        for limit in ('MAX_IMAGE_BASE64_BYTES', 'MAX_IMAGE_BYTES'):
+            with self.subTest(limit=limit), patch.object(image_generation, limit, 1), self.assertRaises(LLMUserActionRequiredError):
+                codex.request_image('gpt-image-2', 'Generate.', None, None, None, reasoning_model='vision-model')
+
+    def test_assisted_stream_bounds_unterminated_lines_and_closes_response(self) -> None:
+        closed = threading.Event()
+
+        class Oversized(httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield b'data: ' + b' ' * 128
+                raise AssertionError('Oversized stream should already be rejected.')
+
+            async def aclose(self):
+                closed.set()
+
+        self.responder = lambda request: httpx.Response(200, stream=Oversized())
+        with patch.object(image_generation, 'MAX_IMAGE_RESPONSE_BYTES', 64), self.assertRaisesRegex(LLMUserActionRequiredError, 'oversized'):
+            codex.request_image('gpt-image-2', 'Generate.', None, None, None, reasoning_model='vision-model')
+        self.assertTrue(closed.is_set())
+
+    def test_unsupported_assisted_tool_is_actionable_for_http_and_stream_errors(self) -> None:
+        errors = (
+            {'error': {'code': 'unsupported_tool', 'message': 'image_generation is not supported with this reasoning model: private details'}},
+            {'error': {'code': 'invalid_value', 'message': "Invalid value: 'image_generation'. Supported values are private details"}},
+        )
+        for error, streamed in ((error, streamed) for error in errors for streamed in (False, True)):
+            with self.subTest(error=error, streamed=streamed):
+                received = []
+
+                def respond(request):
+                    received.append(request)
+                    return (httpx.Response(200, text=sse({'type': 'response.failed', 'response': error}))
+                            if streamed else httpx.Response(400, json=error))
+
+                self.responder = respond
+                with self.assertRaisesRegex(LLMUserActionRequiredError, 'assisted editing') as caught:
+                    codex.request_image('gpt-image-2', 'Generate.', None, None, None, reasoning_model='vision-model')
+                self.assertNotIn('private details', str(caught.exception))
+                self.assertEqual(len(received), 1)
+                self.assertFalse(self.account.auth_invalid)
+
     def test_invalid_image_inputs_never_reach_network(self) -> None:
         for model, image, mask, expected in (
-            ('vision-model', PNG_BYTES, None, LLMUserActionRequiredError),
+            ('', PNG_BYTES, None, LLMUserActionRequiredError),
+            (' \t', PNG_BYTES, None, LLMUserActionRequiredError),
+            (None, PNG_BYTES, None, LLMUserActionRequiredError),
+            (42, PNG_BYTES, None, LLMUserActionRequiredError),
             ('gpt-image-2', None, PNG_BYTES, ValueError),
             ('gpt-image-2', 'https://untrusted.example/image.png', None, ValueError),
             ('gpt-image-2', b'not a PNG', None, ValueError),
@@ -175,9 +380,54 @@ class CodexHTTPTest(unittest.TestCase):
         stopped.set()
         with self.assertRaises(LLMRequestStopped):
             codex.request_image('invalid', '', None, None, stopped)
-        with patch.object(codex, '_MAX_IMAGE_BYTES', 16), self.assertRaises(ValueError):
+        with patch.object(image_generation, 'MAX_IMAGE_BYTES', 16), self.assertRaises(ValueError):
             codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
         self.assertEqual(self.requests, [])
+
+    def test_custom_image_model_is_sent_unchanged_to_direct_and_assisted_routes(self) -> None:
+        model = 'custom-image-model-2026'
+        for reasoning_model, image in (('', None), ('', PNG_BYTES), ('vision-model', None), ('vision-model', PNG_BYTES)):
+            with self.subTest(reasoning_model=reasoning_model, edit=image is not None):
+                self.requests.clear()
+
+                def respond(request):
+                    self.requests.append(request)
+                    return (httpx.Response(200, text=sse(image_completion())) if reasoning_model
+                            else httpx.Response(200, json={'data': [{'b64_json': PNG_BASE64}]}))
+
+                self.responder = respond
+                self.assertEqual(codex.request_image(model, 'Generate or edit.', image, None, None,
+                                                     reasoning_model=reasoning_model), PNG_BYTES)
+                self.assertEqual(len(self.requests), 1)
+                request = self.requests[0]
+                body = json.loads(request.content)
+                if reasoning_model:
+                    self.assertEqual(request.url.path, '/backend-api/codex/responses')
+                    self.assertEqual(body['tools'][0]['model'], model)
+                else:
+                    endpoint = 'edits' if image is not None else 'generations'
+                    self.assertEqual(request.url.path, '/backend-api/codex/images/' + endpoint)
+                    self.assertEqual(body['model'], model)
+
+    def test_unavailable_custom_image_model_is_actionable_without_fallback(self) -> None:
+        for reasoning_model, code in (('', 'model_not_found'), ('', 'invalid_model'),
+                                      ('vision-model', 'model_not_supported')):
+            with self.subTest(reasoning_model=reasoning_model, code=code):
+                self.requests.clear()
+
+                def respond(request):
+                    self.requests.append(request)
+                    error = {'error': {'code': code, 'message': 'image generation model is not available: private server details'}}
+                    return (httpx.Response(200, text=sse({'type': 'response.failed', 'response': error}))
+                            if reasoning_model else httpx.Response(400, json=error))
+
+                self.responder = respond
+                with self.assertRaisesRegex(LLMUserActionRequiredError, 'check the model ID') as caught:
+                    codex.request_image('custom-image-model', 'Edit.', PNG_BYTES, None, None,
+                                        reasoning_model=reasoning_model)
+                self.assertNotIn('private server details', str(caught.exception))
+                self.assertEqual(len(self.requests), 1)
+                self.assertFalse(self.account.auth_invalid)
 
     def test_invalid_image_output_never_downloads_response_urls(self) -> None:
         for payload in (None, {}, {'data': []}, {'data': [{'url': 'https://untrusted.example/image.png'}]},
@@ -198,25 +448,28 @@ class CodexHTTPTest(unittest.TestCase):
 
     def test_image_body_is_bounded_and_timeout_errors_are_sanitized(self) -> None:
         self.responder = lambda request: httpx.Response(200, content=b' ' * 128)
-        with patch.object(codex, '_MAX_IMAGE_RESPONSE_BYTES', 64), self.assertRaisesRegex(LLMUserActionRequiredError, 'oversized'):
+        with patch.object(image_generation, 'MAX_IMAGE_RESPONSE_BYTES', 64), self.assertRaisesRegex(LLMUserActionRequiredError, 'oversized'):
             codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
 
         def timed_out(request):
             self.requests.append(request)
             raise httpx.ReadTimeout('sensitive response details', request=request)
 
-        self.responder = timed_out
-        with self.assertRaises(RuntimeError) as caught:
-            codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
-        self.assertNotIn('sensitive', str(caught.exception))
-        self.assertEqual(len(self.requests), 1)
-        self.responder = lambda request: httpx.Response(403, json={'error': {'code': 'usage_limit_reached'}})
-        with self.assertRaisesRegex(LLMUserActionRequiredError, 'usage limit'):
-            codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None)
+        for reasoning_model in ('', 'vision-model'):
+            with self.subTest(reasoning_model=reasoning_model):
+                self.requests.clear()
+                self.responder = timed_out
+                with self.assertRaises(RuntimeError) as caught:
+                    codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None, reasoning_model=reasoning_model)
+                self.assertNotIn('sensitive', str(caught.exception))
+                self.assertEqual(len(self.requests), 1)
+                self.responder = lambda request: httpx.Response(403, json={'error': {'code': 'usage_limit_reached'}})
+                with self.assertRaisesRegex(LLMUserActionRequiredError, 'usage limit'):
+                    codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None, reasoning_model=reasoning_model)
 
     def test_image_cancellation_and_account_change_close_stalled_response(self) -> None:
-        for invalidate_account in (False, True):
-            with self.subTest(invalidate_account=invalidate_account):
+        for reasoning_model, invalidate_account in (('', False), ('', True), ('vision-model', False), ('vision-model', True)):
+            with self.subTest(reasoning_model=reasoning_model, invalidate_account=invalidate_account):
                 stopped, entered, closed = threading.Event(), threading.Event(), threading.Event()
 
                 class Stalled(httpx.AsyncByteStream):
@@ -233,7 +486,8 @@ class CodexHTTPTest(unittest.TestCase):
 
                 def run():
                     try:
-                        codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, stopped, timeout=None)
+                        codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, stopped,
+                                             timeout=None, reasoning_model=reasoning_model)
                     except Exception as error:
                         errors.append(error)
 
@@ -247,15 +501,18 @@ class CodexHTTPTest(unittest.TestCase):
                 self.assertIsInstance(errors[0], LLMRequestStopped)
 
     def test_image_account_change_during_decoding_rejects_late_result(self) -> None:
-        self.responder = lambda request: httpx.Response(200, json={'data': [{'b64_json': PNG_BASE64}]})
         decode = base64.b64decode
 
         def invalidate_during_decode(value, **kwargs):
             self.account.invalidate()
             return decode(value, **kwargs)
 
-        with patch.object(codex.base64, 'b64decode', side_effect=invalidate_during_decode), self.assertRaises(LLMRequestStopped):
-            codex.request_image('gpt-image-2', 'Generate.', None, None, None)
+        for reasoning_model in ('', 'vision-model'):
+            self.responder = lambda request: (httpx.Response(200, text=sse(image_completion())) if reasoning_model
+                                             else httpx.Response(200, json={'data': [{'b64_json': PNG_BASE64}]}))
+            with self.subTest(reasoning_model=reasoning_model), \
+                    patch.object(codex.base64, 'b64decode', side_effect=invalidate_during_decode), self.assertRaises(LLMRequestStopped):
+                codex.request_image('gpt-image-2', 'Generate.', None, None, None, reasoning_model=reasoning_model)
 
     def test_completed_items_and_final_phase_are_used_without_committing_commentary(self) -> None:
         final = completion()['response']['output'][0]
@@ -348,15 +605,12 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertTrue(closed.is_set())
         self.assertIsInstance(errors[0], LLMRequestStopped)
 
-    def test_logout_invalidates_inflight_requests_and_only_removes_owned_credentials(self) -> None:
-        legacy = self.path.with_name('auth.json')
-        legacy.write_text('legacy-sdk-credentials')
+    def test_logout_invalidates_requests_and_removes_credentials(self) -> None:
         self.account._save()
         generation = self.account.generation
         self.account.logout(threading.Event())
         self.assertGreater(self.account.generation, generation)
         self.assertFalse(self.path.exists())
-        self.assertEqual(legacy.read_text(), 'legacy-sdk-credentials')
         with self.assertRaisesRegex(LLMUserActionRequiredError, 'Sign in'):
             self.request()
 
@@ -472,8 +726,6 @@ class CodexHTTPTest(unittest.TestCase):
 
     def test_browser_login_checks_state_and_pkce_and_cancellation_preserves_credentials(self) -> None:
         responses, authorization, exchanged = [], {}, []
-        legacy = self.path.with_name('auth.json')
-        legacy.write_text('legacy-sdk-credentials')
 
         class Server:
             async def __aenter__(self):
@@ -540,7 +792,6 @@ class CodexHTTPTest(unittest.TestCase):
                 self.account.login(stop, lambda url: stop.set())
         self.assertEqual(self.path.read_bytes(), saved)
         self.assertEqual(self.account._credentials['refresh_token'], 'new-refresh')
-        self.assertEqual(legacy.read_text(), 'legacy-sdk-credentials')
         self.assertFalse(self.account.changing)
 
     def test_translator_context_recovery_keeps_input_and_commits_only_valid_response(self) -> None:
@@ -668,16 +919,16 @@ class CodexHTTPTest(unittest.TestCase):
 
 class CodexConfigTest(unittest.TestCase):
     def test_codex_capabilities_and_saved_model_options_need_no_account_io(self) -> None:
-        defaults = list(PROVIDER_DEFAULTS['Codex']['model_options'])
+        defaults = list(default_codex_profile().model_options)
         for model, vision_model in (('', ''), ('saved-text', ''), ('saved-text', 'saved-vision'),
-                                    ('gpt-5.6-luna', 'gpt-5.6-sol')):
+                                    (defaults[0], defaults[-1])):
             with self.subTest(model=model, vision_model=vision_model), \
                     patch.object(codex.account, '_load', side_effect=AssertionError('Unexpected credential IO')), \
                     patch.object(codex, '_http_client', side_effect=AssertionError('Unexpected HTTP')):
                 module = ModuleConfig(llm_profiles=[{
                     'id': 'codex', 'backend': 'codex', 'model': model, 'vision_model': vision_model,
                     'support_text': False, 'support_vision': False, 'support_image': False,
-                    'image_model_options': [],
+                    'image_model': 'saved-image', 'image_model_options': [],
                 }], codex_models={})
                 profile = module.llm_profiles[0]
                 self.assertTrue(profile.support_text)
@@ -687,7 +938,7 @@ class CodexConfigTest(unittest.TestCase):
                 vision_options = defaults + ([vision_model] if vision_model and vision_model not in defaults else [])
                 self.assertEqual(profile.model_options, text_options)
                 self.assertEqual(profile.vision_model_options, vision_options)
-                self.assertEqual(profile.image_model_options, ['gpt-image-2'])
+                self.assertEqual(profile.image_model_options, ['saved-image'])
                 sync_codex_profile(profile, CATALOG)
                 self.assertEqual(profile.model_options, list(CATALOG))
                 self.assertEqual(profile.vision_model_options, ['vision-model'])
@@ -696,8 +947,8 @@ class CodexConfigTest(unittest.TestCase):
                 self.assertEqual(profile.model_options, text_options)
                 self.assertEqual(profile.vision_model_options, vision_options)
                 self.assertTrue(profile.support_image)
-        self.assertEqual(PROVIDER_DEFAULTS['Codex']['model_options'], defaults)
-        self.assertEqual(PROVIDER_DEFAULTS['Codex']['vision_model_options'], defaults)
+        self.assertEqual(default_codex_profile().model_options, defaults)
+        self.assertEqual(default_codex_profile().vision_model_options, defaults)
 
     def test_explicit_proxy_routes_requests_even_with_environment_proxy(self) -> None:
         routed = []
@@ -717,7 +968,8 @@ class CodexConfigTest(unittest.TestCase):
         self.assertEqual(routed, [(b'module-proxy.test', 'backend.test')])
 
     def test_catalog_is_single_persistent_source_and_selections_survive_missing_catalog(self) -> None:
-        profile = default_profile('Codex')
+        profile = default_codex_profile()
+        image_options = list(profile.image_model_options)
         profile.model = profile.vision_model = 'vision-model'
         profile.api_key = 'must-not-export'
         module = ModuleConfig(llm_profiles=[profile], codex_models=CATALOG)
@@ -725,11 +977,11 @@ class CodexConfigTest(unittest.TestCase):
         self.assertNotIn('model_options', saved['module']['llm_profiles'][0])
         self.assertNotIn('must-not-export', json.dumps(saved))
         self.assertEqual(saved['module']['codex_models'], CATALOG)
-        self.assertEqual(profile_to_export_dict(profile)['api_key'], '')
+        self.assertEqual(profile_to_dict(profile)['api_key'], '')
         sync_codex_profile(profile, {})
         self.assertEqual((profile.model, profile.vision_model), ('vision-model', 'vision-model'))
         self.assertTrue(profile.support_image)
-        self.assertEqual(profile.image_model_options, ['gpt-image-2'])
+        self.assertEqual(profile.image_model_options, image_options)
 
     def test_malformed_catalog_discards_only_invalid_optional_data(self) -> None:
         with self.assertLogs('BallonTranslator', level='WARNING'):
@@ -757,6 +1009,9 @@ class CodexSettingsAccountTest(unittest.TestCase):
     def setUp(self) -> None:
         from ballontranslator.ui import codex_account
         from qtpy.QtWidgets import QMessageBox
+        profile = default_codex_profile()
+        profile.image_model = 'gpt-image-2'
+        profile.image_model_options = ['gpt-image-2']
         self.account = codex.CodexAccount()
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
@@ -766,7 +1021,7 @@ class CodexSettingsAccountTest(unittest.TestCase):
             patch.object(self.account, '_path', return_value=Path(self.directory.name) / 'http-auth.json'),
             patch.object(codex, '_system_keyring', side_effect=ImportError),
             patch.object(pcfg.module, 'codex_models', copy.deepcopy(CATALOG)),
-            patch.object(pcfg.module, 'llm_profiles', [default_profile('Codex')]),
+            patch.object(pcfg.module, 'llm_profiles', [profile]),
             patch('ballontranslator.ui.codex_settings.QMessageBox.question', return_value=QMessageBox.StandardButton.Yes),
             patch('ballontranslator.ui.codex_account.QMessageBox.warning', return_value=QMessageBox.StandardButton.Ok),
         ):
@@ -905,8 +1160,8 @@ class CodexSettingsAccountTest(unittest.TestCase):
         self.assertEqual(self.controller.account, 'demo@example.com')
         self.assertEqual(pcfg.module.codex_models, {})
         self.assertEqual(len(published), 1)
-        self.assertEqual(profile.model_options, PROVIDER_DEFAULTS['Codex']['model_options'] + ['saved-text'])
-        self.assertEqual(profile.vision_model_options, PROVIDER_DEFAULTS['Codex']['vision_model_options'] + ['saved-vision'])
+        self.assertEqual(profile.model_options, default_codex_profile().model_options + ['saved-text'])
+        self.assertEqual(profile.vision_model_options, default_codex_profile().vision_model_options + ['saved-vision'])
         self.assertEqual((profile.model, profile.vision_model), ('saved-text', 'saved-vision'))
         self.assertTrue(profile.support_text)
         self.assertTrue(profile.support_vision)
@@ -1133,7 +1388,7 @@ class CodexSettingsAccountTest(unittest.TestCase):
         for cached in ({}, CATALOG):
             with self.subTest(cached=bool(cached)), \
                     patch.object(pcfg.module, 'codex_models', copy.deepcopy(cached)), \
-                    patch.object(pcfg.module, 'llm_profiles', [default_profile('Codex')]):
+                    patch.object(pcfg.module, 'llm_profiles', [default_codex_profile()]):
                 profile = pcfg.module.llm_profiles[0]
                 profile.model = 'vision-model'
                 panel = CodexSettingsPanel()

@@ -23,7 +23,7 @@ from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.text_engine.effects.panel import TextEffectPanel
 from ballontranslator.utils import global_callbacks, shared
 from ballontranslator.utils.config import ModuleConfig, RunStatus, pcfg
-from ballontranslator.utils.llm_profiles import default_profile, runtime_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, runtime_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock
 
@@ -35,7 +35,7 @@ class CodexRuntimeTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.saved_module = copy.deepcopy(pcfg.module.__dict__)
-        self.profile = default_profile('Codex')
+        self.profile = default_codex_profile()
         self.profile.model = self.profile.vision_model = self.profile.image_model = ''
         pcfg.module.llm_profiles = [self.profile]
         pcfg.module.translator_llm_id = 'codex'

@@ -20,7 +20,7 @@ from ballontranslator.ui.custom_widget import ImgtransProgressMessageBox
 from ballontranslator.ui import module_manager as M
 from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile, sync_codex_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile, sync_codex_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -192,7 +192,7 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
         self.wait_until(self.model.started.is_set)
         pcfg.drawpanel.inpainter = 'LLMInpaint'
         pcfg.drawpanel.inpaint_llm_id = profile.id
-        pcfg.drawpanel.inpaint_llm_model = 'draw-model'
+        pcfg.drawpanel.inpaint_llm_model = 'gpt-draw → gpt-image-2'
         pcfg.drawpanel.inpaint_prompt_override = '  Draw prompt.\n'
         with (
             patch.object(self.manager.inpaint_thread, '_prepare_module_class',
@@ -207,6 +207,7 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
             self.manager.canvas_inpaint(queued_request)
             queued_request['use_mask'] = True
             profile.image_prompt = 'Changed profile prompt.'
+            profile.image_model = 'gpt-changed → gpt-image-other'
             pcfg.drawpanel.inpainter = ControlledInpainter.name
             pcfg.drawpanel.inpaint_llm_model = 'changed-model'
             pcfg.drawpanel.inpaint_prompt_override = 'Changed override.'
@@ -214,7 +215,7 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
             self.wait_until(lambda: len(self.completed) == 2)
             snapshot = request.call_args.args[0]
             self.assertIsNot(snapshot, profile)
-            self.assertEqual(snapshot.image_model, 'draw-model')
+            self.assertEqual(snapshot.image_model, 'gpt-draw → gpt-image-2')
             self.assertEqual(snapshot.image_prompt, 'Draw prompt.')
             self.assertIsNone(request.call_args.kwargs['mask'])
             self.assertEqual(pcfg.module.inpainter, ControlledInpainter.name)
@@ -226,11 +227,11 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
             self.wait_until(lambda: len(self.completed) == 3)
             self.wait_until(lambda: not self.manager.inpaint_thread.isRunning())
             np.testing.assert_array_equal(self.completed[2][0]['inpainted'], 11)
-        self.assertEqual(profile.image_model, 'profile-model')
+        self.assertEqual(profile.image_model, 'gpt-changed → gpt-image-other')
         log_text = '\n'.join(logs.output)
         for event in ('submitted', 'started', 'completed'):
             self.assertIn('Draw inpaint ' + event, log_text)
-        for value in ("backend='openai'", "model='draw-model'", 'rectangle=[0, 0, 8, 8]', 'use_mask=False', 'elapsed='):
+        for value in ("backend='openai'", "model='gpt-draw → gpt-image-2'", 'rectangle=[0, 0, 8, 8]', 'use_mask=False', 'elapsed='):
             self.assertIn(value, log_text)
         for secret in ('test-secret-never-log', 'Profile prompt.', 'Draw prompt.', 'Changed override.'):
             self.assertNotIn(secret, log_text)
@@ -306,7 +307,7 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
 
         account = codex.CodexAccount()
         account._loaded = True
-        profile = default_profile('Codex')
+        profile = default_codex_profile()
         pcfg.module.llm_profiles = [profile]
         pcfg.drawpanel.inpainter = 'LLMInpaint'
         pcfg.drawpanel.inpaint_llm_id = profile.id
@@ -417,7 +418,7 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
             'access_token': 'test-access', 'refresh_token': 'test-refresh',
             'account_id': 'test-account', 'expires_at': time.time() + 3600,
         }
-        profile = default_profile('Codex')
+        profile = default_codex_profile()
         sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
         pcfg.module.llm_profiles = [profile]
         pcfg.module.inpaint_llm_id = profile.id

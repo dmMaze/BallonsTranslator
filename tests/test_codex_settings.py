@@ -17,7 +17,7 @@ from ballontranslator.modules import codex
 from ballontranslator.ui import codex_account
 from ballontranslator.ui.codex_settings import CodexSettingsPanel
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump_program_config, pcfg
-from ballontranslator.utils.llm_profiles import default_profile, sync_codex_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, sync_codex_profile
 
 
 CATALOG = {
@@ -32,9 +32,11 @@ class CodexSettingsTest(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self) -> None:
-        self.profile = default_profile('Codex')
+        self.profile = default_codex_profile()
         self.profile.id = 'codex'
         self.profile.model = self.profile.vision_model = 'vision-model'
+        self.profile.image_model = 'gpt-image-2'
+        self.profile.image_model_options = ['gpt-image-2']
         sync_codex_profile(self.profile, CATALOG)
         self.account = codex.CodexAccount()
         for patcher in (
@@ -86,12 +88,17 @@ class CodexSettingsTest(unittest.TestCase):
             self.assertIsNone(self.controller.worker)
 
     def test_control_edits_persist_on_canonical_profile_and_update_reasoning_choices(self) -> None:
+        self.profile.vision_model_options.append('gpt-reasoning')
         panel = self.make_panel()
         panel.param_widgets['model'].setCurrentText('text-model')
         thinking = panel.param_widgets['thinking_level']
         self.assertEqual([thinking.itemText(i) for i in range(thinking.count())], ['Auto', 'Disabled'])
         thinking.setCurrentText('Disabled')
         panel.param_widgets['vision_detail_level'].setCurrentText('high')
+        image = panel.param_widgets['image_model']
+        self.assertEqual([image.itemText(i) for i in range(image.count())], ['gpt-image-2', 'gpt-reasoning → gpt-image-2'])
+        image.setCurrentText('gpt-reasoning → gpt-image-2')
+        QTest.keyClick(image.lineEdit(), Qt.Key.Key_Return)
         for key, value in (('prompt', 'Keep translation concise.'), ('vision_prompt', 'Read vertical text.'),
                            ('image_prompt', 'Preserve the line art.')):
             editor = panel.param_widgets[key]
@@ -106,7 +113,12 @@ class CodexSettingsTest(unittest.TestCase):
         self.assertEqual(restored['thinking_level'], 'Disabled')
         self.assertEqual(restored['vision_detail_level'], 'high')
         self.assertEqual(restored['vision_prompt'], 'Read vertical text.')
+        self.assertEqual(restored['image_model'], 'gpt-reasoning → gpt-image-2')
+        self.assertEqual(restored['image_model_options'], ['gpt-image-2'])
         self.assertIs(pcfg.module.llm_profiles[0], self.profile)
+        image.setCurrentText('gpt-image-2')
+        QTest.keyClick(image.lineEdit(), Qt.Key.Key_Return)
+        self.assertEqual(self.profile.image_model, 'gpt-image-2')
 
     def test_saved_model_dropdowns_open_without_signin_or_cached_catalog(self) -> None:
         module = ModuleConfig(llm_profiles=[{
@@ -127,7 +139,7 @@ class CodexSettingsTest(unittest.TestCase):
                     self.assertTrue(combo.isEnabled())
                     self.assertEqual(combo.currentText(), model)
                     self.assertTrue(combo.model().item(combo.currentIndex()).isEnabled())
-                    QTest.mouseClick(combo, Qt.MouseButton.LeftButton)
+                    QTest.keyClick(combo, Qt.Key.Key_Down, Qt.KeyboardModifier.AltModifier)
                     self.app.processEvents()
                     self.assertTrue(combo.view().isVisible())
                     if key == 'image_model':
@@ -142,6 +154,8 @@ class CodexSettingsTest(unittest.TestCase):
             self.assertTrue(panel.param_widgets['vision_detail_level'].isEnabled())
 
     def test_catalog_refresh_updates_controls_and_preserves_removed_choices(self) -> None:
+        self.profile.vision_model_options.append('gpt-reasoning')
+        self.profile.image_model = 'gpt-reasoning → gpt-image-2'
         panel = self.make_panel()
         changed = QSignalSpy(panel.profile_ui_updated)
         self.account._loaded = True
@@ -163,9 +177,138 @@ class CodexSettingsTest(unittest.TestCase):
         self.assertFalse(vision.model().item(vision.currentIndex()).isEnabled())
         self.assertTrue(panel.param_widgets['image_model'].isEnabled())
         self.assertEqual(self.profile.vision_model, 'vision-model')
+        image = panel.param_widgets['image_model']
+        self.assertEqual(image.currentText(), 'gpt-reasoning → gpt-image-2')
+        self.assertFalse(image.model().item(image.currentIndex()).isEnabled())
+        image.setCurrentText('gpt-image-2')
+        QTest.keyClick(image.lineEdit(), Qt.Key.Key_Return)
+        self.assertEqual(self.profile.image_model, 'gpt-image-2')
         text.setCurrentText('replacement')
         self.assertEqual(self.profile.model, 'replacement')
         self.assertIn('medium', self.profile.thinking_level_options)
+
+    def test_custom_image_models_commit_once_and_survive_refresh_and_reload(self) -> None:
+        panel = self.make_panel()
+        panel.show()
+        self.app.processEvents()
+        combo = panel.param_widgets['image_model']
+        changed = QSignalSpy(panel.profile_summary_changed)
+        for commit in ('enter', 'focus_loss'):
+            with self.subTest(commit=commit):
+                combo.setFocus()
+                combo.lineEdit().selectAll()
+                QTest.keyClicks(combo.lineEdit(), '  custom-image-' + commit + '  ')
+                self.assertNotIn('custom-image-' + commit, self.profile.image_model_options)
+                if commit == 'enter':
+                    QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+                else:
+                    panel.param_widgets['model'].setFocus()
+                self.app.processEvents()
+                self.assertEqual(self.profile.image_model, 'custom-image-' + commit)
+                self.assertEqual(combo.currentText(), self.profile.image_model)
+        self.assertEqual(len(changed), 2)
+        expected = list(self.profile.image_model_options)
+        for value in ('   ', '  custom-image-focus_loss  '):
+            combo.setFocus()
+            combo.lineEdit().selectAll()
+            QTest.keyClicks(combo.lineEdit(), value)
+            QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+            self.assertEqual(self.profile.image_model_options, expected)
+            self.assertEqual(combo.currentText(), 'custom-image-focus_loss')
+        self.assertEqual(len(changed), 2)
+
+        sync_codex_profile(self.profile, {'new-text': {'modalities': ['text'], 'efforts': []}})
+        self.controller.catalog_changed.emit()
+        self.assertEqual([combo.itemText(i) for i in range(combo.count())], expected)
+        saved = json.loads(json_dump_program_config(ProgramConfig(module=ModuleConfig(
+            llm_profiles=[self.profile], codex_models=CATALOG,
+        ))))
+        restored = ModuleConfig(**saved['module']).llm_profiles[0]
+        self.assertEqual(restored.image_model_options, expected)
+        self.assertEqual(restored.image_model, 'custom-image-focus_loss')
+
+        combo.showPopup()
+        QTest.keyClick(combo.view(), Qt.Key.Key_Home)
+        QTest.keyClick(combo.view(), Qt.Key.Key_Return)
+        self.assertEqual(self.profile.image_model, expected[0])
+
+    def test_image_model_buttons_add_delete_and_preserve_an_empty_list(self) -> None:
+        panel = self.make_panel()
+        panel.show()
+        self.app.processEvents()
+        combo = panel.param_widgets['image_model']
+        original = self.profile.image_model
+        panel.add_image_model_btn.click()
+        self.assertEqual(combo.currentText(), '')
+        self.assertFalse(panel.remove_image_model_btn.isEnabled())
+        panel.remove_image_model_btn.click()
+        self.assertEqual(self.profile.image_model_options, [original])
+        panel.onCatalogChanged()
+        self.assertEqual(combo.currentText(), '')
+        QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+        self.assertEqual(combo.currentText(), original)
+        self.assertTrue(panel.remove_image_model_btn.isEnabled())
+
+        for model in ('image-one', 'image-two', 'image-three', 'image-two'):
+            QTest.mouseClick(panel.add_image_model_btn, Qt.MouseButton.LeftButton)
+            QTest.keyClicks(combo.lineEdit(), '  ' + model + '  ')
+            QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+        self.assertEqual(self.profile.image_model_options, [original, 'image-one', 'image-two', 'image-three'])
+        self.assertEqual(self.profile.image_model, 'image-two')
+        changed = QSignalSpy(panel.profile_summary_changed)
+        for expected in ('image-three', 'image-one', original, ''):
+            QTest.mouseClick(panel.remove_image_model_btn, Qt.MouseButton.LeftButton)
+            self.assertEqual(self.profile.image_model, expected)
+            self.assertEqual(combo.currentText(), expected)
+        self.assertEqual(len(changed), 4)
+        self.assertFalse(panel.remove_image_model_btn.isEnabled())
+        panel.remove_image_model_btn.click()
+        self.assertEqual(len(changed), 4)
+
+        sync_codex_profile(self.profile, CATALOG)
+        panel.onCatalogChanged()
+        self.assertEqual(combo.count(), 0)
+        saved = json.loads(json_dump_program_config(ProgramConfig(module=ModuleConfig(
+            llm_profiles=[self.profile], codex_models=CATALOG,
+        ))))
+        restored = ModuleConfig(**saved['module']).llm_profiles[0]
+        self.assertEqual(restored.image_model_options, [])
+        self.assertEqual(restored.image_model, '')
+        panel.add_image_model_btn.click()
+        QTest.keyClicks(combo.lineEdit(), 'replacement-image')
+        QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+        self.assertEqual(self.profile.image_model_options, ['replacement-image'])
+        self.assertEqual(self.profile.image_model, 'replacement-image')
+
+    def test_deleting_a_combination_removes_only_its_image_model(self) -> None:
+        self.profile.vision_model_options = ['gpt-one', 'gpt-two', 'other-model']
+        self.profile.image_model_options = ['gpt-image-2', 'other-image']
+        self.profile.image_model = 'gpt-one → gpt-image-2'
+        panel = self.make_panel()
+        panel.remove_image_model_btn.click()
+        combo = panel.param_widgets['image_model']
+        self.assertEqual(self.profile.image_model_options, ['other-image'])
+        self.assertEqual(self.profile.image_model, 'other-image')
+        self.assertEqual([combo.itemText(i) for i in range(combo.count())], ['other-image'])
+        self.assertEqual(self.profile.vision_model_options, ['gpt-one', 'gpt-two', 'other-model'])
+
+    def test_unavailable_or_non_gpt_pair_edits_do_not_change_saved_models(self) -> None:
+        panel = self.make_panel()
+        combo = panel.param_widgets['image_model']
+        with patch('ballontranslator.ui.codex_settings.QMessageBox.warning') as warning:
+            for value in ('gemini → gpt-image-2', 'gpt-reason → other-image', 'gpt-unlisted → gpt-image-2'):
+                combo.setEditText(value)
+                self.assertFalse(panel.remove_image_model_btn.isEnabled())
+                panel.remove_image_model_btn.click()
+                self.assertEqual(self.profile.image_model_options, ['gpt-image-2'])
+                QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+                self.assertEqual(self.profile.image_model, 'gpt-image-2')
+                self.assertEqual(self.profile.image_model_options, ['gpt-image-2'])
+        self.assertEqual(warning.call_count, 3)
+        with patch('ballontranslator.ui.codex_settings.QMessageBox.warning'):
+            combo.setEditText('gemini → gpt-image-2')
+            panel.deleteCurrentImageModel()
+            self.assertEqual(self.profile.image_model_options, ['gpt-image-2'])
 
     def test_external_sync_rebinds_profile_without_losing_prompt_undo_or_emitting_edits(self) -> None:
         panel = self.make_panel()
@@ -190,6 +333,20 @@ class CodexSettingsTest(unittest.TestCase):
         editor.insertPlainText(' More.')
         self.assertEqual(replacement.prompt, editor.toPlainText())
         self.assertEqual(self.profile.prompt, previous)
+
+    def test_catalog_refresh_preserves_uncommitted_image_model_edit(self) -> None:
+        panel = self.make_panel()
+        panel.show()
+        self.app.processEvents()
+        combo = panel.param_widgets['image_model']
+        combo.setFocus()
+        combo.lineEdit().selectAll()
+        QTest.keyClicks(combo.lineEdit(), 'custom-image-draft')
+        panel.onCatalogChanged()
+        self.assertEqual(combo.currentText(), 'custom-image-draft')
+        self.assertEqual(self.profile.image_model, 'gpt-image-2')
+        QTest.keyClick(combo.lineEdit(), Qt.Key.Key_Return)
+        self.assertEqual(self.profile.image_model, 'custom-image-draft')
 
     def test_failed_catalog_keeps_signout_and_stops_refresh_animation(self) -> None:
         self.controller.account = 'signed-in@example.test'

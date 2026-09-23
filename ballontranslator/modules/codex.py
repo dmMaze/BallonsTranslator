@@ -9,18 +9,20 @@ import hmac
 import json
 import math
 import os
+import re
 from pathlib import Path
 import secrets
 import tempfile
 import threading
 import time
 from types import SimpleNamespace
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Optional, Tuple, TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .context.errors import ContextLengthError, is_context_length_error
 from .exceptions import CodexSignInRequiredError, LLMRequestStopped, LLMUserActionRequiredError
-from ballontranslator.utils.llm_profiles import CODEX_IMAGE_MODEL, LLMProfile, THINKING_AUTO, THINKING_DISABLED, normalize_codex_models
+from . import image_generation
+from ballontranslator.utils.llm_profiles import LLMProfile, THINKING_AUTO, THINKING_DISABLED, normalize_codex_models
 from ballontranslator.utils.logger import logger as LOGGER
 
 if TYPE_CHECKING:
@@ -35,10 +37,6 @@ CATALOG_VERSION = '0.155.1'
 API_URL = 'https://chatgpt.com/backend-api/codex'
 AUTH_URL = 'https://auth.openai.com'
 CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
-# Match the native Codex image tool's output bound; allow JSON envelope overhead.
-_MAX_IMAGE_BYTES = 32 * 1024 * 1024
-_MAX_IMAGE_BASE64_BYTES = ((_MAX_IMAGE_BYTES + 2) // 3) * 4
-_MAX_IMAGE_RESPONSE_BYTES = _MAX_IMAGE_BASE64_BYTES + 1024 * 1024
 
 
 def _system_keyring() -> KeyringBackend:
@@ -149,8 +147,34 @@ def _raise_service_error(payload: Dict, status: Optional[int] = None) -> None:
         raise CodexSignInRequiredError(invalid=True) from None
     if any(word in detail for word in ('quota', 'usage limit', 'usage_limit', 'insufficient credit', 'billing')):
         raise LLMUserActionRequiredError('The ChatGPT account has reached its Codex usage limit. Check the account limits before retrying.') from None
-    if 'model' in detail and any(word in detail for word in ('not found', 'not supported', 'unavailable', 'does not exist', 'model_not_found')):
-        raise LLMUserActionRequiredError('This Codex model is unavailable. Refresh models and select an available model.') from None
+    unavailable_model = bool(codes & {
+        'model_not_found', 'invalid_model', 'unsupported_model', 'model_not_supported', 'model_not_available',
+    })
+    if not unavailable_model and (codes & {'unsupported_tool', 'unsupported_tool_type'} or (
+        ('image_generation' in detail or 'image generation' in detail)
+        and any(word in detail for word in ('unsupported', 'not supported', 'not available', 'not enabled', 'not allowed', 'invalid value', 'unknown tool'))
+    )):
+        raise LLMUserActionRequiredError('Codex assisted editing is unavailable for this request. Select another model pair or a direct image model.') from None
+    parameter = error.get('param', '') if isinstance(error, dict) else ''
+    if not unavailable_model and parameter != 'model' and (
+        codes & {'invalid_parameter', 'unsupported_parameter', 'unknown_parameter'}
+        or (parameter and 'invalid_request_error' in codes)
+    ):
+        # Parameter rejection may say "not supported on this model" without
+        # rejecting the model. Expose only a bounded field path, never raw input.
+        field = (f' {parameter!r}' if isinstance(parameter, str)
+                 and re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.\[\]]{0,127}', parameter) else '')
+        http_status = f' (HTTP {status})' if isinstance(status, int) else ''
+        raise LLMUserActionRequiredError(
+            f'Codex rejected request parameter{field}{http_status}. '
+            'This option is unsupported or invalid for this request.'
+        ) from None
+    model_error = detail.replace('_', ' ')
+    if unavailable_model or ('model' in model_error and any(word in model_error for word in (
+        'not found', 'not supported', 'unsupported', 'unavailable', 'not available',
+        'does not exist', 'invalid model',
+    ))):
+        raise LLMUserActionRequiredError('This Codex model is unavailable. Select another model or check the model ID and account access.') from None
     if status == 403:
         raise LLMUserActionRequiredError('The ChatGPT account does not have permission for this Codex request.') from None
     raise RuntimeError('Codex could not complete the request. Check the connection and retry.') from None
@@ -595,11 +619,14 @@ def request_image(
     *,
     proxy: str = '',
     timeout: Optional[float] = 180.0,
+    reasoning_model: str = '',
+    cache_key: str = '',
 ) -> bytes:
     """Return one completed Codex image; the caller decodes and composites it.
 
-    The native image API uses JSON references, with no dedicated mask field.
-    The feature owner describes the optional second reference in its prompt.
+    An optional reasoning model uses the Responses image-generation tool.
+    Both routes describe the optional mask reference through the caller's prompt.
+    Assisted requests reuse the calling job's cache key without retaining history.
 
     >>> result = request_image('gpt-image-2', 'Remove masked text.',
     ...                        page_png, mask_png, stop)  # doctest: +SKIP
@@ -608,41 +635,53 @@ def request_image(
         raise LLMRequestStopped()
     account.require_sign_in(stop_event)
     generation = account.generation
-    if model != CODEX_IMAGE_MODEL:
-        raise LLMUserActionRequiredError('Select gpt-image-2 for Codex image generation and editing.')
+    if not isinstance(model, str) or not model.strip():
+        raise LLMUserActionRequiredError('Select an image model for Codex image generation and editing.')
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError('Codex image requests require a prompt.')
-    if mask is not None and image is None:
-        raise ValueError('A Codex image mask requires an input image.')
     if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
         raise ValueError('Codex image request timeout must be positive or None.')
-    references = []
-    for raw in (image, mask):
-        if raw is None:
-            continue
-        if not isinstance(raw, bytes) or not raw.startswith(b'\x89PNG\r\n\x1a\n') or len(raw) > _MAX_IMAGE_BYTES:
-            raise ValueError('Codex images must be nonempty PNG bytes within the image size limit.')
-        references.append({'image_url': 'data:image/png;base64,' + base64.b64encode(raw).decode('ascii')})
-    payload = {'model': model, 'prompt': prompt, 'n': 1, 'background': 'auto', 'quality': 'auto', 'size': 'auto'}
-    if references:
-        payload['images'] = references
-    endpoint = '/images/edits' if references else '/images/generations'
+    if not isinstance(reasoning_model, str):
+        raise ValueError('The Codex image reasoning model must be text.')
+    reasoning_model = reasoning_model.strip()
+    if reasoning_model:
+        from ballontranslator.utils.config import pcfg
+        entry = pcfg.module.codex_models.get(reasoning_model)
+        if not entry or 'image' not in entry['modalities']:
+            raise LLMUserActionRequiredError('Refresh Codex models and select an available vision model in the image model pair, or select a direct image model.')
+    references = image_generation.image_references(image, mask)
+    if reasoning_model:
+        endpoint = '/responses'
+        session_key = cache_key or secrets.token_hex(16)
+        payload = image_generation.responses_image_payload(
+            reasoning_model, model, prompt, references, session_key, stream=True,
+        )
+    else:
+        endpoint = '/images/edits' if references else '/images/generations'
+        session_key = ''
+        payload = {'model': model, 'prompt': prompt, 'n': 1, 'background': 'auto', 'quality': 'auto', 'size': 'auto'}
+        if references:
+            payload['images'] = references
 
     async def request() -> Dict:
         async with _http_client(proxy) as client:
             rejected = ''
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
-                async with client.stream('POST', API_URL + endpoint, headers=_headers(tokens),
+                async with client.stream('POST', API_URL + endpoint, headers=_headers(tokens, session_key),
                                          json=payload, timeout=timeout) as response:
                     if response.status_code == 401 and attempt == 0:
                         rejected = tokens['access_token']
                         continue
                     await _check_response(response)
+                    if reasoning_model:
+                        # Responses may repeat the full image in output_item.done
+                        # and response.completed; both copies count toward the bound.
+                        return await _read_completion(response, max_response_bytes=2 * image_generation.MAX_IMAGE_RESPONSE_BYTES)
                     body = bytearray()
                     async for chunk in response.aiter_bytes():
                         body.extend(chunk)
-                        if len(body) > _MAX_IMAGE_RESPONSE_BYTES:
+                        if len(body) > image_generation.MAX_IMAGE_RESPONSE_BYTES:
                             raise LLMUserActionRequiredError('Codex returned an oversized image response. Reduce the request size.')
                     result = json.loads(body)
                     if isinstance(result, dict) and result.get('error'):
@@ -650,16 +689,12 @@ def request_image(
                     return result
 
     response = _run(request(), stop_event)
-    data = response.get('data') if isinstance(response, dict) else None
-    encoded = data[0].get('b64_json') if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict) else None
-    if not isinstance(encoded, str) or not encoded or len(encoded) > _MAX_IMAGE_BASE64_BYTES:
-        raise RuntimeError('Codex returned no valid inline image data.')
-    try:
-        result = base64.b64decode(encoded, validate=True)
-    except ValueError:
-        raise RuntimeError('Codex returned invalid image data.') from None
-    if not result or len(result) > _MAX_IMAGE_BYTES:
-        raise RuntimeError('Codex returned empty or oversized image data.')
+    if reasoning_model:
+        result = image_generation.decode_responses_image(response)
+    else:
+        data = response.get('data') if isinstance(response, dict) else None
+        encoded = data[0].get('b64_json') if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict) else None
+        result = image_generation.decode_inline_image(encoded, error_type=RuntimeError)
     if (stop_event is not None and stop_event.is_set()) or generation != account.generation:
         raise LLMRequestStopped()
     return result
@@ -699,9 +734,34 @@ def _request_messages(messages: List[Dict]) -> Tuple[str, List[Dict]]:
     return '\n\n'.join(instructions), inputs
 
 
-async def _read_completion(response: httpx.Response) -> Dict:
+async def _bounded_response_lines(response: httpx.Response, limit: int) -> AsyncIterator[str]:
+    """Bound bytes before a line decoder can buffer a large inline image.
+
+    >>> lines = _bounded_response_lines(response, 1024)  # doctest: +SKIP
+    """
+    received, scanned = 0, 0
+    buffer = bytearray()
+    async for chunk in response.aiter_bytes():
+        received += len(chunk)
+        if received > limit:
+            raise LLMUserActionRequiredError('Codex returned an oversized image response. Reduce the request size.')
+        buffer.extend(chunk)
+        while True:
+            end = buffer.find(b'\n', scanned)
+            if end < 0:
+                scanned = len(buffer)
+                break
+            yield buffer[:end].rstrip(b'\r').decode('utf-8')
+            del buffer[:end + 1]
+            scanned = 0
+    if buffer:
+        yield buffer.rstrip(b'\r').decode('utf-8')
+
+
+async def _read_completion(response: httpx.Response, *, max_response_bytes: Optional[int] = None) -> Dict:
     completed_items, data = [], []
-    async for line in response.aiter_lines():
+    lines = response.aiter_lines() if max_response_bytes is None else _bounded_response_lines(response, max_response_bytes)
+    async for line in lines:
         if line.startswith('data:'):
             data.append(line[5:].lstrip())
         elif not line and data:
@@ -788,6 +848,9 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                         prompt_tokens_details=raw_usage.get('input_tokens_details'),
                         completion_tokens_details=raw_usage.get('output_tokens_details'),
                     )
-                return LLMChatResult(content=content, finish_reason='stop', usage=usage)
+                return LLMChatResult(
+                    content=content, finish_reason='stop', usage=usage,
+                    prompt_cache_diagnostics=result.get('prompt_cache_diagnostics'),
+                )
 
     return _run(request(), stop_event)

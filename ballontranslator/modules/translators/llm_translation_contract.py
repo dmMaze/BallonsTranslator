@@ -332,6 +332,38 @@ def assemble_translation_request(
     return messages, prompt
 
 
+def translation_cache_messages(messages: List[Dict]) -> List[Dict]:
+    """Mark reusable translation prefixes without changing the request snapshot.
+
+    Keep two instruction boundaries and the last two historical user boundaries
+    within the four-write limit. The previous history boundary remains eligible
+    after a page is appended. Only input text is marked, never assistant output
+    or the final page's changing text/image. The server decides token eligibility.
+
+    >>> messages = [{'role': 'system', 'content': 'rules'},
+    ...             {'role': 'user', 'content': 'current page'}]
+    >>> translation_cache_messages(messages)[0]['content'][0]['prompt_cache_breakpoint']
+    {'mode': 'explicit'}
+    >>> messages[0]['content']
+    'rules'
+    """
+    instructions = []
+    history = []
+    for index, message in enumerate(messages[:-1]):
+        if message['role'] in ('system', 'developer'):
+            instructions.append(index)
+        elif message['role'] == 'user':
+            history.append(index)
+    result = list(messages)
+    for index in instructions[-2:] + history[-2:]:
+        message = messages[index]
+        result[index] = {**message, 'content': [{
+            'type': 'text', 'text': message['content'],
+            'prompt_cache_breakpoint': {'mode': 'explicit'},
+        }]}
+    return result
+
+
 def translation_json_schema(
     expected_translations: int = 1,
     *,

@@ -27,7 +27,7 @@ from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.ui.run_pipeline_dialog import RunPipelineDialog
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import CODEX_IMAGE_MODEL, LLMProfile, default_profile, sync_codex_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, LLMProfile, default_profile, sync_codex_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -85,9 +85,13 @@ class ModuleSelectionMenuTest(unittest.TestCase):
     def setUp(self) -> None:
         self.saved = copy.deepcopy(pcfg.module.__dict__)
         profile = default_profile('OpenAI')
+        profile.model = 'text-one'
+        profile.model_options = ['text-one', 'text-two']
+        profile.vision_model = 'vision-one'
+        profile.vision_model_options = ['vision-one', 'vision-two']
         profile.image_model = 'image-one'
         profile.image_model_options = ['image-one', 'image-two']
-        pcfg.module.llm_profiles = [profile, default_profile('Codex')]
+        pcfg.module.llm_profiles = [profile, default_codex_profile()]
         pcfg.module.translator = next(name for name in GET_VALID_TRANSLATORS() if name != 'LLMTranslator')
         self.window = SelectionWindow()
         self.save_patch = patch('ballontranslator.ui.run_pipeline_dialog.save_config')
@@ -110,8 +114,8 @@ class ModuleSelectionMenuTest(unittest.TestCase):
     def test_run_and_bottom_bar_share_live_profile_and_module_selection(self) -> None:
         def interact(dialog: RunPipelineDialog) -> int:
             for role, bottom_name, llm_key, field, value, profile_id_attr in (
-                ('translator', 'trans_selector', 'LLMTranslator', 'model', 'gpt-5.4', 'translator_llm_id'),
-                ('ocr', 'ocr_selector', 'LLMOCR', 'vision_model', 'gpt-4o', 'ocr_llm_id'),
+                ('translator', 'trans_selector', 'LLMTranslator', 'model', 'text-two', 'translator_llm_id'),
+                ('ocr', 'ocr_selector', 'LLMOCR', 'vision_model', 'vision-two', 'ocr_llm_id'),
                 ('inpainter', 'inpaint_selector', 'LLMInpaint', 'image_model', 'image-two', 'inpaint_llm_id'),
             ):
                 with self.subTest(role=role):
@@ -194,7 +198,7 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         self.assertEqual(menu.selectedText(), 'image-one')
 
     def test_codex_remains_selectable_in_all_roles_without_cached_catalog(self) -> None:
-        profile = default_profile('Codex')
+        profile = default_codex_profile()
         pcfg.module.llm_profiles = [profile]
         panel = self.window.configPanel.codex_panel
         pcfg.module.codex_models = {
@@ -203,10 +207,13 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         }
         sync_codex_profile(profile, pcfg.module.codex_models)
         panel.syncFromProfile()
+        image_combo = panel.param_widgets['image_model']
+        image_combo.setEditText('custom-codex-image')
+        QTest.keyClick(image_combo.lineEdit(), Qt.Key.Key_Return)
         for bottom_name, field, model, role, llm_key in (
             ('trans_selector', 'model', 'text-model', 'translator', 'LLMTranslator'),
             ('ocr_selector', 'vision_model', 'vision-model', 'ocr', 'LLMOCR'),
-            ('inpaint_selector', 'image_model', CODEX_IMAGE_MODEL, 'inpainter', 'LLMInpaint'),
+            ('inpaint_selector', 'image_model', 'custom-codex-image', 'inpainter', 'LLMInpaint'),
         ):
             bottom = getattr(self.window.bottomBar, bottom_name)
             self.choose(bottom.menu, ('codex', field, model))
@@ -225,12 +232,12 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         self.assertTrue(profile.support_text)
         self.assertTrue(profile.support_vision)
         self.assertTrue(profile.support_image)
-        self.assertEqual(profile.image_model, CODEX_IMAGE_MODEL)
+        self.assertEqual(profile.image_model, 'custom-codex-image')
         dialog = RunPipelineDialog(self.window)
         for bottom_name, field, model, role in (
             ('trans_selector', 'model', 'text-model', 'translator'),
             ('ocr_selector', 'vision_model', 'vision-model', 'ocr'),
-            ('inpaint_selector', 'image_model', CODEX_IMAGE_MODEL, 'inpainter'),
+            ('inpaint_selector', 'image_model', 'custom-codex-image', 'inpainter'),
         ):
             bottom = getattr(self.window.bottomBar, bottom_name)
             activator = next(a for a in dialog.module_activators if a.module_type == role)

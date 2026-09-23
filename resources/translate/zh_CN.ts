@@ -2,6 +2,33 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en_US">
 <context>
+    <name>CodexSettingsPanel</name>
+    <message>
+        <source>Add image model</source>
+        <translation type="unfinished">添加图像模型</translation>
+    </message>
+    <message>
+        <source>Image model name</source>
+        <translation type="unfinished">图像模型名称</translation>
+    </message>
+    <message>
+        <source>Delete image model and its combinations</source>
+        <translation type="unfinished">删除图像模型及其组合</translation>
+    </message>
+    <message>
+        <source>Choose an image model directly, or a GPT → GPT Image combination for assisted editing. Use + to add an image model ID. Availability is checked when used.</source>
+        <translation type="unfinished">选择图像模型直接编辑，或选择 GPT → GPT Image 组合进行辅助编辑。使用 + 添加图像模型 ID。使用时会检查可用性。</translation>
+    </message>
+    <message>
+        <source>Invalid image model</source>
+        <translation type="unfinished">无效的图像模型</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID, or choose a GPT → GPT Image combination from the list.</source>
+        <translation type="unfinished">请输入图像模型 ID，或从列表中选择 GPT → GPT Image 组合。</translation>
+    </message>
+</context>
+<context>
     <name>AddWordItemWidget</name>
     <message>
         <location filename="../../ballontranslator/ui/spellcheck.py" line="690"/>
@@ -3094,8 +3121,8 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="110"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="596"/>
-        <source>Proxy address used for the OpenAI-compatible client.</source>
-        <translation>用于兼容 OpenAI 格式客户端的代理地址。</translation>
+        <source>Proxy address used for LLM requests.</source>
+        <translation type="unfinished">用于 LLM 请求的代理地址。</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="38"/>
@@ -4746,11 +4773,6 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>添加语言模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="623"/>
-        <source>Delete current image model</source>
-        <translation>删除当前图像模型</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="679"/>
         <source>Text</source>
         <translation>文本</translation>
@@ -4895,6 +4917,14 @@ Then restart Photoshop. Explorer will now open the source file and destination l
     <message>
         <source>Enable image cleanup for this profile.</source>
         <translation type="vanished">启用图像修复能力</translation>
+    </message>
+    <message>
+        <source>Delete current image model and all its reasoning combinations</source>
+        <translation type="unfinished">删除当前图像模型及其所有推理组合</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID. Reasoning combinations are added automatically from vision models.</source>
+        <translation type="unfinished">请输入图像模型 ID。推理组合会根据视觉模型列表自动添加。</translation>
     </message>
 </context>
 <context>

@@ -11,7 +11,7 @@ from ballontranslator.modules.exceptions import (
     LLMModelRequiredError,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import DEFAULT_OCR_PROMPT, default_profile
+from ballontranslator.utils.llm_profiles import DEFAULT_OCR_PROMPT, default_codex_profile, default_profile
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -63,7 +63,7 @@ class FakeOCR(LLMOCR):
 
 
 class LLMOCRTest(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self._old_profiles = copy.deepcopy(pcfg.module.llm_profiles)
         self._old_ocr_llm_id = pcfg.module.ocr_llm_id
         self._old_page_settings = (
@@ -73,7 +73,10 @@ class LLMOCRTest(unittest.TestCase):
         )
         profile = default_profile('OpenAI')
         profile.api_key = 'sk-demo'
+        profile.model = 'test-text-model'
+        profile.model_options = [profile.model]
         profile.vision_model = 'gpt-4o'
+        profile.vision_model_options = [profile.vision_model]
         profile.vision_detail_level = 'auto'
         profile.vision_prompt = 'Read vertical text carefully.'
         pcfg.module.llm_profiles = [profile]
@@ -120,9 +123,8 @@ class LLMOCRTest(unittest.TestCase):
         self.assertNotIn('"order"', builtin_prompt)
 
     def test_vision_enabled_profile_requires_model(self) -> None:
-        for provider in ('OpenAI', 'Codex'):
-            with self.subTest(provider=provider):
-                profile = default_profile(provider)
+        for profile in (default_profile('OpenAI'), default_codex_profile()):
+            with self.subTest(backend=profile.backend):
                 profile.model = ''
                 profile.vision_model = ''
                 pcfg.module.llm_profiles = [profile]

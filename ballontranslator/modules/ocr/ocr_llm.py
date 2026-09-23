@@ -81,7 +81,7 @@ PAGE_OCR_SYSTEM_PROMPT = (
 
 @register_OCR("LLMOCR")
 class LLMOCR(LLMChatRequester, OCRBase):
-    """Profile-backed OCR using OpenAI-compatible vision chat models.
+    """Profile-backed OCR using API or Codex vision models.
 
     Example:
         >>> LLMOCR._normalized_text('a\\n b ')
@@ -114,7 +114,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         "proxy": {
             "value": "",
             "display_name": "Proxy",
-            "description": "Proxy address used for the OpenAI-compatible client.",
+            "description": "Proxy address used for LLM requests.",
         },
         "description": "OCR using the selected vision-capable LLM profile.",
     }

@@ -3,6 +3,11 @@
 This guide describes the stable contracts and ownership boundaries of LLM
 translation. The code and focused tests remain authoritative.
 
+In profiles, `backend="openai"` selects the API-key transport, including compatible
+third-party providers. The profile's URLs determine the service; the backend name
+does not select OpenAI's servers. `backend="codex"` selects the ChatGPT subscription
+transport.
+
 ## Architecture
 
 | Concern | Owner |
@@ -71,9 +76,10 @@ agent mode. Cancellation interrupts network waits and rejects late results.
 
 [`codex_account.py`](../../ballontranslator/ui/codex_account.py) owns asynchronous
 GUI account operations; [`CodexSettingsPanel`](../../ballontranslator/ui/codex_settings.py)
-owns the dedicated account, model, and request settings UI. One canonical
-`LLMProfile` with ID `codex` retains the existing requester and shared-selector
-contract. It is excluded from the API profile editor and clipboard imports.
+owns the dedicated account, model, and request settings UI. The dedicated
+`default_codex_profile()` factory creates one canonical `LLMProfile` with ID
+`codex`, sharing the requester and selector contract. API-provider enumeration,
+profile editing, and clipboard operations exclude it.
 Config loading accepts only that canonical Codex identity; malformed entries are
 discarded without converting profiles or remapping their IDs. Restoring API
 profiles preserves Codex settings.
@@ -111,23 +117,50 @@ remain hidden. Only a completed final response reaches the parser; truncation,
 authentication, and quota failures require user action, while context overflow uses
 the existing optional-history recovery.
 
-Inpainting uses `LLMInpaint` and the shared `LLMImageRequester`, with Codex's fixed
-`gpt-image-2` model offered independently of the text/vision catalog and sign-in state.
-The image transport follows the [native Codex image API](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/endpoint/images.rs):
-PNG references go to `/images/edits`, while existing Image-card requests without
-context use `/images/generations`. Only inline image results are accepted.
-The module's proxy, timeout, shared throttle, retries, and cancellation apply.
+## Image editing
 
-The subscription endpoint has no native mask parameter. Inpainting sends the
-source crop and a labelled black/white mask reference; downscaling preserves thin
-marked regions. Crops beyond the model's 3:1 aspect limit are padded before the
-request and unpadded afterward to preserve alignment. The existing crop pipeline
-owns context margins and alpha handling.
-Masked results are resized to the input crop and composited only into the original
-mask, so model changes outside it are discarded. Empty masks require no request.
-Image calls are independent of translation history and consume the ChatGPT
-subscription allowance; there is no API-billing fallback. Generative reconstruction
-inside the mask can vary, especially on fine screentones or line art.
+`LLMInpaint` and `LLMImageRequester` own image dispatch, reference preparation,
+throttling, retries, and crop compositing. The pure profile helpers in
+`utils/llm_profiles.py` derive direct image choices and GPT reasoning-model →
+GPT Image combinations from the saved image IDs and vision models. Only the
+selected pair is persisted in `image_model`; `image_model_options` contains base
+image IDs, never generated combinations. All image selectors share these choices,
+including drawing selectors whose selection remains independent of Run.
+
+A plain image ID uses the existing provider's direct image route. A pair uses
+Responses with one forced `image_generation` call and provider-default reasoning
+independent of translation/OCR settings. Both Codex and API profiles reuse
+`modules/image_generation.py` for PNG references, request construction, inline
+image decoding, size bounds, and completed-result validation. Codex retains its
+subscription authentication and cancellable SSE transport. API profiles retain
+their own key, proxy, and timeout; Responses JSON is read with a byte bound and
+stop checks between chunks. The Responses endpoint is resolved on the configured
+image service from `image_base_url`: a root or `/v1` base URL, or an endpoint ending
+in `/images/edits`, `/images/generations`, or `/responses`. Direct image requests
+keep the configured URL unchanged. Native Gemini/OpenRouter image transports do not
+advertise combinations. Provider support is checked by the service when used.
+
+Direct and chained API image failures share status classification and log the HTTP
+status, content type, endpoint, and a bounded response excerpt with credentials
+and image payloads omitted. Missing-model and permission errors stop with the
+provider's explanation; API-key dialogs are reserved for authentication failures.
+Redirects and non-JSON success responses stop with an image-endpoint error instead
+of retrying.
+
+Codex's catalog refresh updates reasoning/vision models while preserving saved
+image IDs; it does not establish subscription access to a particular image model.
+Its direct routes follow the [native image API](https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/endpoint/images.rs).
+Codex requests consume the subscription allowance; API requests use that
+profile's API billing. Neither route falls back to the other. Assisted requests
+are stateless, without chat history or an agent loop, and reuse a cache identity
+within a job.
+
+Codex and assisted API editing send an aligned source and optional black/white
+mask reference. Downscaling preserves thin marked regions; extreme crops are
+padded and unpadded to preserve alignment. Local compositing enforces the mask
+boundary regardless of model output. Empty masks require no request. Direct
+API provider behavior is unchanged. Generative reconstruction inside the mask
+can vary, especially on fine screentones or line art.
 
 Brush and rectangle inpainting share a selection stored in `drawpanel`, independent
 of Run's module, profile, and model. Their menus reuse `ModuleSelectionMenu` with
@@ -139,7 +172,7 @@ returned crop; local inpainters instead receive a full-rectangle mask. The whole
 rectangle is recorded as edited for undo and erasing. Drawing LLM edits bypass
 the native flat-background fill shortcut.
 `ModuleManager.canvas_inpaint()` snapshots the draw module and copied profile when
-submitted, so queued requests retain their model, prompt, and mask mode without
+submitted, so queued requests retain their image/reasoning models, prompt, and mask mode without
 changing saved profiles. Canvas and Run prepare and use the same inpainter only after its worker
 is idle; a page change discards queued canvas work and obsolete results.
 Draw request logs report the backend, model, rectangle, mask mode, and elapsed
@@ -149,24 +182,26 @@ logged in the drawing panel.
 ## Request contract
 
 `LLMTranslator.concate_text` is `False`. Each non-empty source block becomes a
-one-based item in the current JSON array. OpenAI-compatible profiles retain the
+one-based item in the current JSON array. Non-GPT API models use the
 numeric-map response:
 
 ```json
 {"1":"Translated text"}
 ```
 
-Codex uses a fixed strict schema with integer IDs and string translations:
+GPT models on API profiles and all Codex models use a fixed array contract with
+integer IDs and string translations:
 
 ```json
 {"translations":[{"id":1,"translation":"Translated text"}]}
 ```
 
-Its schema is independent of the current block count, avoiding a changing schema
-before the reusable message prefix. Prompt instructions and history examples use
-the same shape. Cache hits still depend on the backend; stable requests do not
-guarantee reuse, and the subscription endpoint does not support the API's
-`prompt_cache_options` diagnostics.
+When strict JSON is enabled, its schema is independent of the current block
+count, avoiding a changing schema before the reusable message prefix. Prompt
+instructions, history examples, and parsing use the same shape even in JSON
+object mode. `gpt_model_version()` recognizes numeric GPT IDs, including gateway
+namespaces and suffixes; custom aliases without a GPT version retain the generic
+contract. Endpoint capability probes are not performed.
 
 With Summary enabled, `page_summary` precedes `translations`.
 The latter keeps the provider's map or array shape; for example:
@@ -176,7 +211,7 @@ The latter keeps the provider's map or array shape; for example:
 ```
 
 `parse_translation_response()` owns compatibility response shapes. For text
-pages, accepted responses must contain exactly IDs `1..N`, once each. Codex array
+pages, accepted responses must contain exactly IDs `1..N`, once each. GPT/Codex array
 items reject coerced IDs and non-string translations. A missing or malformed
 summary never discards an otherwise complete set of translations.
 Parsing accepts either field order for compatibility; the prompt, schema, and
@@ -355,6 +390,27 @@ the per-page summary-generation decision belongs only to the current user suffix
 `Matching` glossary entries belong to the volatile current-page suffix; later
 history remains glossary-free.
 
+For recognized GPT-5.6+ models, translation requests use explicit caching with a
+30-minute TTL on API profiles and gateways. The translator marks up to
+four input-text boundaries: the last two instruction messages (stable glossary
+and compact memory when present) and the last two historical user messages.
+Keeping the previous history boundary allows the next page to look up its cached
+prefix while writing the newly extended prefix. Assistant outputs and the final
+page's text, matching glossary, saved summaries, and image remain unmarked.
+
+`translation_cache_messages()` copies only marked messages; request snapshots and
+project history remain unchanged. API requests carry cache options via the SDK's
+`extra_body`. Codex uses implicit caching with a stable job key and text
+instructions: its subscription endpoint rejects both `prompt_cache_options` and
+`prompt_cache_breakpoint`. API compaction uses the same explicit policy but marks
+only its fixed instruction prefix.
+
+Explicit mode stays enabled below the server's 1,024-token minimum; local budget
+estimates do not decide cache eligibility. Older GPT models keep implicit
+caching. Cache misses do not invalidate translations, and server-reported usage
+distinguishes cached input from cache writes. A provider rejecting these fields
+uses the existing request error path; there is no probe or implicit-mode fallback.
+
 ## Glossary
 
 Supported UTF-8 files are JSON, TSV, and TXT:
@@ -393,6 +449,14 @@ fails explicitly.
 A healthy contiguous `+history` run usually reports
 `empty/rebuild -> grow ... -> evict -> grow`. Missing provider cache fields mean
 the provider did not report them, not that the application inferred a miss.
+Translation usage logs preserve returned `prompt_cache_diagnostics` type, reason,
+and comparison token counts from API completions or Codex's completed response.
+`not_reported` means the field was absent or null; `unrecognized` means no usable
+diagnostic fields were returned. Only bounded machine-readable codes and
+nonnegative counts are logged, not arbitrary diagnostic payloads. These are
+passive response diagnostics: no comparison arguments, probes, or extra requests
+are added. Gateways may omit them; OpenAI documents requested comparisons for the
+Responses API, while API profile translations currently use Chat Completions.
 
 ## Change checklist
 

@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from qtpy.QtCore import QSignalBlocker, QTimer, Qt, Signal
-from qtpy.QtGui import QPaintEvent, QPainter
-from qtpy.QtWidgets import QAbstractButton, QLabel, QMessageBox, QPushButton, QHBoxLayout, QLayout, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+from qtpy.QtGui import QIcon, QPaintEvent, QPainter
+from qtpy.QtWidgets import QAbstractButton, QLabel, QMessageBox, QPushButton, QHBoxLayout, QLayout, QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget
 
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, codex_thinking_options, profile_by_id
+from ballontranslator.utils.llm_profiles import LLMProfile, codex_thinking_options, image_model_choices, profile_by_id, split_image_model_selection
 from ballontranslator.utils.shared import LLM_PROFILE_EDITOR_WIDTH_SCALE, LLM_PROMPT_EDITOR_WIDTH
 
 from .codex_account import CodexAccountController
 from .codex_sign_in import CodexSignInButton
 from .custom_widget import ParamComboBox, RefreshButton, ScrollBar
+from .misc import themed_icon_path
 from .module_parse_widgets import ParamWidget
 
 
@@ -89,9 +90,48 @@ class CodexSettingsPanel(QWidget):
         )
         models = ParamWidget({
             key: {'type': 'selector', 'display_name': title, 'value': getattr(self.profile, key),
-                  'options': getattr(self.profile, key + '_options')}
+                  'options': image_model_choices(self.profile) if key == 'image_model' else getattr(self.profile, key + '_options'),
+                  'editable': key == 'image_model'}
             for key, title in model_fields
         }, scrollWidget=scrollWidget, spaced_fields=True, parent=self)
+        image_model = models.param_widgets['image_model']
+        image_model.fit_popup_contents = True
+        # Commit typed IDs on Enter/focus loss, not on each partial keystroke.
+        image_model.paramwidget_edited.disconnect(models.on_paramwidget_edited)
+        image_model.setInsertPolicy(ParamComboBox.InsertPolicy.NoInsert)
+        image_model.lineEdit().setObjectName('LLMProfileModelEditor')
+        image_model.lineEdit().setPlaceholderText(self.tr('Image model name'))
+        image_model.lineEdit().editingFinished.connect(self.finishImageModelEdit)
+        image_model.activated.connect(self.finishImageModelEdit)
+        image_model.setToolTip(self.tr(
+            'Choose an image model directly, or a GPT → GPT Image combination for assisted editing. '
+            'Use + to add an image model ID. Availability is checked when used.'))
+        image_label = models.param_rows['image_model'][0]
+        row, column, _, _ = models.param_layout.getItemPosition(models.param_layout.indexOf(image_label))
+        models.param_layout.removeWidget(image_label)
+        image_label_row = QHBoxLayout()
+        image_label_row.setContentsMargins(0, 0, 0, 0)
+        image_label_row.setSpacing(4)
+        image_label_row.addWidget(image_label)
+        self.add_image_model_btn = QToolButton(self)
+        self.remove_image_model_btn = QToolButton(self)
+        for button, name, icon, title, slot in (
+            (self.add_image_model_btn, 'LLMProfileModelAddButton', 'add.svg',
+             self.tr('Add image model'), self.startImageModelEdit),
+            (self.remove_image_model_btn, 'LLMProfileModelRemoveButton', 'titlebar_min.svg',
+             self.tr('Delete image model and its combinations'), self.deleteCurrentImageModel),
+        ):
+            button.setObjectName(name)
+            button.setIcon(QIcon(themed_icon_path(icon)))
+            button.setToolTip(title)
+            button.setAccessibleName(title)
+            button.setFixedSize(16, 16)
+            button.clicked.connect(slot)
+            image_label_row.addWidget(button)
+        image_label_row.addStretch()
+        models.param_layout.addLayout(image_label_row, row, column)
+        image_model.lineEdit().textChanged.connect(self.updateImageModelRemoveButton)
+        self.updateImageModelRemoveButton(image_model.currentText())
         request_fields = (
             ('thinking_level', 'selector', self.tr('Reasoning level'), self.tr(
                 'Auto uses the provider default. Disabled requests no reasoning; explicit levels set the reasoning effort.')),
@@ -185,7 +225,13 @@ class CodexSettingsPanel(QWidget):
         for key, editor in self.param_widgets.items():
             value = getattr(self.profile, key)
             if isinstance(editor, ParamComboBox):
-                self._syncCombo(editor, getattr(self.profile, key + '_options'), value)
+                if key == 'image_model' and editor.hasFocus() and editor.lineEdit().isModified():
+                    # Startup/model refresh may finish while the user types an ID.
+                    continue
+                if key == 'image_model':
+                    self._syncCombo(editor, image_model_choices(self.profile), value)
+                else:
+                    self._syncCombo(editor, getattr(self.profile, key + '_options'), value)
             elif editor.toPlainText() != value:
                 with QSignalBlocker(editor):
                     editor.setPlainText(value)
@@ -212,12 +258,63 @@ class CodexSettingsPanel(QWidget):
         self.syncFromProfile()
         self.profile_ui_updated.emit()
 
+    def finishImageModelEdit(self) -> bool:
+        self.profile = profile_by_id(pcfg.module.llm_profiles, 'codex')
+        combo = self.param_widgets['image_model']
+        value = combo.currentText().strip() or self.profile.image_model
+        choices = image_model_choices(self.profile)
+        try:
+            reasoning, image = split_image_model_selection(value)
+            value = f'{reasoning} → {image}' if reasoning else image
+            if reasoning and value not in choices and value != self.profile.image_model:
+                raise ValueError('Unavailable image model combination.')
+        except ValueError:
+            self._syncCombo(combo, choices, self.profile.image_model)
+            QMessageBox.warning(self, self.tr('Invalid image model'), self.tr(
+                'Enter an image model ID, or choose a GPT → GPT Image combination from the list.'))
+            return False
+        if image and image not in self.profile.image_model_options:
+            self.profile.image_model_options.append(image)
+            choices = image_model_choices(self.profile)
+        self._syncCombo(combo, choices, value)
+        combo.lineEdit().setModified(False)
+        self.onSettingEdited('image_model', {'content': value})
+        return True
+
+    def startImageModelEdit(self) -> None:
+        if not self.finishImageModelEdit():
+            return
+        combo = self.param_widgets['image_model']
+        combo.setEditText('')
+        # An empty add is a draft too; catalog refresh must not restore it yet.
+        combo.lineEdit().setModified(True)
+        combo.setFocus(Qt.FocusReason.OtherFocusReason)
+
+    def updateImageModelRemoveButton(self, text: str) -> None:
+        # Delete only a committed selection, never the previous model behind a draft.
+        self.remove_image_model_btn.setEnabled(bool(text.strip()) and text.strip() == self.profile.image_model)
+
+    def deleteCurrentImageModel(self) -> None:
+        if not self.finishImageModelEdit():
+            return
+        options = self.profile.image_model_options
+        image = split_image_model_selection(self.profile.image_model)[1]
+        if image not in options:
+            return
+        index = options.index(image)
+        options.pop(index)
+        value = options[min(index, len(options) - 1)] if options else ''
+        self._syncCombo(self.param_widgets['image_model'], image_model_choices(self.profile), value)
+        self.onSettingEdited('image_model', {'content': value})
+
     def onSettingEdited(self, key: str, content: dict[str, str]) -> None:
         self.profile = profile_by_id(pcfg.module.llm_profiles, 'codex')
         value = content['content']
         if getattr(self.profile, key) == value:
             return
         setattr(self.profile, key, value)
+        if key == 'image_model':
+            self.updateImageModelRemoveButton(value)
         if key == 'model':
             self.profile.thinking_level_options = codex_thinking_options(self.profile, pcfg.module.codex_models)
             self._syncCombo(self.param_widgets['thinking_level'], self.profile.thinking_level_options, self.profile.thinking_level)

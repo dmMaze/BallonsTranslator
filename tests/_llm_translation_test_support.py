@@ -23,6 +23,10 @@ class LLMTranslationTestMixin:
         super().setUp()
         self.translator = LLMTranslator('日本語', '简体中文')
         self.profile = default_profile('OpenAI')
+        # These context tests exercise the generic numeric-map contract,
+        # independently of the changing built-in provider model defaults.
+        self.profile.model = 'test-model'
+        self.profile.model_options = ['test-model']
         self.profile.api_key = 'sk-test'
         self._settings = {
             'llm_translate_context': pcfg.module.llm_translate_context,
