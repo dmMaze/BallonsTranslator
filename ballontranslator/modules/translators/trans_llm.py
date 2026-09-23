@@ -94,6 +94,10 @@ MAX_PAGE_LONG_SIDE = 1536
 PAGE_IMAGE_JPEG_QUALITY = 85
 
 
+def _uses_explicit_cache(profile: LLMProfile) -> bool:
+    return profile.backend == 'openai' and (gpt_model_version(profile.model) or (0, 0)) >= (5, 6)
+
+
 @register_translator("LLMTranslator")
 class LLMTranslator(LLMChatRequester, BaseTranslator):
     """Profile-backed translator using API chat or Codex Responses.
@@ -211,8 +215,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             '' if profile.backend == 'codex'
             else f'max_output_tokens={profile.max_tokens!r}, '
         )
-        cache_mode = ('explicit' if profile.backend == 'openai'
-                      and (gpt_model_version(model) or (0, 0)) >= (5, 6) else 'implicit')
+        cache_mode = 'explicit' if _uses_explicit_cache(profile) else 'implicit'
         return (
             'LLM translation run: '
             f'profile_id={str(profile.id)!r}, '
@@ -729,11 +732,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     target_language,
                     summary_enabled=summary_enabled,
                 ),
-                render_page=lambda page: render_history_page(
-                    page,
-                    model,
-                    prompt_spec,
-                ),
+                render_page=lambda page: render_history_page(page, model),
                 reserved_tokens=current_summary_tokens,
             )
 
@@ -746,7 +745,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             self.logger.debug(
                 'LLM history summary policy: '
                 f'pages_without_summary={missing_history_summaries!r}; '
-                'their assistant examples contain an empty page_summary.'
+                'no saved page summary is available.'
             )
 
         # Retired summaries stay saved, but must not refill the prompt after
@@ -1089,7 +1088,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             "messages": messages,
         }
         api_args.update(openai_chat_completion_args(profile, model))
-        if profile.backend == 'openai' and gpt_version is not None and gpt_version >= (5, 6):
+        if _uses_explicit_cache(profile):
             api_args['messages'] = translation_cache_messages(messages)
             # The subscription endpoint rejects both public API cache controls;
             # retain its implicit cache and original instruction mapping.

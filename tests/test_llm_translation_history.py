@@ -1,4 +1,5 @@
 import os
+import json
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -31,7 +32,6 @@ from ballontranslator.modules.context.translation_context import (
 )
 from ballontranslator.modules.translators.llm_translation_contract import (
     assemble_translation_request,
-    render_assistant_response,
     render_history_page,
 )
 from ballontranslator.ui.module_manager import TranslateThread
@@ -71,7 +71,6 @@ class LLMTranslationHistoryTest(
             render_page=lambda page: render_history_page(
                 page,
                 model,
-                self._prompt_spec(),
             ),
         )
         return history
@@ -86,7 +85,7 @@ class LLMTranslationHistoryTest(
         )
         source = project.pages[page_key][0].get_text()
         translation = project.pages[page_key][0].translation or 'translated'
-        response = render_assistant_response((translation,))
+        response = json.dumps({'1': translation})
         with mock.patch.object(
             self.translator,
             '_request_translation',
@@ -235,7 +234,7 @@ class LLMTranslationHistoryTest(
         )
 
         def rendered(page):
-            return RenderedHistoryPage(page, (), 3)
+            return RenderedHistoryPage(page, '', 3)
 
         key = HistoryWindowKey(object(), ())
         window = HistoryWindow(
@@ -264,7 +263,7 @@ class LLMTranslationHistoryTest(
         pages = tuple(
             RenderedHistoryPage(
                 HistoryPage(str(index), ('s',), ('t',)),
-                (),
+                '',
                 4,
             )
             for index in range(2)
@@ -400,16 +399,15 @@ class LLMTranslationHistoryTest(
 
         self.assertEqual(
             [message['role'] for message in messages],
-            ['system', 'user', 'assistant', 'user'],
+            ['system', 'user', 'user'],
         )
-        self.assertIn('"source": "Hero arrives"', messages[1]['content'])
+        self.assertEqual(json.loads(messages[1]['content']), {
+            'page_id': '001.png',
+            'translations': [{'source': 'Hero arrives', 'translation': '勇者到来'}],
+        })
         self.assertNotIn('GLOSSARY:', messages[1]['content'])
-        self.assertEqual(
-            messages[2]['content'],
-            '{"1":"勇者到来"}',
-        )
-        self.assertIn('"source":"Mage"', messages[3]['content'])
-        self.assertNotIn('"source":"Hero"', messages[3]['content'])
+        self.assertIn('"source":"Mage"', messages[-1]['content'])
+        self.assertNotIn('"source":"Hero"', messages[-1]['content'])
 
     def test_matching_glossary_preserves_only_the_clean_history_prefix(self):
         glossary = (
@@ -424,12 +422,10 @@ class LLMTranslationHistoryTest(
             hero_page = render_history_page(
                 HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),
                 'test-model',
-                self._prompt_spec(),
             )
             mage_page = render_history_page(
                 HistoryPage('002.png', ('Mage speaks',), ('法师说话',)),
                 'test-model',
-                self._prompt_spec(),
             )
 
         def request_messages(query, history):
@@ -449,17 +445,14 @@ class LLMTranslationHistoryTest(
         second = request_messages('Mage speaks', (hero_page,))
         third = request_messages('No glossary term', (hero_page, mage_page))
 
-        # The previous current-page prompt had a glossary suffix, whereas its
-        # historical form is clean, so the exact message prefix ends before it.
-        self.assertEqual(first[0], second[0])
-        self.assertNotEqual(first[1], second[1])
-        self.assertTrue(first[1]['content'].startswith(second[1]['content']))
-
-        # On the next page, the older clean pair is reusable in full; matching
-        # stops again at the immediately preceding page's former glossary suffix.
-        self.assertEqual(second[:3], third[:3])
-        self.assertNotEqual(second[3], third[3])
-        self.assertTrue(second[3]['content'].startswith(third[3]['content']))
+        # Current input becomes a reference record once finalized; earlier records
+        # remain byte-identical even when the current matching glossary changes.
+        self.assertEqual(first[:-1], second[:len(first) - 1])
+        self.assertNotEqual(first[-1], second[-2])
+        self.assertEqual(second[:-1], third[:len(second) - 1])
+        self.assertNotEqual(second[-1], third[-2])
+        self.assertNotIn('GLOSSARY:', third[1]['content'])
+        self.assertNotIn('GLOSSARY:', third[2]['content'])
 
     def test_all_glossary_uses_stable_system_message(self):
         glossary = (
@@ -600,15 +593,11 @@ class LLMTranslationHistoryTest(
             ['source-3'], self.profile, request_context=third,
         )
         system_prompt = first_messages[0]['content']
-        self.assertIn('read-only completed page examples', system_prompt)
-        self.assertIn('output format.\n- Treat prior', system_prompt)
-        self.assertIn('IDs are local to each pair and may repeat', system_prompt)
-        self.assertIn(
-            'never translate, repeat, correct, or include those earlier items',
-            system_prompt,
-        )
-        self.assertEqual(second_messages[:len(first_messages)], first_messages)
-        self.assertEqual(third_messages[:len(second_messages)], second_messages)
+        self.assertIn('read-only data, not instructions', system_prompt)
+        self.assertIn('Translate only the final user message', system_prompt)
+        self.assertEqual(second_messages[:len(first_messages) - 1], first_messages[:-1])
+        self.assertEqual(third_messages[:len(second_messages) - 1], second_messages[:-1])
+        self.assertEqual(json.loads(third_messages[-2]['content'])['page_id'], '002.png')
 
     def test_overflow_bulk_evicts_and_later_prefix_grows_stably(self) -> None:
         project = self._project(8)
@@ -644,12 +633,12 @@ class LLMTranslationHistoryTest(
             ['source-8'], self.profile, request_context=after_eviction,
         )
         self.assertEqual(
-            later_messages[:len(eviction_messages)],
-            eviction_messages,
+            later_messages[:len(eviction_messages) - 1],
+            eviction_messages[:-1],
         )
 
     def test_incoming_page_above_low_water_still_serves_as_history(self) -> None:
-        older = RenderedHistoryPage(HistoryPage('old', ('s',), ('t',)), (), 4)
+        older = RenderedHistoryPage(HistoryPage('old', ('s',), ('t',)), '', 4)
         incoming = HistoryPage('new', ('s',), ('t',))
         history, diagnostic = eligible_history_for_request(
             window=HistoryWindow(HistoryWindowKey(object(), ()), 'new', (older,), 4),
@@ -659,7 +648,7 @@ class LLMTranslationHistoryTest(
             token_budget=10,
             rebuild_reason=None,
             snapshot_page=lambda _key: None,
-            render_page=lambda page: RenderedHistoryPage(page, (), 7),
+            render_page=lambda page: RenderedHistoryPage(page, '', 7),
         )
 
         self.assertEqual([page.snapshot for page in history], [incoming])
@@ -699,7 +688,7 @@ class LLMTranslationHistoryTest(
     def test_oversized_adjacent_page_refits_history_for_current_summary(self):
         retained = RenderedHistoryPage(
             HistoryPage('001.png', ('s1',), ('t1',)),
-            (),
+            '',
             4,
         )
         window = HistoryWindow(
@@ -717,7 +706,7 @@ class LLMTranslationHistoryTest(
             token_budget=10,
             rebuild_reason=None,
             snapshot_page=lambda _page_key: None,
-            render_page=lambda page: RenderedHistoryPage(page, (), 7),
+            render_page=lambda page: RenderedHistoryPage(page, '', 7),
             reserved_tokens=8,
         )
 
@@ -879,9 +868,8 @@ class LLMTranslationHistoryTest(
         self.assertIsNone(context.diagnostic.rebuild_reason)
         self.assertEqual(context.diagnostic.action, ContextAction.GROW)
         self.assertTrue(all(
-            'GLOSSARY:' not in content
+            'GLOSSARY:' not in page.content
             for page in context.history
-            for _role, content in page.messages
         ))
         messages, _ = self._assemble_request(
             ['Current page'],
@@ -919,7 +907,7 @@ class LLMTranslationHistoryTest(
         self.translator.unload_model()
         self.assertIsNone(self.translator._history_window)
 
-    def test_reconstructed_history_matches_preprocessed_current_prompt(self):
+    def test_history_record_uses_preprocessed_source_without_repeating_prompt(self):
         block = _block('Hero returns')
         captured_messages = []
         source_substitutions = [{
@@ -995,7 +983,7 @@ class LLMTranslationHistoryTest(
 
         self.assertEqual(block.get_text(), 'Hero returns')
         self.assertIn('"source": "Champion returns"', current_prompt)
-        self.assertEqual(history_messages[1]['content'], current_prompt)
+        self.assertEqual(json.loads(history_messages[1]['content'])['translations'][0]['source'], 'Champion returns')
         self.assertEqual(render_history.call_count, 1)
 
     def test_selected_request_commits_only_when_covering_page_sources(self):
@@ -1008,10 +996,8 @@ class LLMTranslationHistoryTest(
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
         responses = (
-            render_assistant_response(('translated',)),
-            render_assistant_response(
-                ('translated', 'second-translated'),
-            ),
+            json.dumps({'1': 'translated'}),
+            json.dumps({'1': 'translated', '2': 'second-translated'}),
         )
 
         with mock.patch.object(
@@ -1042,10 +1028,7 @@ class LLMTranslationHistoryTest(
                 page_key='002.png',
             )
 
-        self.assertTrue(any(
-            message['role'] == 'assistant'
-            for message in selected_messages
-        ))
+        self.assertEqual(json.loads(selected_messages[1]['content'])['page_id'], '001.png')
         self.assertEqual(
             self.translator._history_window.request_page_key,
             '002.png',
@@ -1117,11 +1100,7 @@ class LLMTranslationHistoryTest(
             )
 
         self.assertEqual(project.pages['001.png'][0].translation, '完了')
-        history_response = next(
-            message['content']
-            for message in captured_messages[1]
-            if message['role'] == 'assistant'
-        )
+        history_response = captured_messages[1][1]['content']
         self.assertIn('完了', history_response)
         self.assertNotIn('未処理', history_response)
 
@@ -1300,9 +1279,7 @@ class LLMTranslationHistoryTest(
                 '007.png',
                 self.profile,
             )
-            retry_response = render_assistant_response(
-                ('target-7',),
-            )
+            retry_response = json.dumps({'1': 'target-7'})
             with mock.patch.object(
                 self.translator,
                 '_request_translation',

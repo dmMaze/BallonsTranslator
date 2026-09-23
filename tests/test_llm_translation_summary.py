@@ -88,8 +88,8 @@ class LLMTranslationSummaryTest(
                 )
                 self.assertEqual(project.get_llm_visual_summary('002.png')['text'], 'Scene 2.')
                 self.assertEqual(project.get_llm_visual_summary('003.png')['text'], 'Scene 3.')
-                empty_history = json.loads(messages[3][4]['content'])
-                self.assertEqual(empty_history, {'translations': {}, 'page_summary': 'Scene 2.'})
+                empty_history = json.loads(messages[3][2]['content'])
+                self.assertEqual(empty_history, {'page_id': '002.png', 'translations': [], 'summary': 'Scene 2.'})
                 self.assertEqual(project.pages['002.png'], [])
                 self.assertEqual(project.pages['003.png'][0].translation.strip(), '')
 
@@ -280,7 +280,7 @@ class LLMTranslationSummaryTest(
             request_context=context,
             summary_enabled=True,
         )
-        history_response = messages[2]['content']
+        history_response = messages[1]['content']
         current_prompt = messages[-1]['content']
         self.assertIn('Completed page summary.', history_response)
         self.assertNotIn('Completed page summary.', current_prompt)
@@ -383,9 +383,11 @@ class LLMTranslationSummaryTest(
         pcfg.module.llm_translate_summary_memory = True
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         self.profile.json_schema_response_format = True
-        for backend in ('openai', 'codex'):
-            with self.subTest(backend=backend):
+        for backend, model in (('openai', 'test-model'), ('openai', 'gpt-6-test'), ('codex', 'test-model')):
+            with self.subTest(backend=backend, model=model):
                 self.profile.backend = backend
+                self.profile.model = model
+                explicit = backend == 'openai' and model == 'gpt-6-test'
                 project = self._project(3)
                 project.set_llm_visual_summary_text('002.png', 'Saved summary.')
                 saved_record = project.get_llm_visual_summary('002.png')
@@ -393,7 +395,7 @@ class LLMTranslationSummaryTest(
 
                 def respond(profile, args):
                     requests.append(args)
-                    translations = ([{'id': 1, 'translation': 'translated'}] if backend == 'codex'
+                    translations = ([{'id': 1, 'translation': 'translated'}] if backend == 'codex' or explicit
                                     else {'1': 'translated'})
                     return LLMChatResult(json.dumps({
                         'page_summary': 'Generated ' + str(len(requests)), 'translations': translations,
@@ -418,9 +420,11 @@ class LLMTranslationSummaryTest(
                     self.assertEqual(previous['response_format'], current['response_format'])
                     self.assertEqual(previous['messages'][0], current['messages'][0])
                     self.assertEqual(previous['messages'][:-1], current['messages'][:len(previous['messages']) - 1])
-                saved_history = json.loads(requests[2]['messages'][-2]['content'])
-                self.assertEqual(saved_history['page_summary'], 'Saved summary.')
-                self.assertEqual(isinstance(saved_history['translations'], list), backend == 'codex')
+                content = requests[2]['messages'][-2]['content']
+                saved_history = json.loads(content[0]['text'] if explicit else content)
+                self.assertEqual(saved_history['summary'], 'Saved summary.')
+                self.assertEqual(saved_history['page_id'], '002.png')
+                self.assertEqual(set(saved_history['translations'][0]), {'source', 'translation'})
                 for index, request in enumerate(requests):
                     self.assertEqual('Return page_summary as an empty string' in request['messages'][-1]['content'], index == 1)
 

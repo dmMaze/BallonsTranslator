@@ -37,12 +37,13 @@ class LLMTranslationContractTest(unittest.TestCase):
             {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,AA=='}},
         ]}
         previous = None
+        previous_messages = None
         for count in range(5):
             messages = prefix + [
-                message for page in range(count) for message in (
-                    {'role': 'user', 'content': f'source {page}'},
-                    {'role': 'assistant', 'content': f'translation {page}'},
-                )
+                {'role': 'user', 'content': render_history_page(
+                    HistoryPage(str(page), (f'source {page}',), (f'translation {page}',)),
+                    'test-model',
+                ).content} for page in range(count)
             ] + [current]
             original = copy.deepcopy(messages)
             marked = translation_cache_messages(messages)
@@ -59,7 +60,36 @@ class LLMTranslationContractTest(unittest.TestCase):
             if previous is not None:
                 old_boundary = previous[-1]
                 self.assertIn(old_boundary, boundaries)
+                # Cache metadata may rotate, but all preceding text blocks stay fixed.
+                for old, new in zip(previous_messages[:old_boundary + 1], marked[:old_boundary + 1]):
+                    old, new = copy.deepcopy(old), copy.deepcopy(new)
+                    old['content'][0].pop('prompt_cache_breakpoint', None)
+                    new['content'][0].pop('prompt_cache_breakpoint', None)
+                    self.assertEqual(old, new)
             previous = boundaries
+            previous_messages = marked
+
+    def test_history_records_contain_only_reference_data_and_match_budget(self) -> None:
+        for summary in ('', 'Scene with a newline.\nMore context.'):
+            for sources, translations in ((('心', '"quoted"'), ('heart', '译文')), ((), ())):
+                with self.subTest(summary=summary, sources=sources):
+                    page = HistoryPage('001.png', sources, translations, summary)
+                    with mock.patch(
+                        'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
+                        return_value=19,
+                    ) as count:
+                        rendered = render_history_page(page, 'test-model')
+                    expected = {'page_id': '001.png', 'translations': [
+                        {'source': source, 'translation': translation}
+                        for source, translation in zip(sources, translations)
+                    ]}
+                    if summary:
+                        expected['summary'] = summary
+                    self.assertEqual(json.loads(rendered.content), expected)
+                    self.assertEqual(rendered.token_count, 19)
+                    count.assert_called_once_with([{'role': 'user', 'content': rendered.content}], 'test-model')
+        with self.assertRaises(ValueError):
+            render_history_page(HistoryPage('bad', ('source',), ()), 'test-model')
 
     def test_disabled_features_keep_numeric_response_contract(self):
         profile_prompt = 'Keep JSON example {"x": 1}.'
@@ -126,7 +156,6 @@ class LLMTranslationContractTest(unittest.TestCase):
                     'Old page summary.',
                 ),
                 'test-model',
-                spec,
             )
         context = RequestContext(
             history=(history,),
@@ -153,17 +182,16 @@ class LLMTranslationContractTest(unittest.TestCase):
 
         self.assertEqual(
             [message['role'] for message in messages],
-            ['system', 'system', 'system', 'user', 'assistant', 'user'],
+            ['system', 'system', 'system', 'user', 'user'],
         )
         self.assertEqual(messages[0]['content'], spec.system_prompt)
         self.assertIn('"source":"Hero"', messages[1]['content'])
         self.assertIn('Compacted translation memory', messages[2]['content'])
-        self.assertIn('"source": "old source"', messages[3]['content'])
-        self.assertEqual(
-            messages[4]['content'],
-            '{"page_summary":"Old page summary.",'
-            '"translations":{"1":"old target"}}',
-        )
+        self.assertEqual(json.loads(messages[3]['content']), {
+            'page_id': '002.png',
+            'translations': [{'source': 'old source', 'translation': 'old target'}],
+            'summary': 'Old page summary.',
+        })
         self.assertIn('Current clue.', prompt)
         self.assertIn('infer the natural comic reading order', prompt)
         self.assertIn('mapped to its original input ID', prompt)
@@ -212,7 +240,7 @@ class LLMTranslationContractTest(unittest.TestCase):
         self.assertEqual(numeric.translations, ('heart', 'spirit'))
         self.assertEqual(legacy.translations, ('heart', 'spirit'))
 
-    def test_array_contract_keeps_schema_prompt_and_history_consistent(self) -> None:
+    def test_array_contract_keeps_schema_and_prompt_consistent(self) -> None:
         for summary in (False, True):
             with self.subTest(summary=summary):
                 schema = translation_json_schema(1, summary_enabled=summary, array_response=True)
@@ -233,12 +261,6 @@ class LLMTranslationContractTest(unittest.TestCase):
                 self.assertIn('"translations":[{"id":1,"translation":"Translated text"}]', prompt)
                 self.assertNotIn('as keys', prompt)
                 self.assertNotIn('object keys', prompt)
-                spec = TranslationPromptSpec('Japanese', 'English', prompt, summary, True, True)
-                page = render_history_page(HistoryPage('001.png', ('心',), ('heart',), 'Scene.'), 'test', spec)
-                parsed = json.loads(page.messages[1][1])
-                self.assertEqual(list(parsed), expected_properties)
-                self.assertEqual(parsed['translations'], [{'id': 1, 'translation': 'heart'}])
-                self.assertEqual(parse_translation_response(page.messages[1][1], 1, array_response=True).translations, ('heart',))
 
     def test_array_parser_rejects_duplicate_missing_extra_and_coerced_items(self) -> None:
         valid = {'id': 1, 'translation': 'heart'}

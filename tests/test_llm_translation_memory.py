@@ -69,7 +69,7 @@ class LLMTranslationMemoryTest(
 
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.render_history_page',
-            side_effect=lambda page, *_args: RenderedHistoryPage(page, (), 300),
+            side_effect=lambda page, *_args: RenderedHistoryPage(page, '', 300),
         ), mock.patch(
             'ballontranslator.modules.context.translation_context.messages_token_count',
             return_value=400,
@@ -150,7 +150,7 @@ class LLMTranslationMemoryTest(
         def rendered(page: HistoryPage, *_args: object, **_kwargs: object) -> RenderedHistoryPage:
             return RenderedHistoryPage(
                 snapshot=page,
-                messages=(('user', page.page_key), ('assistant', page.summary)),
+                content=page.page_key + page.summary,
                 token_count=400,
             )
 
@@ -258,7 +258,7 @@ class LLMTranslationMemoryTest(
         )
         self.assertEqual(
             [message['role'] for message in messages],
-            ['system', 'system', 'user', 'assistant', 'user'],
+            ['system', 'system', 'user', 'user'],
         )
         self.assertTrue(
             messages[1]['content'].startswith('Compacted translation memory')

@@ -800,7 +800,7 @@ class CodexHTTPTest(unittest.TestCase):
         from ballontranslator.modules.translators.llm_translation_contract import InvalidNumTranslations, TranslationPromptSpec, render_history_page
         spec = TranslationPromptSpec('Japanese', 'English', 'Translate.', False, True, True)
         history = tuple(render_history_page(HistoryPage(str(i), ('source-' + str(i),), ('translated-' + str(i),)),
-                                            self.profile.model, spec) for i in (1, 2))
+                                            self.profile.model) for i in (1, 2))
         key = HistoryWindowKey(object(), ())
         context = RequestContext(history, history_budget=10000, window_key=key, request_page_key='current')
         for text, valid in (('{"translations":[{"id":1,"translation":"hello"}]}', True), ('{"translations":[]}', False)):
@@ -829,7 +829,7 @@ class CodexHTTPTest(unittest.TestCase):
                         self.assertIs(translator._history_window, previous)
                 self.assertEqual(requests[0]['prompt_cache_key'], requests[1]['prompt_cache_key'])
                 self.assertEqual(requests[0]['input'][-1], requests[1]['input'][-1])
-                self.assertEqual(requests[1]['input'], requests[0]['input'][2:])
+                self.assertEqual(requests[1]['input'], requests[0]['input'][1:])
 
     def test_translation_pages_share_fixed_schema_and_prefix_then_reject_duplicate_ids(self) -> None:
         from ballontranslator.modules.translators.llm_translation_contract import InvalidNumTranslations
@@ -868,12 +868,15 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertIs(translator._history_window, previous_window)
         self.assertEqual(project.pages['3'][0].translation, 'previous')
         self.assertEqual(len({body['prompt_cache_key'] for body in received}), 1)
-        for previous, current in zip(received, received[1:]):
+        for page_index, (previous, current) in enumerate(zip(received, received[1:])):
             self.assertEqual(previous['text']['format'], current['text']['format'])
             self.assertEqual(previous['instructions'], current['instructions'])
-            self.assertEqual(previous['input'], current['input'][:len(previous['input'])])
+            self.assertEqual(previous['input'][:-1], current['input'][:len(previous['input']) - 1])
             history = json.loads(current['input'][-2]['content'][0]['text'])
-            self.assertIsInstance(history['translations'], list)
+            self.assertEqual(history['page_id'], str(page_index))
+            self.assertEqual(set(history['translations'][0]), {'source', 'translation'})
+            self.assertNotIn('prompt_cache_options', current)
+            self.assertNotIn('prompt_cache_breakpoint', json.dumps(current['input']))
         self.assertIn('"translations":[{"id":1,"translation":"Translated text"}]', received[0]['instructions'])
 
     def test_summary_only_page_uses_same_codex_schema_and_persists_through_owner(self) -> None:
@@ -914,7 +917,7 @@ class CodexHTTPTest(unittest.TestCase):
             self.assertEqual(body['text']['format'], received[0]['text']['format'])
             self.assertEqual(list(body['text']['format']['schema']['properties']), ['page_summary', 'translations'])
         empty_history = json.loads(received[2]['input'][-2]['content'][0]['text'])
-        self.assertEqual(empty_history, {'page_summary': 'Scene 1', 'translations': []})
+        self.assertEqual(empty_history, {'page_id': '1', 'summary': 'Scene 1', 'translations': []})
 
 
 class CodexConfigTest(unittest.TestCase):

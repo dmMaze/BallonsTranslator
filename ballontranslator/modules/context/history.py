@@ -63,15 +63,15 @@ class HistoryPage:
 
 @dataclass(frozen=True)
 class RenderedHistoryPage:
-    """A page snapshot plus its immutable provider messages and token cost.
+    """A page snapshot plus its immutable reference content and token cost.
 
     >>> page = HistoryPage('001.png', ('hello',), ('bonjour',))
-    >>> RenderedHistoryPage(page, (), 3).page_key
+    >>> RenderedHistoryPage(page, '{}', 3).page_key
     '001.png'
     """
 
     snapshot: HistoryPage
-    messages: Tuple[Tuple[str, str], ...]
+    content: str
     token_count: int
 
     @property

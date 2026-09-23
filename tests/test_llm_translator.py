@@ -164,7 +164,18 @@ class LLMTranslatorTest(unittest.TestCase):
                         self.assertNotIn('prompt_cache_options', body)
                         self.assertIsInstance(body['messages'][0]['content'], str)
                 history_content = received[2]['messages'][-2]['content']
-                self.assertIsInstance(json.loads(history_content)['translations'], list)
+                history = json.loads(history_content[0]['text'] if explicit else history_content)
+                self.assertEqual(history['page_id'], '1')
+                self.assertEqual(set(history['translations'][0]), {'source', 'translation'})
+                # Ignore only cache metadata, never normalize message representation.
+                for previous, current in zip(received[1:], received[2:]):
+                    prefix = copy.deepcopy(previous['messages'][:-1])
+                    following = copy.deepcopy(current['messages'][:len(prefix)])
+                    for message in prefix + following:
+                        if isinstance(message['content'], list):
+                            for part in message['content']:
+                                part.pop('prompt_cache_breakpoint', None)
+                    self.assertEqual(prefix, following)
 
     def _prompt_spec(
         self,
