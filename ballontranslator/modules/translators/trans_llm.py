@@ -103,7 +103,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         ('心',)
     """
 
-    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
+    dependencies = ['openai>=2.8.1', 'openai-codex==0.156.1; python_version >= "3.10"', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
 
     concate_text = False
     params: Dict = {

@@ -419,9 +419,9 @@ class ProfileCardWidget(QGroupBox):
             'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
-            'transport': self.tr('Codex App Server uses the official Codex CLI ChatGPT login for translation and OCR.'),
-            'codex_executable': self.tr('Codex executable name or full path. Run codex login first; no API key is needed.'),
-            'codex_timeout': self.tr('Stop a Codex request after this many seconds (1-86400). Timed-out requests are not automatically resubmitted.'),
+            'transport': self.tr('Codex App Server uses the official Python SDK with your saved ChatGPT or API Key login.'),
+            'codex_executable': self.tr('Use codex for the bundled Python SDK runtime, or a custom executable path. Manage authentication with Codex Login.'),
+            'codex_timeout': self.tr('Stop a Codex request after this many seconds (1-86400). Retry Attempts controls delayed retries with the same model; resubmission may consume additional tokens.'),
             'codex_save_sessions': self.tr('Let Codex save sessions for tools such as token-monitor. Saves token usage AND conversation content, including prompts and images, under CODEX_HOME/sessions (default: ~/.codex/sessions). Off by default; disabling affects future requests and does not delete saved sessions.'),
             'base_url': self.tr('OpenAI-compatible API base URL.'),
             'image_base_url': self.tr('OpenAI-compatible image API base URL used only by LLMInpaint.'),
@@ -716,6 +716,9 @@ class ProfileCardWidget(QGroupBox):
         )
         self._install_detail_editor_scrollbars()
         layout.addWidget(self.details)
+        self.codex_login_button = NoBorderPushBtn(self.tr('Codex Login'), self.details)
+        self.codex_login_button.clicked.connect(self.openCodexLogin)
+        self.details.layout().addWidget(self.codex_login_button)
         self._sync_minimum_width_with_content()
         self.details.setVisible(False)
         self.setActionButtonsVisible(False)
@@ -732,6 +735,14 @@ class ProfileCardWidget(QGroupBox):
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
         self.refreshSelectionBorder()
+
+    def openCodexLogin(self) -> None:
+        from .codex_login_dialog import CodexLoginDialog
+        dialog = CodexLoginDialog(self.profile, self)
+        try:
+            dialog.exec_()
+        finally:
+            dialog.deleteLater()
 
     def _install_detail_editor_scrollbars(self):
         for editor in self.details.findChildren(QPlainTextEdit):
@@ -1556,6 +1567,7 @@ class ProfileCardWidget(QGroupBox):
     def refreshConditionalVisibility(self) -> None:
         self._syncThinkingLevel()
         codex = self.profile.transport == 'Codex App Server'
+        self.codex_login_button.setVisible(codex)
         require_key = bool(self.profile.require_api_key) and (not codex or self.profile.support_image)
         support_text = bool(self.profile.support_text)
         support_vision = bool(self.profile.support_vision)

@@ -10,7 +10,7 @@ translation. The code and focused tests remain authoritative.
 | Translation prompt, message order, JSON schema, and response parsing | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
 | Request snapshots, retries, history orchestration, summaries, and compaction | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
 | Provider clients, throttling, endpoint quirks, and completion normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
-| Official Codex App Server stdio transport and owned process lifecycle | [`llm_codex.py`](../../ballontranslator/modules/llm_codex.py) |
+| Official Codex Python SDK transport and cancellable request lifecycle | [`llm_codex.py`](../../ballontranslator/modules/llm_codex.py) |
 | Image encoding shared by LLM modules | [`llm_vision.py`](../../ballontranslator/modules/llm_vision.py) |
 | History, saved-context packing, glossary parsing, and token estimates | [`context/`](../../ballontranslator/modules/context) |
 | Text-block preprocessing, finalization, and page-coverage decisions | [`base.py`](../../ballontranslator/modules/translators/base.py) |
@@ -39,8 +39,13 @@ are disposable runtime snapshots; neither replaces project state.
 
 ## Codex subscription backend
 
-Install the official Codex CLI and run `codex login` with ChatGPT. In an LLM
-profile, select **Translation / OCR Backend → Codex App Server**, or select
+On Python 3.10 or newer, the LLM translation/OCR module dependency check includes
+the Codex SDK. For manual installation, run
+`python -m pip install -r requirements-codex.txt` with the same Python executable
+that launches BallonsTranslator; installing into a different virtual environment
+does not make the SDK available to the running application. The official Python SDK
+installs its matching Codex runtime and reuses existing ChatGPT authentication.
+In an LLM profile, select **Translation / OCR Backend → Codex App Server**, or select
 **Codex** directly from the translator or OCR menu. The built-in profile is
 included in fresh configurations and added once when loading older configurations.
 The migration preserves existing profiles and selections; its saved marker keeps
@@ -56,16 +61,24 @@ selected models or custom choices.
 The text and vision defaults are both `gpt-5.6-sol`; account/client availability follows the
 [official Codex model catalog](https://learn.chatgpt.com/docs/models).
 
-If `codex` is not on the application's PATH, set **Codex Executable** to its full
-path. Run `codex login status` to check authentication, or `codex login` to open
-ChatGPT sign-in in a browser. Use the same executable, OS user, and `CODEX_HOME`
-as the application. This backend requires ChatGPT login, not API-key login.
-Codex reads its existing credentials from `CODEX_HOME/auth.json` (by default
-`~/.codex/auth.json`, or `%USERPROFILE%\.codex\auth.json` on Windows) or the OS
-credential store, according to `cli_auth_credentials_store`. Authentication
-and token refresh remain owned by Codex; BallonsTranslator never reads or
-stores ChatGPT tokens, and needs no API key in its Codex profile. See
-[official authentication guidance](https://learn.chatgpt.com/docs/auth).
+Leave **Codex Executable** as `codex` to use the SDK's bundled runtime;
+an explicit executable name or path overrides it. No separate npm installation
+is needed. Expand the Codex profile and open **Codex Login** to reuse the current
+login, sign in through a browser, authorize a device code, or sign in with an
+API key. Browser/device authorization is cancellable and runs outside the UI
+thread. Closing the dialog cancels and cleans up its pending login first.
+
+Authentication is shared by applications using the same OS user and `CODEX_HOME`;
+a new login replaces the existing one. API-key login uses API billing rather
+than the ChatGPT subscription. The key is handed to Codex's credential store,
+never copied into the LLM profile or profile exports. An OpenAI-compatible
+profile's API-key field is independent of this Codex login.
+
+Translation, OCR and headless runs reuse the stored ChatGPT or API-key account;
+they do not initiate interactive login. Codex owns credential persistence and
+token refresh. Existing CLI users can still use `codex login`; SDK users can
+also call `Codex.login_chatgpt()`, `login_chatgpt_device_code()`, or
+`login_api_key(...)`. See [official authentication guidance](https://learn.chatgpt.com/docs/auth).
 
 Codex thinking choices use an offline snapshot of `model/list`, supplemented
 by live-verified `none` support. The profile editor, shortcut menus, and request
@@ -91,8 +104,10 @@ Both `LLMTranslator` (including Vision, history, and summaries) and `LLMOCR`
 OpenAI-compatible HTTP backend. Image generation/inpainting remains a separate
 HTTP integration and still requires its image endpoint and credentials.
 
-Each request launches a hidden local `codex app-server --listen stdio://` process
-in a temporary directory and creates a fresh thread, ephemeral by default. Prior
+Module jobs reuse exclusive official SDK clients across requests and close them
+when the last overlapping job finishes. Concurrent requests use separate clients;
+direct calls outside a job remain one-shot. Each request creates a fresh thread,
+ephemeral by default, in the client's temporary directory. Prior
 messages retain their roles through `thread/inject_items`; the current image is passed directly
 as an image input. JSON Schema and reasoning effort are forwarded. Codex chooses
 its output limit and sampling settings; the HTTP Max Tokens, temperature,
@@ -117,7 +132,11 @@ and fall back to **1** without discarding other settings. This applies to the
 GUI/headless page queue, not selected blocks or OCR. Other transports and
 `+history` remain sequential.
 The existing [App Server thread/turn lifecycle](https://learn.chatgpt.com/docs/app-server)
-is unchanged: each request owns its server and fresh session.
+keeps conversations isolated: clients are reused, conversations are not. Completed
+threads are unsubscribed and SDK event subscriptions released. Failed, cancelled,
+or timed-out clients are closed before a retry; they never return to the idle pool.
+This reduces process startup overhead without changing prompts or promising lower
+token usage. Existing RPM, backoff, history, summary, and ordered-result policies apply.
 
 The queue finalizes results, summaries, and progress in submission order; a
 slow earlier page can hold later results. Each page snapshots the summaries

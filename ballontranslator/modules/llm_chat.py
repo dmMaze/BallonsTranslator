@@ -7,6 +7,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from contextlib import AbstractContextManager
 from typing import Any, Dict, Optional, Tuple
 
 from .context.errors import provider_error_message
@@ -199,6 +200,16 @@ class LLMChatRequester:
         self._codex_throttle_lock = threading.Lock()
         self._codex_usage_lock = threading.Lock()
         self._codex_cooldown_until = 0.0
+        self._codex_sessions = None
+
+    def codex_batch(self) -> AbstractContextManager:
+        """Keep SDK clients alive until all overlapping module jobs finish."""
+        from .llm_codex import CodexSessionPool
+
+        with self._codex_throttle_lock:
+            if self._codex_sessions is None:
+                self._codex_sessions = CodexSessionPool()
+        return self._codex_sessions.batch()
 
     def set_stop_event(
         self,
@@ -301,7 +312,8 @@ class LLMChatRequester:
                 self.request_count_minute = 0
                 self.minute_start_time = time.time()
 
-        time_since_last_request = current_time - self.last_request_time
+        # Time spent waiting for an RPM slot also satisfies the request delay.
+        time_since_last_request = time.time() - self.last_request_time
         if time_since_last_request < delay:
             self._wait(delay - time_since_last_request)
 
@@ -338,7 +350,8 @@ class LLMChatRequester:
                             break
                     self._wait(remaining)
                 try:
-                    result = request_codex_completion(profile, api_args, self.stop_event)
+                    kwargs = {'pool': self._codex_sessions} if self._codex_sessions is not None else {}
+                    result = request_codex_completion(profile, api_args, self.stop_event, **kwargs)
                     break
                 except (CodexBusyError, CodexTimeoutError) as error:
                     with self._codex_usage_lock:

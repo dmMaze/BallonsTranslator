@@ -89,7 +89,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         'a b'
     """
 
-    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
+    dependencies = ['openai>=2.8.1', 'openai-codex==0.156.1; python_version >= "3.10"', 'httpx[socks,brotli]']
 
     params: Dict = {
         "max requests per minute": {

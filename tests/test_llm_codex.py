@@ -13,7 +13,7 @@ from unittest import mock
 
 from ballontranslator.modules.exceptions import LLMRequestStopped
 from ballontranslator.modules.llm_chat import LLMChatRequestError
-from ballontranslator.modules.llm_codex import CodexBusyError, CodexRequestError, request_codex_completion
+from ballontranslator.modules.llm_codex import CodexBusyError, CodexRequestError, authenticate_codex, request_codex_completion
 from ballontranslator.modules.context.token_usage import format_run_token_usage
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
@@ -29,10 +29,11 @@ from ballontranslator.utils.llm_profiles import (
 FAKE_SERVER = r'''
 import json, subprocess, sys, time
 scenario, log = sys.argv[1:]
+account_type = 'apiKey' if scenario == 'api_key' else 'chatgpt'
 def emit(value):
     print(json.dumps(value), flush=True)
 def event(method, **params):
-    emit({'method': method, 'params': {'threadId': 'thread-1', **params}})
+    emit({'method': method, 'params': {'threadId': 'thread-1', 'turnId': 'turn-1', **params}})
 for line in sys.stdin:
     request = json.loads(line)
     with open(log, 'a', encoding='utf-8') as stream:
@@ -55,7 +56,27 @@ for line in sys.stdin:
         continue
     if method == 'account/read':
         result = {'account': None if scenario == 'logged_out' else {
-            'type': 'apiKey' if scenario == 'api_key' else 'chatgpt'}}
+            'type': account_type}}
+    elif method == 'account/login/start':
+        kind = request['params']['type']
+        if scenario == 'login_key_error':
+            emit({'id': request['id'], 'error': {'code': -1, 'message': request['params']['apiKey']}})
+            continue
+        account_type = 'apiKey' if kind == 'apiKey' else 'chatgpt'
+        if kind == 'apiKey':
+            result = {'type': 'apiKey'}
+        else:
+            result = {'type': kind, 'loginId': 'login-1'}
+            if kind == 'chatgpt':
+                result['authUrl'] = 'https://example.com/login'
+            else:
+                result.update(verificationUrl='https://example.com/device', userCode='ABCD-1234')
+            emit({'id': request['id'], 'result': result})
+            if scenario != 'login_cancel':
+                emit({'method': 'account/login/completed', 'params': {
+                    'loginId': 'login-1', 'success': scenario != 'login_failed',
+                    'error': 'Login rejected' if scenario == 'login_failed' else None}})
+            continue
     elif method == 'thread/start':
         result = {'thread': {'id': 'thread-1'}}
     elif method == 'turn/start':
@@ -63,21 +84,23 @@ for line in sys.stdin:
             error = {'message': 'Your workspace is out of credits. Ask your workspace owner to refill in order to continue.',
                      'codexErrorInfo': {'httpConnectionFailed': {'httpStatusCode': 503}}}
             if scenario == 'credits_rpc':
-                emit({'id': request['id'], 'error': error})
+                emit({'id': request['id'], 'error': {'code': -32000, 'message': error['message'], 'data': error}})
             elif scenario == 'credits_event':
+                emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1', 'items': [], 'status': 'inProgress'}}})
                 event('error', error=error, willRetry=True)
             else:
-                event('turn/completed', turn={'id': 'turn-1', 'status': 'failed', 'error': error})
+                emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1', 'items': [], 'status': 'inProgress'}}})
+                event('turn/completed', turn={'id': 'turn-1', 'items': [], 'status': 'failed', 'error': error})
             continue
         if scenario == 'rpc_error':
             emit({'id': request['id'], 'error': {'code': -1, 'message': 'unsupported model'}})
             continue
-        event('turn/started', turn={'id': 'turn-1'})
+        event('turn/started', turn={'id': 'turn-1', 'items': [], 'status': 'inProgress'})
         if scenario == 'invalid_event':
             emit({'method': 'turn/completed', 'params': []})
             continue
         if scenario != 'early':
-            emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1'}}})
+            emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1', 'items': [], 'status': 'inProgress'}}})
         if scenario == 'timeout_usage':
             event('thread/tokenUsage/updated', tokenUsage={'total': {
                 'inputTokens': 10, 'outputTokens': 2, 'totalTokens': 12,
@@ -91,7 +114,7 @@ for line in sys.stdin:
         if scenario == 'disconnect':
             sys.exit(1)
         if scenario == 'capacity':
-            event('turn/completed', turn={'id': 'turn-1', 'status': 'failed',
+            event('turn/completed', turn={'id': 'turn-1', 'items': [], 'status': 'failed',
                 'error': {'message': 'Selected model is at capacity. Please try a different model.',
                           'codexErrorInfo': 'other'}})
             continue
@@ -113,12 +136,12 @@ for line in sys.stdin:
             for _ in range(2):
                 event('thread/tokenUsage/updated', tokenUsage={'last': tokens, 'total': total})
         status = 'interrupted' if scenario == 'interrupted' else 'failed' if scenario in ('quota', 'context', 'busy503') else 'completed'
-        event('turn/completed', turn={'id': 'turn-1', 'status': status,
+        event('turn/completed', turn={'id': 'turn-1', 'items': [], 'status': status,
             'error': {'message': 'Service unavailable' if scenario == 'busy503' else 'usage limit reached',
                       'codexErrorInfo': {'httpConnectionFailed': {'httpStatusCode': 503}} if scenario == 'busy503'
                       else 'contextWindowExceeded' if scenario == 'context' else 'usageLimitExceeded'}})
         if scenario == 'early':
-            emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1'}}})
+            emit({'id': request['id'], 'result': {'turn': {'id': 'turn-1', 'items': [], 'status': 'inProgress'}}})
         continue
     emit({'id': request['id'], 'result': result})
 '''
@@ -134,6 +157,8 @@ class CodexTransportTest(unittest.TestCase):
         self.scenario = 'success'
         self.profile = default_profile('Codex')
         self.profile.thinking_level = 'low'
+        self.profile.codex_timeout = 3
+        self.profile.codex_executable = sys.executable
         self.processes = []
         popen = subprocess.Popen
 
@@ -148,7 +173,7 @@ class CodexTransportTest(unittest.TestCase):
 
         self.addCleanup(mock.patch.stopall)
         mock.patch('ballontranslator.modules.llm_codex.shutil.which', return_value=sys.executable).start()
-        mock.patch('ballontranslator.modules.llm_codex.subprocess.Popen', side_effect=launch).start()
+        mock.patch('openai_codex.client.subprocess.Popen', side_effect=launch).start()
         self.args = {
             'model': 'gpt-5.6-sol',
             'messages': [
@@ -168,6 +193,7 @@ class CodexTransportTest(unittest.TestCase):
             self.assertIsNotNone(process.poll(), 'Codex process leaked')
             self.assertTrue(process.stdin.closed)
             self.assertTrue(process.stdout.closed)
+            self.assertTrue(process.stderr.closed)
 
     def requests(self):
         return [json.loads(line) for line in self.log.read_text(encoding='utf-8').splitlines()]
@@ -180,8 +206,8 @@ class CodexTransportTest(unittest.TestCase):
         self.assertEqual(result.usage.total_tokens, 120)
         self.assertEqual(result.usage.prompt_tokens_details['cached_tokens'], 50)
         self.assertEqual(self.args, before)
-        self.assertNotIn('OPENAI_API_KEY', self.child_env)
-        requests = {r['method']: r['params'] for r in self.requests()}
+        self.assertEqual(self.child_env.get('OPENAI_API_KEY'), '')
+        requests = {r['method']: r.get('params', {}) for r in self.requests()}
         thread = requests['thread/start']
         self.assertTrue(thread['ephemeral'])
         self.assertEqual(thread['modelProvider'], 'openai')
@@ -200,6 +226,69 @@ class CodexTransportTest(unittest.TestCase):
         self.scenario = 'early'
         self.assertIn('譯文一', request_codex_completion(self.profile, self.args).content)
 
+    def test_batch_reuses_client_but_not_conversation_or_usage(self) -> None:
+        from ballontranslator.modules.llm_chat import LLMChatRequester
+
+        owner = LLMChatRequester()
+        owner.get_param_value = lambda key: {'retry attempts': 1, 'retry timeout': 1,
+                                           'delay': 0, 'max requests per minute': 0}[key]
+        with owner.codex_batch():
+            for _ in range(3):
+                self.assertEqual(owner.request_chat_completion(self.profile, self.args).usage.total_tokens, 120)
+            self.assertEqual(len(self.processes), 1)
+            self.assertIsNone(self.processes[0].poll())
+            with owner.codex_batch():
+                owner.request_chat_completion(self.profile, self.args)
+            self.assertIsNone(self.processes[0].poll())
+        self.assertIsNotNone(self.processes[0].poll())
+        self.assertEqual(owner.usage_totals.total_tokens, 480)
+        methods = [r['method'] for r in self.requests()]
+        self.assertEqual(methods.count('initialize'), 1)
+        self.assertEqual(methods.count('thread/start'), 4)
+        self.assertEqual(methods.count('thread/inject_items'), 4)
+        self.assertEqual(methods.count('thread/unsubscribe'), 4)
+        self.assertNotIn('thread/resume', methods)
+
+    def test_batch_discards_failed_client_and_closes_parallel_clients(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+        from ballontranslator.modules.llm_codex import CodexSessionPool, _start_codex_session
+
+        pool = CodexSessionPool()
+        with pool.batch():
+            self.scenario = 'capacity'
+            with self.assertRaises(CodexBusyError):
+                request_codex_completion(self.profile, self.args, pool=pool)
+            self.assertIsNotNone(self.processes[0].poll())
+            self.scenario = 'success'
+            barrier = threading.Barrier(2)
+
+            def start(*args):
+                session = _start_codex_session(*args)
+                barrier.wait(timeout=5)
+                return session
+
+            with mock.patch('ballontranslator.modules.llm_codex._start_codex_session', side_effect=start), \
+                    ThreadPoolExecutor(max_workers=2) as workers:
+                results = list(workers.map(
+                    lambda _: request_codex_completion(self.profile, self.args, pool=pool), range(2)))
+            self.assertEqual([r.usage.total_tokens for r in results], [120, 120])
+            self.assertEqual(len(self.processes), 3)
+            self.assertEqual(len(pool.idle), 2)
+        self.assertTrue(all(p.poll() is not None for p in self.processes))
+
+    def test_batch_replaces_client_that_exits_while_idle(self) -> None:
+        from ballontranslator.modules.llm_codex import CodexSessionPool
+
+        pool = CodexSessionPool()
+        with pool.batch():
+            request_codex_completion(self.profile, self.args, pool=pool)
+            self.processes[0].terminate()
+            self.processes[0].wait(timeout=3)
+            result = request_codex_completion(self.profile, self.args, pool=pool)
+            self.assertEqual(result.usage.total_tokens, 120)
+            self.assertEqual(len(self.processes), 2)
+        self.assertEqual([r['method'] for r in self.requests()].count('turn/start'), 2)
+
     def test_session_persistence_is_opt_in_and_can_be_disabled(self) -> None:
         for enabled in (False, True, False):
             self.profile.codex_save_sessions = enabled
@@ -215,12 +304,51 @@ class CodexTransportTest(unittest.TestCase):
         self.assertEqual(len(self.processes), count)
 
     def test_failed_turns_and_protocol_errors_stop_without_resubmission(self) -> None:
-        for scenario in ('logged_out', 'api_key', 'exit', 'malformed', 'invalid_result',
+        for scenario in ('logged_out', 'exit', 'malformed', 'invalid_result',
                          'invalid_event', 'rpc_error', 'quota', 'tool', 'disconnect'):
             with self.subTest(scenario=scenario):
                 self.scenario = scenario
                 with self.assertRaises(CodexRequestError):
                     request_codex_completion(self.profile, self.args)
+
+    def test_api_key_account_can_translate(self) -> None:
+        self.scenario = 'api_key'
+        self.assertIn('譯文一', request_codex_completion(self.profile, self.args).content)
+
+    def test_reuse_does_not_replace_login(self) -> None:
+        self.assertEqual(authenticate_codex(self.profile)['type'], 'chatgpt')
+        self.assertNotIn('account/login/start', [r['method'] for r in self.requests()])
+
+    def test_browser_and_device_code_login_keep_early_completion(self) -> None:
+        for method in ('chatgpt', 'chatgptDeviceCode'):
+            with self.subTest(method=method):
+                challenges = []
+                account = authenticate_codex(self.profile, method, on_challenge=challenges.append)
+                self.assertEqual(account['type'], 'chatgpt')
+                self.assertEqual(challenges[0]['code'], 'ABCD-1234' if method == 'chatgptDeviceCode' else '')
+                self.assertTrue(challenges[0]['url'].startswith('https://example.com/'))
+        self.assertNotIn('thread/start', [r['method'] for r in self.requests()])
+
+    def test_api_key_login_does_not_modify_profile_or_expose_key(self) -> None:
+        before = copy.deepcopy(self.profile)
+        self.assertEqual(authenticate_codex(self.profile, 'apiKey', 'test-secret')['type'], 'apiKey')
+        self.assertEqual(self.profile, before)
+        self.scenario = 'login_key_error'
+        with self.assertRaises(CodexRequestError) as caught:
+            authenticate_codex(self.profile, 'apiKey', 'test-secret')
+        self.assertNotIn('test-secret', str(caught.exception))
+        self.assertIn('[redacted]', str(caught.exception))
+
+    def test_login_failure_and_cancel(self) -> None:
+        self.scenario = 'login_failed'
+        with self.assertRaisesRegex(CodexRequestError, 'Login rejected'):
+            authenticate_codex(self.profile, 'chatgpt')
+        self.scenario = 'login_cancel'
+        stopped = threading.Event()
+        with self.assertRaises(LLMRequestStopped):
+            authenticate_codex(self.profile, 'chatgptDeviceCode',
+                               on_challenge=lambda _: stopped.set(), stop_event=stopped)
+        self.assertIn('account/login/cancel', [r['method'] for r in self.requests()])
 
     def test_context_error_reaches_existing_context_recovery(self) -> None:
         self.scenario = 'context'
@@ -331,6 +459,7 @@ class CodexTransportTest(unittest.TestCase):
                             self.scenario = 'success'
 
                     with mock.patch.object(owner, '_wait', side_effect=wait) as waiting, \
+                            owner.codex_batch(), \
                             mock.patch('ballontranslator.modules.llm_codex.request_codex_completion',
                                        wraps=request_codex_completion) as request:
                         if outcome == 'recover':
@@ -342,7 +471,9 @@ class CodexTransportTest(unittest.TestCase):
                     waiting.assert_called_once()
                     count = 1 if outcome == 'cancel' else 2
                     self.assertEqual(len(self.processes) - before, count)
-                    self.assertEqual(request.call_args_list, [mock.call(self.profile, self.args, None)] * count)
+                    self.assertEqual(request.call_args_list, [
+                        mock.call(self.profile, self.args, None, pool=owner._codex_sessions)
+                    ] * count)
                     self.assertEqual(owner.usage_totals.total_tokens, 132 if outcome == 'recover' else 12 * count)
 
     def test_cancellation_during_request_and_before_launch(self) -> None:
@@ -367,9 +498,24 @@ class CodexTransportTest(unittest.TestCase):
             request_codex_completion(self.profile, self.args)
         self.assertLess(time.monotonic() - started, 6)
 
+    def test_default_uses_bundled_runtime_without_cli_on_path(self) -> None:
+        self.profile.codex_executable = 'codex'
+        with mock.patch('ballontranslator.modules.llm_codex.shutil.which', return_value=None), \
+                mock.patch('openai_codex.client._installed_codex_path', return_value=Path(sys.executable)), \
+                mock.patch('openai_codex.client._installed_codex_path_dirs', return_value=()):
+            self.assertIn('譯文一', request_codex_completion(self.profile, self.args).content)
+        self.assertEqual(self.command[0], sys.executable)
+
+    def test_missing_sdk_reports_installation_without_launch(self) -> None:
+        with mock.patch.dict(sys.modules, {'openai_codex.client': None}):
+            with self.assertRaisesRegex(CodexRequestError, 'requirements-codex.txt'):
+                request_codex_completion(self.profile, self.args)
+        self.assertFalse(self.processes)
+
     def test_missing_cli_and_invalid_timeout_do_not_launch(self) -> None:
+        self.profile.codex_executable = 'missing-codex.exe'
         with mock.patch('ballontranslator.modules.llm_codex.shutil.which', return_value=None):
-            with self.assertRaisesRegex(CodexRequestError, 'Install the official'):
+            with self.assertRaisesRegex(CodexRequestError, 'was not found'):
                 request_codex_completion(self.profile, self.args)
         self.profile.codex_timeout = 0
         with self.assertRaisesRegex(CodexRequestError, 'Timeout'):

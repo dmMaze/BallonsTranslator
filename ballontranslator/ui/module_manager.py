@@ -1,5 +1,6 @@
 import threading
 from collections import deque
+from contextlib import ExitStack
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, Dict, List, Optional, Union
 import os.path as osp
@@ -28,6 +29,7 @@ from ballontranslator.modules.exceptions import (
 )
 from ballontranslator.modules.base import BaseModule, soft_empty_cache
 from ballontranslator.modules.context.token_usage import LLMUsageTotals, format_run_token_usage
+from ballontranslator.modules.llm_chat import LLMChatRequester
 from ballontranslator.modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
     BaseTranslator, InpainterBase, TextDetectorBase, OCRBase, merge_config_module_params
@@ -382,7 +384,10 @@ class ModuleThread(QThread):
     def run(self):
         try:
             if self.job is not None:
-                self.job()
+                with ExitStack() as clients:
+                    if isinstance(self.module, LLMChatRequester):
+                        clients.enter_context(self.module.codex_batch())
+                    self.job()
         except LLMUserActionRequiredError as e:
             _show_llm_user_action_required_dialog(
                 e,
@@ -1364,7 +1369,11 @@ class ImgtransThread(QThread):
     def run(self):
         try:
             if self.job is not None:
-                self.job()
+                with ExitStack() as clients:
+                    for module in (self.ocr, self.translator, self.inpainter):
+                        if isinstance(module, LLMChatRequester):
+                            clients.enter_context(module.codex_batch())
+                    self.job()
         except LLMUserActionRequiredError as e:
             _show_llm_user_action_required_dialog(
                 e,
