@@ -325,12 +325,12 @@ class MainWindow(mainwindow_cls):
         self.canvas.run_blktrans.connect(self.on_run_blktrans)
         self.canvas.drop_open_folder.connect(self.dropOpenDir)
         self.canvas.originallayer_trans_slider = self.bottomBar.originalSlider
-        self.canvas.textlayer_trans_slider = self.bottomBar.textlayerSlider
+        self.canvas.editing_layer_opacity_slider = self.bottomBar.editingLayerSlider
         self.canvas.copy_src_signal.connect(self.on_copy_src)
         self.canvas.paste_src_signal.connect(self.on_paste_src)
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
-        self.bottomBar.textlayerSlider.valueChanged.connect(self.canvas.setTextLayerTransparencyBySlider)
+        self.bottomBar.editingLayerSlider.valueChanged.connect(self.canvas.setEditingLayerOpacityBySlider)
         
         self.drawingPanel = DrawingPanel(self.canvas)
         self.textPanel = TextPanel(self.app)
@@ -1553,6 +1553,8 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self) -> None:
+        if self.canvas.cancel_shape_fill():
+            return
         if self.canvas.alpha_mask_edit_session.handle_escape():
             return
         if self.canvas.path_reorder_active:
@@ -1572,7 +1574,7 @@ class MainWindow(mainwindow_cls):
             self.rightComicTransStackPanel.setCurrentIndex(0)
             self.canvas.setPaintMode(True)
             self.bottomBar.originalSlider.show()
-            self.bottomBar.textlayerSlider.show()
+            self.bottomBar.editingLayerSlider.show()
             self.bottomBar.textblockChecker.hide()
         else:
             self.canvas.setPaintMode(False)

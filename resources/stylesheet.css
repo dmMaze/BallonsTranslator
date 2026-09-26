@@ -2302,6 +2302,18 @@ DrawToolCheckBox#DrawRectTool::indicator:checked {
     image: url(resources/icons/bottombar_textblock_activate.svg);
 }
 
+DrawToolCheckBox#DrawShapeTool::indicator {
+    image: url(resources/icons/drawingtools_shape.svg);
+}
+
+DrawToolCheckBox#DrawShapeTool::indicator:hover {
+    image: url(resources/icons/drawingtools_shape_activate.svg);
+}
+
+DrawToolCheckBox#DrawShapeTool::indicator:checked {
+    image: url(resources/icons/drawingtools_shape.svg);
+}
+
 GlobalSearchWidget {
     border-color: @borderColor;
     border-style: solid;
