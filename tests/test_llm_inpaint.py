@@ -26,7 +26,7 @@ from ballontranslator.modules.llm_image import (
     _SharedLLMImageThrottle,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile, sync_codex_profile
+from ballontranslator.utils.llm_profiles import LLMProfile, default_codex_profile, default_profile, sync_codex_profile
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -226,9 +226,9 @@ class LLMImageThrottleTest(unittest.TestCase):
 
 class APIImageResponseDiagnosticsTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.profile = default_profile('Infistar')
+        self.profile = LLMProfile(id='custom-gateway', name='Custom gateway', support_image=True, support_vision=True)
         self.profile.api_key = 'private-api-key'
-        self.profile.image_base_url = 'https://infistar.cc/v1?tenant=private-query'
+        self.profile.image_base_url = 'https://gateway.example/v1?tenant=private-query'
         self.profile.image_model = 'gpt-image-2'
         self.profile.image_model_options = ['gpt-image-2']
         self.prompt = 'Private edit instructions.'
@@ -267,22 +267,22 @@ class APIImageResponseDiagnosticsTest(unittest.TestCase):
     def test_redirect_html_reports_actual_endpoint_and_location_without_following(self) -> None:
         self.response = httpx.Response(301, headers={
             'Content-Type': 'text/html',
-            'Location': 'https://user:password@infistar.cc/v1/?signature=private-signature',
+            'Location': 'https://user:password@gateway.example/v1/?signature=private-signature',
         }, text='<html><title>301 Moved Permanently</title><hr>nginx</html>')
-        with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect to https://infistar.cc/v1/') as caught:
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect to https://gateway.example/v1/') as caught:
             self.request()
         self.assertEqual(len(self.requests), 1)
         message = self.diagnostics()[0]
-        self.assertIn("profile_id='infistar'", message)
-        self.assertIn("endpoint='https://infistar.cc/v1'", message)
-        self.assertIn("location='https://infistar.cc/v1/'", message)
+        self.assertIn("profile_id='custom-gateway'", message)
+        self.assertIn("endpoint='https://gateway.example/v1'", message)
+        self.assertIn("location='https://gateway.example/v1/'", message)
         self.assertIn('nginx', message)
         self.assertIn("content_type='text/html", message)
         for secret in ('private-query', 'private-signature', 'user:password'):
             self.assertNotIn(secret, message + str(caught.exception))
 
     def test_non_json_and_empty_successes_are_actionable_across_direct_providers(self) -> None:
-        for provider, body in (('Infistar', b'<html>nginx returned a web page</html>'),
+        for provider, body in (('OpenAI', b'<html>nginx returned a web page</html>'),
                                ('OpenRouter', b''), ('Gemini', b'<html>wrong endpoint</html>')):
             with self.subTest(provider=provider):
                 self.profile = default_profile(provider)
@@ -391,7 +391,7 @@ class APIImageResponseDiagnosticsTest(unittest.TestCase):
         response = httpx.Response(301, text='nginx')
         with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect'):
             self.requester._decode_api_image_response(self.profile, response, self.profile.image_base_url, self.prompt)
-        self.assertIn("endpoint='https://infistar.cc/v1'", self.diagnostics()[0])
+        self.assertIn("endpoint='https://gateway.example/v1'", self.diagnostics()[0])
 
     def test_malformed_optional_prompt_and_failed_logger_do_not_replace_errors(self) -> None:
         self.profile.image_prompt = 42
@@ -506,15 +506,17 @@ class AssistedAPIImageTest(unittest.TestCase):
         self.assertGreater(np.count_nonzero(refs[1]), 0)
         self.assertEqual(self.profile.image_model, 'gpt-reasoning → gpt-image-custom')
 
-    def test_infistar_pair_uses_responses_and_direct_edit_keeps_configured_url(self) -> None:
-        profile = default_profile('Infistar')
+    def test_custom_gateway_pair_uses_responses_and_direct_edit_keeps_configured_url(self) -> None:
+        profile = LLMProfile(id='custom-gateway', name='Custom gateway', support_image=True, support_vision=True)
         profile.api_key = 'image-key'
-        profile.image_base_url = 'https://infistar.cc/v1'
+        profile.image_base_url = 'https://gateway.example/v1'
         profile.image_model = 'gpt-5.6-luna → gpt-image-2'
+        profile.vision_model_options = ['gpt-5.6-luna']
+        profile.image_model_options = ['gpt-image-2']
         image = np.zeros((2, 2, 3), np.uint8)
         self.requester.request_image(profile, image, prompt='Remove text.')
         request = self.requests[-1]
-        self.assertEqual(str(request.url), 'https://infistar.cc/v1/responses')
+        self.assertEqual(str(request.url), 'https://gateway.example/v1/responses')
         body = json.loads(request.content)
         self.assertEqual(body['model'], 'gpt-5.6-luna')
         self.assertEqual(body['tools'][0]['model'], 'gpt-image-2')
@@ -522,13 +524,13 @@ class AssistedAPIImageTest(unittest.TestCase):
 
         self.response = {'data': [{'b64_json': _encoded_png()}]}
         self.requester.request_image(profile, image, prompt='Remove text.', model='gpt-image-2')
-        self.assertEqual(str(self.requests[-1].url), 'https://infistar.cc/v1')
-        self.assertEqual(profile.image_base_url, 'https://infistar.cc/v1')
+        self.assertEqual(str(self.requests[-1].url), 'https://gateway.example/v1')
+        self.assertEqual(profile.image_base_url, 'https://gateway.example/v1')
 
-    def test_infistar_direct_success_then_missing_reasoning_model_keeps_same_key(self) -> None:
-        profile = default_profile('Infistar')
+    def test_custom_gateway_direct_success_then_missing_reasoning_model_keeps_same_key(self) -> None:
+        profile = LLMProfile(id='custom-gateway', name='Custom gateway', support_image=True, support_vision=True)
         profile.api_key = 'same-valid-image-key'
-        profile.image_base_url = 'https://infistar.cc/v1/images/edits'
+        profile.image_base_url = 'https://gateway.example/v1/images/edits'
         image = np.zeros((2, 2, 3), np.uint8)
         self.response = {'data': [{'b64_json': _encoded_png()}]}
         provider_message = '模型 gpt-6-luna 不在当前供应目录中'

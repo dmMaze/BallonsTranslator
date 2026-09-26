@@ -176,6 +176,7 @@ def _raise_service_error(payload: Dict, status: Optional[int] = None) -> None:
 async def _check_response(response: httpx.Response) -> None:
     if response.is_success:
         return
+    LOGGER.debug('Codex HTTP failure: status=%d', response.status_code)
     if response.status_code == 401:
         # The status establishes rejection even if its body is interrupted.
         raise CodexSignInRequiredError(invalid=True)
@@ -617,7 +618,8 @@ def _headers(tokens: Dict, cache_key: str = '') -> Dict[str, str]:
     headers = {'Authorization': 'Bearer ' + tokens['access_token'], 'ChatGPT-Account-Id': tokens['account_id'],
                'originator': 'ballontranslator', 'User-Agent': 'BallonsTranslator', 'Accept': 'application/json'}
     if cache_key:
-        headers['session_id'] = cache_key
+        # ChatGPT routes Responses caches by this header, not just the JSON key.
+        headers['session-id'] = cache_key
         headers['Accept'] = 'text/event-stream'
     return headers
 
@@ -802,6 +804,11 @@ async def _read_completion(response: httpx.Response, *, max_response_bytes: Opti
     raise RuntimeError('Codex response stream ended before completion.')
 
 
+def _request_fingerprint(value: object) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                                     separators=(',', ':')).encode('utf-8')).hexdigest()[:16]
+
+
 def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Optional[threading.Event],
                             cache_key: str, proxy: str = '') -> LLMChatResult:
     """Send stateless input with a cache identity owned by the current job.
@@ -833,6 +840,16 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
     schema = api_args.get('response_format', {}).get('json_schema')
     if schema:
         payload['text'] = {'format': {'type': 'json_schema', **schema}}
+    # Fingerprint the assembled request without logging project text, images or
+    # session identities. Per-item hashes expose changes to retained history.
+    LOGGER.debug(
+        'Codex request fingerprints: session=%s, settings=%s, instructions=%s, input=%s',
+        _request_fingerprint(cache_key),
+        _request_fingerprint({key: value for key, value in payload.items()
+                              if key not in ('prompt_cache_key', 'instructions', 'input')}),
+        _request_fingerprint(instructions),
+        [(item['role'], _request_fingerprint(item)) for item in inputs],
+    )
 
     async def request() -> LLMChatResult:
         async with _http_client(proxy) as client:

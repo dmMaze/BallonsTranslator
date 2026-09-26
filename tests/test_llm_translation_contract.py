@@ -27,6 +27,7 @@ from ballontranslator.modules.translators.llm_translation_contract import (
 
 class LLMTranslationContractTest(unittest.TestCase):
     def test_cache_boundaries_survive_growth_and_leave_volatile_input_unmarked(self) -> None:
+        spec = TranslationPromptSpec('Japanese', 'English', 'contract', False, True, True)
         prefix = [
             {'role': 'system', 'content': 'contract'},
             {'role': 'system', 'content': 'glossary'},
@@ -40,10 +41,12 @@ class LLMTranslationContractTest(unittest.TestCase):
         previous_messages = None
         for count in range(5):
             messages = prefix + [
-                {'role': 'user', 'content': render_history_page(
-                    HistoryPage(str(page), (f'source {page}',), (f'translation {page}',), page_number=page + 1),
-                    'test-model',
-                ).content} for page in range(count)
+                {'role': role, 'content': content}
+                for page in range(count)
+                for role, content in render_history_page(
+                    HistoryPage(str(page), (f'source {page}',), (f'translation {page}',)),
+                    'test-model', spec,
+                ).messages
             ] + [current]
             original = copy.deepcopy(messages)
             marked = translation_cache_messages(messages)
@@ -63,33 +66,46 @@ class LLMTranslationContractTest(unittest.TestCase):
                 # Cache metadata may rotate, but all preceding text blocks stay fixed.
                 for old, new in zip(previous_messages[:old_boundary + 1], marked[:old_boundary + 1]):
                     old, new = copy.deepcopy(old), copy.deepcopy(new)
-                    old['content'][0].pop('prompt_cache_breakpoint', None)
-                    new['content'][0].pop('prompt_cache_breakpoint', None)
+                    if isinstance(old['content'], list):
+                        old['content'][0].pop('prompt_cache_breakpoint', None)
+                        new['content'][0].pop('prompt_cache_breakpoint', None)
                     self.assertEqual(old, new)
             previous = boundaries
             previous_messages = marked
 
-    def test_history_records_contain_only_reference_data_and_match_budget(self) -> None:
-        for summary in ('', 'Scene with a newline.\nMore context.'):
+    def test_history_examples_match_response_contract_and_budget(self) -> None:
+        for array_response, summary_enabled, summary in (
+            (array, enabled, text)
+            for array in (False, True)
+            for enabled in (False, True)
+            for text in ('', 'Scene with a newline.\nMore context.')
+        ):
+            spec = TranslationPromptSpec('Japanese', 'English', 'system', summary_enabled,
+                                         True, array_response)
             for sources, translations in ((('心', '"quoted"'), ('heart', '译文')), ((), ())):
                 with self.subTest(summary=summary, sources=sources):
-                    page = HistoryPage('001.png', sources, translations, page_number=1, summary=summary)
+                    page = HistoryPage('001.png', sources, translations, summary=summary)
                     with mock.patch(
                         'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
                         return_value=19,
                     ) as count:
-                        rendered = render_history_page(page, 'test-model')
-                    expected = {'page_id': 1, 'translations': [
-                        {'source': source, 'translation': translation}
-                        for source, translation in zip(sources, translations)
-                    ]}
-                    if summary:
-                        expected['summary'] = summary
-                    self.assertEqual(json.loads(rendered.content), expected)
+                        rendered = render_history_page(page, 'test-model', spec)
+                    messages = [dict(role=role, content=content) for role, content in rendered.messages]
+                    self.assertEqual([message['role'] for message in messages], ['user', 'assistant'])
+                    inputs = json.loads(messages[0]['content'].split('INPUT:\n', 1)[1])
+                    self.assertEqual(inputs, [{'id': i + 1, 'source': text} for i, text in enumerate(sources)])
+                    expected_translations = (
+                        [{'id': i + 1, 'translation': text} for i, text in enumerate(translations)]
+                        if array_response else {str(i + 1): text for i, text in enumerate(translations)}
+                    )
+                    expected = {'translations': expected_translations} if array_response else expected_translations
+                    if summary_enabled or summary:
+                        expected = {'page_summary': summary, 'translations': expected_translations}
+                    self.assertEqual(json.loads(messages[1]['content']), expected)
                     self.assertEqual(rendered.token_count, 19)
-                    count.assert_called_once_with([{'role': 'user', 'content': rendered.content}], 'test-model')
+                    count.assert_called_once_with(messages, 'test-model')
         with self.assertRaises(ValueError):
-            render_history_page(HistoryPage('bad', ('source',), (), page_number=1), 'test-model')
+            render_history_page(HistoryPage('bad', ('source',), ()), 'test-model', spec)
 
     def test_disabled_features_keep_numeric_response_contract(self):
         profile_prompt = 'Keep JSON example {"x": 1}.'
@@ -153,10 +169,9 @@ class LLMTranslationContractTest(unittest.TestCase):
                     '002.png',
                     ('old source',),
                     ('old target',),
-                    page_number=2,
                     summary='Old page summary.',
                 ),
-                'test-model',
+                'test-model', spec,
             )
         context = RequestContext(
             history=(history,),
@@ -183,15 +198,15 @@ class LLMTranslationContractTest(unittest.TestCase):
 
         self.assertEqual(
             [message['role'] for message in messages],
-            ['system', 'system', 'system', 'user', 'user'],
+            ['system', 'system', 'system', 'user', 'assistant', 'user'],
         )
         self.assertEqual(messages[0]['content'], spec.system_prompt)
         self.assertIn('"source":"Hero"', messages[1]['content'])
         self.assertIn('Compacted translation memory', messages[2]['content'])
-        self.assertEqual(json.loads(messages[3]['content']), {
-            'page_id': 2,
-            'translations': [{'source': 'old source', 'translation': 'old target'}],
-            'summary': 'Old page summary.',
+        self.assertIn('"source": "old source"', messages[3]['content'])
+        self.assertEqual(json.loads(messages[4]['content']), {
+            'page_summary': 'Old page summary.',
+            'translations': {'1': 'old target'},
         })
         self.assertIn('Current clue.', prompt)
         self.assertIn('infer the natural comic reading order', prompt)

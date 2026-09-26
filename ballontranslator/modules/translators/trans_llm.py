@@ -384,13 +384,12 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 profile.prompt,
                 target_language_name,
                 history_enabled=history_enabled,
-                summary_enabled=summary_memory_enabled,
+                summary_enabled=request_summary,
                 array_response=array_response,
             ),
-            summary_enabled=summary_memory_enabled,
+            summary_enabled=request_summary,
             history_enabled=history_enabled,
             array_response=array_response,
-            generate_summary=request_summary,
         )
         vision_request = None
         if (
@@ -595,7 +594,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         True
         """
         use_history = prompt_spec.history_enabled
-        summary_enabled = prompt_spec.summary_enabled
+        # Saved context remains available even when this request needs no new summary.
         memory_record = (
             project.get_llm_compact_memory()
             if memory_enabled and project is not None
@@ -697,7 +696,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                         project,
                         page.page_key,
                         target_language,
-                        summary_enabled=summary_enabled,
+                        summary_enabled=memory_enabled,
                     )
                     for page in self._history_window.history
                 )
@@ -715,7 +714,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                         project,
                         self._history_window.request_page_key,
                         target_language,
-                        summary_enabled=summary_enabled,
+                        summary_enabled=memory_enabled,
                     )
                     if previous_page is None:
                         rebuild_reason = ContextReason.PREVIOUS_INCOMPLETE
@@ -730,16 +729,16 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     project,
                     candidate_key,
                     target_language,
-                    summary_enabled=summary_enabled,
+                    summary_enabled=memory_enabled,
                 ),
-                render_page=lambda page: render_history_page(page, model),
+                render_page=lambda page: render_history_page(page, model, prompt_spec),
                 reserved_tokens=current_summary_tokens,
             )
 
         missing_history_summaries = tuple(
             page.page_key
             for page in history
-            if summary_enabled and not page.snapshot.summary
+            if memory_enabled and not page.snapshot.summary
         )
         if missing_history_summaries:
             self.logger.debug(
@@ -980,8 +979,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             page_key=str(page_key),
             sources=tuple(sources),
             translations=tuple(translations),
-            # Use the project position, never the moving history-window position.
-            page_number=project.pagename2idx(page_key) + 1,
             summary=summary,
         )
 
@@ -1207,8 +1204,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         """
         queries = tuple(src_list)
         if not queries and not (
-            prompt_spec.summary_enabled and prompt_spec.generate_summary
-            and vision_request is not None
+            prompt_spec.summary_enabled and vision_request is not None
         ):
             return []
         if profile is None:
@@ -1329,7 +1325,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window
             and page_key is not None
             and summary_enabled
-            and prompt_spec.generate_summary
             and parsed.page_summary
         ):
             self._pending_visual_summaries[str(page_key)] = (
@@ -1343,7 +1338,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window
             and page_key is not None
             and summary_enabled
-            and prompt_spec.generate_summary
             and not parsed.page_summary
         ):
             safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')

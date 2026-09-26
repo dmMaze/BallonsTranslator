@@ -55,26 +55,6 @@ PROVIDER_DEFAULTS = {
         "model": "deepseek-v4-flash",
         "model_options": ["deepseek-v4-flash", "deepseek-v4-pro"],
     },
-    "Infistar": {
-        "id": "infistar",
-        "title_url": "https://infistar.cc",
-        "base_url": "https://infistar.cc/v1",
-        "require_api_key": True,
-        "model": "gpt-5.6-luna",
-        "support_vision": True,
-        "vision_model": "gpt-5.6-luna",
-        "vision_detail_level": "auto",
-        "model_options": [
-            "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-        ],
-        "vision_model_options": [
-            "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-        ],
-        "support_image": True,
-        "image_base_url": "https://infistar.cc/v1/images/edits",
-        "image_model_options": ["gpt-image-2"],
-        "image_model": "gpt-image-2",
-    },
     "OpenAI": {
         "id": "openai",
         "base_url": "https://api.openai.com/v1",
@@ -713,6 +693,10 @@ def _merge_profile_options(default_options: Any, saved_options: Any, selected: A
 def _merge_builtin_profile_options(profile: LLMProfile) -> LLMProfile:
     provider = _provider_from_profile_id(_builtin_profile_id(profile))
     if not provider:
+        if profile.built_in:
+            # Removed presets remain user-owned profiles, including their keys.
+            LOGGER.warning('Load unrecognized built-in LLM profile as a custom profile.')
+            profile.built_in = False
         return profile
     defaults = PROVIDER_DEFAULTS[provider]
     profile.model_options = _merge_profile_options(

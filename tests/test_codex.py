@@ -128,10 +128,58 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(payload['reasoning'], {'effort': 'high'})
         self.assertEqual(payload['tools'], [])
         self.assertFalse(payload['store'])
-        self.assertEqual(payload['prompt_cache_key'], self.requests[0].headers['session_id'])
+        self.assertEqual(payload['prompt_cache_key'], self.requests[0].headers['session-id'])
+        self.assertNotIn('session_id', self.requests[0].headers)
         self.assertEqual(self.requests[0].headers['Authorization'], 'Bearer access')
         self.assertNotIn('previous_response_id', payload)
         self.assertNotIn('prompt_cache_options', payload)
+
+    def test_request_fingerprints_locate_changes_without_logging_content(self) -> None:
+        args = self.args()
+        snapshots = []
+        cache_key = 'job-cache-key'
+        with self.assertLogs(codex.LOGGER, level='DEBUG') as captured:
+            for change in ('initial', 'repeat', 'text', 'image', 'instructions', 'schema', 'session'):
+                if change == 'text':
+                    args['messages'][-1]['content'][0]['text'] = 'next page'
+                elif change == 'image':
+                    args['messages'][-1]['content'][1]['image_url']['url'] = 'data:image/png;base64,def'
+                elif change == 'instructions':
+                    args['messages'][0]['content'] = 'Changed instructions.'
+                elif change == 'schema':
+                    args['response_format']['json_schema']['name'] = 'changed_schema'
+                elif change == 'session':
+                    cache_key = 'next-job-cache-key'
+                snapshots.append(copy.deepcopy(args))
+                codex.request_chat_completion(self.profile, args, None, cache_key)
+
+        records = [record for record in captured.records if record.msg.startswith('Codex request fingerprints:')]
+        fingerprints = [record.args for record in records]
+        self.assertEqual(len(fingerprints), 7)
+        self.assertEqual(fingerprints[0], fingerprints[1])
+        for index, component in ((2, 3), (3, 3), (4, 2), (5, 1), (6, 0)):
+            previous, current = fingerprints[index - 1], fingerprints[index]
+            for field in range(4):
+                if field == component:
+                    self.assertNotEqual(previous[field], current[field])
+                else:
+                    self.assertEqual(previous[field], current[field])
+            if component == 3:
+                self.assertEqual(previous[3][:-1], current[3][:-1])
+                self.assertNotEqual(previous[3][-1], current[3][-1])
+        logged = '\n'.join(record.getMessage() for record in captured.records)
+        for private in ('Translate numbered blocks.', 'Known names.', 'old source', 'old translation',
+                        'current page', 'next page', 'base64,', 'Changed instructions.',
+                        'changed_schema', 'job-cache-key', 'Bearer access', 'account-one'):
+            self.assertNotIn(private, logged)
+        for request, original in zip(self.requests, snapshots):
+            payload = json.loads(request.content)
+            instructions, inputs = codex._request_messages(original['messages'])
+            self.assertEqual(payload['instructions'], instructions)
+            self.assertEqual(payload['input'], inputs)
+            self.assertEqual(payload['text']['format'], {'type': 'json_schema', **original['response_format']['json_schema']})
+            self.assertNotIn('fingerprints', payload)
+            self.assertNotIn('fingerprints', request.headers)
 
     def test_gpt_subscription_translation_keeps_implicit_cache_and_fixed_schema(self) -> None:
         model = 'gpt-6-astra'
@@ -159,7 +207,7 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(first['input'][-1]['content'][-1]['image_url'],
                          original[-1]['content'][-1]['image_url']['url'])
         self.assertEqual(first['text']['format']['schema']['required'], ['translations'])
-        self.assertEqual(first['prompt_cache_key'], self.requests[0].headers['session_id'])
+        self.assertEqual(first['prompt_cache_key'], self.requests[0].headers['session-id'])
         with patch.dict(pcfg.module.__dict__, {'llm_profiles': [self.profile],
                                              'translator_llm_id': self.profile.id}):
             self.assertIn("prompt_cache='implicit'", translator.translation_run_description())
@@ -180,8 +228,13 @@ class CodexHTTPTest(unittest.TestCase):
                                 if streamed else httpx.Response(400, json=error))
 
                     self.responder = respond
-                    with self.assertRaisesRegex(LLMUserActionRequiredError, 'request parameter') as caught:
+                    with self.assertLogs(codex.LOGGER, level='DEBUG') as captured, \
+                            self.assertRaisesRegex(LLMUserActionRequiredError, 'request parameter') as caught:
                         self.request()
+                    http_errors = [record.getMessage() for record in captured.records
+                                   if record.msg.startswith('Codex HTTP failure:')]
+                    self.assertEqual(http_errors, [] if streamed else ['Codex HTTP failure: status=400'])
+                    self.assertNotIn('private', '\n'.join(captured.output))
                     message = str(caught.exception)
                     if parameter.startswith('prompt_cache_'):
                         self.assertIn(parameter, message)
@@ -250,7 +303,7 @@ class CodexHTTPTest(unittest.TestCase):
         factory.assert_called_once_with('socks5://proxy.example:1080')
         self.assertEqual(len(received), 3)
         self.assertEqual(received[0].content, received[2].content)
-        self.assertEqual(received[0].headers['session_id'], received[2].headers['session_id'])
+        self.assertEqual(received[0].headers['session-id'], received[2].headers['session-id'])
         request = received[2]
         self.assertEqual(str(request.url), codex.API_URL + '/responses')
         self.assertEqual(request.headers['Accept'], 'text/event-stream')
@@ -262,7 +315,7 @@ class CodexHTTPTest(unittest.TestCase):
                                          'action': 'edit', 'quality': 'auto', 'size': 'auto'}])
         self.assertEqual(body['tool_choice'], {'type': 'image_generation'})
         self.assertEqual(body['prompt_cache_key'], 'image-job-cache')
-        self.assertEqual(body['prompt_cache_key'], request.headers['session_id'])
+        self.assertEqual(body['prompt_cache_key'], request.headers['session-id'])
         self.assertEqual(body['input'], [{'type': 'message', 'role': 'user', 'content': [
             {'type': 'input_text', 'text': 'Keep every frame.\nUse mask image 2.'},
             {'type': 'input_image', 'image_url': PNG_URL, 'detail': 'high'},
@@ -535,6 +588,7 @@ class CodexHTTPTest(unittest.TestCase):
             ocr.set_stop_event(threading.Event())
             ocr._request_with_retries(self.profile, self.args()['messages'], failure_label='OCR')
         keys = [json.loads(request.content)['prompt_cache_key'] for request in self.requests]
+        self.assertEqual([request.headers['session-id'] for request in self.requests], keys)
         self.assertEqual(keys[0], keys[1])
         self.assertNotEqual(keys[1], keys[2])
         self.assertEqual((ocr.token_count, ocr.token_count_last), (45, 15))
@@ -679,7 +733,7 @@ class CodexHTTPTest(unittest.TestCase):
         self.responder = respond
         self.assertEqual(self.request().content, '{"1":"hello"}')
         self.assertEqual(received[0].content, received[2].content)
-        self.assertEqual(received[0].headers['session_id'], received[2].headers['session_id'])
+        self.assertEqual(received[0].headers['session-id'], received[2].headers['session-id'])
         self.assertEqual(received[2].headers['Authorization'], 'Bearer rotated')
 
     def test_catalog_uses_subscription_visibility_and_explicit_modalities(self) -> None:
@@ -799,8 +853,8 @@ class CodexHTTPTest(unittest.TestCase):
         from ballontranslator.modules.context.translation_context import RequestContext
         from ballontranslator.modules.translators.llm_translation_contract import InvalidNumTranslations, TranslationPromptSpec, render_history_page
         spec = TranslationPromptSpec('Japanese', 'English', 'Translate.', False, True, True)
-        history = tuple(render_history_page(HistoryPage(str(i), ('source-' + str(i),), ('translated-' + str(i),), page_number=i),
-                                            self.profile.model) for i in (1, 2))
+        history = tuple(render_history_page(HistoryPage(str(i), ('source-' + str(i),), ('translated-' + str(i),)),
+                                            self.profile.model, spec) for i in (1, 2))
         key = HistoryWindowKey(object(), ())
         context = RequestContext(history, history_budget=10000, window_key=key, request_page_key='current')
         for text, valid in (('{"translations":[{"id":1,"translation":"hello"}]}', True), ('{"translations":[]}', False)):
@@ -829,7 +883,7 @@ class CodexHTTPTest(unittest.TestCase):
                         self.assertIs(translator._history_window, previous)
                 self.assertEqual(requests[0]['prompt_cache_key'], requests[1]['prompt_cache_key'])
                 self.assertEqual(requests[0]['input'][-1], requests[1]['input'][-1])
-                self.assertEqual(requests[1]['input'], requests[0]['input'][1:])
+                self.assertEqual(requests[1]['input'], requests[0]['input'][2:])
 
     def test_translation_pages_share_fixed_schema_and_prefix_then_reject_duplicate_ids(self) -> None:
         from ballontranslator.modules.translators.llm_translation_contract import InvalidNumTranslations
@@ -874,8 +928,12 @@ class CodexHTTPTest(unittest.TestCase):
             self.assertEqual(previous['instructions'], current['instructions'])
             self.assertEqual(previous['input'][:-1], current['input'][:len(previous['input']) - 1])
             history = json.loads(current['input'][-2]['content'][0]['text'])
-            self.assertEqual(history['page_id'], page_index + 1)
-            self.assertEqual(set(history['translations'][0]), {'source', 'translation'})
+            self.assertEqual(current['input'][-2]['role'], 'assistant')
+            self.assertEqual(current['input'][-2]['content'][0]['type'], 'output_text')
+            self.assertEqual(history['translations'], [
+                {'id': i + 1, 'translation': f'translated-{i + 1}'}
+                for i in range((1, 3, 2)[page_index])
+            ])
             self.assertNotIn('prompt_cache_options', current)
             self.assertNotIn('prompt_cache_breakpoint', json.dumps(current['input']))
         self.assertIn('"translations":[{"id":1,"translation":"Translated text"}]', received[0]['instructions'])
@@ -919,7 +977,7 @@ class CodexHTTPTest(unittest.TestCase):
             self.assertEqual(body['text']['format'], received[0]['text']['format'])
             self.assertEqual(list(body['text']['format']['schema']['properties']), ['page_summary', 'translations'])
         empty_history = json.loads(received[2]['input'][-2]['content'][0]['text'])
-        self.assertEqual(empty_history, {'page_id': 2, 'summary': 'Scene 1', 'translations': []})
+        self.assertEqual(empty_history, {'page_summary': 'Scene 1', 'translations': []})
 
 
 class CodexConfigTest(unittest.TestCase):

@@ -69,7 +69,7 @@ class LLMTranslationMemoryTest(
 
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.render_history_page',
-            side_effect=lambda page, *_args: RenderedHistoryPage(page, '', 300),
+            side_effect=lambda page, *_args: RenderedHistoryPage(page, (), 300),
         ), mock.patch(
             'ballontranslator.modules.context.translation_context.messages_token_count',
             return_value=400,
@@ -115,7 +115,7 @@ class LLMTranslationMemoryTest(
         pcfg.module.llm_translate_vision = True
         pcfg.module.llm_translate_summary_memory = True
         pages = {
-            key: HistoryPage(key, (key,), (f't-{key}',), page_number=int(key[:3]), summary=f'summary-{key}')
+            key: HistoryPage(key, (key,), (f't-{key}',), summary=f'summary-{key}')
             for key in ('001.png', '002.png', '003.png', '004.png', '005.png')
         }
         summaries = {
@@ -150,7 +150,7 @@ class LLMTranslationMemoryTest(
         def rendered(page: HistoryPage, *_args: object, **_kwargs: object) -> RenderedHistoryPage:
             return RenderedHistoryPage(
                 snapshot=page,
-                content=page.page_key + page.summary,
+                messages=(('user', page.page_key + page.summary), ('assistant', '{}')),
                 token_count=400,
             )
 
@@ -258,7 +258,7 @@ class LLMTranslationMemoryTest(
         )
         self.assertEqual(
             [message['role'] for message in messages],
-            ['system', 'system', 'user', 'user'],
+            ['system', 'system', 'user', 'assistant', 'user'],
         )
         self.assertTrue(
             messages[1]['content'].startswith('Compacted translation memory')

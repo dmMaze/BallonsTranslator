@@ -74,6 +74,11 @@ retain that key. A new job or account change gets a new key. Refreshing an acces
 token does not change identity. There is no hidden conversational history or
 agent mode. Cancellation interrupts network waits and rejects late results.
 
+The job cache key is sent in both JSON `prompt_cache_key` and HTTP `session-id`.
+ChatGPT uses the hyphenated header for cache routing; `session_id` is a different
+header and does not satisfy that protocol. Stable routing does not guarantee a
+cache hit when prompt prefixes change.
+
 [`codex_account.py`](../../ballontranslator/ui/codex_account.py) owns asynchronous
 GUI account operations; [`CodexSettingsPanel`](../../ballontranslator/ui/codex_settings.py)
 owns the dedicated account, model, and request settings UI. The dedicated
@@ -202,11 +207,11 @@ integer IDs and string translations:
 When strict JSON is enabled, its schema is independent of the current block
 count, avoiding a changing schema before the reusable message prefix. Prompt
 instructions and parsing use the same response shape even in JSON object mode.
-History reference records use a separate data format described under History.
+Historical assistant examples use the same model-specific response shape.
 `gpt_model_version()` recognizes numeric GPT IDs, including gateway namespaces and
 suffixes; custom aliases without a GPT version retain the generic contract. Endpoint capability probes are not performed.
 
-With Summary enabled, `page_summary` precedes `translations`.
+When generating a summary, `page_summary` precedes `translations`.
 The latter keeps the provider's map or array shape; for example:
 
 ```json
@@ -218,8 +223,8 @@ pages, accepted responses must contain exactly IDs `1..N`, once each. GPT/Codex 
 items reject coerced IDs and non-string translations. A missing or malformed
 summary never discards an otherwise complete set of translations.
 Parsing accepts either field order for compatibility; the prompt and schema
-put `page_summary` before `translations`. History records carry their optional
-summary independently of the response format.
+put `page_summary` before `translations`. Historical assistant examples retain
+saved summaries even when the current request needs no new summary.
 
 With both Vision and Summary enabled, full-page calls also request summaries
 for pages without source text. They use the same prompt, context, and image
@@ -233,7 +238,7 @@ Messages are assembled in cache-friendly prefix order:
 system: translation contract + profile instructions
 system: complete glossary                         # All mode
 system: compact memory                            # if saved and enabled
-user: one reference record per completed page      # +history
+user/assistant: one completed-page example pair    # +history
 user: saved page summaries + current input + matching glossary + image
 ```
 
@@ -257,24 +262,22 @@ encoded image. Provider-facing input cannot change midway through one request.
 
 - `page` sends no bilingual history. It does not require a whole-page caller.
 - `+history` adds completed earlier pages as chronological, glossary-free
-  reference records. Every backend uses the same compact JSON: `page_id`,
-  `translations` containing source/translation pairs, and optional `summary`.
-  `page_id` is the one-based position in the full project, not its filename or
-  position in the current history window; skipped and evicted pages do not
-  renumber surviving records. Filenames remain the internal project keys.
-  Repeated translation instructions and simulated assistant responses are omitted.
+  user/assistant examples. The user message uses the normal source-array prompt;
+  the assistant message contains compact JSON in the model's map or array response
+  format, with `page_summary` when available or requested. Item IDs restart at one
+  for each pair. Filenames remain internal project keys and are not sent.
 
-Each record is sent as a separate user message, preserving its ending as history
-is appended. Message roles and cache controls belong to the request envelope,
-not the reference data. `RenderedHistoryPage` retains only the immutable snapshot,
-rendered content, and token count; the translator contract owns serialization.
+Each pair remains unchanged as history is appended. `RenderedHistoryPage` retains
+the immutable snapshot, rendered message pair, and combined token count; the
+translator contract owns serialization. History selection and eviction keep pairs
+indivisible.
 
 A prior page is eligible when it precedes the current page, has
 `FIN_TRANSLATE`, and every source-bearing block has a stored translation.
-Pages without source text are eligible when the summary response contract is
-active and they have a saved summary. Reference records contain an empty
-translations list. Explicit `translation_target` metadata must match the active target; missing metadata
-remains accepted for older projects.
+Pages without source text are eligible when Summary is enabled and they have a
+saved summary, even if the current request needs no new summary. Assistant examples
+contain an empty translations map or array. Explicit `translation_target` metadata must
+match the active target; missing metadata remains accepted for older projects.
 Snapshots contain immutable strings after configured source preprocessing and
 use the finalized translations stored in the project.
 
@@ -319,9 +322,10 @@ not repeated. Summaries covered by compact memory are omitted from the raw
 summary suffix; their saved project records remain intact. Remaining summaries
 form the newest chronological suffix that fits the shared context budget.
 
-The translation request asks for a new target-language summary only when the
-current page has none. Otherwise, the current-page instructions request an empty
-`page_summary`; any unwanted generated replacement is ignored.
+The translator chooses the response contract before requesting translation. It
+requests a new target-language summary only when the current page has none;
+otherwise it uses the translation-only prompt and schema, while retaining saved
+context. Any unwanted generated replacement is ignored.
 `Overwrite Existing Summary` instead omits the raw
 current summary, requests a replacement, and stores it only if usable summary
 text is returned. A generated summary remains pending until a page completes.
@@ -395,10 +399,10 @@ page 3: S | H1 | H2 | current3
 ```
 
 Bulk low-water eviction changes an early prefix once, then leaves room for more
-append-only requests. A memory change starts a new cache epoch. Turning Summary
-on or off changes the system/response contract. While enabled, pages with and
-without saved summaries share that response contract and history format;
-the per-page summary-generation decision belongs only to the current user suffix.
+append-only requests. A memory change starts a new cache epoch. Switching between
+summary generation and translation-only requests changes the system prompt and
+response schema, including when reusing a saved summary. Historical reference
+records keep the same format in both modes.
 
 `All` glossary mode is cache-friendly while the complete glossary is unchanged.
 `Matching` glossary entries belong to the volatile current-page suffix; later
@@ -407,24 +411,26 @@ history remains glossary-free.
 For recognized GPT-5.6+ models, translation requests use explicit caching with a
 30-minute TTL on API profiles and gateways. The translator marks up to
 four input-text boundaries: the last two instruction messages (stable glossary
-and compact memory when present) and the last two historical page records.
+and compact memory when present) and the last two historical user messages.
 Keeping the previous history boundary allows the next page to look up its cached
 prefix while writing the newly extended prefix. The final page's text, matching
 glossary, saved summaries, and image remain unmarked.
 
-`translation_cache_messages()` keeps all prefix text in a consistent content-block
-format, including messages whose markers have rolled out. Request snapshots and
+`translation_cache_messages()` keeps prefix input text in a consistent content-block
+format, including messages whose markers have rolled out; assistant examples stay
+plain strings without markers. Request snapshots and
 project history remain unchanged. API requests carry cache options via the SDK's
 `extra_body`. Codex uses implicit caching with a stable job key and text
 instructions: its subscription endpoint rejects both `prompt_cache_options` and
 `prompt_cache_breakpoint`. API compaction uses the same explicit policy but marks
 only its fixed instruction prefix.
 
-Completed records remain unchanged until their source, translation, or summary is
+Completed examples remain unchanged until their source, translation, or summary is
 edited or their page is evicted. Explicit caching retains the previous historical
-boundary while writing the newly appended record. Implicit caching keeps the same
+user boundary while writing the next historical user prefix, including intervening
+assistant examples. Implicit caching keeps the same
 per-page message boundaries and backend policy; reuse still depends on which
-prefixes the provider has written. A finalized record differs from the original
+prefixes the provider has written. A finalized example can differ from the original
 current-page request, so its history prefix must be cached in its new form.
 
 Explicit mode stays enabled below the server's 1,024-token minimum; local budget
@@ -471,6 +477,13 @@ fails explicitly.
 A healthy contiguous `+history` run usually reports
 `empty/rebuild -> grow ... -> evict -> grow`. Missing provider cache fields mean
 the provider did not report them, not that the application inferred a miss.
+Codex chat requests log hashes of the assembled session key, settings (including
+the output schema), instructions, and each ordered input item. Compare these
+before attributing misses to the provider: a changed instruction or early input
+breaks the shared prefix, while matching hashes establish unchanged client input,
+not provider cache availability. Fingerprints include image content but log no
+raw text, images, credentials, or session keys. Failed HTTP responses also log
+their status code; stream and connection failures may have no HTTP error status.
 Translation usage logs preserve returned `prompt_cache_diagnostics` type, reason,
 and comparison token counts from API completions or Codex's completed response.
 `not_reported` means the field was absent or null; `unrecognized` means no usable

@@ -84,9 +84,9 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
         self.assertEqual(saved['image_model_options'], ['gpt-image-2', 'gpt-image-1'])
         self.assertTrue(card.image_model_combo.lineEdit().isReadOnly())
 
-    def test_infistar_base_url_offers_and_saves_image_pairs(self) -> None:
-        profile = default_profile('Infistar')
-        profile.image_base_url = 'https://infistar.cc/v1'
+    def test_custom_gateway_base_url_offers_and_saves_image_pairs(self) -> None:
+        profile = LLMProfile(id='custom-gateway', name='Custom gateway', support_image=True, support_vision=True)
+        profile.image_base_url = 'https://gateway.example/v1'
         profile.vision_model_options = ['gpt-test-reasoning']
         profile.image_model = 'gpt-image-test'
         profile.image_model_options = ['gpt-image-test']
@@ -98,7 +98,7 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
         saved = profile_to_dict(profile)
         self.assertEqual(saved['image_model'], pair)
         self.assertEqual(saved['image_model_options'], ['gpt-image-test'])
-        self.assertEqual(saved['image_base_url'], 'https://infistar.cc/v1')
+        self.assertEqual(saved['image_base_url'], 'https://gateway.example/v1')
 
     def test_vision_add_delete_refreshes_pairs_and_preserves_unavailable_selection(self) -> None:
         card = self.image_card()

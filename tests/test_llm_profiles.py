@@ -543,6 +543,23 @@ class LLMProfileMigrationTest(unittest.TestCase):
         deepseek_profiles = [p for p in cfg.module.llm_profiles if p.id == 'deepseek']
         self.assertEqual(len(deepseek_profiles), 1)
 
+    def test_removed_builtin_loads_as_custom_and_survives_restore(self) -> None:
+        retired = LLMProfile(
+            id='removed-provider', name='Removed provider', built_in=True,
+            title_url='https://gateway.example', base_url='https://gateway.example/v1',
+            api_key='saved-test-key', model='saved-model', model_options=['saved-model'],
+            support_image=True, image_base_url='https://gateway.example/v1/images/edits',
+            image_model='saved-image-model', image_model_options=['saved-image-model'],
+        )
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            profiles = load_profiles([retired])
+        loaded = profile_by_id(profiles, retired.id)
+        self.assertEqual(loaded.__dict__, {**retired.__dict__, 'built_in': False})
+        self.assertTrue(retired.built_in)
+        restored = restore_builtin_profiles(profiles)
+        self.assertEqual(profile_by_id(restored, retired.id).__dict__, loaded.__dict__)
+        self.assertEqual(runtime_profile(restored, retired.id).base_url, retired.base_url)
+
     def test_restore_builtins_keeps_user_profiles(self):
         openai = default_profile('OpenAI')
         custom = copy_profile(default_profile('OpenAI'))
