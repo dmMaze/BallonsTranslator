@@ -102,6 +102,10 @@ QStackedWidget#ConfigContent,
 QScrollArea#ConfigContentScrollArea,
 QWidget#ConfigContentViewport,
 QWidget#ConfigContentScrollContent,
+QWidget#CodexSettingsPanel,
+QWidget#CodexAccountControls,
+QWidget#CodexModelSettings,
+QWidget#CodexRequestSettings,
 QWidget#ConfigContentScrollContent Widget,
 QWidget#ConfigContentScrollContent QLabel,
 QWidget#ConfigContentScrollContent QCheckBox,
@@ -114,7 +118,9 @@ QWidget#ConfigContentScrollContent QComboBox,
 QWidget#ConfigContentScrollContent QPlainTextEdit,
 QWidget#ModuleParamContent QLineEdit,
 QWidget#ModuleParamContent QComboBox,
-QWidget#ModuleParamContent QPlainTextEdit {
+QWidget#ModuleParamContent QPlainTextEdit,
+QWidget#DrawingPanel QComboBox,
+QWidget#DrawingPanel QPlainTextEdit {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 6px;
@@ -124,7 +130,8 @@ QWidget#ModuleParamContent QPlainTextEdit {
 QWidget#ConfigContentScrollContent QLineEdit,
 QWidget#ConfigContentScrollContent QComboBox,
 QWidget#ModuleParamContent QLineEdit,
-QWidget#ModuleParamContent QComboBox {
+QWidget#ModuleParamContent QComboBox,
+QWidget#DrawingPanel QComboBox {
     height: 26px;
 }
 
@@ -134,12 +141,14 @@ QWidget#ModuleParamContent QLineEdit {
 }
 
 QWidget#ConfigContentScrollContent QComboBox,
-QWidget#ModuleParamContent QComboBox {
+QWidget#ModuleParamContent QComboBox,
+QWidget#DrawingPanel QComboBox {
     padding-left: 8px;
 }
 
 QWidget#ConfigContentScrollContent QPlainTextEdit,
-QWidget#ModuleParamContent QPlainTextEdit {
+QWidget#ModuleParamContent QPlainTextEdit,
+QWidget#DrawingPanel QPlainTextEdit {
     padding: 4px 8px;
 }
 
@@ -150,13 +159,17 @@ QWidget#ConfigContentScrollContent QPlainTextEdit:focus,
 QWidget#ModuleParamContent QLineEdit:focus,
 QWidget#ModuleParamContent QComboBox:hover,
 QWidget#ModuleParamContent QComboBox:focus,
-QWidget#ModuleParamContent QPlainTextEdit:focus {
+QWidget#ModuleParamContent QPlainTextEdit:focus,
+QWidget#DrawingPanel QComboBox:hover,
+QWidget#DrawingPanel QComboBox:focus,
+QWidget#DrawingPanel QPlainTextEdit:focus {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
 QWidget#ConfigContentScrollContent QComboBox::drop-down,
-QWidget#ModuleParamContent QComboBox::drop-down {
+QWidget#ModuleParamContent QComboBox::drop-down,
+QWidget#DrawingPanel QComboBox::drop-down {
     border: none;
 }
 
@@ -305,6 +318,23 @@ QPushButton#DrawingInpainterConfigButton {
 
 QPushButton#DrawingInpainterConfigButton:hover {
     background-color: rgba(30, 147, 229, 20%);
+}
+
+QWidget#DrawingPanel QLabel,
+QWidget#DrawingPanel QCheckBox,
+QWidget#DrawingPanel QPushButton,
+QWidget#DrawingPanel QSpinBox {
+    font-size: 13px;
+}
+
+QWidget#DrawingPanel QComboBox:disabled {
+    color: @borderColor;
+    background-color: @emptyContentBackgroundColor;
+    border-bottom: 1px solid @borderColor;
+}
+
+QWidget#DrawingPanel QLabel:disabled {
+    color: @borderColor;
 }
 
 QWidget#ConfigContentScrollContent QLabel#ParamFieldLabel,
@@ -628,15 +658,19 @@ QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow:hover {
 
 QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QLabel#LLMProfileFieldLabel,
 QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelAddButton,
-QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelRemoveButton {
+QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelRemoveButton,
+QWidget#CodexSettingsPanel QToolButton#LLMProfileModelAddButton,
+QWidget#CodexSettingsPanel QToolButton#LLMProfileModelRemoveButton {
     background-color: transparent;
 }
 
-QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelAddButton:hover {
+QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelAddButton:hover,
+QWidget#CodexSettingsPanel QToolButton#LLMProfileModelAddButton:hover {
     background-color: rgb(30, 147, 229);
 }
 
-QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelRemoveButton:hover {
+QGroupBox#LLMProfileCard QWidget#LLMProfileModalityRow QToolButton#LLMProfileModelRemoveButton:hover,
+QWidget#CodexSettingsPanel QToolButton#LLMProfileModelRemoveButton:hover {
     background-color: #FF605C;
 }
 
@@ -655,7 +689,8 @@ QLineEdit#LLMProfileApiKeyEditor:focus {
     border-bottom: 1px solid rgb(30, 147, 229);
 }
 
-QComboBox#LLMProfileModelCombo {
+QComboBox#LLMProfileModelCombo,
+QToolButton#DrawingInpainterSelector {
     border: none;
     border-bottom: 1px solid @borderColor;
     border-radius: 6px;
@@ -666,7 +701,10 @@ QComboBox#LLMProfileModelCombo {
 }
 
 QComboBox#LLMProfileModelCombo:hover,
-QComboBox#LLMProfileModelCombo:focus {
+QComboBox#LLMProfileModelCombo:focus,
+QToolButton#DrawingInpainterSelector:hover,
+QToolButton#DrawingInpainterSelector:focus,
+QToolButton#DrawingInpainterSelector:open {
     border: none;
     border-bottom: 1px solid rgb(30, 147, 229);
 }
@@ -1299,17 +1337,20 @@ QPushButton#RunPipelineSecondaryButton {
     font-size: 12px;
 }
 
-QPushButton#RunPipelinePrimaryButton {
+QPushButton#RunPipelinePrimaryButton,
+QWidget#CodexAccountControls QPushButton#CodexSignInButton {
     color: white;
     border: 1px solid rgb(30, 147, 229);
     background-color: rgb(30, 147, 229);
 }
 
-QPushButton#RunPipelinePrimaryButton:hover {
+QPushButton#RunPipelinePrimaryButton:hover,
+QWidget#CodexAccountControls QPushButton#CodexSignInButton:hover:enabled {
     background-color: #4ba7ee;
 }
 
-QPushButton#RunPipelinePrimaryButton:pressed {
+QPushButton#RunPipelinePrimaryButton:pressed,
+QWidget#CodexAccountControls QPushButton#CodexSignInButton:pressed:enabled {
     background-color: #187fc3;
 }
 
@@ -1321,6 +1362,22 @@ QPushButton#RunPipelineSecondaryButton {
 
 QPushButton#RunPipelineSecondaryButton:hover {
     border-color: rgb(30, 147, 229);
+}
+
+QWidget#CodexAccountControls QPushButton#CodexSignInButton,
+QWidget#CodexAccountControls QPushButton#CodexSignOutButton {
+    border-radius: 12px;
+    padding: 1px 12px;
+}
+
+QWidget#CodexAccountControls QPushButton#CodexSignOutButton {
+    color: @qwidgetForegroundColor;
+    border: 1px solid @borderColor;
+    background-color: transparent;
+}
+
+QWidget#CodexAccountControls QPushButton#CodexSignOutButton:pressed:enabled {
+    color: rgb(30, 147, 229);
 }
 
 QPushButton#LLMProfileRestoreButton {
@@ -1481,7 +1538,7 @@ QFontChecker::indicator::checked {
     background-color: rgb(30, 147, 229);
 }
 
-QToolButton#FontReloadButton {
+QToolButton#RefreshButton {
     min-width: 19px;
     max-width: 19px;
     min-height: 19px;
@@ -1492,12 +1549,12 @@ QToolButton#FontReloadButton {
     background-color: transparent;
 }
 
-QToolButton#FontReloadButton:hover:enabled,
-QToolButton#FontReloadButton:focus:enabled {
+QToolButton#RefreshButton:hover:enabled,
+QToolButton#RefreshButton:focus:enabled {
     background-color: rgba(30, 147, 229, 20%);
 }
 
-QToolButton#FontReloadButton:pressed:enabled {
+QToolButton#RefreshButton:pressed:enabled {
     border-color: rgb(30, 147, 229);
     background-color: rgb(30, 147, 229);
 }
@@ -1825,7 +1882,12 @@ QToolButton#RunPipelineModuleSelector[moduleActive="false"]:hover {
     background-color: transparent;
 }
 
+QToolButton#DrawingInpainterSelector {
+    padding-right: 24px;
+}
+
 QToolButton#BottomBarModuleToolButton::menu-indicator,
+QToolButton#DrawingInpainterSelector::menu-indicator,
 QToolButton#RunPipelineModuleSelector::menu-indicator {
     image: none;
     width: 11px;

@@ -1,12 +1,14 @@
 import base64
 import copy
 import io
+import json
 import threading
 import time
 import unittest
 from unittest.mock import patch
 
 import numpy as np
+import httpx
 from PIL import Image
 
 from ballontranslator.modules.exceptions import (
@@ -17,14 +19,15 @@ from ballontranslator.modules.exceptions import (
     LLMUserActionRequiredError,
 )
 from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
-from ballontranslator.modules import llm_image
+from ballontranslator.modules import codex, image_generation, llm_image
 from ballontranslator.modules.llm_image import (
     LLMImageRequester,
     LLMImageRequestPolicy,
     _SharedLLMImageThrottle,
 )
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile, sync_codex_profile
+from ballontranslator.utils.textblock import TextBlock
 
 
 def _encoded_png() -> str:
@@ -221,12 +224,661 @@ class LLMImageThrottleTest(unittest.TestCase):
         request.assert_called_once()
 
 
+class APIImageResponseDiagnosticsTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.profile = default_profile('Infistar')
+        self.profile.api_key = 'private-api-key'
+        self.profile.image_base_url = 'https://infistar.cc/v1?tenant=private-query'
+        self.profile.image_model = 'gpt-image-2'
+        self.profile.image_model_options = ['gpt-image-2']
+        self.prompt = 'Private edit instructions.'
+        self.requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, retry_attempts=2, retry_timeout=0,
+        ))
+        self.requests = []
+        self.response = httpx.Response(200, json={'data': [{'b64_json': _encoded_png()}]})
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            return self.response
+
+        def client(proxy: str) -> httpx.Client:
+            result = httpx.Client(transport=httpx.MockTransport(respond))
+            self.addCleanup(result.close)
+            return result
+
+        factory = patch.object(self.requester, '_http_client', side_effect=client)
+        factory.start()
+        self.addCleanup(factory.stop)
+        self.addCleanup(self.requester.close)
+        warning = patch.object(llm_image.LOGGER, 'warning')
+        self.warning = warning.start()
+        self.addCleanup(warning.stop)
+
+    def request(self) -> np.ndarray:
+        return self.requester.request_image_with_retries(
+            self.profile, np.zeros((2, 2, 3), np.uint8), self.prompt, self.profile.image_model,
+        )
+
+    def diagnostics(self) -> list[str]:
+        return [call.args[0] % call.args[1:] for call in self.warning.call_args_list
+                if call.args[0].startswith('LLM image response failed:')]
+
+    def test_redirect_html_reports_actual_endpoint_and_location_without_following(self) -> None:
+        self.response = httpx.Response(301, headers={
+            'Content-Type': 'text/html',
+            'Location': 'https://user:password@infistar.cc/v1/?signature=private-signature',
+        }, text='<html><title>301 Moved Permanently</title><hr>nginx</html>')
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect to https://infistar.cc/v1/') as caught:
+            self.request()
+        self.assertEqual(len(self.requests), 1)
+        message = self.diagnostics()[0]
+        self.assertIn("profile_id='infistar'", message)
+        self.assertIn("endpoint='https://infistar.cc/v1'", message)
+        self.assertIn("location='https://infistar.cc/v1/'", message)
+        self.assertIn('nginx', message)
+        self.assertIn("content_type='text/html", message)
+        for secret in ('private-query', 'private-signature', 'user:password'):
+            self.assertNotIn(secret, message + str(caught.exception))
+
+    def test_non_json_and_empty_successes_are_actionable_across_direct_providers(self) -> None:
+        for provider, body in (('Infistar', b'<html>nginx returned a web page</html>'),
+                               ('OpenRouter', b''), ('Gemini', b'<html>wrong endpoint</html>')):
+            with self.subTest(provider=provider):
+                self.profile = default_profile(provider)
+                self.profile.api_key = 'private-api-key'
+                self.profile.image_model = 'image-model'
+                self.profile.image_model_options = ['image-model']
+                self.response = httpx.Response(200, headers={'Content-Type': 'text/html'}, content=body)
+                self.requests.clear()
+                self.warning.reset_mock()
+                with self.assertRaisesRegex(LLMUserActionRequiredError, 'empty or non-JSON response'):
+                    self.request()
+                self.assertEqual(len(self.requests), 1)
+                self.assertIn('status=200', self.diagnostics()[0])
+                self.assertIn(body.decode() if body else '<empty>', self.diagnostics()[0])
+
+    def test_json_image_failures_log_provider_detail_and_keep_retries(self) -> None:
+        for status, payload, expected in (
+            (200, {'data': []}, 'no image data'),
+            (200, {'error': {'code': 'model_rejected', 'message': 'This model cannot edit images.'}}, 'cannot edit'),
+            (400, {'error': {'message': 'This model needs a different image size.'}}, 'different image size'),
+            (400, {'message': 'Quota needs replenishing.'}, 'Quota needs replenishing'),
+            (200, {'data': [{'b64_json': base64.b64encode(b'broken image').decode()}]}, 'cannot identify'),
+        ):
+            with self.subTest(status=status, payload=payload):
+                self.response = httpx.Response(status, json=payload)
+                self.requests.clear()
+                self.warning.reset_mock()
+                with self.assertRaisesRegex(RuntimeError, expected):
+                    self.request()
+                self.assertEqual(len(self.requests), 2)
+                messages = self.diagnostics()
+                self.assertEqual(len(messages), 2)
+                if payload.get('error'):
+                    self.assertIn(payload['error']['message'], messages[0])
+                if payload.get('data'):
+                    self.assertNotIn(payload['data'][0]['b64_json'], messages[0])
+
+    def test_failure_preview_is_bounded_and_omits_echoed_secrets_and_image_data(self) -> None:
+        self.response = httpx.Response(400, json={
+            'error': {'message': 'Rejected private-api-key while fetching https://user:password@cdn.example/image.png?signature=private-signature'},
+            'prompt': self.prompt,
+            'data': [{'b64_json': 'A' * 100_000}],
+            'debug': self.prompt + ' data:image/png;base64,' + 'B' * 100_000,
+            'detail': 'Long diagnostic. ' * 10_000,
+        })
+        with self.assertRaises(RuntimeError) as caught:
+            self.request()
+        message = self.diagnostics()[0]
+        self.assertLess(len(message), 2500)
+        self.assertIn('Rejected <redacted>', message)
+        self.assertIn('https://cdn.example/image.png', message)
+        for secret in ('private-api-key', 'private-signature', self.prompt, 'user:password', 'A' * 80, 'B' * 80):
+            self.assertNotIn(secret, message + str(caught.exception))
+
+    def test_html_echo_is_bounded_and_redacted(self) -> None:
+        self.response = httpx.Response(200, headers={'Content-Type': 'text/html'}, text=(
+            '<html>private-api-key ' + self.prompt + ' https://cdn.example/a?signature=private-signature '
+            + 'data:image/png;base64,' + 'A' * 100_000 + ' diagnostic' * 10_000 + '</html>'
+        ))
+        with self.assertRaises(LLMUserActionRequiredError):
+            self.request()
+        message = self.diagnostics()[0]
+        self.assertLess(len(message), 2500)
+        for secret in ('private-api-key', self.prompt, 'private-signature', 'A' * 80):
+            self.assertNotIn(secret, message)
+
+    def test_structured_validation_error_never_echoes_multiline_input_in_retries(self) -> None:
+        self.prompt = 'Private first line\nPrivate second line'
+        self.response = httpx.Response(422, json={
+            'detail': [{'msg': 'Invalid field', 'input': self.prompt}],
+        })
+        with self.assertRaisesRegex(RuntimeError, 'HTTP 422') as caught:
+            self.request()
+        all_warnings = '\n'.join(call.args[0] % call.args[1:] for call in self.warning.call_args_list)
+        self.assertIn('Invalid field', self.diagnostics()[0])
+        self.assertEqual(len(self.requests), 2)
+        for text in ('Private first line', 'Private second line'):
+            self.assertNotIn(text, all_warnings + str(caught.exception))
+
+    def test_valid_image_and_authentication_preserve_existing_behavior(self) -> None:
+        result = self.request()
+        np.testing.assert_array_equal(result, np.full((2, 2, 3), [255, 0, 0], np.uint8))
+        self.assertEqual(self.diagnostics(), [])
+        self.response = httpx.Response(401, json={'error': {'message': 'Invalid token private-api-key'}})
+        self.requests.clear()
+        with self.assertRaises(LLMApiKeyRequiredError):
+            self.request()
+        self.assertEqual(len(self.requests), 1)
+        self.assertIn('Invalid token <redacted>', self.diagnostics()[0])
+
+    def test_direct_403_distinguishes_model_access_from_explicit_invalid_key(self) -> None:
+        for code, is_auth in (('model_not_found', False), ('permission_denied', False), ('invalid_api_key', True)):
+            with self.subTest(code=code):
+                self.response = httpx.Response(403, json={'error': {
+                    'code': code, 'message': 'The requested model is unavailable for this account.',
+                }})
+                self.requests.clear()
+                with self.assertRaises(LLMUserActionRequiredError) as caught:
+                    self.request()
+                self.assertEqual(isinstance(caught.exception, LLMApiKeyRequiredError), is_auth)
+                if not is_auth:
+                    self.assertIn('requested model is unavailable', str(caught.exception))
+                self.assertEqual(len(self.requests), 1)
+
+    def test_logger_without_bound_response_request_preserves_original_error(self) -> None:
+        response = httpx.Response(301, text='nginx')
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect'):
+            self.requester._decode_api_image_response(self.profile, response, self.profile.image_base_url, self.prompt)
+        self.assertIn("endpoint='https://infistar.cc/v1'", self.diagnostics()[0])
+
+    def test_malformed_optional_prompt_and_failed_logger_do_not_replace_errors(self) -> None:
+        self.profile.image_prompt = 42
+        self.response = httpx.Response(301, headers={'Location': '/v1/'}, text='nginx')
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect'):
+            self.request()
+        self.assertIn('nginx', self.diagnostics()[0])
+        self.warning.side_effect = RuntimeError('logging unavailable')
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect'):
+            self.request()
+        self.response = httpx.Response(401, json={'error': {'message': 'Invalid token'}})
+        with self.assertRaises(LLMApiKeyRequiredError):
+            self.request()
+        original = RuntimeError('original image decoding error')
+        self.response = httpx.Response(200, json={'data': []})
+        with patch.object(self.requester, '_decode_response_image', side_effect=original), \
+                self.assertRaises(RuntimeError) as caught:
+            self.requester.request_image(self.profile, None, prompt=self.prompt, model=self.profile.image_model)
+        self.assertIs(caught.exception, original)
+
+    def test_stop_during_response_handling_is_not_logged_or_retried(self) -> None:
+        original = LLMRequestStopped()
+        with patch.object(self.requester, '_decode_response_image', side_effect=original), \
+                self.assertRaises(LLMRequestStopped) as caught:
+            self.request()
+        self.assertIs(caught.exception, original)
+        self.assertEqual(len(self.requests), 1)
+        self.warning.assert_not_called()
+
+    def test_download_failure_retries_without_exposing_signed_url(self) -> None:
+        def respond(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            if request.url.host == 'cdn.example':
+                return httpx.Response(503, text='temporarily unavailable')
+            return httpx.Response(200, json={'data': [{'url': 'https://cdn.example/image.png?signature=private-signature'}]})
+
+        def client(proxy: str) -> httpx.Client:
+            result = httpx.Client(transport=httpx.MockTransport(respond))
+            self.addCleanup(result.close)
+            return result
+
+        with patch.object(self.requester, '_http_client', side_effect=client), self.assertRaises(RuntimeError) as caught:
+            self.request()
+        self.assertEqual(len(self.requests), 4)
+        self.assertEqual(len(self.diagnostics()), 2)
+        all_warnings = '\n'.join(call.args[0] % call.args[1:] for call in self.warning.call_args_list)
+        self.assertNotIn('private-signature', all_warnings + str(caught.exception))
+        self.assertIn('503', str(caught.exception))
+
+
+class AssistedAPIImageTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.profile = default_profile('OpenAI')
+        self.profile.api_key = 'image-key'
+        self.profile.image_base_url = 'https://images.example/custom/v2/images/edits?tenant=example'
+        self.profile.image_model = 'gpt-reasoning → gpt-image-custom'
+        self.profile.image_model_options = ['gpt-image-custom']
+        self.requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, retry_attempts=2, retry_timeout=0,
+            request_timeout=23, max_resolution=4, proxy='http://proxy.example:8080',
+        ))
+        self.requests = []
+        self.response = {'status': 'completed', 'output': [
+            {'type': 'image_generation_call', 'status': 'completed', 'result': _encoded_png()},
+        ]}
+        self.status = 200
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            return httpx.Response(self.status, json=self.response)
+
+        self.client = httpx.Client(transport=httpx.MockTransport(respond), timeout=23)
+        self.addCleanup(self.client.close)
+        self.addCleanup(self.requester.close)
+        factory = patch.object(self.requester, '_http_client', return_value=self.client)
+        self.factory = factory.start()
+        self.addCleanup(factory.stop)
+        auth = patch.object(codex.account, 'require_sign_in', side_effect=AssertionError('Codex auth leaked'))
+        auth.start()
+        self.addCleanup(auth.stop)
+
+    def test_assisted_edit_uses_configured_service_and_aligned_mask_references(self) -> None:
+        image = np.full((8, 12, 4), 255, np.uint8)
+        mask = np.zeros((8, 12), np.uint8)
+        mask[1, 1] = 255
+        result = self.requester.request_image(
+            self.profile, image, prompt='Keep all artwork.\nRemove text.', mask=mask,
+            resize_to_input=True,
+        )
+        self.assertEqual(result.shape, (8, 12, 3))
+        request = self.requests[0]
+        self.assertEqual(str(request.url), 'https://images.example/custom/v2/responses?tenant=example')
+        self.assertEqual(request.headers['Authorization'], 'Bearer image-key')
+        self.assertEqual(request.extensions['timeout']['read'], 23)
+        self.factory.assert_called_once_with('http://proxy.example:8080')
+        body = json.loads(request.content)
+        self.assertEqual(body['model'], 'gpt-reasoning')
+        self.assertEqual(body['tools'], [{'type': 'image_generation', 'model': 'gpt-image-custom',
+                                         'action': 'edit', 'quality': 'auto', 'size': 'auto'}])
+        self.assertEqual(body['tool_choice'], {'type': 'image_generation'})
+        self.assertFalse(body['store'])
+        self.assertFalse(body['stream'])
+        self.assertNotIn('previous_response_id', body)
+        self.assertNotIn('reasoning', body)
+        content = body['input'][0]['content']
+        self.assertTrue(content[0]['text'].startswith('Keep all artwork.\nRemove text.'))
+        self.assertIn('white marks the editable region', content[0]['text'])
+        refs = [np.array(Image.open(io.BytesIO(base64.b64decode(item['image_url'].split(',')[1]))))
+                for item in content[1:]]
+        self.assertEqual(refs[0].shape[:2], (3, 4))
+        self.assertEqual(refs[1].shape[:2], (3, 4))
+        self.assertGreater(np.count_nonzero(refs[1]), 0)
+        self.assertEqual(self.profile.image_model, 'gpt-reasoning → gpt-image-custom')
+
+    def test_infistar_pair_uses_responses_and_direct_edit_keeps_configured_url(self) -> None:
+        profile = default_profile('Infistar')
+        profile.api_key = 'image-key'
+        profile.image_base_url = 'https://infistar.cc/v1'
+        profile.image_model = 'gpt-5.6-luna → gpt-image-2'
+        image = np.zeros((2, 2, 3), np.uint8)
+        self.requester.request_image(profile, image, prompt='Remove text.')
+        request = self.requests[-1]
+        self.assertEqual(str(request.url), 'https://infistar.cc/v1/responses')
+        body = json.loads(request.content)
+        self.assertEqual(body['model'], 'gpt-5.6-luna')
+        self.assertEqual(body['tools'][0]['model'], 'gpt-image-2')
+        self.assertEqual(body['tools'][0]['action'], 'edit')
+
+        self.response = {'data': [{'b64_json': _encoded_png()}]}
+        self.requester.request_image(profile, image, prompt='Remove text.', model='gpt-image-2')
+        self.assertEqual(str(self.requests[-1].url), 'https://infistar.cc/v1')
+        self.assertEqual(profile.image_base_url, 'https://infistar.cc/v1')
+
+    def test_infistar_direct_success_then_missing_reasoning_model_keeps_same_key(self) -> None:
+        profile = default_profile('Infistar')
+        profile.api_key = 'same-valid-image-key'
+        profile.image_base_url = 'https://infistar.cc/v1/images/edits'
+        image = np.zeros((2, 2, 3), np.uint8)
+        self.response = {'data': [{'b64_json': _encoded_png()}]}
+        provider_message = '模型 gpt-6-luna 不在当前供应目录中'
+        with patch.object(llm_image.LOGGER, 'warning') as warning:
+            self.requester.request_image(profile, image, prompt='Remove text.', model='gpt-image-2')
+            warning.assert_not_called()
+            self.status = 403
+            self.response = {'error': {'code': 'model_not_found', 'message': provider_message, 'type': 'new_api_error'}}
+            with self.assertRaises(LLMUserActionRequiredError) as caught:
+                self.requester.request_image_with_retries(profile, image, 'Remove text.', 'gpt-6-luna → gpt-image-2')
+        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertIn(provider_message, str(caught.exception))
+        self.assertEqual(len(self.requests), 2)
+        self.assertEqual([request.headers['Authorization'] for request in self.requests], ['Bearer same-valid-image-key'] * 2)
+        self.assertEqual([request.url.path for request in self.requests], ['/v1/images/edits', '/v1/responses'])
+        diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
+        self.assertIn(provider_message, diagnostic)
+        self.assertIn('model_not_found', diagnostic)
+        self.assertIn('status=403', diagnostic)
+        self.assertNotIn(profile.api_key, diagnostic)
+
+    def test_assisted_explicit_authentication_codes_keep_key_dialog(self) -> None:
+        for status, payload in (
+            (403, {'error': {'code': 'invalid_api_key', 'message': 'Invalid image-key'}}),
+            (400, {'error': {'type': 'authentication_error', 'message': 'Invalid image-key'}}),
+            (200, {'type': 'response.failed', 'response': {'error': {'code': 'invalid_token', 'message': 'Invalid image-key'}}}),
+        ):
+            with self.subTest(status=status, payload=payload):
+                self.status, self.response = status, payload
+                self.requests.clear()
+                with patch.object(llm_image.LOGGER, 'warning') as warning, self.assertRaises(LLMApiKeyRequiredError):
+                    self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+                self.assertEqual(len(self.requests), 1)
+                diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
+                self.assertIn('Invalid <redacted>', diagnostic)
+                self.assertNotIn('image-key', diagnostic)
+
+    def test_failed_response_event_preserves_model_error_detail_without_key_dialog(self) -> None:
+        self.response = {'type': 'response.failed', 'response': {'error': {
+            'code': 'model_not_found', 'message': 'The selected model is unavailable.',
+        }}}
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'selected model is unavailable') as caught:
+            self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_assisted_generation_uses_explicit_pair_and_rotates_job_cache(self) -> None:
+        stop = threading.Event()
+        self.requester.set_stop_event(stop)
+        for _ in range(2):
+            self.requester.request_image(self.profile, None, prompt='Draw paper.',
+                                         model='gpt-other -> gpt-image-other')
+        bodies = [json.loads(request.content) for request in self.requests]
+        self.assertEqual(bodies[0]['prompt_cache_key'], bodies[1]['prompt_cache_key'])
+        self.assertTrue(bodies[0]['prompt_cache_key'])
+        self.assertEqual(bodies[0]['model'], 'gpt-other')
+        self.assertEqual(bodies[0]['tools'][0]['model'], 'gpt-image-other')
+        self.assertEqual(bodies[0]['tools'][0]['action'], 'generate')
+        self.assertEqual(bodies[0]['input'][0]['content'], [{'type': 'input_text', 'text': 'Draw paper.'}])
+        self.requester.set_stop_event(threading.Event())
+        self.requester.request_image(self.profile, None, prompt='Draw paper.',
+                                     model='gpt-other → gpt-image-other')
+        self.assertNotEqual(bodies[0]['prompt_cache_key'], json.loads(self.requests[-1].content)['prompt_cache_key'])
+
+    def test_assisted_extreme_aspect_edit_pads_references_and_restores_pixels(self) -> None:
+        self.requester._image_request_policy = LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, max_resolution=0,
+        )
+        image = np.arange(3 * 21 * 3, dtype=np.uint8).reshape(3, 21, 3)
+        mask = np.zeros((3, 21), np.uint8)
+        mask[1, 4] = 255
+        padded = np.pad(image, ((2, 2), (0, 0), (0, 0)), mode='edge')
+        buffer = io.BytesIO()
+        Image.fromarray(padded).save(buffer, format='PNG')
+        self.response['output'][0]['result'] = base64.b64encode(buffer.getvalue()).decode('ascii')
+
+        result = self.requester.request_image(self.profile, image, prompt='Keep artwork.', mask=mask)
+
+        np.testing.assert_array_equal(result, image)
+        content = json.loads(self.requests[0].content)['input'][0]['content']
+        references = [np.array(Image.open(io.BytesIO(base64.b64decode(item['image_url'].split(',')[1]))))
+                      for item in content[1:]]
+        np.testing.assert_array_equal(references[0], padded)
+        np.testing.assert_array_equal(references[1][:, :, 0], np.pad(mask, ((2, 2), (0, 0))))
+
+    def test_invalid_pair_prompt_or_endpoint_fails_before_client_or_network(self) -> None:
+        for model, prompt, endpoint in (
+            ('non-gpt → gpt-image-2', 'Draw.', self.profile.image_base_url),
+            ('gpt-reason → other-image', 'Draw.', self.profile.image_base_url),
+            (self.profile.image_model, ' \t', self.profile.image_base_url),
+            (self.profile.image_model, 'Draw.', 'https://images.example/custom'),
+            (self.profile.image_model, 'Draw.', 'https://openrouter.ai/api/v1/images/edits'),
+            (self.profile.image_model, 'Draw.', 'https://generativelanguage.googleapis.com/v1beta/responses'),
+        ):
+            with self.subTest(model=model, endpoint=endpoint):
+                self.profile.image_base_url = endpoint
+                with self.assertRaises(LLMUserActionRequiredError):
+                    self.requester.request_image_with_retries(self.profile, None, prompt, model)
+        self.factory.assert_not_called()
+        self.assertEqual(self.requests, [])
+
+    def test_assisted_response_failures_are_actionable_and_never_retried(self) -> None:
+        image = self.response['output'][0]
+        for payload in (
+            {'status': 'failed', 'error': {'message': 'Model access unavailable.'}},
+            {'status': 'completed', 'output': []},
+            {'status': 'completed', 'output': [image, image]},
+            {'status': 'completed', 'output': [image, {'type': 'message', 'content': [
+                {'type': 'refusal', 'refusal': 'private details'},
+            ]}]},
+            {'status': 'completed', 'output': [{**image, 'result': '%%%'}]},
+            {'status': 'completed', 'output': [{**image, 'result': 'https://untrusted.example/image.png'}]},
+            {'status': 'completed', 'output': [{**image, 'result': 'YQ=='}]},
+        ):
+            with self.subTest(payload=payload):
+                self.response = payload
+                self.requests.clear()
+                with self.assertRaises(LLMUserActionRequiredError) as caught:
+                    self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+                self.assertNotIn('private', str(caught.exception))
+                if payload.get('error'):
+                    self.assertIn('Model access unavailable.', str(caught.exception))
+                self.assertEqual(len(self.requests), 1)
+
+    def test_api_auth_and_unsupported_responses_errors_are_not_retried(self) -> None:
+        for status, expected in ((401, LLMApiKeyRequiredError), (403, LLMUserActionRequiredError),
+                                  (400, LLMUserActionRequiredError), (404, LLMUserActionRequiredError),
+                                  (422, LLMUserActionRequiredError)):
+            with self.subTest(status=status):
+                self.status = status
+                self.requests.clear()
+                self.response = {'error': {'message': 'Model access unavailable.'}}
+                with self.assertRaises(expected) as caught:
+                    self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+                if status != 401:
+                    self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+                    self.assertIn('Model access unavailable.', str(caught.exception))
+                self.assertEqual(len(self.requests), 1)
+
+    def test_transient_errors_keep_existing_retry_policy_and_cache_key(self) -> None:
+        for status in (408, 429, 503):
+            with self.subTest(status=status):
+                self.status = status
+                self.requests.clear()
+                with self.assertRaisesRegex(RuntimeError, f'HTTP {status}'):
+                    self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+                self.assertEqual(len(self.requests), 2)
+                self.assertEqual(self.requests[0].content, self.requests[1].content)
+
+    def test_error_body_cap_closes_response_and_omits_partial_multiline_input(self) -> None:
+        prompt = '私密第一行\nPrivate second line'
+        for content_type in ('application/json', 'text/html'):
+            closed = threading.Event()
+            prefix = b'{"padding":"' + b'x' * (16 * 1024 - 30) + b'","input":'
+            encoded = json.dumps(prompt, ensure_ascii=False).encode('utf-8')
+            body = prefix + encoded + b',"padding2":"' + b'x' * 20_000 + b'"}'
+            requests = []
+
+            class Chunks(httpx.SyncByteStream):
+                def __iter__(self):
+                    yield body
+                    raise AssertionError('The error-body cap must stop reading here.')
+
+                def close(self) -> None:
+                    closed.set()
+
+            def respond(request: httpx.Request) -> httpx.Response:
+                requests.append(request)
+                return httpx.Response(403, headers={'Content-Type': content_type}, stream=Chunks())
+
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            with self.subTest(content_type=content_type), client, \
+                    patch.object(self.requester, '_initialize_client', return_value=client), \
+                    patch.object(llm_image.LOGGER, 'warning') as warning, \
+                    self.assertRaises(LLMUserActionRequiredError) as caught:
+                self.requester.request_image_with_retries(self.profile, None, prompt, self.profile.image_model)
+            self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+            self.assertEqual(len(requests), 1)
+            self.assertTrue(closed.is_set())
+            diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
+            self.assertIn('incomplete response body omitted', diagnostic)
+            self.assertLess(len(diagnostic), 2500)
+            for private in ('私密', 'Private second line', '\\u79c1'):
+                self.assertNotIn(private, diagnostic + str(caught.exception))
+
+    def test_complete_html_forbidden_is_logged_without_key_dialog(self) -> None:
+        client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(
+            403, headers={'Content-Type': 'text/html'},
+            text='<html>Service access denied for image-key.</html>',
+        )))
+        with client, patch.object(self.requester, '_initialize_client', return_value=client), \
+                patch.object(llm_image.LOGGER, 'warning') as warning, \
+                self.assertRaises(LLMUserActionRequiredError) as caught:
+            self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertIn('Service access denied', str(caught.exception))
+        diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
+        self.assertIn('Service access denied', diagnostic)
+        self.assertNotIn('image-key', diagnostic + str(caught.exception))
+
+    def test_error_body_stops_at_exact_cap_without_requesting_another_chunk(self) -> None:
+        read_past_cap, closed = threading.Event(), threading.Event()
+
+        class ExactCap(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'x' * (16 * 1024)
+                read_past_cap.set()
+                raise AssertionError('No more error-body bytes can be retained.')
+
+            def close(self) -> None:
+                closed.set()
+
+        client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(403, stream=ExactCap())))
+        with client, patch.object(self.requester, '_initialize_client', return_value=client), \
+                self.assertRaises(LLMUserActionRequiredError) as caught:
+            self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertFalse(read_past_cap.is_set())
+        self.assertTrue(closed.is_set())
+
+    def test_interrupted_error_body_preserves_status_and_stop_wins(self) -> None:
+        for status, cancel, expected_attempts in ((401, False, 1), (403, False, 1), (503, False, 2), (403, True, 1)):
+            stop = threading.Event()
+            self.requester.set_stop_event(stop)
+            closed, requests = [], []
+
+            class Broken(httpx.SyncByteStream):
+                def __iter__(self):
+                    yield b'{"input":"partial private input'
+                    if cancel:
+                        stop.set()
+                    raise httpx.ReadError('private transport details')
+
+                def close(self) -> None:
+                    closed.append(True)
+
+            def respond(request: httpx.Request) -> httpx.Response:
+                requests.append(request)
+                return httpx.Response(status, headers={'Content-Type': 'application/json'}, stream=Broken())
+
+            client = httpx.Client(transport=httpx.MockTransport(respond))
+            expected = (LLMRequestStopped if cancel else LLMApiKeyRequiredError if status == 401
+                        else RuntimeError if status == 503 else LLMUserActionRequiredError)
+            with self.subTest(status=status, cancel=cancel), client, \
+                    patch.object(self.requester, '_initialize_client', return_value=client), \
+                    patch.object(llm_image.LOGGER, 'warning') as warning, self.assertRaises(expected) as caught:
+                self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
+            self.assertEqual(len(requests), expected_attempts)
+            self.assertEqual(len(closed), expected_attempts)
+            if cancel:
+                warning.assert_not_called()
+            else:
+                if status == 403:
+                    self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+                all_warnings = '\n'.join(call.args[0] % call.args[1:] for call in warning.call_args_list)
+                self.assertIn(f'status={status}', all_warnings)
+                self.assertIn('incomplete response body omitted', all_warnings)
+                self.assertNotIn('private', all_warnings + str(caught.exception))
+
+    def test_stream_bound_and_cancellation_close_response(self) -> None:
+        stop = threading.Event()
+        self.requester.set_stop_event(stop)
+        for cancel in (False, True):
+            closed = threading.Event()
+
+            class Chunks(httpx.SyncByteStream):
+                def __iter__(self):
+                    yield b'{'
+                    if cancel:
+                        stop.set()
+                    yield b' ' * 64
+                    raise AssertionError('The response should have stopped before this chunk.')
+
+                def close(self) -> None:
+                    closed.set()
+
+            client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=Chunks())))
+            with self.subTest(cancel=cancel), client, patch.object(self.requester, '_initialize_client', return_value=client), \
+                    patch.object(image_generation, 'MAX_IMAGE_RESPONSE_BYTES', 64), \
+                    self.assertRaises(LLMRequestStopped if cancel else LLMUserActionRequiredError):
+                self.requester.request_image(self.profile, None, prompt='Draw.')
+            self.assertTrue(closed.is_set())
+
+    def test_stop_during_image_decode_discards_result(self) -> None:
+        stop = threading.Event()
+        self.requester.set_stop_event(stop)
+
+        def decode(raw: bytes) -> np.ndarray:
+            stop.set()
+            return np.zeros((2, 2, 3), np.uint8)
+
+        with patch.object(self.requester, '_decode_image_bytes', side_effect=decode), self.assertRaises(LLMRequestStopped):
+            self.requester.request_image(self.profile, None, prompt='Draw.')
+
+    def test_malformed_json_is_actionable_and_response_is_closed(self) -> None:
+        closed = threading.Event()
+
+        class Malformed(httpx.SyncByteStream):
+            def __iter__(self):
+                yield b'not JSON'
+
+            def close(self) -> None:
+                closed.set()
+
+        client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, stream=Malformed())))
+        with client, patch.object(self.requester, '_initialize_client', return_value=client), \
+                self.assertRaisesRegex(LLMUserActionRequiredError, 'invalid Responses result'):
+            self.requester.request_image(self.profile, None, prompt='Draw.')
+        self.assertTrue(closed.is_set())
+
+    def test_api_assisted_inpaint_preserves_unmasked_pixels_and_honors_mask_toggle(self) -> None:
+        inpainter = LLMInpaint()
+        inpainter.params = copy.deepcopy(inpainter.params)
+        inpainter.set_param_value('delay', 0)
+        inpainter.set_param_value('max requests per minute', 0)
+        self.addCleanup(inpainter.close)
+        image = np.full((3, 5, 4), 37, np.uint8)
+        image[:, :, 3] = 123
+        mask = np.zeros((3, 5), np.uint8)
+        mask[1, 2] = 255
+        for use_mask in (True, False):
+            with self.subTest(use_mask=use_mask), patch.object(inpainter, '_http_client', return_value=self.client):
+                result = inpainter.inpaint(image, mask.copy(), profile=self.profile, use_mask=use_mask)
+            content = json.loads(self.requests[-1].content)['input'][0]['content']
+            self.assertEqual(len(content), 3 if use_mask else 2)
+            if use_mask:
+                np.testing.assert_array_equal(result[mask == 0], image[mask == 0])
+                np.testing.assert_array_equal(result[mask > 0, :3], [[255, 0, 0]])
+            else:
+                np.testing.assert_array_equal(result[:, :, :3], np.full((3, 5, 3), [255, 0, 0], np.uint8))
+            np.testing.assert_array_equal(result[:, :, 3], image[:, :, 3])
+
+
 class LLMInpaintTest(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
+        account = codex.CodexAccount()
+        account._loaded = True
+        account._credentials = {
+            'access_token': 'test-access', 'refresh_token': 'test-refresh',
+            'account_id': 'test-account', 'expires_at': time.time() + 3600,
+        }
+        account_patch = patch.object(codex, 'account', account)
+        account_patch.start()
+        self.addCleanup(account_patch.stop)
         self._old_profiles = copy.deepcopy(pcfg.module.llm_profiles)
         self._old_inpaint_llm_id = pcfg.module.inpaint_llm_id
         profile = default_profile('OpenRouter')
         profile.api_key = 'sk-demo'
+        profile.image_model = 'black-forest-labs/flux.2-klein-4b'
+        profile.image_model_options = [profile.image_model]
         pcfg.module.llm_profiles = [profile]
         pcfg.module.inpaint_llm_id = 'openrouter'
         self.inpainter = FakeInpaint()
@@ -511,6 +1163,227 @@ class LLMInpaintTest(unittest.TestCase):
         self.assertIn('input_references', call['json'])
         self.assertTrue(call['json']['input_references'][0]['image_url']['url'].startswith('data:image/png;base64,'))
         self.assertNotIn('mask', call['json'])
+
+    def test_explicit_profile_applies_to_each_crop_without_changing_pipeline_profile(self) -> None:
+        run_profile = self.inpainter.profile
+        draw_profile = copy.deepcopy(run_profile)
+        draw_profile.image_model = 'drawing-model'
+        draw_profile.image_prompt = 'Drawing prompt.'
+        image = np.zeros((12, 24, 4), dtype=np.uint8)
+        image[:, :, 3] = 255
+        mask = np.zeros(image.shape[:2], dtype=np.uint8)
+        mask[3:6, 3:6] = mask[3:6, 18:21] = 255
+        blocks = [TextBlock(xyxy=[3, 3, 6, 6]), TextBlock(xyxy=[18, 3, 21, 6])]
+        with (
+            patch.object(pcfg.module, 'check_need_inpaint', False),
+            patch.object(self.inpainter, '_request_inpaint',
+                         side_effect=lambda profile, crop, **kwargs: np.full_like(crop, 99)) as request,
+        ):
+            result = self.inpainter.inpaint(image, mask.copy(), blocks, profile=draw_profile)
+            self.assertEqual(request.call_count, 2)
+            self.assertTrue(all(call.args[0] is draw_profile for call in request.call_args_list))
+            np.testing.assert_array_equal(result[mask == 0], image[mask == 0])
+            np.testing.assert_array_equal(result[mask > 0, :3], 99)
+            np.testing.assert_array_equal(result[:, :, 3], image[:, :, 3])
+            self.inpainter.inpaint(image, mask.copy())
+            pipeline_profile = request.call_args.args[0]
+        self.assertEqual(pipeline_profile.image_model, run_profile.image_model)
+        self.assertEqual(pipeline_profile.image_prompt, run_profile.image_prompt)
+        self.assertEqual(self.inpainter.profile, run_profile)
+
+    def test_explicit_profile_auth_uses_its_backend_instead_of_run_selection(self) -> None:
+        profile = self.inpainter.profile
+        pcfg.module.inpaint_llm_id = 'codex'
+        with patch.object(codex.account, 'require_sign_in', side_effect=AssertionError('Run auth leaked')), \
+                patch.object(self.inpainter, '_request_inpaint', side_effect=lambda profile, img, **kwargs: img):
+            self.inpainter.inpaint(np.zeros((2, 2, 3), np.uint8), np.full((2, 2), 255, np.uint8), profile=profile)
+
+        pcfg.module.inpaint_llm_id = profile.id
+        codex_profile = default_codex_profile()
+        with patch.object(codex.account, 'require_sign_in', side_effect=LLMUserActionRequiredError('Sign in with ChatGPT')):
+            with self.assertRaisesRegex(LLMUserActionRequiredError, 'Sign in with ChatGPT'):
+                self.inpainter.inpaint(np.zeros((2, 2, 3), np.uint8), np.full((2, 2), 255, np.uint8), profile=codex_profile)
+
+    def test_codex_inpaint_sends_aligned_mask_and_preserves_unmasked_rgba_pixels(self) -> None:
+        profile = default_codex_profile()
+        profile.image_model = 'gpt-reasoning-model → gpt-image-2'
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        pcfg.module.llm_profiles = [profile]
+        pcfg.module.inpaint_llm_id = profile.id
+        inpainter = LLMInpaint()
+        inpainter.params = copy.deepcopy(inpainter.params)
+        inpainter.set_param_value('delay', 0)
+        inpainter.set_param_value('max requests per minute', 0)
+        inpainter.set_param_value('max resolution', 4)
+        image = np.arange(8 * 12 * 4, dtype=np.uint8).reshape(8, 12, 4)
+        image[:, :, 3] = 255
+        image[0, :, 3] = 100
+        mask = np.zeros((8, 12), dtype=np.uint8)
+        mask[2:6, 3:9] = 255
+        original_mask = mask.copy()
+        stop = threading.Event()
+        inpainter.set_stop_event(stop)
+
+        with patch('ballontranslator.modules.codex.request_image', return_value=_png_bytes()) as request, \
+                patch.object(inpainter, '_http_client', side_effect=AssertionError('API fallback')):
+            result = inpainter.inpaint(image, mask)
+
+        np.testing.assert_array_equal(result[mask == 0], image[mask == 0])
+        np.testing.assert_array_equal(result[mask > 0, :3], np.tile([255, 0, 0], (24, 1)))
+        np.testing.assert_array_equal(result[:, :, 3], image[:, :, 3])
+        np.testing.assert_array_equal(mask, original_mask)
+        self.assertEqual(result.shape, image.shape)
+        self.assertEqual(request.call_args.args[0], 'gpt-image-2')
+        self.assertIn('white marks the editable region', request.call_args.args[1])
+        sent_image = Image.open(io.BytesIO(request.call_args.args[2]))
+        sent_mask = Image.open(io.BytesIO(request.call_args.args[3]))
+        self.assertEqual(sent_image.size, (4, 3))
+        self.assertEqual(sent_mask.size, sent_image.size)
+        np.testing.assert_array_equal(np.array(sent_mask)[:, :, 0], [[0, 255, 255, 0], [0, 255, 255, 0], [0, 255, 255, 0]])
+        self.assertIs(request.call_args.args[4], stop)
+        self.assertEqual(request.call_args.kwargs['timeout'], 180.0)
+        self.assertEqual(request.call_args.kwargs['reasoning_model'], 'gpt-reasoning-model')
+
+    def test_codex_empty_masks_skip_requests_and_stop_wins(self) -> None:
+        inpainter = LLMInpaint()
+        image = np.zeros((3, 5, 3), np.uint8)
+        with patch.object(inpainter, '_request_inpaint', side_effect=AssertionError('empty request')):
+            np.testing.assert_array_equal(inpainter.inpaint(image, np.zeros((3, 5), np.uint8)), image)
+            stop = threading.Event()
+            stop.set()
+            inpainter.set_stop_event(stop)
+            with self.assertRaises(LLMRequestStopped):
+                inpainter.inpaint(image, np.zeros((3, 5), np.uint8))
+
+    def test_codex_unmasked_edit_omits_mask_and_keeps_the_entire_result(self) -> None:
+        profile = default_codex_profile()
+        profile.image_model = 'gpt-reasoning-model → gpt-image-2'
+        inpainter = LLMInpaint()
+        inpainter.params = copy.deepcopy(inpainter.params)
+        inpainter.set_param_value('delay', 0)
+        inpainter.set_param_value('max requests per minute', 0)
+        image = np.full((3, 5, 3), 37, np.uint8)
+        for marked in (False, True):
+            mask = np.zeros((3, 5), np.uint8)
+            if marked:
+                mask[1, 2] = 255
+            with self.subTest(marked=marked), patch.object(codex, 'request_image', return_value=_png_bytes()) as request:
+                result = inpainter.inpaint(image, mask, profile=profile, use_mask=False)
+            np.testing.assert_array_equal(result, np.full_like(image, [255, 0, 0]))
+            self.assertIsNone(request.call_args.args[3])
+            self.assertEqual(request.call_args.kwargs['reasoning_model'], 'gpt-reasoning-model')
+            self.assertNotIn('white marks the editable region', request.call_args.args[1])
+            np.testing.assert_array_equal(image, np.full_like(image, 37))
+
+    def test_codex_downscaling_retains_single_pixel_mask(self) -> None:
+        profile = default_codex_profile()
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, max_resolution=4,
+        ))
+        mask = np.zeros((8, 8), np.uint8)
+        mask[1, 1] = 255
+        with patch('ballontranslator.modules.codex.request_image', return_value=_png_bytes()) as request:
+            requester.request_image(profile, np.zeros((8, 8, 3), np.uint8), mask=mask)
+        with Image.open(io.BytesIO(request.call_args.args[3])) as sent:
+            self.assertEqual(sent.size, (4, 4))
+            self.assertEqual(sent.getpixel((0, 0)), (255, 255, 255))
+            self.assertEqual(int(np.array(sent)[:, :, 0].sum()), 255)
+
+    def test_codex_extreme_aspect_edits_unpad_without_moving_pixels(self) -> None:
+        profile = default_codex_profile()
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, max_resolution=0,
+        ))
+        for height, width in ((6, 25), (25, 6)):
+            with self.subTest(shape=(height, width)):
+                source = np.arange(height * width * 3, dtype=np.uint8).reshape(height, width, 3)
+                mask = np.zeros((height, width), np.uint8)
+                mask[1, 1] = mask[-2, -2] = 255
+
+                def edit(model, prompt, image_bytes, mask_bytes, stop, **kwargs) -> bytes:
+                    with Image.open(io.BytesIO(image_bytes)) as image, Image.open(io.BytesIO(mask_bytes)) as sent_mask:
+                        self.assertLessEqual(max(image.size) / min(image.size), 3)
+                        pixels = np.array(image)
+                        marked = np.array(sent_mask)[:, :, 0] > 127
+                    self.assertEqual(int(marked.sum()), 2)
+                    pixels[marked] = [17, 29, 43]
+                    # Provider returns a larger canvas. Unpadding must happen
+                    # in that canvas's coordinates, after restoring its size.
+                    doubled = np.repeat(np.repeat(pixels, 2, axis=0), 2, axis=1)
+                    with requester._png_image_file(doubled) as generated:
+                        return generated.getvalue()
+
+                with patch('ballontranslator.modules.codex.request_image', side_effect=edit):
+                    result = requester._request_inpaint(profile, source, mask=mask)
+                expected = source.copy()
+                expected[mask > 0] = [17, 29, 43]
+                np.testing.assert_array_equal(result, expected)
+
+    def test_codex_logged_out_requires_sign_in_before_inpainting(self) -> None:
+        pcfg.module.llm_profiles = [default_codex_profile()]
+        pcfg.module.inpaint_llm_id = 'codex'
+        account = codex.CodexAccount()
+        account._loaded = True
+        with patch.object(codex, 'account', account), \
+                patch.object(llm_image, '_LLM_IMAGE_THROTTLE', _SharedLLMImageThrottle()), \
+                patch.object(httpx.AsyncClient, 'send', side_effect=AssertionError('Unexpected HTTP')) as send:
+            with self.assertRaisesRegex(LLMUserActionRequiredError, 'Sign in with ChatGPT'):
+                LLMInpaint().inpaint(np.zeros((3, 5, 3), np.uint8), np.full((3, 5), 255, np.uint8))
+            send.assert_not_called()
+
+    def test_codex_image_card_requests_and_failures_use_existing_policy(self) -> None:
+        profile = default_codex_profile()
+        profile.image_model = 'gpt-reasoning-model → gpt-image-2'
+        sync_codex_profile(profile, {'text-model': {'modalities': ['text'], 'efforts': []}})
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0, retry_attempts=2, retry_timeout=0,
+        ))
+        with patch('ballontranslator.modules.codex.request_image', side_effect=[b'broken image', _png_bytes()]) as request:
+            result = requester.request_image_with_retries(profile, None, 'Draw paper.', profile.image_model)
+        self.assertEqual(result[0, 0].tolist(), [255, 0, 0])
+        self.assertEqual(request.call_args.args[1:4], ('Draw paper.', None, None))
+        self.assertEqual(request.call_args.kwargs['reasoning_model'], 'gpt-reasoning-model')
+        for error in (LLMUserActionRequiredError('Sign in.'), LLMRequestStopped()):
+            with self.subTest(error=error), patch('ballontranslator.modules.codex.request_image', side_effect=error) as request:
+                with self.assertRaises(type(error)):
+                    requester.request_image_with_retries(profile, None, 'Draw paper.', profile.image_model)
+                request.assert_called_once()
+
+    def test_assisted_image_cache_key_survives_crops_and_rotates_with_job_model_and_account(self) -> None:
+        profile = default_codex_profile()
+        profile.image_model = 'gpt-reasoning-model → gpt-image-2'
+        requester = LLMImageRequester(image_request_policy=LLMImageRequestPolicy(
+            delay=0, max_requests_per_minute=0,
+        ))
+        stop = threading.Event()
+        requester.set_stop_event(stop)
+        with patch.object(codex, 'request_image', return_value=_png_bytes()) as request:
+            for _ in range(2):
+                requester.request_image(profile, None, prompt='Draw paper.')
+                requester.set_stop_event(stop)
+            first, second = [call.kwargs['cache_key'] for call in request.call_args_list]
+            self.assertTrue(first)
+            self.assertEqual(first, second)
+            requester.set_stop_event(threading.Event())
+            requester.request_image(profile, None, prompt='Draw paper.')
+            new_job = request.call_args.kwargs['cache_key']
+            profile.image_model = 'gpt-another-reasoning-model → gpt-image-2'
+            requester.request_image(profile, None, prompt='Draw paper.')
+            new_model = request.call_args.kwargs['cache_key']
+            codex.account.invalidate()
+            requester.request_image(profile, None, prompt='Draw paper.')
+            new_account = request.call_args.kwargs['cache_key']
+        self.assertEqual(len({first, new_job, new_model, new_account}), 4)
+
+    def test_codex_mismatched_mask_fails_before_request(self) -> None:
+        with patch('ballontranslator.modules.codex.request_image') as request:
+            with self.assertRaisesRegex(ValueError, 'mask must match'):
+                LLMImageRequester().request_image(
+                    default_codex_profile(), np.zeros((3, 5, 3), np.uint8), mask=np.zeros((5, 3), np.uint8)
+                )
+            request.assert_not_called()
 
     def test_authentication_error_becomes_required_key_error(self):
         inpainter = FakeInpaint(FakeResponse(status_code=401, json_data={'error': {'message': 'bad key'}}))

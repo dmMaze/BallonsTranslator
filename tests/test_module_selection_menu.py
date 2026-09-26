@@ -20,13 +20,19 @@ from ballontranslator.ui.llm_modality import (
     LLM_MODALITY_IMAGE, LLM_MODALITY_TEXT, LLM_MODALITY_VISION,
 )
 from ballontranslator.ui.llm_profile_widgets import LLMProfilesWidget
+from ballontranslator.ui.codex_settings import CodexSettingsPanel
+from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.ui.run_pipeline_dialog import RunPipelineDialog
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, default_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, LLMProfile, default_profile, sync_codex_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+
+
+class SelectionConfigPanel(SimpleNamespace):
+    syncLLMProfile = ConfigPanel.syncLLMProfile
 
 
 class SelectionWindow(QWidget):
@@ -48,7 +54,10 @@ class SelectionWindow(QWidget):
         self.imgtrans_proj = ProjImgTrans()
         self.module_manager = ModuleManager(self.imgtrans_proj, self)
         self.module_manager.translate_thread = SimpleNamespace(translator=None)
-        self.configPanel = SimpleNamespace(llm_profiles_panel=LLMProfilesWidget(parent=self))
+        self.configPanel = SelectionConfigPanel(
+            llm_profiles_panel=LLMProfilesWidget(parent=self),
+            codex_panel=CodexSettingsPanel(parent=self),
+        )
         self.drawingPanel = SimpleNamespace(setInpainter=Mock())
         self.show_module_param_dialog = Mock()
         self.bottomBar = SimpleNamespace()
@@ -76,9 +85,13 @@ class ModuleSelectionMenuTest(unittest.TestCase):
     def setUp(self) -> None:
         self.saved = copy.deepcopy(pcfg.module.__dict__)
         profile = default_profile('OpenAI')
+        profile.model = 'text-one'
+        profile.model_options = ['text-one', 'text-two']
+        profile.vision_model = 'vision-one'
+        profile.vision_model_options = ['vision-one', 'vision-two']
         profile.image_model = 'image-one'
         profile.image_model_options = ['image-one', 'image-two']
-        pcfg.module.llm_profiles = [profile]
+        pcfg.module.llm_profiles = [profile, default_codex_profile()]
         pcfg.module.translator = next(name for name in GET_VALID_TRANSLATORS() if name != 'LLMTranslator')
         self.window = SelectionWindow()
         self.save_patch = patch('ballontranslator.ui.run_pipeline_dialog.save_config')
@@ -101,8 +114,8 @@ class ModuleSelectionMenuTest(unittest.TestCase):
     def test_run_and_bottom_bar_share_live_profile_and_module_selection(self) -> None:
         def interact(dialog: RunPipelineDialog) -> int:
             for role, bottom_name, llm_key, field, value, profile_id_attr in (
-                ('translator', 'trans_selector', 'LLMTranslator', 'model', 'gpt-5.4', 'translator_llm_id'),
-                ('ocr', 'ocr_selector', 'LLMOCR', 'vision_model', 'gpt-4o', 'ocr_llm_id'),
+                ('translator', 'trans_selector', 'LLMTranslator', 'model', 'text-two', 'translator_llm_id'),
+                ('ocr', 'ocr_selector', 'LLMOCR', 'vision_model', 'vision-two', 'ocr_llm_id'),
                 ('inpainter', 'inpaint_selector', 'LLMInpaint', 'image_model', 'image-two', 'inpaint_llm_id'),
             ):
                 with self.subTest(role=role):
@@ -152,7 +165,7 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         for activator in dialog.module_activators:
             activator.menu.rebuildMenu()
             titles = [action.menu().title() for action in activator.menu.actions() if action.menu() is not None]
-            expected = ['OpenAI', 'Text only'] if activator.module_type == 'translator' else ['OpenAI']
+            expected = ['OpenAI', 'Codex', 'Text only'] if activator.module_type == 'translator' else ['OpenAI', 'Codex']
             if activator.module_type == 'textdetector':
                 expected = []
             self.assertEqual(titles, expected)
@@ -164,6 +177,74 @@ class ModuleSelectionMenuTest(unittest.TestCase):
         self.assertIn('Source - Japanese', titles)
         self.assertIn('Target - English', titles)
         dialog.deleteLater()
+
+    def test_local_setting_value_drives_text_and_checkmarks_without_profile_edits(self) -> None:
+        profile = pcfg.module.llm_profiles[0]
+        menu = self.window.bottomBar.inpaint_selector.menu
+        menu.selector.setCurrentText('LLMInpaint')
+        pcfg.module.inpaint_llm_id = profile.id
+
+        def local_value(profile: LLMProfile, key: str) -> str:
+            return 'image-two' if key == 'image_model' else getattr(profile, key)
+
+        with patch.object(menu, '_profileSettingValue', side_effect=local_value):
+            menu.rebuildMenu()
+            self.assertEqual(menu.selectedText(), 'image-two')
+            profile_menu = next(action.menu() for action in menu.actions() if action.menu() is not None)
+            selected = [action.data() for action in profile_menu.actions() if '\u2713' in action.text()]
+            self.assertEqual(selected, [(profile.id, 'image_model', 'image-two')])
+        self.assertEqual(profile.image_model, 'image-one')
+        self.assertEqual(pcfg.module.inpaint_llm_id, profile.id)
+        self.assertEqual(menu.selectedText(), 'image-one')
+
+    def test_codex_remains_selectable_in_all_roles_without_cached_catalog(self) -> None:
+        profile = default_codex_profile()
+        pcfg.module.llm_profiles = [profile]
+        panel = self.window.configPanel.codex_panel
+        pcfg.module.codex_models = {
+            'text-model': {'modalities': ['text'], 'efforts': ['high']},
+            'vision-model': {'modalities': ['text', 'image'], 'efforts': ['low']},
+        }
+        sync_codex_profile(profile, pcfg.module.codex_models)
+        panel.syncFromProfile()
+        image_combo = panel.param_widgets['image_model']
+        image_combo.setEditText('custom-codex-image')
+        QTest.keyClick(image_combo.lineEdit(), Qt.Key.Key_Return)
+        for bottom_name, field, model, role, llm_key in (
+            ('trans_selector', 'model', 'text-model', 'translator', 'LLMTranslator'),
+            ('ocr_selector', 'vision_model', 'vision-model', 'ocr', 'LLMOCR'),
+            ('inpaint_selector', 'image_model', 'custom-codex-image', 'inpainter', 'LLMInpaint'),
+        ):
+            bottom = getattr(self.window.bottomBar, bottom_name)
+            self.choose(bottom.menu, ('codex', field, model))
+            self.assertEqual(getattr(pcfg.module, role), llm_key)
+            selected_id = 'inpaint_llm_id' if role == 'inpainter' else role + '_llm_id'
+            self.assertEqual(getattr(pcfg.module, selected_id), 'codex')
+            self.assertIn(model, bottom.tool_btn.text())
+        self.choose(self.window.bottomBar.ocr_selector.menu, ('codex', 'vision_detail_level', 'high'))
+        self.assertEqual(profile.vision_detail_level, 'high')
+        self.assertIn('image_prompt', panel.param_widgets)
+        self.assertNotIn('image_base_url', panel.param_widgets)
+        pcfg.module.codex_models = {}
+        sync_codex_profile(profile, pcfg.module.codex_models)
+        panel.syncFromProfile()
+        self.assertEqual((profile.model, profile.vision_model), ('text-model', 'vision-model'))
+        self.assertTrue(profile.support_text)
+        self.assertTrue(profile.support_vision)
+        self.assertTrue(profile.support_image)
+        self.assertEqual(profile.image_model, 'custom-codex-image')
+        dialog = RunPipelineDialog(self.window)
+        for bottom_name, field, model, role in (
+            ('trans_selector', 'model', 'text-model', 'translator'),
+            ('ocr_selector', 'vision_model', 'vision-model', 'ocr'),
+            ('inpaint_selector', 'image_model', 'custom-codex-image', 'inpainter'),
+        ):
+            bottom = getattr(self.window.bottomBar, bottom_name)
+            activator = next(a for a in dialog.module_activators if a.module_type == role)
+            for menu in (bottom.menu, activator.menu):
+                with self.subTest(role=role, menu=type(menu).__name__):
+                    self.choose(menu, ('codex', field, model))
+                    self.assertEqual(menu.selectedProfileId(), 'codex')
 
     def test_inactive_selector_first_click_activates_without_opening_menu(self) -> None:
         dialog = RunPipelineDialog(self.window)

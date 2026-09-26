@@ -9,6 +9,22 @@ class LLMUserActionRequiredError(Exception):
     """
 
 
+class CodexSignInRequiredError(LLMUserActionRequiredError):
+    """Require explicit ChatGPT sign-in without exposing provider diagnostics.
+
+    >>> CodexSignInRequiredError(invalid=True).invalid
+    True
+    """
+
+    def __init__(self, invalid: bool = False) -> None:
+        self.invalid = bool(invalid)
+        message = (
+            'Codex sign-in is invalid or expired. Sign in with ChatGPT again.'
+            if self.invalid else 'Sign in with ChatGPT to use Codex.'
+        )
+        super().__init__(message)
+
+
 class LLMApiKeyRequiredError(LLMUserActionRequiredError):
     """Raised when an LLM profile requires a key before a request can run.
 

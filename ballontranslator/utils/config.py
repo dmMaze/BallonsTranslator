@@ -15,11 +15,11 @@ from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import (
     LLMProfile,
-    default_profiles,
-    load_profiles,
     migrate_module_llm_profiles,
     profile_by_id,
     profile_to_dict,
+    normalize_codex_models,
+    sync_codex_profile,
 )
 from .secret_store import SecretStore
 from .text_effects import without_project_raster_effects
@@ -103,6 +103,7 @@ class ModuleConfig(Config):
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
     llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
+    codex_models: Dict = field(default_factory=dict)
     translator_llm_id: str = ''
     ocr_llm_id: str = ''
     inpaint_llm_id: str = ''
@@ -196,7 +197,7 @@ class ModuleConfig(Config):
     def all_stages_disabled(self):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         for setting_name, default in (
             ('ocr_llm_page_level', False),
             ('ocr_llm_mask_non_text', True),
@@ -226,10 +227,9 @@ class ModuleConfig(Config):
             or self.llm_prior_context_token_budget <= 0
         ):
             self.llm_prior_context_token_budget = 4096
-        if not self.llm_profiles:
-            self.llm_profiles = default_profiles()
-        else:
-            self.llm_profiles = load_profiles(self.llm_profiles)
+        migrate_module_llm_profiles(self.__dict__)
+        self.codex_models = normalize_codex_models(self.codex_models)
+        sync_codex_profile(profile_by_id(self.llm_profiles, 'codex'), self.codex_models)
         if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:
             self.translator_llm_id = self.llm_profiles[0].id
         if (not self.ocr_llm_id or not profile_by_id(self.llm_profiles, self.ocr_llm_id)) and self.llm_profiles:
@@ -256,6 +256,10 @@ class DrawPanelConfig(Config):
     pentool_color: List = field(default_factory=lambda: [0, 0, 0])
     pentool_width: float = 30.
     pentool_shape: int = 0
+    inpainter: str = 'lama_large_512px'
+    inpaint_llm_id: str = ''
+    inpaint_llm_model: str = ''
+    inpaint_prompt_override: str = ''
     inpainter_width: float = 30.
     inpainter_shape: int = 0
     magicwand_tolerance: int = 32
@@ -263,10 +267,24 @@ class DrawPanelConfig(Config):
     magicwand_fill_mode: int = 0
     current_tool: int = 0
     rectool_auto: bool = False
+    rectool_use_mask: bool = True
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
 
     def __post_init__(self) -> None:
+        if not isinstance(self.rectool_use_mask, bool):
+            LOGGER.warning('Discard invalid drawpanel.rectool_use_mask config.')
+            self.rectool_use_mask = True
+        for name, default in (
+            ('inpainter', 'lama_large_512px'),
+            ('inpaint_llm_id', ''),
+            ('inpaint_llm_model', ''),
+            ('inpaint_prompt_override', ''),
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or (name == 'inpainter' and not value.strip()):
+                LOGGER.warning('Discard invalid drawpanel.%s config.', name)
+                setattr(self, name, default)
         for name, default, minimum, maximum in (
             ('inpainter_shape', 0, 0, 2),
             ('magicwand_tolerance', 32, 0, 255),
@@ -492,7 +510,6 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
-            migrate_module_llm_profiles(module_cfg)
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:

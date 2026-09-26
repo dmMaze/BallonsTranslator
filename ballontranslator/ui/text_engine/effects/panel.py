@@ -744,6 +744,7 @@ class TextEffectPanel(PanelArea):
         if not any(card.index == index for card in self._image_cards()):
             return
         from ballontranslator.modules.exceptions import (
+            CodexSignInRequiredError,
             LLMApiKeyRequiredError,
             LLMBaseURLRequiredError,
             LLMModelRequiredError,
@@ -751,7 +752,10 @@ class TextEffectPanel(PanelArea):
         from ballontranslator.utils import shared
         from ballontranslator.utils.message import create_error_dialog
 
-        if isinstance(error, LLMApiKeyRequiredError):
+        if isinstance(error, CodexSignInRequiredError):
+            from ballontranslator.ui.codex_account import show_codex_sign_in_required
+            show_codex_sign_in_required(error)
+        elif isinstance(error, LLMApiKeyRequiredError):
             shared.show_llm_key_dialog_in_mainthread(
                 error.profile_id, error.profile_name
             )

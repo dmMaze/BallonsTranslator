@@ -443,11 +443,11 @@ def test_refresh_failure_reports_status(runtime_app: QApplication, monkeypatch, 
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
 
-def test_reload_button_animates_only_while_visible_and_busy(app):
+def test_refresh_button_animates_only_while_visible_and_busy(app: QApplication) -> None:
     from qtpy.QtWidgets import QWidget
-    from ballontranslator.ui.text_engine.formatting.panel import FontReloadButton
+    from ballontranslator.ui.custom_widget import RefreshButton
     owner = QWidget()
-    button = FontReloadButton(owner)
+    button = RefreshButton(owner)
     try:
         owner.show()
         button.set_busy(True)
@@ -467,6 +467,24 @@ def test_reload_button_animates_only_while_visible_and_busy(app):
         owner.close()
         owner.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_refresh_button_releases_active_timer_with_owner(app: QApplication) -> None:
+    from qtpy.QtWidgets import QWidget
+    from ballontranslator.ui.custom_widget import RefreshButton
+
+    owner = QWidget()
+    button = RefreshButton(owner)
+    owner.show()
+    button.set_busy(True)
+    assert button._rotation_timer.isActive()
+    references = [weakref.ref(widget) for widget in (owner, button, button._rotation_timer)]
+    owner.deleteLater()
+    del owner, button
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+    gc.collect()
+    assert all(reference() is None for reference in references)
 
 
 @pytest.mark.parametrize('setting,enabled', [(None, False), ('0', False), ('1', True)])

@@ -88,8 +88,8 @@ class LLMTranslationSummaryTest(
                 )
                 self.assertEqual(project.get_llm_visual_summary('002.png')['text'], 'Scene 2.')
                 self.assertEqual(project.get_llm_visual_summary('003.png')['text'], 'Scene 3.')
-                empty_history = json.loads(messages[3][4]['content'])
-                self.assertEqual(empty_history, {'translations': {}, 'page_summary': 'Scene 2.'})
+                empty_history = json.loads(messages[3][2]['content'])
+                self.assertEqual(empty_history, {'page_id': 2, 'translations': [], 'summary': 'Scene 2.'})
                 self.assertEqual(project.pages['002.png'], [])
                 self.assertEqual(project.pages['003.png'][0].translation.strip(), '')
 
@@ -280,7 +280,7 @@ class LLMTranslationSummaryTest(
             request_context=context,
             summary_enabled=True,
         )
-        history_response = messages[2]['content']
+        history_response = messages[1]['content']
         current_prompt = messages[-1]['content']
         self.assertIn('Completed page summary.', history_response)
         self.assertNotIn('Completed page summary.', current_prompt)
@@ -339,7 +339,7 @@ class LLMTranslationSummaryTest(
             messages[-1]['content'],
         )
 
-    def test_existing_summary_skips_summary_request_and_is_preserved(self):
+    def test_existing_summary_requests_blank_and_ignores_unwanted_replacement(self):
         project = self._project(1)
         old_record = {
             'version': 1,
@@ -360,7 +360,7 @@ class LLMTranslationSummaryTest(
         ), mock.patch.object(
             self.translator,
             '_request_translation',
-            return_value='{"1":"translated"}',
+            return_value='{"translations":{"1":"translated"},"page_summary":"Unwanted replacement."}',
         ) as request:
             self.translator.translate(
                 ['source-1'],
@@ -369,17 +369,99 @@ class LLMTranslationSummaryTest(
                 commit_history_window=True,
             )
 
-        self.assertNotIn('summary_enabled', request.call_args.kwargs)
+        self.assertTrue(request.call_args.kwargs['summary_enabled'])
         messages = request.call_args.args[1]
-        self.assertNotIn('page_summary', messages[0]['content'])
+        self.assertIn('page_summary', messages[0]['content'])
+        self.assertIn('Return page_summary as an empty string', messages[-1]['content'])
         self.assertIn('Old summary.', messages[-1]['content'])
         self.assertIsNotNone(project.get_llm_visual_summary('001.png'))
         self.translator.on_page_translation_finished(project, '001.png')
 
-        self.assertEqual(
-            project.get_llm_visual_summary('001.png')['text'],
-            'Old summary.',
-        )
+        self.assertEqual(project.get_llm_visual_summary('001.png'), old_record)
+
+    def test_mixed_saved_and_new_summaries_keep_contract_and_history_stable(self) -> None:
+        pcfg.module.llm_translate_summary_memory = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        self.profile.json_schema_response_format = True
+        for backend, model in (('openai', 'test-model'), ('openai', 'gpt-6-test'), ('codex', 'test-model')):
+            with self.subTest(backend=backend, model=model):
+                self.profile.backend = backend
+                self.profile.model = model
+                explicit = backend == 'openai' and model == 'gpt-6-test'
+                project = self._project(3)
+                project.set_llm_visual_summary_text('002.png', 'Saved summary.')
+                saved_record = project.get_llm_visual_summary('002.png')
+                requests, windows = [], []
+
+                def respond(profile, args):
+                    requests.append(args)
+                    translations = ([{'id': 1, 'translation': 'translated'}] if backend == 'codex' or explicit
+                                    else {'1': 'translated'})
+                    return LLMChatResult(json.dumps({
+                        'page_summary': 'Generated ' + str(len(requests)), 'translations': translations,
+                    }))
+
+                with mock.patch.object(type(self.translator), 'profile', new_callable=mock.PropertyMock,
+                                       return_value=self.profile), mock.patch.object(
+                    self.translator, 'request_chat_completion', side_effect=respond,
+                ):
+                    for page_key in project.pages:
+                        self.translator.translate_textblk_lst(
+                            project.pages[page_key], project=project, page_key=page_key, full_page=True,
+                        )
+                        windows.append(self.translator._history_window)
+                        self._complete(project, page_key)
+                        self.translator.on_page_translation_finished(project, page_key)
+                self.assertEqual(project.get_llm_visual_summary('002.png'), saved_record)
+                self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'Generated 1')
+                self.assertEqual(project.get_llm_visual_summary('003.png')['text'], 'Generated 3')
+                self.assertEqual([len(window.history) for window in windows], [0, 1, 2])
+                for previous, current in zip(requests, requests[1:]):
+                    self.assertEqual(previous['response_format'], current['response_format'])
+                    self.assertEqual(previous['messages'][0], current['messages'][0])
+                    self.assertEqual(previous['messages'][:-1], current['messages'][:len(previous['messages']) - 1])
+                content = requests[2]['messages'][-2]['content']
+                saved_history = json.loads(content[0]['text'] if explicit else content)
+                self.assertEqual(saved_history['summary'], 'Saved summary.')
+                self.assertEqual(saved_history['page_id'], 2)
+                self.assertEqual(set(saved_history['translations'][0]), {'source', 'translation'})
+                for index, request in enumerate(requests):
+                    self.assertEqual('Return page_summary as an empty string' in request['messages'][-1]['content'], index == 1)
+
+    def test_saved_summary_blank_instruction_survives_recovery_and_retry(self) -> None:
+        from ballontranslator.modules.context.errors import ContextLengthError
+        pcfg.module.llm_translate_summary_memory = True
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        self.translator.set_param_value('retry attempts', 2)
+        self.translator.set_param_value('retry timeout', 0)
+        project = self._project(2)
+        self._complete(project, '001.png')
+        project.set_llm_visual_summary_text('002.png', 'Saved summary.')
+        requests = []
+
+        def respond(profile, args):
+            requests.append(args)
+            if len(requests) == 1:
+                raise ContextLengthError('Too much history')
+            if len(requests) == 2:
+                return LLMChatResult('invalid JSON')
+            project.clear_llm_visual_summary('002.png')
+            return LLMChatResult('{"translations":{"1":"translated"},"page_summary":"Unwanted replacement."}')
+
+        with mock.patch.object(type(self.translator), 'profile', new_callable=mock.PropertyMock,
+                               return_value=self.profile), mock.patch.object(
+            self.translator, 'request_chat_completion', side_effect=respond,
+        ):
+            self.translator.translate_textblk_lst(project.pages['002.png'], project=project,
+                                                page_key='002.png', full_page=True)
+            self._complete(project, '002.png')
+            self.translator.on_page_translation_finished(project, '002.png')
+        self.assertIsNone(project.get_llm_visual_summary('002.png'))
+        self.assertEqual(len(requests), 3)
+        self.assertEqual(requests[1]['messages'], requests[2]['messages'])
+        for request in requests:
+            self.assertEqual(request['messages'][-1], requests[0]['messages'][-1])
+            self.assertIn('Return page_summary as an empty string', request['messages'][-1]['content'])
 
     def test_overwrite_summary_ignores_current_context_and_replaces_it(self):
         project = self._project(2)

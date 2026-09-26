@@ -51,27 +51,28 @@ class ContextReason(Enum):
 class HistoryPage:
     """One indivisible page of input/output context.
 
-    >>> HistoryPage('001.png', ('hello',), ('bonjour',)).page_key
+    >>> HistoryPage('001.png', ('hello',), ('bonjour',), page_number=1).page_key
     '001.png'
     """
 
     page_key: str
     sources: Tuple[str, ...]
     translations: Tuple[str, ...]
+    page_number: int
     summary: str = ''
 
 
 @dataclass(frozen=True)
 class RenderedHistoryPage:
-    """A page snapshot plus its immutable provider messages and token cost.
+    """A page snapshot plus its immutable reference content and token cost.
 
-    >>> page = HistoryPage('001.png', ('hello',), ('bonjour',))
-    >>> RenderedHistoryPage(page, (), 3).page_key
+    >>> page = HistoryPage('001.png', ('hello',), ('bonjour',), page_number=1)
+    >>> RenderedHistoryPage(page, '{}', 3).page_key
     '001.png'
     """
 
     snapshot: HistoryPage
-    messages: Tuple[Tuple[str, str], ...]
+    content: str
     token_count: int
 
     @property

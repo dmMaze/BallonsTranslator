@@ -81,7 +81,7 @@ PAGE_OCR_SYSTEM_PROMPT = (
 
 @register_OCR("LLMOCR")
 class LLMOCR(LLMChatRequester, OCRBase):
-    """Profile-backed OCR using OpenAI-compatible vision chat models.
+    """Profile-backed OCR using API or Codex vision models.
 
     Example:
         >>> LLMOCR._normalized_text('a\\n b ')
@@ -114,7 +114,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         "proxy": {
             "value": "",
             "display_name": "Proxy",
-            "description": "Proxy address used for the OpenAI-compatible client.",
+            "description": "Proxy address used for LLM requests.",
         },
         "description": "OCR using the selected vision-capable LLM profile.",
     }
@@ -342,6 +342,9 @@ class LLMOCR(LLMChatRequester, OCRBase):
         prompt: Optional[str] = None,
         **kwargs,
     ) -> str:
+        if pcfg.module.ocr_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         profile = self.profile
         messages = self._messages(img, profile, prompt=prompt)
         return self._normalized_text(self._request_with_retries(
@@ -406,6 +409,9 @@ class LLMOCR(LLMChatRequester, OCRBase):
         if not pcfg.module.ocr_llm_page_level or not full_page or not blk_list:
             return super()._ocr_blk_list(img, blk_list, *args, **kwargs)
 
+        if pcfg.module.ocr_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         self.logger.info(f"Performing Page-level LLM OCR on {len(blk_list)} blocks...")
         mask_non_text = pcfg.module.ocr_llm_mask_non_text
         sort_reading_order = pcfg.module.ocr_llm_sort_reading_order

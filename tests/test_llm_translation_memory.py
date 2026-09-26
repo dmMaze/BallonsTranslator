@@ -1,6 +1,5 @@
 import json
 import unittest
-from types import SimpleNamespace
 from unittest import mock
 
 from _llm_translation_test_support import LLMTranslationTestMixin
@@ -19,6 +18,7 @@ from ballontranslator.modules.context.translation_context import (
 from ballontranslator.modules.exceptions import (
     LLMMemoryCompactionError,
 )
+from ballontranslator.modules.llm_chat import LLMChatResult
 from ballontranslator.utils.config import LLMTranslateContext, pcfg
 
 
@@ -41,7 +41,7 @@ class LLMTranslationMemoryTest(
                     project.set_llm_visual_summary_text('002.png', 'A recent event.')
                 with mock.patch.object(
                     self.translator, 'request_chat_completion',
-                    return_value=SimpleNamespace(
+                    return_value=LLMChatResult(
                         content='Earlier fact retained.', usage=None, finish_reason='stop',
                     ),
                 ):
@@ -69,13 +69,13 @@ class LLMTranslationMemoryTest(
 
         with mock.patch(
             'ballontranslator.modules.translators.trans_llm.render_history_page',
-            side_effect=lambda page, *_args: RenderedHistoryPage(page, (), 300),
+            side_effect=lambda page, *_args: RenderedHistoryPage(page, '', 300),
         ), mock.patch(
             'ballontranslator.modules.context.translation_context.messages_token_count',
             return_value=400,
         ), mock.patch.object(
             self.translator, 'request_chat_completion',
-            return_value=SimpleNamespace(content='Earlier facts.', usage=None, finish_reason='stop'),
+            return_value=LLMChatResult(content='Earlier facts.', usage=None, finish_reason='stop'),
         ) as compact, mock.patch.object(
             self.translator, '_request_translation',
             return_value='{"translations":{"1":"translated"},"page_summary":"New event."}',
@@ -115,7 +115,7 @@ class LLMTranslationMemoryTest(
         pcfg.module.llm_translate_vision = True
         pcfg.module.llm_translate_summary_memory = True
         pages = {
-            key: HistoryPage(key, (key,), (f't-{key}',), f'summary-{key}')
+            key: HistoryPage(key, (key,), (f't-{key}',), page_number=int(key[:3]), summary=f'summary-{key}')
             for key in ('001.png', '002.png', '003.png', '004.png', '005.png')
         }
         summaries = {
@@ -150,7 +150,7 @@ class LLMTranslationMemoryTest(
         def rendered(page: HistoryPage, *_args: object, **_kwargs: object) -> RenderedHistoryPage:
             return RenderedHistoryPage(
                 snapshot=page,
-                messages=(('user', page.page_key), ('assistant', page.summary)),
+                content=page.page_key + page.summary,
                 token_count=400,
             )
 
@@ -161,13 +161,13 @@ class LLMTranslationMemoryTest(
             token_count=800,
         )
         committed_window = self.translator._history_window
-        completion = SimpleNamespace(
+        completion = LLMChatResult(
             content='The station meeting remains unresolved.',
             usage=None,
             finish_reason='',
         )
 
-        def compact_request(*_args: object) -> SimpleNamespace:
+        def compact_request(*_args: object) -> LLMChatResult:
             self.assertIs(self.translator._history_window, committed_window)
             self.assertEqual(
                 [page.page_key for page in committed_window.history],
@@ -258,7 +258,7 @@ class LLMTranslationMemoryTest(
         )
         self.assertEqual(
             [message['role'] for message in messages],
-            ['system', 'system', 'user', 'assistant', 'user'],
+            ['system', 'system', 'user', 'user'],
         )
         self.assertTrue(
             messages[1]['content'].startswith('Compacted translation memory')
@@ -385,7 +385,7 @@ class LLMTranslationMemoryTest(
         for response, error in (
             (RuntimeError('provider unavailable'), 'provider unavailable'),
             (
-                SimpleNamespace(content=' \n\t ', usage=None, finish_reason=''),
+                LLMChatResult(content=' \n\t ', usage=None, finish_reason=''),
                 'Memory compaction returned no memory text.',
             ),
         ):
@@ -415,7 +415,7 @@ class LLMTranslationMemoryTest(
             PageSummary('002.png', 'new summary'),
             PageSummary('003.png', 'another summary'),
         )
-        completion = SimpleNamespace(
+        completion = LLMChatResult(
             content='  merged memory\nwith a second line.  ',
             usage=None,
             finish_reason='',
@@ -463,7 +463,7 @@ class LLMTranslationMemoryTest(
         )
 
     def test_memory_compaction_keeps_its_actual_translation_context_size(self) -> None:
-        completion = SimpleNamespace(
+        completion = LLMChatResult(
             content='merged memory',
             usage=None,
             finish_reason='',
