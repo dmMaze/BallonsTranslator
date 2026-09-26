@@ -427,7 +427,7 @@ var BT_PS = (function () {
         if (!e) return false;
         if (e.number === 8007 || e.number === -128) return true;
         var msg = (e.message || String(e)).toLowerCase();
-        return msg.indexOf("cancel") !== -1 || msg.indexOf("отмен") !== -1;
+        return msg.indexOf("cancel") !== -1 || msg.indexOf("\u043e\u0442\u043c\u0435\u043d") !== -1;
     }
 
     function openSilent(fileObj) {
