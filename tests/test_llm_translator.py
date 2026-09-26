@@ -107,6 +107,7 @@ class LLMTranslatorTest(unittest.TestCase):
                 project.pages = {str(page): [TextBlock(text=[f'source-{page}-{i}'])
                                             for i in range(count)]
                                  for page, count in enumerate((1, 3, 2, 1))}
+                project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
                 project._image_info = {page: {'finish_code': 0} for page in project.pages}
                 project.read_img = mock.Mock(return_value=np.zeros((16, 16, 3), dtype=np.uint8))
                 received = []
@@ -165,7 +166,7 @@ class LLMTranslatorTest(unittest.TestCase):
                         self.assertIsInstance(body['messages'][0]['content'], str)
                 history_content = received[2]['messages'][-2]['content']
                 history = json.loads(history_content[0]['text'] if explicit else history_content)
-                self.assertEqual(history['page_id'], '1')
+                self.assertEqual(history['page_id'], 2)
                 self.assertEqual(set(history['translations'][0]), {'source', 'translation'})
                 # Ignore only cache metadata, never normalize message representation.
                 for previous, current in zip(received[1:], received[2:]):

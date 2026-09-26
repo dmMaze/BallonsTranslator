@@ -799,7 +799,7 @@ class CodexHTTPTest(unittest.TestCase):
         from ballontranslator.modules.context.translation_context import RequestContext
         from ballontranslator.modules.translators.llm_translation_contract import InvalidNumTranslations, TranslationPromptSpec, render_history_page
         spec = TranslationPromptSpec('Japanese', 'English', 'Translate.', False, True, True)
-        history = tuple(render_history_page(HistoryPage(str(i), ('source-' + str(i),), ('translated-' + str(i),)),
+        history = tuple(render_history_page(HistoryPage(str(i), ('source-' + str(i),), ('translated-' + str(i),), page_number=i),
                                             self.profile.model) for i in (1, 2))
         key = HistoryWindowKey(object(), ())
         context = RequestContext(history, history_budget=10000, window_key=key, request_page_key='current')
@@ -839,6 +839,7 @@ class CodexHTTPTest(unittest.TestCase):
         project = ProjImgTrans()
         project.pages = {str(page): [TextBlock(text=[f'source-{page}-{i}'], translation='previous')
                                     for i in range(count)] for page, count in enumerate((1, 3, 2, 1))}
+        project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
         project._image_info = {page: {'finish_code': 0} for page in project.pages}
         translator = LLMTranslator('日本語', 'English')
         translator.set_stop_event(threading.Event())
@@ -873,7 +874,7 @@ class CodexHTTPTest(unittest.TestCase):
             self.assertEqual(previous['instructions'], current['instructions'])
             self.assertEqual(previous['input'][:-1], current['input'][:len(previous['input']) - 1])
             history = json.loads(current['input'][-2]['content'][0]['text'])
-            self.assertEqual(history['page_id'], str(page_index))
+            self.assertEqual(history['page_id'], page_index + 1)
             self.assertEqual(set(history['translations'][0]), {'source', 'translation'})
             self.assertNotIn('prompt_cache_options', current)
             self.assertNotIn('prompt_cache_breakpoint', json.dumps(current['input']))
@@ -886,6 +887,7 @@ class CodexHTTPTest(unittest.TestCase):
         from ballontranslator.utils.textblock import TextBlock
         project = ProjImgTrans()
         project.pages = {'0': [TextBlock(text=['source'])], '1': [], '2': [TextBlock(text=['next'])]}
+        project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
         project._image_info = {page: {'finish_code': 0} for page in project.pages}
         project.read_img = Mock(return_value=np.zeros((16, 16, 3), dtype=np.uint8))
         translator = LLMTranslator('日本語', 'English')
@@ -917,7 +919,7 @@ class CodexHTTPTest(unittest.TestCase):
             self.assertEqual(body['text']['format'], received[0]['text']['format'])
             self.assertEqual(list(body['text']['format']['schema']['properties']), ['page_summary', 'translations'])
         empty_history = json.loads(received[2]['input'][-2]['content'][0]['text'])
-        self.assertEqual(empty_history, {'page_id': '1', 'summary': 'Scene 1', 'translations': []})
+        self.assertEqual(empty_history, {'page_id': 2, 'summary': 'Scene 1', 'translations': []})
 
 
 class CodexConfigTest(unittest.TestCase):

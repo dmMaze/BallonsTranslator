@@ -229,7 +229,7 @@ class LLMTranslationHistoryTest(
 
     def test_current_summary_tokens_reduce_available_recent_history_budget(self) -> None:
         pages = tuple(
-            HistoryPage(str(index), (f's{index}',), (f't{index}',))
+            HistoryPage(str(index), (f's{index}',), (f't{index}',), page_number=index)
             for index in range(1, 4)
         )
 
@@ -262,7 +262,7 @@ class LLMTranslationHistoryTest(
     def test_context_overflow_recovery_preserves_compacted_memory(self) -> None:
         pages = tuple(
             RenderedHistoryPage(
-                HistoryPage(str(index), ('s',), ('t',)),
+                HistoryPage(str(index), ('s',), ('t',), page_number=index + 1),
                 '',
                 4,
             )
@@ -336,26 +336,25 @@ class LLMTranslationHistoryTest(
             '006.png': [_block('current', '')],
             '007.png': [_block('future', '未来')],
         }
-        project = SimpleNamespace(
-            load_identity=object(),
-            pages=pages,
-            _image_info={
-                '001.png': {
-                    'finish_code': RunStatus.FIN_TRANSLATE,
-                    'translation_target': '简体中文',
-                },
-                # Missing target metadata remains eligible for old projects.
-                '002.png': {'finish_code': RunStatus.FIN_TRANSLATE},
-                '003.png': {
-                    'finish_code': RunStatus.FIN_TRANSLATE,
-                    'translation_target': 'English',
-                },
-                '004.png': {'finish_code': RunStatus.FIN_TRANSLATE},
-                '005.png': {'finish_code': RunStatus.FIN_TRANSLATE},
-                '006.png': {'finish_code': 0},
-                '007.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+        project = ProjImgTrans()
+        project.pages = pages
+        project._image_info = {
+            '001.png': {
+                'finish_code': RunStatus.FIN_TRANSLATE,
+                'translation_target': '简体中文',
             },
-        )
+            # Missing target metadata remains eligible for old projects.
+            '002.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+            '003.png': {
+                'finish_code': RunStatus.FIN_TRANSLATE,
+                'translation_target': 'English',
+            },
+            '004.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+            '005.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+            '006.png': {'finish_code': 0},
+            '007.png': {'finish_code': RunStatus.FIN_TRANSLATE},
+        }
+        project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
 
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_glossary_path = ''
@@ -384,7 +383,7 @@ class LLMTranslationHistoryTest(
             return_value=1,
         ):
             history = self._history_for_rebuild(
-                (HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),),
+                (HistoryPage('001.png', ('Hero arrives',), ('勇者到来',), page_number=1),),
             )
         context = RequestContext(
             history=history,
@@ -402,7 +401,7 @@ class LLMTranslationHistoryTest(
             ['system', 'user', 'user'],
         )
         self.assertEqual(json.loads(messages[1]['content']), {
-            'page_id': '001.png',
+            'page_id': 1,
             'translations': [{'source': 'Hero arrives', 'translation': '勇者到来'}],
         })
         self.assertNotIn('GLOSSARY:', messages[1]['content'])
@@ -420,11 +419,11 @@ class LLMTranslationHistoryTest(
             return_value=1,
         ):
             hero_page = render_history_page(
-                HistoryPage('001.png', ('Hero arrives',), ('勇者到来',)),
+                HistoryPage('001.png', ('Hero arrives',), ('勇者到来',), page_number=1),
                 'test-model',
             )
             mage_page = render_history_page(
-                HistoryPage('002.png', ('Mage speaks',), ('法师说话',)),
+                HistoryPage('002.png', ('Mage speaks',), ('法师说话',), page_number=2),
                 'test-model',
             )
 
@@ -480,7 +479,7 @@ class LLMTranslationHistoryTest(
 
     def test_rebuild_selects_newest_pages_with_growth_headroom(self):
         history = tuple(
-            HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
+            HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',), page_number=index)
             for index in range(1, 4)
         )
         cases = (
@@ -537,7 +536,7 @@ class LLMTranslationHistoryTest(
 
     def test_stateless_rebuild_stops_at_first_ordinary_overflow(self):
         history = tuple(
-            HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',))
+            HistoryPage(str(index), (f'source-{index}',), (f'target-{index}',), page_number=index)
             for index in range(1, 4)
         )
         with mock.patch(
@@ -597,7 +596,7 @@ class LLMTranslationHistoryTest(
         self.assertIn('Translate only the final user message', system_prompt)
         self.assertEqual(second_messages[:len(first_messages) - 1], first_messages[:-1])
         self.assertEqual(third_messages[:len(second_messages) - 1], second_messages[:-1])
-        self.assertEqual(json.loads(third_messages[-2]['content'])['page_id'], '002.png')
+        self.assertEqual(json.loads(third_messages[-2]['content'])['page_id'], 2)
 
     def test_overflow_bulk_evicts_and_later_prefix_grows_stably(self) -> None:
         project = self._project(8)
@@ -636,10 +635,34 @@ class LLMTranslationHistoryTest(
             later_messages[:len(eviction_messages) - 1],
             eviction_messages[:-1],
         )
+        self.assertEqual([json.loads(page.content)['page_id'] for page in eviction.history], [5, 6])
+        self.assertEqual([json.loads(page.content)['page_id'] for page in after_eviction.history], [5, 6, 7])
+        self.translator._history_window = None
+        with mock.patch(
+            'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
+            return_value=2,
+        ):
+            rebuilt = self._snapshot_request_context(project, '007.png', self.profile)
+        self.assertEqual([page.content for page in rebuilt.history], [page.content for page in eviction.history])
+
+    def test_history_numbers_use_project_order_with_gaps_and_long_filenames(self) -> None:
+        project = self._project(5)
+        names = ['A long chapter title - scan ' + str(number) + '.png' for number in (90, 40, 10, 70, 20)]
+        project.pages = dict(zip(names, project.pages.values()))
+        project._image_info = dict(zip(names, project._image_info.values()))
+        project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
+        self._complete(project, names[0])
+        self._complete(project, names[2])
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        context = self._snapshot_request_context(project, names[4], self.profile)
+        records = [json.loads(page.content) for page in context.history]
+        self.assertEqual([record['page_id'] for record in records], [1, 3])
+        self.assertEqual([page.page_key for page in context.history], [names[0], names[2]])
+        self.assertTrue(all(name not in json.dumps(records) for name in names))
 
     def test_incoming_page_above_low_water_still_serves_as_history(self) -> None:
-        older = RenderedHistoryPage(HistoryPage('old', ('s',), ('t',)), '', 4)
-        incoming = HistoryPage('new', ('s',), ('t',))
+        older = RenderedHistoryPage(HistoryPage('old', ('s',), ('t',), page_number=1), '', 4)
+        incoming = HistoryPage('new', ('s',), ('t',), page_number=2)
         history, diagnostic = eligible_history_for_request(
             window=HistoryWindow(HistoryWindowKey(object(), ()), 'new', (older,), 4),
             project=None,
@@ -687,7 +710,7 @@ class LLMTranslationHistoryTest(
 
     def test_oversized_adjacent_page_refits_history_for_current_summary(self):
         retained = RenderedHistoryPage(
-            HistoryPage('001.png', ('s1',), ('t1',)),
+            HistoryPage('001.png', ('s1',), ('t1',), page_number=1),
             '',
             4,
         )
@@ -702,7 +725,7 @@ class LLMTranslationHistoryTest(
             window=window,
             project=None,
             page_key='002.png',
-            previous_page=HistoryPage('001.png', ('large',), ('large',)),
+            previous_page=HistoryPage('001.png', ('large',), ('large',), page_number=1),
             token_budget=10,
             rebuild_reason=None,
             snapshot_page=lambda _page_key: None,
@@ -896,7 +919,7 @@ class LLMTranslationHistoryTest(
         self.assertIs(window.key.load_identity, project.load_identity)
         self.assertEqual(
             window.history[0].snapshot,
-            HistoryPage('001.png', ('source-1',), ('target-1',)),
+            HistoryPage('001.png', ('source-1',), ('target-1',), page_number=1),
         )
         self.assertTrue(all(
             isinstance(text, str)
@@ -948,20 +971,19 @@ class LLMTranslationHistoryTest(
             self.translator.translate_textblk_lst([block])
             current_prompt = captured_messages[0][-1]['content']
 
-            project = SimpleNamespace(
-                load_identity=object(),
-                pages={
-                    '001.png': [block],
-                    '002.png': [_block('Next page')],
+            project = ProjImgTrans()
+            project.pages = {
+                '001.png': [block],
+                '002.png': [_block('Next page')],
+            }
+            project._image_info = {
+                '001.png': {
+                    'finish_code': RunStatus.FIN_TRANSLATE,
+                    'translation_target': '简体中文',
                 },
-                _image_info={
-                    '001.png': {
-                        'finish_code': RunStatus.FIN_TRANSLATE,
-                        'translation_target': '简体中文',
-                    },
-                    '002.png': {'finish_code': 0},
-                },
-            )
+                '002.png': {'finish_code': 0},
+            }
+            project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
             pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
             with mock.patch(
                 'ballontranslator.modules.translators.trans_llm.render_history_page',
@@ -1028,7 +1050,7 @@ class LLMTranslationHistoryTest(
                 page_key='002.png',
             )
 
-        self.assertEqual(json.loads(selected_messages[1]['content'])['page_id'], '001.png')
+        self.assertEqual(json.loads(selected_messages[1]['content'])['page_id'], 1)
         self.assertEqual(
             self.translator._history_window.request_page_key,
             '002.png',
@@ -1040,6 +1062,7 @@ class LLMTranslationHistoryTest(
             '001.png': [_block('First source')],
             '002.png': [_block('Second source')],
         }
+        project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
         project._image_info = {
             '001.png': {'finish_code': 0},
             '002.png': {'finish_code': 0},

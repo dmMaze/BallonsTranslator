@@ -256,6 +256,9 @@ encoded image. Provider-facing input cannot change midway through one request.
 - `+history` adds completed earlier pages as chronological, glossary-free
   reference records. Every backend uses the same compact JSON: `page_id`,
   `translations` containing source/translation pairs, and optional `summary`.
+  `page_id` is the one-based position in the full project, not its filename or
+  position in the current history window; skipped and evicted pages do not
+  renumber surviving records. Filenames remain the internal project keys.
   Repeated translation instructions and simulated assistant responses are omitted.
 
 Each record is sent as a separate user message, preserving its ending as history

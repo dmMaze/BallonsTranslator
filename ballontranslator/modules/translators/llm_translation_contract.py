@@ -177,14 +177,14 @@ def render_user_prompt(
 def render_history_page(page: HistoryPage, model: str) -> RenderedHistoryPage:
     """Render one reference record with a stable, independently cacheable boundary.
 
-    >>> page = HistoryPage('001.png', ('心',), ('heart',))
+    >>> page = HistoryPage('001.png', ('心',), ('heart',), page_number=1)
     >>> json.loads(render_history_page(page, 'test-model').content)
-    {'page_id': '001.png', 'translations': [{'source': '心', 'translation': 'heart'}]}
+    {'page_id': 1, 'translations': [{'source': '心', 'translation': 'heart'}]}
     """
     if len(page.sources) != len(page.translations):
         raise ValueError('Historical sources and translations must have matching lengths.')
     record = {
-        'page_id': page.page_key,
+        'page_id': page.page_number,
         'translations': [
             {'source': source, 'translation': translation}
             for source, translation in zip(page.sources, page.translations)

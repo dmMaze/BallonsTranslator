@@ -89,7 +89,7 @@ class LLMTranslationSummaryTest(
                 self.assertEqual(project.get_llm_visual_summary('002.png')['text'], 'Scene 2.')
                 self.assertEqual(project.get_llm_visual_summary('003.png')['text'], 'Scene 3.')
                 empty_history = json.loads(messages[3][2]['content'])
-                self.assertEqual(empty_history, {'page_id': '002.png', 'translations': [], 'summary': 'Scene 2.'})
+                self.assertEqual(empty_history, {'page_id': 2, 'translations': [], 'summary': 'Scene 2.'})
                 self.assertEqual(project.pages['002.png'], [])
                 self.assertEqual(project.pages['003.png'][0].translation.strip(), '')
 
@@ -423,7 +423,7 @@ class LLMTranslationSummaryTest(
                 content = requests[2]['messages'][-2]['content']
                 saved_history = json.loads(content[0]['text'] if explicit else content)
                 self.assertEqual(saved_history['summary'], 'Saved summary.')
-                self.assertEqual(saved_history['page_id'], '002.png')
+                self.assertEqual(saved_history['page_id'], 2)
                 self.assertEqual(set(saved_history['translations'][0]), {'source', 'translation'})
                 for index, request in enumerate(requests):
                     self.assertEqual('Return page_summary as an empty string' in request['messages'][-1]['content'], index == 1)

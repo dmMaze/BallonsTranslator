@@ -170,6 +170,7 @@ class LLMTranslationTestMixin:
             ]
             for index in range(1, page_count + 1)
         }
+        project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
         project._image_info = {
             page_key: {'finish_code': 0}
             for page_key in project.pages

@@ -51,13 +51,14 @@ class ContextReason(Enum):
 class HistoryPage:
     """One indivisible page of input/output context.
 
-    >>> HistoryPage('001.png', ('hello',), ('bonjour',)).page_key
+    >>> HistoryPage('001.png', ('hello',), ('bonjour',), page_number=1).page_key
     '001.png'
     """
 
     page_key: str
     sources: Tuple[str, ...]
     translations: Tuple[str, ...]
+    page_number: int
     summary: str = ''
 
 
@@ -65,7 +66,7 @@ class HistoryPage:
 class RenderedHistoryPage:
     """A page snapshot plus its immutable reference content and token cost.
 
-    >>> page = HistoryPage('001.png', ('hello',), ('bonjour',))
+    >>> page = HistoryPage('001.png', ('hello',), ('bonjour',), page_number=1)
     >>> RenderedHistoryPage(page, '{}', 3).page_key
     '001.png'
     """

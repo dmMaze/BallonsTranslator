@@ -41,7 +41,7 @@ class LLMTranslationContractTest(unittest.TestCase):
         for count in range(5):
             messages = prefix + [
                 {'role': 'user', 'content': render_history_page(
-                    HistoryPage(str(page), (f'source {page}',), (f'translation {page}',)),
+                    HistoryPage(str(page), (f'source {page}',), (f'translation {page}',), page_number=page + 1),
                     'test-model',
                 ).content} for page in range(count)
             ] + [current]
@@ -73,13 +73,13 @@ class LLMTranslationContractTest(unittest.TestCase):
         for summary in ('', 'Scene with a newline.\nMore context.'):
             for sources, translations in ((('心', '"quoted"'), ('heart', '译文')), ((), ())):
                 with self.subTest(summary=summary, sources=sources):
-                    page = HistoryPage('001.png', sources, translations, summary)
+                    page = HistoryPage('001.png', sources, translations, page_number=1, summary=summary)
                     with mock.patch(
                         'ballontranslator.modules.translators.llm_translation_contract.messages_token_count',
                         return_value=19,
                     ) as count:
                         rendered = render_history_page(page, 'test-model')
-                    expected = {'page_id': '001.png', 'translations': [
+                    expected = {'page_id': 1, 'translations': [
                         {'source': source, 'translation': translation}
                         for source, translation in zip(sources, translations)
                     ]}
@@ -89,7 +89,7 @@ class LLMTranslationContractTest(unittest.TestCase):
                     self.assertEqual(rendered.token_count, 19)
                     count.assert_called_once_with([{'role': 'user', 'content': rendered.content}], 'test-model')
         with self.assertRaises(ValueError):
-            render_history_page(HistoryPage('bad', ('source',), ()), 'test-model')
+            render_history_page(HistoryPage('bad', ('source',), (), page_number=1), 'test-model')
 
     def test_disabled_features_keep_numeric_response_contract(self):
         profile_prompt = 'Keep JSON example {"x": 1}.'
@@ -153,7 +153,8 @@ class LLMTranslationContractTest(unittest.TestCase):
                     '002.png',
                     ('old source',),
                     ('old target',),
-                    'Old page summary.',
+                    page_number=2,
+                    summary='Old page summary.',
                 ),
                 'test-model',
             )
@@ -188,7 +189,7 @@ class LLMTranslationContractTest(unittest.TestCase):
         self.assertIn('"source":"Hero"', messages[1]['content'])
         self.assertIn('Compacted translation memory', messages[2]['content'])
         self.assertEqual(json.loads(messages[3]['content']), {
-            'page_id': '002.png',
+            'page_id': 2,
             'translations': [{'source': 'old source', 'translation': 'old target'}],
             'summary': 'Old page summary.',
         })

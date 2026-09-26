@@ -115,7 +115,7 @@ class LLMTranslationMemoryTest(
         pcfg.module.llm_translate_vision = True
         pcfg.module.llm_translate_summary_memory = True
         pages = {
-            key: HistoryPage(key, (key,), (f't-{key}',), f'summary-{key}')
+            key: HistoryPage(key, (key,), (f't-{key}',), page_number=int(key[:3]), summary=f'summary-{key}')
             for key in ('001.png', '002.png', '003.png', '004.png', '005.png')
         }
         summaries = {

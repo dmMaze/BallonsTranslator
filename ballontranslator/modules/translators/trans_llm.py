@@ -980,6 +980,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             page_key=str(page_key),
             sources=tuple(sources),
             translations=tuple(translations),
+            # Use the project position, never the moving history-window position.
+            page_number=project.pagename2idx(page_key) + 1,
             summary=summary,
         )
 
