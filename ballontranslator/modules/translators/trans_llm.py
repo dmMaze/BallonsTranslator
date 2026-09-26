@@ -1,4 +1,5 @@
 from dataclasses import replace
+import threading
 import traceback
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -102,12 +103,17 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         ('心',)
     """
 
-    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
+    dependencies = ['openai>=2.8.1', 'openai-codex==0.156.1; python_version >= "3.10"', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
 
     concate_text = False
-    cht_require_convert = True
     params: Dict = {
         "description": "Translate using the selected text-capable LLM profile.",
+        "codex parallel requests": {
+            "type": "line_editor",
+            "value": "1",
+            "display_name": "Experimental Codex Parallel Requests",
+            "description": "Concurrent full-page Codex requests. Enter a positive integer, such as 6 or 8. 1 disables parallel requests. History mode stays sequential. Each request uses already committed summaries and memory; pages are finalized in order. RPM and delay still apply.",
+        },
         "max requests per minute": {
             "value": 20,
             "display_name": "Max Requests Per Minute",
@@ -161,6 +167,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         self.lang_map['Hindi'] = 'Hindi'
 
         self._history_window: Optional[HistoryWindow] = None
+        self._context_lock = threading.RLock()
         self._pending_visual_summaries: Dict[
             str,
             Tuple[
@@ -168,6 +175,28 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 Dict[str, object],
             ],
         ] = {}
+
+    def parallel_request_workers(self) -> int:
+        """Opt into independent Codex pages; history needs the preceding result.
+
+        >>> LLMTranslator('日本語', 'English').get_param_value('codex parallel requests')
+        '1'
+        """
+        value = str(self.get_param_value('codex parallel requests')).strip()
+        try:
+            workers = int(value) if value.isdecimal() else 0
+        except ValueError:
+            workers = 0
+        if workers < 1:
+            self.logger.warning('Invalid Codex parallel requests %r; using 1.', value)
+            self.set_param_value('codex parallel requests', '1')
+            return 1
+        if workers == 1 or self.profile.transport != 'Codex App Server':
+            return 1
+        if pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY:
+            self.logger.info('Codex parallel requests disabled for sequential +history context.')
+            return 1
+        return workers
 
     @property
     def profile(self) -> LLMProfile:
@@ -209,6 +238,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             f'profile_id={str(profile.id)!r}, '
             f'profile_name={str(profile.name)!r}, model={model!r}, '
             f'context={str(pcfg.module.llm_translate_context)!r}, '
+            f'parallel_requests={self.parallel_request_workers()}, '
             f'history_budget={int(pcfg.module.llm_prior_context_token_budget)}, '
             f'vision={vision_enabled}, '
             f'summary_memory={summary_memory_enabled}, '
@@ -383,22 +413,24 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 profile,
             )
         model = self._text_model(profile)
-        request_context = self._snapshot_request_context(
-            project,
-            page_key,
-            profile,
-            model=model,
-            prompt_spec=prompt_spec,
-            source_language=source_language,
-            target_language=target_language,
-            history_budget=history_budget,
-            glossary_path=glossary_path,
-            glossary_mode=glossary_mode,
-            memory_enabled=summary_memory_enabled,
-            ignore_current_summary=(
-                overwrite_existing_summary and existing_summary is not None
-            ),
-        )
+        # Snapshot/compaction and ordered summary commits share project state.
+        with self._context_lock:
+            request_context = self._snapshot_request_context(
+                project,
+                page_key,
+                profile,
+                model=model,
+                prompt_spec=prompt_spec,
+                source_language=source_language,
+                target_language=target_language,
+                history_budget=history_budget,
+                glossary_path=glossary_path,
+                glossary_mode=glossary_mode,
+                memory_enabled=summary_memory_enabled,
+                ignore_current_summary=(
+                    overwrite_existing_summary and existing_summary is not None
+                ),
+            )
         text_trans = self._translate(
             queries,
             profile=profile,
@@ -431,37 +463,38 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         page_key: str,
     ) -> None:
         """Commit generated context after a finalized full page."""
-        pending_summary = self._pending_visual_summaries.pop(
-            str(page_key),
-            None,
-        )
-        if page_key not in project.pages:
-            return
-        if pending_summary is not None:
-            expected_record, record = pending_summary
-            try:
-                # User edits made while the request was in flight always win.
-                if project.get_llm_visual_summary(page_key) == expected_record:
-                    project.set_llm_visual_summary(page_key, record)
-                    if expected_record is not None:
-                        logged_page_key = str(page_key).replace(
-                            '\r', ' '
-                        ).replace('\n', ' ')
-                        self.logger.info(
-                            'LLM page summary overwritten: page=%s',
-                            logged_page_key or '-',
-                        )
-            except Exception as error:
-                # Translation is already final; optional summary persistence
-                # must not turn a successful page into a failed pipeline stage.
-                self.logger.warning(
-                    'Unable to save LLM page summary for %s: %s',
-                    page_key,
-                    error,
-                )
+        with self._context_lock:
+            pending_summary = self._pending_visual_summaries.pop(
+                str(page_key),
+                None,
+            )
+            if page_key not in project.pages:
+                return
+            if pending_summary is not None:
+                expected_record, record = pending_summary
+                try:
+                    # User edits made while the request was in flight always win.
+                    if project.get_llm_visual_summary(page_key) == expected_record:
+                        project.set_llm_visual_summary(page_key, record)
+                        if expected_record is not None:
+                            logged_page_key = str(page_key).replace(
+                                '\r', ' '
+                            ).replace('\n', ' ')
+                            self.logger.info(
+                                'LLM page summary overwritten: page=%s',
+                                logged_page_key or '-',
+                            )
+                except Exception as error:
+                    # Translation is already final; optional summary persistence
+                    # must not turn a successful page into a failed pipeline stage.
+                    self.logger.warning(
+                        'Unable to save LLM page summary for %s: %s',
+                        page_key,
+                        error,
+                    )
 
-        if pcfg.module.llm_translate_summary_memory:
-            self._compact_last_page_memory(project, page_key)
+            if pcfg.module.llm_translate_summary_memory:
+                self._compact_last_page_memory(project, page_key)
 
     def delay(self) -> float:
         return self.get_param_value('delay')
@@ -1101,24 +1134,20 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         page_key: Optional[str] = None,
         attempt: Optional[int] = None,
     ) -> None:
-        summary = format_completion_token_usage(completion)
+        summary = format_completion_token_usage(completion) or 'usage=unavailable'
         finish_reason = str(completion.finish_reason or '').replace(
             '\r', ' '
         ).replace('\n', ' ')
         if finish_reason:
-            summary = ', '.join(
-                part for part in (summary, f'finish_reason={finish_reason}')
-                if part
-            )
-        if summary:
-            details = []
-            if page_key is not None:
-                safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
-                details.append(f'page={safe_page_key or "-"}')
-            if attempt is not None:
-                details.append(f'attempt={attempt}')
-            details.append(summary)
-            self.logger.debug(f'LLM token usage: {", ".join(details)}')
+            summary += f', finish_reason={finish_reason}'
+        details = []
+        if page_key is not None:
+            safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+            details.append(f'page={safe_page_key or "-"}')
+        if attempt is not None:
+            details.append(f'attempt={attempt}')
+        details.append(summary)
+        self.logger.info(f'LLM token usage: {", ".join(details)}')
 
     def _request_translation(
         self,

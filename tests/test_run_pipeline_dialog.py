@@ -53,6 +53,7 @@ from ballontranslator.ui.text_engine.pipeline_formatting import (
 from ballontranslator.utils.config import (
     AutoTateChuYokoConfig,
     LLMTranslateContext,
+    ModuleConfig,
     OCRTextPostprocess,
     ProgramConfig,
     RunStatus,
@@ -60,6 +61,7 @@ from ballontranslator.utils.config import (
     pcfg,
 )
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.llm_profiles import default_profile
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_effects import (
     GlowEffect,
@@ -908,6 +910,45 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.app.processEvents()
             gc.collect()
             self.assertIsNone(dialog_ref())
+
+    def test_codex_hides_only_http_proxy_and_preserves_context_options(self) -> None:
+        codex = default_profile('Codex')
+        codex.id = 'custom-subscription'
+        config = ModuleConfig(
+            llm_profiles=[codex, default_profile('OpenAI')],
+            translator_llm_id=codex.id, ocr_llm_id='openai',
+            llm_translate_vision=True, llm_translate_summary_memory=True,
+            llm_translate_overwrite_summary=True, llm_translate_context=LLMTranslateContext.HISTORY,
+        )
+        for stage, name in (('translator', 'LLMTranslator'), ('ocr', 'LLMOCR')):
+            config.get_params(stage)[name] = {'proxy': {'value': 'http://localhost:7890'},
+                                            'delay': {'value': 0.3}}
+        with patch('ballontranslator.ui.module_manager.cfg_module', config), \
+                patch.object(pcfg, 'module', config), \
+                patch('ballontranslator.ui.module_parse_widgets.save_config'):
+            manager = ModuleManager(ProjImgTrans())
+            self.addCleanup(manager.deleteLater)
+            for stage, name in (('translator', 'LLMTranslator'), ('ocr', 'LLMOCR')):
+                for profile_id in ('openai', codex.id, 'missing', 'openai'):
+                    with self.subTest(stage=stage, profile_id=profile_id):
+                        setattr(config, f'{stage}_llm_id', profile_id)
+                        params = manager.moduleParams(stage, name)
+                        dialog = ModuleParamDialog(stage, name, params, False)
+                        self.assertEqual('proxy' in dialog.param_widget.param_widgets, profile_id == 'openai')
+                        self.assertIn('delay', dialog.param_widget.param_widgets)
+                        self.assertEqual(config.get_params(stage)[name]['proxy']['value'], 'http://localhost:7890')
+                        dialog.close()
+            config.translator_llm_id = codex.id
+            dialog = RunPipelineDialog(translator_metadata={'name': 'LLMTranslator'})
+            self.addCleanup(dialog.deleteLater)
+            for checkbox in (dialog.llm_vision_checkbox, dialog.llm_summary_memory_checkbox,
+                             dialog.llm_overwrite_summary_checkbox):
+                self.assertTrue(checkbox.isChecked())
+            for row in (dialog.llm_context_header_row, dialog.llm_context_row,
+                        dialog.llm_context_budget_row, dialog.llm_features_row):
+                self.assertFalse(row.isHidden())
+            self.assertEqual(dialog.llm_context_combobox.currentData(), LLMTranslateContext.HISTORY)
+            dialog.close()
 
     def test_numeric_module_param_keeps_dot_decimal_notation(self) -> None:
         previous_locale = QLocale()

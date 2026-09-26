@@ -62,6 +62,35 @@ class LLMChatRequesterTest(unittest.TestCase):
         self.profile = default_profile('OpenAI')
         self.profile.api_key = 'sk-demo'
 
+    def test_codex_rpm_wait_counts_toward_request_delay(self) -> None:
+        for delay, expected_wait in ((5, 10.1), (20, 19.0)):
+            with self.subTest(delay=delay):
+                requester = RequesterHarness()
+                requester.values.update({
+                    'delay': delay, 'max requests per minute': 1,
+                    'retry attempts': 1, 'retry timeout': 60,
+                })
+                requester.minute_start_time = 0.0
+                requester.request_count_minute = 1
+                requester.last_request_time = 49.0
+                clock = [50.0]
+                waits = []
+
+                def wait(seconds: float) -> None:
+                    waits.append(seconds)
+                    clock[0] += seconds
+
+                with mock.patch('ballontranslator.modules.llm_chat.time.time',
+                                side_effect=lambda: clock[0]), \
+                        mock.patch.object(requester, '_wait', side_effect=wait), \
+                        mock.patch('ballontranslator.modules.llm_codex.request_codex_completion',
+                                   return_value=SimpleNamespace(content='OK', usage=None)) as request:
+                    requester.request_chat_completion(default_profile('Codex'), {'model': 'gpt-6-luna'})
+                self.assertAlmostEqual(sum(waits), expected_wait)
+                self.assertAlmostEqual(requester.last_request_time, 50.0 + expected_wait)
+                self.assertEqual(requester.request_count_minute, 1)
+                request.assert_called_once()
+
     def test_provider_args_preserve_native_openai_compatibility(self):
         self.assertEqual(
             openai_chat_completion_args(self.profile, 'gpt-5.5'),
@@ -211,6 +240,9 @@ class LLMChatRequesterTest(unittest.TestCase):
         self.assertEqual(result.content, 'hello')
         self.assertIs(result.usage, usage)
         self.assertEqual(result.finish_reason, 'stop')
+        self.assertEqual(self.requester.usage_totals.requests, 1)
+        self.assertEqual(self.requester.usage_totals.total_tokens, 3)
+        self.assertEqual(self.requester.usage_totals.priced_requests, 0)
 
     def test_request_raises_actionable_output_limit(self):
         self.profile.max_tokens = 1234
@@ -250,6 +282,9 @@ class LLMChatRequesterTest(unittest.TestCase):
                     self.profile,
                     {'model': 'demo-model', 'messages': []},
                 )
+
+        self.assertEqual(self.requester.usage_totals.requests, 1)
+        self.assertEqual(self.requester.usage_totals.total_tokens, 1244)
 
     def test_request_normalizes_authentication_and_status_errors(self):
         def client_for(error: Exception):

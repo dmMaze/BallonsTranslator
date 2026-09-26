@@ -11,6 +11,7 @@ from ..llm_chat import (
     openai_json_response_format,
 )
 from ..llm_vision import encode_chat_image
+from ..context.token_usage import format_completion_token_usage
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import (
     LLMModelRequiredError,
@@ -88,7 +89,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         'a b'
     """
 
-    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
+    dependencies = ['openai>=2.8.1', 'openai-codex==0.156.1; python_version >= "3.10"', 'httpx[socks,brotli]']
 
     params: Dict = {
         "max requests per minute": {
@@ -290,7 +291,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             "model": model,
             "messages": messages,
         }
-        api_args.update(openai_chat_completion_args(profile, model))
+        api_args.update(openai_chat_completion_args(profile, model, vision=True))
         if response_schema is not None:
             api_args["response_format"] = openai_json_response_format(
                 profile,
@@ -321,8 +322,8 @@ class LLMOCR(LLMChatRequester, OCRBase):
                     self.token_count_last = completion.usage.total_tokens
                 else:
                     self.token_count_last = 0
-                if self.token_count_last:
-                    self.logger.info(f'Used {self.token_count_last} tokens (Total: {self.token_count})')
+                usage = format_completion_token_usage(completion) or 'usage=unavailable'
+                self.logger.info(f'LLM OCR token usage: {usage}, cumulative_total={self.token_count}')
                 return completion.content
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise

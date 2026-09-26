@@ -35,7 +35,10 @@ from ballontranslator.utils.llm_profiles import (
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
     THINKING_AUTO,
+    LLMProfile,
+    normalize_codex_thinking_level,
     profile_by_id,
+    profile_thinking_level_options,
 )
 
 if shared.FLAG_QT6:
@@ -369,9 +372,10 @@ class ModuleSelectionMenu(QMenu):
                 options = getattr(profile, self.model_options_attr)
                 if value and value not in options:
                     options.insert(0, value)
+            normalize_codex_thinking_level(profile)
         self.selectLLMProfile(profile_id)
 
-    def _profile_menu_groups(self) -> List[Tuple[str, str, str]]:
+    def _profile_menu_groups(self, profile: LLMProfile) -> List[Tuple[str, str, str]]:
         if self.llm_modality == LLM_MODALITY_TEXT:
             return [
                 (QCoreApplication.translate('ModuleSelectionWidget', 'Thinking Level'), 'thinking_level', 'thinking_level_options'),
@@ -380,7 +384,9 @@ class ModuleSelectionMenu(QMenu):
         if self.llm_modality == LLM_MODALITY_VISION:
             return [
                 (QCoreApplication.translate('ModuleSelectionWidget', 'Vision Model'), self.model_attr, self.model_options_attr),
-                (QCoreApplication.translate('ModuleSelectionWidget', 'Vision Detail Level'), 'vision_detail_level', 'vision_detail_level_options'),
+                ((QCoreApplication.translate('ModuleSelectionWidget', 'Thinking Level'), 'vision_thinking_level', 'thinking_level_options')
+                 if profile.transport == 'Codex App Server' else
+                 (QCoreApplication.translate('ModuleSelectionWidget', 'Vision Detail Level'), 'vision_detail_level', 'vision_detail_level_options')),
             ]
         return [
             (QCoreApplication.translate('ModuleSelectionWidget', 'Image Model'), self.model_attr, self.model_options_attr),
@@ -389,9 +395,12 @@ class ModuleSelectionMenu(QMenu):
     def _buildProfileMenu(self, menu: QMenu, profile: LLMProfile) -> None:
         profile_id = profile.id
         selected_profile = self.isCurrentLLM() and self.selectedProfileId() == profile_id
-        for section, value_attr, options_attr in self._profile_menu_groups():
+        for section, value_attr, options_attr in self._profile_menu_groups(profile):
             _add_bottom_menu_section(menu, section, color=self.modality_color)
-            options = [str(option) for option in getattr(profile, options_attr) if str(option)]
+            raw_options = (profile_thinking_level_options(profile, vision=value_attr == 'vision_thinking_level')
+                           if value_attr in ('thinking_level', 'vision_thinking_level')
+                           else getattr(profile, options_attr))
+            options = [str(option) for option in raw_options if str(option)]
             current_value = str(getattr(profile, value_attr) or 'None')
             for option in options:
                 _add_bottom_menu_action(
