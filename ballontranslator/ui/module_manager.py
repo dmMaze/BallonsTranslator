@@ -1398,7 +1398,6 @@ class ModuleManager(QObject):
     page_trans_finished = Signal(int)
     module_selection_changed = Signal(str, str)
 
-    run_canvas_inpaint = False
     is_waiting_th = False
     block_set_inpainter = False
 
@@ -1408,7 +1407,7 @@ class ModuleManager(QObject):
         super().__init__(*args, **kwargs)
         self.imgtrans_proj = imgtrans_proj
         self._pending_canvas_inpaint: Optional[dict] = None
-        self._canvas_inpaint_source: Optional[np.ndarray] = None
+        self._canvas_inpaint_request: Optional[dict] = None
         self.check_inpaint_fin_timer = QTimer(self)
         self.check_inpaint_fin_timer.timeout.connect(self.check_inpaint_th_finished)
         self.prepare_msgbox: ProgressMessageBox = None
@@ -2340,17 +2339,27 @@ class ModuleManager(QObject):
         self.ocr_thread.setOCR(ocr)
 
     def on_finish_inpaint(self, inpaint_dict: dict) -> None:
-        apply_result = (
-            self.run_canvas_inpaint
-            and self._canvas_inpaint_source is self.imgtrans_proj.inpainted_array
-        )
-        self.run_canvas_inpaint = False
-        self._canvas_inpaint_source = None
+        request = self._canvas_inpaint_request
+        apply_result = request is not None and self._canvas_inpaint_source_matches(request)
+        self._canvas_inpaint_request = None
         if apply_result:
             self.canvas_inpaint_finished.emit(inpaint_dict)
         else:
-            LOGGER.info('Draw inpaint result discarded: page changed or request cancelled, rectangle=%s',
-                        inpaint_dict.get('inpaint_rect'))
+            reason = 'source image changed' if request is not None else 'page changed or request cancelled'
+            LOGGER.info('Draw inpaint result discarded: %s, rectangle=%s', reason, inpaint_dict.get('inpaint_rect'))
+            if request is not None:
+                self.canvas_inpaint_failed.emit()
+
+    def _canvas_inpaint_source_matches(self, request: dict) -> bool:
+        source = request['source']
+        if source is not self.imgtrans_proj.inpainted_array:
+            return False
+        rect = request.get('inpaint_rect')
+        if rect is not None:
+            x1, y1, x2, y2 = rect
+            source = source[y1:y2, x1:x2]
+        # Undo/redo can edit the same array. Ignore changes outside this crop.
+        return np.array_equal(source, request['img'])
 
     def canvas_inpaint(self, inpaint_dict: dict) -> None:
         """Freeze drawing selections until module preparation and the worker finish.
@@ -2387,6 +2396,7 @@ class ModuleManager(QObject):
         # The page and drawing selections may change while an older job finishes.
         self._pending_canvas_inpaint = {
             **inpaint_dict,
+            'source': self.imgtrans_proj.inpainted_array,
             'img': inpaint_dict['img'].copy(),
             'mask': inpaint_dict['mask'].copy(),
             'inpainter': draw.inpainter,
@@ -2404,6 +2414,9 @@ class ModuleManager(QObject):
             or self._pending_batch_package_success is not None
         ):
             return
+        if not self._canvas_inpaint_source_matches(self._pending_canvas_inpaint):
+            self._fail_pending_canvas_inpaint('source image changed')
+            return
         self._prepare_modules_then(
             [('inpainter', self._pending_canvas_inpaint['inpainter'])],
             self._start_canvas_inpaint,
@@ -2416,31 +2429,33 @@ class ModuleManager(QObject):
         if (self._pending_canvas_inpaint is None or self.inpaint_thread.isRunning()
                 or self.imgtrans_thread.isRunning()):
             return
+        if not self._canvas_inpaint_source_matches(self._pending_canvas_inpaint):
+            self._fail_pending_canvas_inpaint('source image changed')
+            return
         if not self._module_ready('inpainter', self._pending_canvas_inpaint['inpainter']):
             self._continue_canvas_inpaint()
             return
         inpaint_dict = self._pending_canvas_inpaint
         self._pending_canvas_inpaint = None
-        inpaint_dict.pop('inpainter')
-        self._canvas_inpaint_source = self.imgtrans_proj.inpainted_array
-        self.run_canvas_inpaint = True
-        self.inpaint(**inpaint_dict)
+        self._canvas_inpaint_request = inpaint_dict
+        worker_request = dict(inpaint_dict)
+        worker_request.pop('source')
+        worker_request.pop('inpainter')
+        # Native modules may edit their input; keep the comparison snapshot intact.
+        worker_request['img'] = inpaint_dict['img'].copy()
+        self.inpaint(**worker_request)
 
-    def _fail_pending_canvas_inpaint(self) -> None:
+    def _fail_pending_canvas_inpaint(self, reason: str = 'preparation failed or cancelled') -> None:
         if self._pending_canvas_inpaint is not None:
-            LOGGER.debug('Draw inpaint preparation failed or cancelled: inpainter=%r, rectangle=%s',
+            LOGGER.debug('Draw inpaint queued request discarded: %s; inpainter=%r, rectangle=%s', reason,
                          self._pending_canvas_inpaint['inpainter'],
                          self._pending_canvas_inpaint.get('inpaint_rect'))
             self._pending_canvas_inpaint = None
             self.canvas_inpaint_failed.emit()
 
     def on_canvas_inpaint_failed(self) -> None:
-        notify = (
-            self.run_canvas_inpaint
-            and self._canvas_inpaint_source is self.imgtrans_proj.inpainted_array
-        )
-        self.run_canvas_inpaint = False
-        self._canvas_inpaint_source = None
+        notify = self._canvas_inpaint_request is not None
+        self._canvas_inpaint_request = None
         if notify:
             self.canvas_inpaint_failed.emit()
     
@@ -2544,11 +2559,10 @@ class ModuleManager(QObject):
         if self._pending_canvas_inpaint is not None:
             LOGGER.info('Draw inpaint queued request discarded: page changed, rectangle=%s',
                         self._pending_canvas_inpaint.get('inpaint_rect'))
-        if self.run_canvas_inpaint:
+        if self._canvas_inpaint_request is not None:
             LOGGER.info('Draw inpaint cancellation requested: page changed.')
         self._pending_canvas_inpaint = None
-        self.run_canvas_inpaint = False
-        self._canvas_inpaint_source = None
+        self._canvas_inpaint_request = None
         if not self.imgtrans_thread.isRunning():
             # Killing a QThread inside native model inference can abort the
             # process. Let it finish, discard its result, then run the next page.

@@ -465,6 +465,20 @@ class LLMProfileMigrationTest(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(profiles_from_json(value), [])
 
+    def test_profile_import_disables_invalid_backends_without_discarding_fields(self) -> None:
+        for backend in (None, ['codex'], 42, 'unsupported'):
+            with self.subTest(backend=backend), self.assertLogs('BallonTranslator', level='WARNING'):
+                imported = profiles_from_json(json.dumps({
+                    'profile_type': 'llm', 'backend': backend,
+                    'name': 'Saved profile', 'model': 'saved-model',
+                    'prompt': 'Saved instructions', 'api_key': 'test-key',
+                }))[0]
+            self.assertEqual(imported.backend, 'unavailable')
+            self.assertEqual(imported.name, 'Saved profile')
+            self.assertEqual(imported.model, 'saved-model')
+            self.assertEqual(imported.prompt, 'Saved instructions')
+            self.assertEqual(imported.api_key, 'test-key')
+
     def test_profile_import_normalizes_invalid_and_unknown_fields(self):
         imported = profiles_from_json(json.dumps({
             'profile_type': 'llm',

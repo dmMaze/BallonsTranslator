@@ -515,7 +515,9 @@ def _normalize_profile_data(data: Mapping) -> Dict[str, Any]:
         elif expected is int:
             if isinstance(value, int) and not isinstance(value, bool):
                 normalized[key] = value
-        elif isinstance(value, expected):
+        elif key == 'backend' or isinstance(value, expected):
+            # Keep invalid backend values for __post_init__ to disable. Dropping
+            # one here would silently select the default API transport instead.
             normalized[key] = value
     return normalized
 

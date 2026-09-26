@@ -101,9 +101,11 @@ app's ChatGPT account and cannot fall back to API billing.
 
 `CodexSignInRequiredError` distinguishes missing sign-in from rejected authentication
 and stops retries and the current Run, including remaining headless directories.
-HTTP 401 receives one token-renewal attempt before becoming an invalid sign-in;
-permission, quota, and model-access failures remain separate. Invalid authentication
-is cached in memory until successful sign-in, without deleting the saved credentials.
+HTTP, JSON, and streamed authentication rejections receive one replay with renewed
+credentials, reusing any concurrent renewal. Only rejection of the current token
+can mark sign-in invalid; permission, quota, and model-access failures remain
+separate. Invalid authentication is cached until credentials are renewed or the
+user signs in, without deleting the saved credentials.
 The GUI account controller owns one recovery dialog shared by refresh and module
 failures. Signing in updates that dialog but never replays interrupted work.
 Startup without saved credentials remains quiet.
@@ -174,7 +176,8 @@ the native flat-background fill shortcut.
 `ModuleManager.canvas_inpaint()` snapshots the draw module and copied profile when
 submitted, so queued requests retain their image/reasoning models, prompt, and mask mode without
 changing saved profiles. Canvas and Run prepare and use the same inpainter only after its worker
-is idle; a page change discards queued canvas work and obsolete results.
+is idle. Reloading the page or editing the request's crop discards queued work and obsolete
+results; edits outside that crop remain valid.
 Draw request logs report the backend, model, rectangle, mask mode, and elapsed
 worker time without logging prompts or image data; local background fills are
 logged in the drawing panel.

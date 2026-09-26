@@ -17,6 +17,7 @@ from qtpy.QtWidgets import QApplication, QToolTip
 from ballontranslator.modules import codex
 from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.drawingpanel import DrawingPanel
+from ballontranslator.ui.drawing_commands import InpaintUndoCommand
 from ballontranslator.ui.llm_modality import LLM_MODALITY_IMAGE
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.module_manager import ModuleManager
@@ -261,6 +262,29 @@ class DrawingInpainterTest(unittest.TestCase):
             self.panel.inpaintRect(request)
         self.assertIn('Draw inpaint completed: background fill', '\n'.join(logs.output))
         np.testing.assert_array_equal(project.inpainted_array, np.full((3, 3, 3), 255, np.uint8))
+
+    def test_staged_native_background_fill_does_not_overwrite_undo(self) -> None:
+        project = self.canvas.imgtrans_proj
+        project.inpainted_array = np.full((8, 8, 3), 10, np.uint8)
+        project.mask_array = np.zeros((8, 8), np.uint8)
+        with patch.object(self.canvas, 'updateLayers'), patch.object(pcfg.module, 'check_need_inpaint', True):
+            self.canvas.push_undo_command(InpaintUndoCommand(
+                self.canvas, np.full((8, 8, 3), 20, np.uint8),
+                np.full((8, 8), 255, np.uint8), [0, 0, 8, 8],
+            ))
+            self.panel.rectTool.click()
+            self.panel.rectPanel.autoChecker.setChecked(False)
+            self.panel.rectPanel.methodComboBox.setCurrentIndex(0)
+            self.panel.on_end_create_rect(QRectF(1, 1, 5, 5), 0)
+            self.assertFalse(self.panel.rect_inpaint_dict['need_inpaint'])
+            self.canvas.undo()
+            self.panel.on_rect_inpaintbtn_clicked()
+            np.testing.assert_array_equal(project.inpainted_array, 10)
+            np.testing.assert_array_equal(project.mask_array, 0)
+            self.assertIsNone(self.panel.rect_inpaint_dict)
+            self.assertEqual(self.canvas.draw_undo_stack.index(), 0)
+            self.canvas.redo()
+            np.testing.assert_array_equal(project.inpainted_array, 20)
 
 
 if __name__ == '__main__':

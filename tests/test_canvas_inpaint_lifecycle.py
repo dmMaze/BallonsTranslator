@@ -16,6 +16,9 @@ from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import QApplication, QWidget
 
 from ballontranslator.ui.configpanel import ConfigPanel
+from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.drawing_commands import InpaintUndoCommand
+from ballontranslator.ui.drawingpanel import DrawingPanel
 from ballontranslator.ui.custom_widget import ImgtransProgressMessageBox
 from ballontranslator.ui import module_manager as M
 from ballontranslator.modules.inpaint.inpaint_llm import LLMInpaint
@@ -406,6 +409,116 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
         self.app.processEvents()
         self.assertFalse(self.completed)
         self.assertIsNone(self.manager._pending_canvas_inpaint)
+
+    def test_same_page_reload_discards_queued_draw_before_module_preparation(self) -> None:
+        self.model.release.clear()
+        self.manager.imgtrans_thread.job = lambda: self.model.inpaint(
+            self.project.inpainted_array, self.request()['mask']
+        )
+        self.manager.imgtrans_thread.start()
+        self.wait_until(self.model.started.is_set)
+        self.manager.canvas_inpaint(self.request())
+        # The current-page RUN completion reloads arrays without a page-change signal.
+        self.project.inpainted_array = np.full((8, 8, 3), 20, np.uint8)
+        with patch.object(self.manager, '_prepare_modules_then', side_effect=AssertionError('Stale request prepared')):
+            self.model.release.set()
+            self.wait_until(lambda: len(self.failed) == 1)
+        self.assertFalse(self.completed)
+        self.assertIsNone(self.manager._pending_canvas_inpaint)
+        np.testing.assert_array_equal(self.project.inpainted_array, 20)
+
+    def test_source_edit_during_module_preparation_discards_queued_draw(self) -> None:
+        thread = self.manager.inpaint_thread
+        thread.module = None
+        prepared = threading.Event()
+        release = threading.Event()
+        set_module = thread._set_module
+
+        def prepare_then_hold(name: str) -> None:
+            set_module(name)
+            prepared.set()
+            release.wait(3)
+
+        with (
+            patch.object(thread, '_prepare_module_class', return_value=ControlledInpainter),
+            patch.object(thread, '_set_module', prepare_then_hold),
+            patch.object(self.manager, '_missing_module_requirements_for_modules', return_value=[]),
+        ):
+            try:
+                self.manager.canvas_inpaint(self.request())
+                self.wait_until(prepared.is_set)
+                self.project.inpainted_array[2:4, 2:4] = 20
+            finally:
+                release.set()
+            self.wait_until(lambda: len(self.failed) == 1)
+        self.assertFalse(self.completed)
+        self.assertFalse(thread.module.started.is_set())
+
+    def test_late_result_cannot_overwrite_real_canvas_undo(self) -> None:
+        canvas = Canvas()
+        canvas.imgtrans_proj = self.project
+        self.project.mask_array = np.zeros((8, 8), np.uint8)
+        panel = DrawingPanel(canvas, self.window)
+        panel.initDLModule(self.manager)
+        try:
+            with patch.object(canvas, 'updateLayers'):
+                canvas.push_undo_command(InpaintUndoCommand(
+                    canvas, np.full((8, 8, 3), 20, np.uint8),
+                    np.full((8, 8), 255, np.uint8), [0, 0, 8, 8],
+                ))
+                self.model.release.clear()
+                self.manager.canvas_inpaint(self.request())
+                self.wait_until(self.model.started.is_set)
+                canvas.undo()
+                self.model.release.set()
+                self.wait_until(lambda: len(self.failed) == 1)
+                self.assertFalse(self.completed)
+                np.testing.assert_array_equal(self.project.inpainted_array, 10)
+                np.testing.assert_array_equal(self.project.mask_array, 0)
+                self.assertEqual(canvas.draw_undo_stack.index(), 0)
+                canvas.redo()
+                np.testing.assert_array_equal(self.project.inpainted_array, 20)
+        finally:
+            self.model.release.set()
+            canvas.deleteLater()
+
+    def test_outside_crop_edit_and_mutating_worker_keep_rgba_result_valid(self) -> None:
+        self.project.inpainted_array = np.full((8, 8, 4), 10, np.uint8)
+        self.project.mask_array = np.zeros((8, 8), np.uint8)
+        canvas = Canvas()
+        canvas.imgtrans_proj = self.project
+        panel = DrawingPanel(canvas, self.window)
+        panel.initDLModule(self.manager)
+        request = {
+            'img': self.project.inpainted_array[2:6, 2:6],
+            'mask': np.full((4, 4), 255, np.uint8),
+            'inpaint_rect': [2, 2, 6, 6],
+        }
+        self.model.release.clear()
+
+        def mutate_input(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+            self.model.started.set()
+            self.model.release.wait(3)
+            image[..., :3] += 1
+            return image
+
+        try:
+            with patch.object(self.model, 'inpaint', side_effect=mutate_input), patch.object(canvas, 'updateLayers'):
+                self.manager.canvas_inpaint(request)
+                self.wait_until(self.model.started.is_set)
+                self.project.inpainted_array[0, 0] = 99
+                self.model.release.set()
+                self.wait_until(lambda: len(self.completed) == 1)
+                self.assertFalse(self.failed)
+                np.testing.assert_array_equal(self.project.inpainted_array[2:6, 2:6, :3], 11)
+                np.testing.assert_array_equal(self.project.inpainted_array[2:6, 2:6, 3], 10)
+                np.testing.assert_array_equal(self.project.inpainted_array[0, 0], 99)
+                canvas.undo()
+                np.testing.assert_array_equal(self.project.inpainted_array[2:6, 2:6], 10)
+                np.testing.assert_array_equal(self.project.inpainted_array[0, 0], 99)
+        finally:
+            self.model.release.set()
+            canvas.deleteLater()
 
     def test_codex_canvas_recovers_after_pipeline_stop_and_cancels_old_page(self) -> None:
         from ballontranslator.modules import codex

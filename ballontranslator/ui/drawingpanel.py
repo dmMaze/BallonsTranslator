@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
 from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
@@ -1381,6 +1383,12 @@ class DrawingPanel(Widget):
         ballon_mask = inpaint_dict['ballon_mask']
         if (inpaint_dict['use_mask'] and pcfg.drawpanel.inpainter != LLM_INPAINT_KEY
                 and not need_inpaint and pcfg.module.check_need_inpaint):
+            x1, y1, x2, y2 = inpaint_dict['inpaint_rect']
+            if not np.array_equal(img, self.canvas.imgtrans_proj.inpainted_array[y1:y2, x1:x2]):
+                LOGGER.info('Draw inpaint result discarded: source image changed, rectangle=%s',
+                            inpaint_dict['inpaint_rect'])
+                self._finish_inpaint()
+                return
             bg_pixel_value = [bground_rgb[ii] for ii in range(3)]
             balloon_areas = np.where(ballon_mask > 0)
             if len(img.shape) == 3 and img.shape[2] == 4:

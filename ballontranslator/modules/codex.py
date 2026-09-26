@@ -97,13 +97,6 @@ def _run(operation: Coroutine, stop_event: Optional[threading.Event]) -> Any:
 
     try:
         return asyncio.run(run())
-    except CodexSignInRequiredError as error:
-        # Do not change generation here: the originating auth error must reach
-        # the UI. A late failure must not invalidate a newly committed account.
-        with account._state_lock:
-            if error.invalid and generation == account.generation and not account.changing:
-                account.auth_invalid = True
-        raise
     except (LLMRequestStopped, LLMUserActionRequiredError, ContextLengthError):
         raise
     except Exception:
@@ -183,6 +176,9 @@ def _raise_service_error(payload: Dict, status: Optional[int] = None) -> None:
 async def _check_response(response: httpx.Response) -> None:
     if response.is_success:
         return
+    if response.status_code == 401:
+        # The status establishes rejection even if its body is interrupted.
+        raise CodexSignInRequiredError(invalid=True)
     await response.aread()
     try:
         payload = response.json()
@@ -230,6 +226,17 @@ class CodexAccount:
     def invalidate(self) -> None:
         with self._state_lock:
             self.generation += 1
+
+    def reject_access_token(self, token: str, generation: int) -> None:
+        """Publish an exhausted auth failure only for the token still in use."""
+        with self._state_lock:
+            if generation != self.generation or self.changing:
+                raise LLMRequestStopped()
+            if self._credentials is None or self._credentials['access_token'] != token:
+                # Another request renewed the account while this response was
+                # in flight. Let the owner retry without invalidating its token.
+                raise RuntimeError('Codex authentication changed during the request. Retry the request.')
+            self.auth_invalid = True
 
     def _set_storage_mode(self, mode: str) -> None:
         if self._storage_mode != mode:
@@ -555,20 +562,25 @@ class CodexAccount:
 
     def catalog(self, stop_event: threading.Event) -> Dict:
         self.require_sign_in(stop_event)
+        generation = self.generation
 
         async def read() -> Dict:
             async with _http_client() as client:
                 rejected = ''
                 for attempt in range(2):
                     tokens = await self.tokens(client, rejected)
-                    response = await client.get(API_URL + '/models', params={'client_version': CATALOG_VERSION}, headers=_headers(tokens))
-                    if response.status_code == 401 and attempt == 0:
-                        rejected = tokens['access_token']
-                        continue
-                    await _check_response(response)
-                    payload = response.json()
-                    if isinstance(payload, dict) and payload.get('error'):
-                        _raise_service_error(payload)
+                    try:
+                        response = await client.get(API_URL + '/models', params={'client_version': CATALOG_VERSION}, headers=_headers(tokens))
+                        await _check_response(response)
+                        payload = response.json()
+                        if isinstance(payload, dict) and payload.get('error'):
+                            _raise_service_error(payload)
+                    except CodexSignInRequiredError:
+                        if attempt == 0:
+                            rejected = tokens['access_token']
+                            continue
+                        self.reject_access_token(tokens['access_token'], generation)
+                        raise
                     if not isinstance(payload, dict) or not isinstance(payload.get('models'), list):
                         raise RuntimeError('Codex returned an invalid model catalog.')
                     models = {}
@@ -668,25 +680,29 @@ def request_image(
             rejected = ''
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
-                async with client.stream('POST', API_URL + endpoint, headers=_headers(tokens, session_key),
-                                         json=payload, timeout=timeout) as response:
-                    if response.status_code == 401 and attempt == 0:
+                try:
+                    async with client.stream('POST', API_URL + endpoint, headers=_headers(tokens, session_key),
+                                             json=payload, timeout=timeout) as response:
+                        await _check_response(response)
+                        if reasoning_model:
+                            # Responses may repeat the full image in output_item.done
+                            # and response.completed; both copies count toward the bound.
+                            return await _read_completion(response, max_response_bytes=2 * image_generation.MAX_IMAGE_RESPONSE_BYTES)
+                        body = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            body.extend(chunk)
+                            if len(body) > image_generation.MAX_IMAGE_RESPONSE_BYTES:
+                                raise LLMUserActionRequiredError('Codex returned an oversized image response. Reduce the request size.')
+                        result = json.loads(body)
+                        if isinstance(result, dict) and result.get('error'):
+                            _raise_service_error(result)
+                        return result
+                except CodexSignInRequiredError:
+                    if attempt == 0:
                         rejected = tokens['access_token']
                         continue
-                    await _check_response(response)
-                    if reasoning_model:
-                        # Responses may repeat the full image in output_item.done
-                        # and response.completed; both copies count toward the bound.
-                        return await _read_completion(response, max_response_bytes=2 * image_generation.MAX_IMAGE_RESPONSE_BYTES)
-                    body = bytearray()
-                    async for chunk in response.aiter_bytes():
-                        body.extend(chunk)
-                        if len(body) > image_generation.MAX_IMAGE_RESPONSE_BYTES:
-                            raise LLMUserActionRequiredError('Codex returned an oversized image response. Reduce the request size.')
-                    result = json.loads(body)
-                    if isinstance(result, dict) and result.get('error'):
-                        _raise_service_error(result)
-                    return result
+                    account.reject_access_token(tokens['access_token'], generation)
+                    raise
 
     response = _run(request(), stop_event)
     if reasoning_model:
@@ -798,6 +814,7 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
     if stop_event is not None and stop_event.is_set():
         raise LLMRequestStopped()
     account.require_sign_in(stop_event)
+    generation = account.generation
     model = api_args['model']
     entry = pcfg.module.codex_models.get(model)
     if not entry:
@@ -822,12 +839,16 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
             rejected = ''
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
-                async with client.stream('POST', API_URL + '/responses', headers=_headers(tokens, cache_key), json=payload) as response:
-                    if response.status_code == 401 and attempt == 0:
+                try:
+                    async with client.stream('POST', API_URL + '/responses', headers=_headers(tokens, cache_key), json=payload) as response:
+                        await _check_response(response)
+                        result = await _read_completion(response)
+                except CodexSignInRequiredError:
+                    if attempt == 0:
                         rejected = tokens['access_token']
                         continue
-                    await _check_response(response)
-                    result = await _read_completion(response)
+                    account.reject_access_token(tokens['access_token'], generation)
+                    raise
                 messages = [item for item in result.get('output', [])
                             if item.get('type') == 'message' and item.get('role') == 'assistant'
                             and item.get('phase') in (None, 'final_answer')]
