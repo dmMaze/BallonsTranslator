@@ -172,6 +172,14 @@ One logical action should publish one user-visible command. Guard undo/redo
 against recursively creating commands, and never send paint-only or
 geometry-only changes to the paired editor as text changes.
 
+`editing/move_session.py` owns G-to-move previews for selected text items and
+commits one `MoveBlkItemsCommand`. It changes logical positions without adding
+a transform stage; Grid control-point editing retains its own modal input.
+Cancel previews before saving, replacing items, changing zoom, or another edit
+captures geometry. Geometry commands and font-size drags use the formatting
+panel's pending-edit resolver before taking snapshots; stack insertion is too
+late for commands that capture or mutate state during construction.
+
 `formatting/size_edit_session.py` owns font-size scrubbing. Whole-item drags
 use transient transform geometry, then commit proportional rich-text sizes
 and logical bounds through one document-aware canvas command. An editing

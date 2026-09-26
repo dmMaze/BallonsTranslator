@@ -27,6 +27,7 @@ from .custom_widget import ScrollBar, FadeLabel
 from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem, PenShape
 from .page_search_widget import PageSearchWidget
 from .text_engine.editing.commands import MoveByKeyCommand
+from .text_engine.editing.move_session import TextItemMoveSession
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
@@ -367,6 +368,7 @@ class Canvas(QGraphicsScene):
         self.textlayer_trans_slider: QSlider = None
         self.originallayer_trans_slider: QSlider = None
         self.alpha_mask_edit_session = TextAlphaMaskEditSession(self)
+        self.text_move_session = TextItemMoveSession(self)
 
     def on_switch_item(
         self,
@@ -454,6 +456,7 @@ class Canvas(QGraphicsScene):
         stack_index: int,
         **callbacks: Callable[..., None],
     ) -> None:
+        self.text_move_session.cancel()
         self.alpha_mask_edit_session.deactivate()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
@@ -473,6 +476,7 @@ class Canvas(QGraphicsScene):
         stack_index: int,
         **callbacks: Callable[..., None],
     ) -> None:
+        self.text_move_session.cancel()
         self.alpha_mask_edit_session.deactivate()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
@@ -497,6 +501,7 @@ class Canvas(QGraphicsScene):
             self.txtblkShapeControl.setBlkItem(selected[0])
 
     def clear_text_transform_controls(self) -> None:
+        self.text_move_session.cancel()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
         had_binding = (
@@ -536,6 +541,7 @@ class Canvas(QGraphicsScene):
             self.refresh_text_shape_control()
 
     def render_result_img(self) -> QImage:
+        self.text_move_session.cancel()
         self.inpaintLayer.hide()
         tlayer_opacity_before = self.textLayer.opacity()
         tlayer_visible = self.textLayer.isVisible()
@@ -677,7 +683,8 @@ class Canvas(QGraphicsScene):
 
         scale_changed = self.scale_factor != s_f
         if scale_changed:
-            # The guide is stored in scene coordinates while text items scale.
+            # Scene-space gestures retain the scale from their starting frame.
+            self.text_move_session.cancel()
             self.cancel_path_reorder()
         self.scale_factor = s_f
         self.baseLayer.setScale(self.scale_factor)
@@ -716,6 +723,7 @@ class Canvas(QGraphicsScene):
         self.scaleFactorLabel.startFadeAnimation()
 
     def on_selection_changed(self) -> None:
+        self.text_move_session.cancel()
         self.alpha_mask_edit_session.handle_selection_changed()
         if self.txtblkShapeControl.isVisible():
             blk_item = self.txtblkShapeControl.blk_item
@@ -785,19 +793,28 @@ class Canvas(QGraphicsScene):
 
     def handle_transform_modal_shortcut(
         self,
-        key,
-        modifiers=Qt.KeyboardModifier.NoModifier,
+        key: int,
+        modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
     ) -> bool:
         if (
             self.editing_textblkitem is not None
             or self.rubber_band_origin is not None
         ):
             return False
+        if self.text_move_session.handle_shortcut(key, modifiers):
+            return True
         control = self.active_text_transform_control()
-        return (
+        if (
             control is not None
             and not control.item.isEditing()
             and control.handle_shortcut(key, modifiers)
+        ):
+            return True
+        return (
+            key == QKEY.Key_G
+            and modifiers == Qt.KeyboardModifier.NoModifier
+            and control is not self.txtblkGridControl
+            and self.text_move_session.start()
         )
 
     def start_projective_scale(self) -> bool:
@@ -1045,6 +1062,9 @@ class Canvas(QGraphicsScene):
             self.path_reorder_finished.emit(touched_ids)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.text_move_session.handle_mouse_move(event):
+            event.accept()
+            return
         if self.alpha_mask_edit_session.handle_mouse_move(event):
             event.accept()
             return
@@ -1098,6 +1118,7 @@ class Canvas(QGraphicsScene):
         return self.drawMode() and self.gv.isVisible() and QApplication.keyboardModifiers() == Qt.KeyboardModifier.AltModifier
 
     def clearToolStates(self) -> None:
+        self.text_move_session.cancel()
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.end_scale_tool.emit()
@@ -1151,6 +1172,9 @@ class Canvas(QGraphicsScene):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if self.text_move_session.handle_mouse_press(event):
+            event.accept()
+            return
         if self.alpha_mask_edit_session.handle_mouse_press(event):
             event.accept()
             return
@@ -1248,6 +1272,9 @@ class Canvas(QGraphicsScene):
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if self.text_move_session.handle_mouse_release(event):
+            event.accept()
+            return
         if self.alpha_mask_edit_session.handle_mouse_release(event):
             event.accept()
             return
@@ -1429,6 +1456,7 @@ class Canvas(QGraphicsScene):
             self.gv.magic_wand_hover_left.emit()
 
     def setPaintMode(self, painting: bool) -> None:
+        self.text_move_session.cancel()
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         if self.creating_textblock:
@@ -1455,6 +1483,7 @@ class Canvas(QGraphicsScene):
         self.setTextLayerTransparency(slider_value / 100)
 
     def setTextBlockMode(self, mode: bool) -> None:
+        self.text_move_session.cancel()
         if mode:
             self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
@@ -1575,6 +1604,7 @@ class Canvas(QGraphicsScene):
                 self.editing_textblkitem = textitem
 
     def clear_states(self) -> None:
+        self.text_move_session.cancel()
         self.hide_rubber_band()
         if self._text_creation_cursor_active:
             self._clear_text_creation_cursor()
@@ -1639,7 +1669,9 @@ class Canvas(QGraphicsScene):
             self.num_pushed_drawstep += 1
             self.on_drawstack_changed()
 
-    def push_text_command(self, command: QUndoCommand, update_pushed_step=True):
+    def push_text_command(self, command: QUndoCommand, update_pushed_step: bool = True) -> None:
+        if self.text_move_session.active:
+            self.text_move_session.cancel()
         self.cancel_path_reorder()
         if command is not None:
             self.text_undo_stack.push(command)
@@ -1660,18 +1692,21 @@ class Canvas(QGraphicsScene):
             self.setProjSaveState(False)
         self.textstack_changed.emit()
 
-    def redo_textedit(self):
+    def redo_textedit(self) -> None:
+        self.text_move_session.cancel()
         self.cancel_path_reorder()
         self.num_pushed_textstep += 1
         self.text_undo_stack.redo()
 
-    def undo_textedit(self):
+    def undo_textedit(self) -> None:
+        self.text_move_session.cancel()
         self.cancel_path_reorder()
         if self.num_pushed_textstep > 0:
             self.num_pushed_textstep -= 1
         self.text_undo_stack.undo()
 
-    def redo(self):
+    def redo(self) -> None:
+        self.text_move_session.cancel()
         self.cancel_path_reorder()
         if self.textEditMode():
             undo_stack = self.text_undo_stack
@@ -1686,7 +1721,8 @@ class Canvas(QGraphicsScene):
         if undo_stack is not None:
             undo_stack.redo()
 
-    def undo(self):
+    def undo(self) -> None:
+        self.text_move_session.cancel()
         self.cancel_path_reorder()
         if self.textEditMode():
             undo_stack = self.text_undo_stack

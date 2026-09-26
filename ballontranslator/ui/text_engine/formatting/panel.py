@@ -1017,6 +1017,7 @@ class FontFormatPanel(Widget):
             self, self.texteffect_panel
         )
         self.font_size_session = FontSizeEditSession(self)
+        self.text_move_session = getattr(SW.canvas, 'text_move_session', None)
         self.alpha_mask_session = getattr(
             SW.canvas, 'alpha_mask_edit_session', None
         )
@@ -1294,6 +1295,8 @@ class FontFormatPanel(Widget):
         self._restore_ruby_edit_focus(item)
 
     def resolve_text_transform_edits_for_save(self) -> None:
+        if self.text_move_session is not None:
+            self.text_move_session.cancel()
         self.font_size_session.cancel()
         self.fontsizebox.fcombobox.finish_edit()
         if self.alpha_mask_session is not None:
@@ -1306,6 +1309,8 @@ class FontFormatPanel(Widget):
         self.text_effect_session.stop_image_generation(detach_card=True)
 
     def resolve_text_transform_edits_for_history_change(self) -> None:
+        if self.text_move_session is not None:
+            self.text_move_session.cancel()
         self.font_size_session.cancel()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_history_change()
@@ -1313,6 +1318,8 @@ class FontFormatPanel(Widget):
         self.text_effect_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self) -> None:
+        if self.text_move_session is not None:
+            self.text_move_session.cancel()
         self.font_size_session.cancel()
         self.fontsizebox.fcombobox.finish_edit()
         if self.alpha_mask_session is not None:
@@ -1321,6 +1328,8 @@ class FontFormatPanel(Widget):
         self.text_transform_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self) -> None:
+        if self.text_move_session is not None:
+            self.text_move_session.cancel()
         self.font_size_session.cancel()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.cancel_for_scene_change()
