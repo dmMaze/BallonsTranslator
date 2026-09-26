@@ -628,10 +628,10 @@ class BottomBar(Widget):
         self.originalSlider.setFixedWidth(150)
         self.originalSlider.setRange(0, 100)
 
-        self.textlayerSlider = PaintQSlider(self.tr("Text layer opacity"), Qt.Orientation.Horizontal, self)
-        self.textlayerSlider.setFixedWidth(150)
-        self.textlayerSlider.setValue(100)
-        self.textlayerSlider.setRange(0, 100)
+        self.editingLayerSlider = PaintQSlider(self.tr("Editing layer opacity"), Qt.Orientation.Horizontal, self)
+        self.editingLayerSlider.setFixedWidth(150)
+        self.editingLayerSlider.setValue(100)
+        self.editingLayerSlider.setRange(0, 100)
         
         self.hlayout.addWidget(self.textdet_selector)
         self.hlayout.addWidget(self.ocr_selector)
@@ -641,7 +641,7 @@ class BottomBar(Widget):
         # self.hlayout.addWidget(self.transTranspageBtn)
         # self.hlayout.addWidget(self.inpainterStatBtn)
         self.hlayout.addSpacerItem(QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
-        self.hlayout.addWidget(self.textlayerSlider)
+        self.hlayout.addWidget(self.editingLayerSlider)
         self.hlayout.addWidget(self.originalSlider)
         self.hlayout.addWidget(self.paintChecker)
         self.hlayout.addWidget(self.texteditChecker)

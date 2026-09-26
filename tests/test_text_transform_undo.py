@@ -4,6 +4,7 @@ import math
 import os
 import unittest
 from types import MethodType, SimpleNamespace
+from typing import Sequence
 from unittest.mock import patch
 
 import cv2
@@ -15,12 +16,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
+    QCursor,
     QDragEnterEvent,
     QDropEvent,
     QImage,
     QInputMethodEvent,
     QKeyEvent,
     QPainter,
+    QPixmap,
     QTextCharFormat,
     QTextCursor,
 )
@@ -1543,6 +1546,330 @@ class TextTransformPanelTest(TextTransformTestBase):
         panel.set_transform_items(mixed)
         self.assertEqual(panel.transform_panels, [])
         self.assertFalse(panel.transform_mixed_label.isHidden())
+
+
+class TextItemMoveTest(TextTransformTestBase):
+    def setUp(self) -> None:
+        self.host = QWidget()
+        self.canvas = Canvas(self.host)
+        self.canvas.editor_index = 1
+        self.canvas.imgtrans_proj = ProjImgTrans()
+        canvas_patch = patch.object(SW, 'canvas', self.canvas)
+        canvas_patch.start()
+        self.addCleanup(canvas_patch.stop)
+        self.addCleanup(setattr, C, 'active_format', C.active_format)
+        with patch.object(shared, 'register_view_widget', create=True):
+            self.panel = TextPanel(self.app, self.host)
+        self.panel.formatpanel.global_format = FontFormat()
+        self.manager = SceneTextManager(
+            self.app, self.host, self.canvas, self.panel, parent=self.host,
+        )
+        self.canvas.baseLayer.setRect(QRectF(0, 0, 600, 400))
+        self.canvas._set_scene_scale(1.0)
+        self.items = []
+        self.pairs = []
+        for index in range(2):
+            x, y = 40 + 240 * index, 50
+            block = TextBlock(
+                [x, y, x + 200, y + 120],
+                _bounding_rect=[x, y, 200, 120],
+                translation=TEST_LINES[index],
+                fontformat=FontFormat(font_size=16, vertical=bool(index)),
+            )
+            item = self.manager.addTextBlock(block)
+            item.setSelected(True)
+            self.items.append(item)
+            self.pairs.append(self.manager.pairwidget_list[-1])
+        self.canvas.imgtrans_proj.pages = {'page.png': [item.blk for item in self.items]}
+        self.canvas.imgtrans_proj.current_img = 'page.png'
+        self.canvas.gv.resize(900, 650)
+        self.canvas.gv.show()
+        self.canvas.gv.setFocus()
+        self.app.processEvents()
+        self.manager._update_selection_panels(self.items)
+
+    def tearDown(self) -> None:
+        self.canvas.text_move_session.cancel()
+        self.canvas.clear_text_transform_controls()
+        self.canvas.text_undo_stack.clear()
+        self.manager.clearSceneTextitems()
+        for item in self.items:
+            item.geometry_controller.release_render_resources()
+        self.canvas.gv.close()
+        self.canvas.gv.deleteLater()
+        self.host.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+
+    def _begin_move(self) -> QPointF:
+        view = self.canvas.gv
+        start = view.viewport().rect().center()
+        QTest.mouseMove(view.viewport(), start)
+        with patch.object(QCursor, 'pos', return_value=view.viewport().mapToGlobal(start)):
+            QTest.keyClick(view.viewport(), Qt.Key.Key_G)
+        self.assertTrue(self.canvas.text_move_session.active)
+        return view.mapToScene(start)
+
+    def _move_mouse(self, position: QPointF) -> QPointF:
+        view = self.canvas.gv
+        target = view.mapFromScene(position)
+        QTest.mouseMove(view.viewport(), target)
+        self.app.processEvents()
+        return view.mapToScene(target)
+
+    def _assert_positions(self, expected: Sequence[QPointF]) -> None:
+        for item, point in zip(self.items, expected):
+            self.assertAlmostEqual(item.logical_position().x(), point.x())
+            self.assertAlmostEqual(item.logical_position().y(), point.y())
+
+    def test_move_selection_axes_commit_and_undo_preserve_text_and_transforms(self) -> None:
+        first, second = self.items
+        second.set_text_effects(TextEffectStack(effects=(ShadowEffect(),)))
+        second.setAngle(25.0)
+        steps = self._document_steps(self.items, self.pairs)
+        for scale, transform in (
+            (0.5, transform_state(ProjectiveTextTransform(1.2, 0.9, 12.0))),
+            (2.0, transform_state(BendTextTransform(0.35))),
+        ):
+            with self.subTest(scale=scale, transform=transform):
+                second.set_text_transform(transform)
+                self.canvas._set_scene_scale(scale)
+                self.app.processEvents()
+                before = [item.logical_position() for item in self.items]
+                before_rects = [list(item.blk._bounding_rect) for item in self.items]
+                count = self.canvas.text_undo_stack.count()
+                start = self._begin_move()
+                mouse = self._move_mouse(start + QPointF(36, 24))
+                self._assert_positions([point + (mouse - start) / scale for point in before])
+                self.assertEqual(self.canvas.text_undo_stack.count(), count)
+
+                for key, delta in (
+                    (Qt.Key.Key_X, QPointF(42, 20)),
+                    (Qt.Key.Key_Y, QPointF(20, 38)),
+                ):
+                    QTest.keyClick(self.canvas.gv.viewport(), key)
+                    self._assert_positions(before)
+                    axis_start = mouse
+                    mouse = self._move_mouse(axis_start + delta)
+                    displacement = (mouse - axis_start) / scale
+                    if key == Qt.Key.Key_X:
+                        displacement.setY(0)
+                    else:
+                        displacement.setX(0)
+                    after = [point + displacement for point in before]
+                    self._assert_positions(after)
+
+                QTest.mouseClick(
+                    self.canvas.gv.viewport(), Qt.MouseButton.LeftButton,
+                    Qt.KeyboardModifier.NoModifier, self.canvas.gv.mapFromScene(mouse),
+                )
+                self.assertFalse(self.canvas.text_move_session.active)
+                self.assertIsNone(self.canvas.mouseGrabberItem())
+                self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
+                self.assertIsInstance(self.canvas.text_undo_stack.command(count), MoveBlkItemsCommand)
+                self._assert_positions(after)
+                after_rects = [list(item.blk._bounding_rect) for item in self.items]
+                start = self._begin_move()
+                self._move_mouse(start + QPointF(20, 10))
+                self.canvas.undo()
+                self._assert_positions(before)
+                self.assertEqual([item.blk._bounding_rect for item in self.items], before_rects)
+                start = self._begin_move()
+                self._move_mouse(start + QPointF(25, 15))
+                self.canvas.redo()
+                self._assert_positions(after)
+                self.assertEqual([item.blk._bounding_rect for item in self.items], after_rects)
+                self.assertEqual(first.blk.fontformat.text_transform, NEUTRAL)
+                self.assertEqual(second.blk.fontformat.text_transform, transform)
+                self.assertEqual(self._document_steps(self.items, self.pairs), steps)
+                for item, pair in zip(self.items, self.pairs):
+                    self.assertEqual(item.toPlainText(), pair.e_trans.toPlainText())
+
+    def test_move_cancel_and_noop_leave_no_command_or_context_menu(self) -> None:
+        self.items[0].blk.xyxy = [10, 20, 100, 200]
+        saved = json.dumps([item.blk for item in self.items], cls=TextBlkEncoder)
+        before = [item.logical_position() for item in self.items]
+        before_rects = [list(item.blk._bounding_rect) for item in self.items]
+        menus = []
+        self.canvas.context_menu_requested.disconnect()
+        self.canvas.context_menu_requested.connect(menus.append)
+        for key in (Qt.Key.Key_Escape, None):
+            start = self._begin_move()
+            cursor = QCursor(self.canvas.text_move_session._restore_cursor)
+            mouse = self._move_mouse(start + QPointF(35, 25))
+            moved = [item.logical_position() for item in self.items]
+            QTest.keyClick(
+                self.canvas.gv.viewport(), Qt.Key.Key_Right,
+                Qt.KeyboardModifier.ControlModifier,
+            )
+            self._assert_positions(moved)
+            self.assertEqual(
+                json.dumps([item.blk for item in self.items], cls=TextBlkEncoder), saved,
+            )
+            if key is not None:
+                QTest.keyClick(self.canvas.gv.viewport(), key)
+            else:
+                QTest.mouseClick(
+                    self.canvas.gv.viewport(), Qt.MouseButton.RightButton,
+                    Qt.KeyboardModifier.NoModifier, self.canvas.gv.mapFromScene(mouse),
+                )
+            self._assert_positions(before)
+            self.assertEqual(
+                json.dumps([item.blk for item in self.items], cls=TextBlkEncoder), saved,
+            )
+            self.assertEqual([item.blk._bounding_rect for item in self.items], before_rects)
+            self.assertFalse(self.canvas.text_move_session.active)
+            self.assertIsNone(self.canvas.mouseGrabberItem())
+            self.assertEqual(self.canvas.gv.viewport().cursor(), cursor)
+            self.assertEqual(self.canvas.selected_text_items(), self.items)
+        self._begin_move()
+        QTest.keyClick(self.canvas.gv.viewport(), Qt.Key.Key_Return)
+        self.assertEqual(self.canvas.text_undo_stack.count(), 0)
+        self.assertEqual(self.canvas.num_pushed_textstep, 0)
+        self.assertFalse(self.canvas.projstate_unsaved)
+        self.assertEqual(menus, [])
+
+    def test_move_cancels_on_selection_tool_hide_and_save_boundaries(self) -> None:
+        panel = self.panel.formatpanel
+        before = [item.logical_position() for item in self.items]
+        for boundary in (
+            self.canvas.clearSelection,
+            self.canvas.clearToolStates,
+            self.canvas.on_hide_canvas,
+            panel.resolve_text_transform_edits_for_save,
+            panel.resolve_text_transform_edits_for_page_change,
+            panel.cancel_text_transform_edits_for_scene_change,
+        ):
+            with self.subTest(boundary=boundary.__name__):
+                for item in self.items:
+                    item.setSelected(True)
+                start = self._begin_move()
+                self._move_mouse(start + QPointF(30, 20))
+                boundary()
+                self._assert_positions(before)
+                self.assertFalse(self.canvas.text_move_session.active)
+                self.assertIsNone(self.canvas.mouseGrabberItem())
+                self.assertEqual(self.canvas.text_undo_stack.count(), 0)
+
+    def test_delete_recovery_cancels_move_before_capturing_masks(self) -> None:
+        self.items[1].setSelected(False)
+        item = self.items[0]
+        before = item.logical_position()
+        x, y, width, height = item.absBoundingRect()
+        source = np.s_[y:y + height, x:x + width]
+        preview = np.s_[y + 180:y + 180 + height, x:x + width]
+        proj = self.canvas.imgtrans_proj
+        proj.img_array = np.full((400, 600, 3), 200, dtype=np.uint8)
+        proj.inpainted_array = np.full_like(proj.img_array, 128)
+        proj.mask_array = np.zeros((400, 600), dtype=np.uint8)
+        proj.mask_array[source] = 255
+        proj.mask_array[preview] = 255
+        original_mask = proj.mask_array.copy()
+        self.canvas.base_pixmap = QPixmap(600, 400)
+        self.canvas.base_pixmap.fill(Qt.GlobalColor.white)
+
+        start = self._begin_move()
+        self._move_mouse(start + QPointF(0, 180))
+        self.canvas.delete_textblks.emit(1)
+
+        self.assertFalse(self.canvas.text_move_session.active)
+        self.assertEqual(item.logical_position(), before)
+        self.assertIsNone(item.scene())
+        self.assertEqual(self.canvas.text_undo_stack.count(), 1)
+        self.assertTrue(np.all(proj.mask_array[source] == 0))
+        self.assertTrue(np.all(proj.mask_array[preview] == 255))
+        self.assertTrue(np.all(proj.inpainted_array[source] == 200))
+        self.assertTrue(np.all(proj.inpainted_array[preview] == 128))
+
+        self.canvas.undo()
+        self.assertIs(item.scene(), self.canvas)
+        self.assertEqual(item.logical_position(), before)
+        np.testing.assert_array_equal(proj.mask_array, original_mask)
+        self.assertTrue(np.all(proj.inpainted_array == 128))
+        self.canvas.redo()
+        self.assertIsNone(item.scene())
+        self.assertTrue(np.all(proj.mask_array[source] == 0))
+        self.assertTrue(np.all(proj.mask_array[preview] == 255))
+
+    def test_font_size_drag_cancels_move_before_its_undo_snapshot(self) -> None:
+        before = [item.absBoundingRect(qrect=True) for item in self.items]
+        texts = [item.toPlainText() for item in self.items]
+        start = self._begin_move()
+        self._move_mouse(start + QPointF(120, 25))
+        box = self.panel.formatpanel.fontsizebox
+        box.drag_label.drag_started.emit()
+        self.assertFalse(self.canvas.text_move_session.active)
+        self._assert_positions([rect.topLeft() for rect in before])
+        box.drag_label.size_ctrl_changed.emit(30)
+        box.drag_label.btn_released.emit()
+        after = [item.absBoundingRect(qrect=True) for item in self.items]
+        self.assertEqual(self.canvas.text_undo_stack.count(), 1)
+        self.assertNotEqual(before, after)
+        self.canvas.undo()
+        self.assertEqual([item.absBoundingRect(qrect=True) for item in self.items], before)
+        self.canvas.redo()
+        self.assertEqual([item.absBoundingRect(qrect=True) for item in self.items], after)
+        for item, pair, text in zip(self.items, self.pairs, texts):
+            self.assertEqual(item.toPlainText(), text)
+            self.assertEqual(pair.e_trans.toPlainText(), text)
+
+    def test_squeeze_cancels_move_before_its_undo_snapshot(self) -> None:
+        before = [item.absBoundingRect(qrect=True) for item in self.items]
+        start = self._begin_move()
+        self._move_mouse(start + QPointF(120, 25))
+        self.canvas.squeeze_blk.emit()
+        self.assertFalse(self.canvas.text_move_session.active)
+        after = [item.absBoundingRect(qrect=True) for item in self.items]
+        self.assertEqual(self.canvas.text_undo_stack.count(), 1)
+        self.assertNotEqual(before, after)
+        self.canvas.undo()
+        self.assertEqual([item.absBoundingRect(qrect=True) for item in self.items], before)
+        self.canvas.redo()
+        self.assertEqual([item.absBoundingRect(qrect=True) for item in self.items], after)
+
+    def test_zoom_cancels_move_and_releases_modal_input(self) -> None:
+        self.canvas.imgtrans_proj.img_array = np.zeros((400, 600, 3), dtype=np.uint8)
+        before = [item.logical_position() for item in self.items]
+        saved = json.dumps([item.blk for item in self.items], cls=TextBlkEncoder)
+        start = self._begin_move()
+        self._move_mouse(start + QPointF(120, 25))
+        self.canvas.scaleImage(1.0)
+        self.assertTrue(self.canvas.text_move_session.active)
+        self.canvas.scaleImage(2.0)
+        self.assertFalse(self.canvas.text_move_session.active)
+        self.assertIsNone(self.canvas.mouseGrabberItem())
+        self._move_mouse(start + QPointF(140, 25))
+        self._assert_positions(before)
+        self.assertEqual(json.dumps([item.blk for item in self.items], cls=TextBlkEncoder), saved)
+        self.assertEqual(self.canvas.text_undo_stack.count(), 0)
+
+        start = self._begin_move()
+        mouse = self._move_mouse(start + QPointF(40, 20))
+        after = [point + (mouse - start) / 2 for point in before]
+        self._assert_positions(after)
+        QTest.keyClick(self.canvas.gv.viewport(), Qt.Key.Key_Return)
+        self.assertEqual(self.canvas.text_undo_stack.count(), 1)
+        self.canvas.undo()
+        self._assert_positions(before)
+        self.canvas.redo()
+        self._assert_positions(after)
+
+    def test_move_shortcut_requires_nonediting_text_selection(self) -> None:
+        self.canvas.editor_index = 0
+        self.assertFalse(self.canvas.handle_transform_modal_shortcut(Qt.Key.Key_G))
+        self.canvas.editor_index = 1
+        self.assertFalse(self.canvas.handle_transform_modal_shortcut(
+            Qt.Key.Key_G, Qt.KeyboardModifier.ControlModifier,
+        ))
+        self.items[1].setSelected(False)
+        item = self.items[0]
+        item.startEdit()
+        QTest.keyClick(self.canvas.gv.viewport(), Qt.Key.Key_G)
+        self.assertIn('g', item.toPlainText())
+        self.assertFalse(self.canvas.text_move_session.active)
+        item.endEdit()
+        self.canvas.clearSelection()
+        self.assertFalse(self.canvas.handle_transform_modal_shortcut(Qt.Key.Key_G))
 
 
 class TextTransformUndoTest(TextTransformTestBase):
@@ -4703,6 +5030,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             txtblkShapeControl=shape,
             txtblkGridControl=grid,
             txtblkProjectiveControl=projective,
+            text_move_session=SimpleNamespace(cancel=lambda: None),
             alpha_mask_edit_session=SimpleNamespace(
                 deactivate=lambda: calls.append(('mask', None))
             ),
@@ -5137,9 +5465,11 @@ class TextTransformShapeControlTest(TextTransformTestBase):
 
     def test_canvas_routes_grid_modal_key_and_unheld_mouse_following(self):
         canvas = Canvas()
+        canvas.editor_index = 1
         canvas.gv.resize(800, 500)
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(canvas.textLayer)
+        item.setSelected(True)
         item.set_text_transform(transform_state(
             GridTextTransform(2, 2, 'bilinear')
         ))
@@ -5170,6 +5500,7 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         QTest.keyClick(canvas.gv.viewport(), Qt.Key.Key_G)
         self.app.processEvents()
         self.assertTrue(controller._modal_transform.active)
+        self.assertFalse(canvas.text_move_session.active)
         target = start + QPointF(35, 20)
         viewport_target = canvas.gv.mapFromScene(target)
         QTest.mouseMove(canvas.gv.viewport(), viewport_target)

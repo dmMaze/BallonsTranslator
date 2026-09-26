@@ -270,6 +270,8 @@ class DrawPanelConfig(Config):
     rectool_use_mask: bool = True
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
+    shape_fill_shape: str = 'rectangle'
+    shape_fill_color: str = '#ffffff'
 
     def __post_init__(self) -> None:
         if not isinstance(self.rectool_use_mask, bool):
@@ -285,6 +287,15 @@ class DrawPanelConfig(Config):
             if not isinstance(value, str) or (name == 'inpainter' and not value.strip()):
                 LOGGER.warning('Discard invalid drawpanel.%s config.', name)
                 setattr(self, name, default)
+        if self.shape_fill_shape not in ('rectangle', 'ellipse'):
+            LOGGER.warning('Discard invalid drawpanel.shape_fill_shape %r.', self.shape_fill_shape)
+            self.shape_fill_shape = 'rectangle'
+        if (
+            not isinstance(self.shape_fill_color, str)
+            or re.fullmatch(r'#[0-9a-fA-F]{6}', self.shape_fill_color) is None
+        ):
+            LOGGER.warning('Discard invalid drawpanel.shape_fill_color %r.', self.shape_fill_color)
+            self.shape_fill_color = '#ffffff'
         for name, default, minimum, maximum in (
             ('inpainter_shape', 0, 0, 2),
             ('magicwand_tolerance', 32, 0, 255),

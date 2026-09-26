@@ -4,7 +4,7 @@ import cv2
 
 from qtpy.QtCore import QRectF, Qt, QPointF, QSize
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsItem
-from qtpy.QtGui import QPen, QPainter, QPixmap, QImage, QBrush
+from qtpy.QtGui import QPen, QPainter, QPainterPath, QPixmap, QImage, QBrush
 
 from .misc import pixmap2ndarray
 
@@ -16,6 +16,23 @@ class ImageEditMode:
     InpaintTool = 1
     PenTool = 2
     RectTool = 3
+    ShapeFillTool = 4
+
+
+def shape_fill_path(rect: QRectF, shape: str) -> QPainterPath:
+    """Share the shape geometry between the drag preview and saved pixels.
+
+    >>> shape_fill_path(QRectF(0, 0, 10, 20), 'ellipse').boundingRect().height()
+    20.0
+    """
+    path = QPainterPath()
+    if shape == 'rectangle':
+        path.addRect(rect.normalized())
+    elif shape == 'ellipse':
+        path.addEllipse(rect.normalized())
+    else:
+        raise ValueError(f'Unknown fill shape: {shape!r}')
+    return path
 
 class PenShape:
     Circle = 0
@@ -141,46 +158,65 @@ class PixmapItem(QGraphicsPixmapItem):
 
 class DrawingLayer(QGraphicsPixmapItem):
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.qimg_dict = {}
         self.drawing_items_info = {}
-        self.drawed_pixmap = None
+        self._drawn_pixmap: QPixmap | None = None
 
-    def addQImage(self, x: int, y: int, qimg: QImage, compose_mode, key: str):
+    def addQImage(
+        self, x: int, y: int, qimg: QImage,
+        compose_mode: QPainter.CompositionMode, key: str,
+    ) -> None:
         self.qimg_dict[key] = qimg
         self.drawing_items_info[key] = {'pos': [x, y], 'compose': compose_mode}
-        self.update()
+        self.updateDrawing()
 
-    def removeQImage(self, key: str):
+    def removeQImage(self, key: str) -> None:
         if key in self.qimg_dict:
             self.qimg_dict.pop(key)
             self.drawing_items_info.pop(key)
+            self.updateDrawing()
 
-    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget):
+    def updateDrawing(self, rect: QRectF = QRectF()) -> None:
+        # Live erasing mutates a stored QImage in place between mouse moves.
+        self._drawn_pixmap = None
+        self.update(rect)
+
+    def setPixmap(self, pixmap: QPixmap) -> None:
+        self._drawn_pixmap = None
+        super().setPixmap(pixmap)
+
+    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
+        painter.drawPixmap(self.offset(), self.get_drawed_pixmap())
+
+    def get_drawed_pixmap(self) -> QPixmap:
+        """Share a current composite between display and saving until pixels change.
+
+        >>> DrawingLayer.get_drawed_pixmap.__annotations__['return'] is QPixmap
+        True
+        """
+        if self._drawn_pixmap is not None:
+            return self._drawn_pixmap
         pixmap = self.pixmap()
-        if pixmap.isNull():
-            self.drawed_pixmap = None
-            return
-        p = QPainter()
-        p.begin(pixmap)
-        for key in self.qimg_dict:
-            item = self.qimg_dict[key]
-            info = self.drawing_items_info[key]
-            if isinstance(item, QImage):
-                p.setCompositionMode(info['compose'])
-                p.drawImage(info['pos'][0], info['pos'][1], item)
-        p.end()
-        painter.drawPixmap(self.offset(), pixmap)
-        self.drawed_pixmap = pixmap
-
-    def get_drawed_pixmap(self, format=QImage.Format.Format_ARGB32) -> QPixmap:
-        pixmap = self.pixmap() if self.drawed_pixmap is None else self.drawed_pixmap
+        if pixmap.isNull() or not self.qimg_dict:
+            return pixmap
+        painter = QPainter(pixmap)
+        try:
+            for key, item in self.qimg_dict.items():
+                info = self.drawing_items_info[key]
+                if isinstance(item, QImage):
+                    painter.setCompositionMode(info['compose'])
+                    painter.drawImage(info['pos'][0], info['pos'][1], item)
+        finally:
+            painter.end()
+        self._drawn_pixmap = pixmap
         return pixmap
 
     def drawed(self) -> bool:
         return len(self.qimg_dict) > 0
 
-    def clearAllDrawings(self):
+    def clearAllDrawings(self) -> None:
         self.qimg_dict.clear()
         self.drawing_items_info.clear()
+        self.updateDrawing()

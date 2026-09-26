@@ -169,10 +169,7 @@ class FontSizeEditSession(QObject):
         self.box.drag_label.drag_canceled.connect(self.cancel)
 
     def begin(self) -> None:
-        self.cancel()
-        self.host.text_transform_session.resolve_for_save()
-        self.host.text_effect_session.resolve_for_save()
-        self.box.fcombobox.finish_edit()
+        self.host.resolve_text_transform_edits_for_save()
         self.start_text = self.box.getFontSize()
         item = self.host.textblk_item
         self.items = [item] if item is not None else list(SW.canvas.selected_text_items())

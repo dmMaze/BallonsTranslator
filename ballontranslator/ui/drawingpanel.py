@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
 from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
-from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics
+from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 
 from typing import Union, Tuple, List
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -23,7 +23,7 @@ from .funcmaps import get_maskseg_method
 from .module_manager import ModuleManager
 from .module_tool_button import ModuleSelectionMenu, ModuleSelectionToolButton
 from .llm_modality import LLM_MODALITY_IMAGE
-from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem
+from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_fill_path
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
 from .misc import ndarray2pixmap, themed_icon_path
@@ -469,6 +469,34 @@ class PenConfigPanel(Widget):
         return self.shapeCombobox.currentIndex()
 
 
+class ShapeFillPanel(Widget):
+    def __init__(self, parent: Widget | None = None) -> None:
+        super().__init__(parent)
+        self.shapeCombobox = QComboBox(self)
+        self.shapeCombobox.addItem(self.tr('Rectangle'), 'rectangle')
+        self.shapeCombobox.addItem(self.tr('Ellipse'), 'ellipse')
+        self.shapeCombobox.currentIndexChanged.connect(self.on_shape_changed)
+        self.colorPicker = ColorPickerLabel(self)
+        self.colorPicker.setPickerColor(QColor(pcfg.drawpanel.shape_fill_color))
+        self.colorPicker.setToolTip(self.tr('Fill Color'))
+        self.colorPicker.colorChanged.connect(self.on_color_changed)
+
+        layout = QGridLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(ToolNameLabel(100, self.tr('Shape')), 0, 0)
+        layout.addWidget(self.shapeCombobox, 0, 1)
+        layout.addWidget(ToolNameLabel(100, self.tr('Color')), 1, 0)
+        layout.addWidget(self.colorPicker, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        layout.setVerticalSpacing(14)
+
+    def on_shape_changed(self) -> None:
+        pcfg.drawpanel.shape_fill_shape = self.shapeCombobox.currentData()
+
+    def on_color_changed(self, valid: bool) -> None:
+        if valid:
+            pcfg.drawpanel.shape_fill_color = self.colorPicker.color.name()
+
+
 class RectPanel(Widget):
     dilate_ksize_changed = Signal()
     mask_changed = Signal()
@@ -615,6 +643,7 @@ class DrawingPanel(Widget):
         canvas.end_scale_tool.connect(self.on_end_scale_tool)
         canvas.scalefactor_changed.connect(self.on_canvas_scalefactor_changed)
         canvas.end_create_rect.connect(self.on_end_create_rect)
+        canvas.end_create_shape_fill.connect(self.fill_shape)
         canvas.magic_wand_clicked.connect(self.on_magic_wand_clicked)
         canvas.magic_wand_hover.connect(self.on_magic_wand_hover)
         canvas.magic_wand_hover_left.connect(self.clear_magic_wand_preview)
@@ -659,12 +688,21 @@ class DrawingPanel(Widget):
         self.penConfigPanel.colorChanged.connect(self.setPenToolColor)
         self.penConfigPanel.shapeChanged.connect(self.setPenShape)
 
+        self.shapeTool = DrawToolCheckBox()
+        self.shapeTool.setObjectName('DrawShapeTool')
+        self.shapeTool.setToolTip(self.tr('Shape Fill'))
+        self.shapeTool.setAccessibleName(self.tr('Shape Fill'))
+        self.shapeTool.checked.connect(self.on_use_shapetool)
+        self.shapeTool.stateChanged.connect(self.on_shapechecker_changed)
+        self.shapePanel = ShapeFillPanel()
+
         toolboxlayout = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         toolboxlayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         toolboxlayout.addWidget(self.handTool)
         toolboxlayout.addWidget(self.inpaintTool)
         toolboxlayout.addWidget(self.penTool)
         toolboxlayout.addWidget(self.rectTool)
+        toolboxlayout.addWidget(self.shapeTool)
 
         self.canvas.painting_pen = self.pentool_pen = \
             QPen(Qt.GlobalColor.black, 1, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
@@ -679,6 +717,7 @@ class DrawingPanel(Widget):
         self.toolConfigStackwidget.addWidget(self.inpaintConfigPanel)
         self.toolConfigStackwidget.addWidget(self.penConfigPanel)
         self.toolConfigStackwidget.addWidget(self.rectPanel)
+        self.toolConfigStackwidget.addWidget(self.shapePanel)
 
         self.maskTransperancySlider = PaintQSlider()
         self.maskTransperancySlider.valueChanged.connect(self.canvas.setMaskTransparencyBySlider)
@@ -773,7 +812,7 @@ class DrawingPanel(Widget):
 
         Example:
             >>> DrawingPanel.on_magic_wand_clicked.__annotations__['erasing']
-            <class 'bool'>
+            'bool'
         """
         if (
             not self.isVisible()
@@ -997,6 +1036,22 @@ class DrawingPanel(Widget):
         self.setCrossCursor()
         self._sync_magic_wand_hover_tracking()
 
+    def on_use_shapetool(self) -> None:
+        if self.currentTool is not None and self.currentTool != self.shapeTool:
+            self.canvas.clear_states()
+            self.currentTool.setChecked(False)
+        self.currentTool = self.shapeTool
+        pcfg.drawpanel.current_tool = ImageEditMode.ShapeFillTool
+        self.toolConfigStackwidget.setCurrentWidget(self.shapePanel)
+        self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
+        self.canvas.image_edit_mode = ImageEditMode.ShapeFillTool
+        self.setCrossCursor()
+        self.clearInpaintItems()
+
+    def on_shapechecker_changed(self) -> None:
+        if not self.shapeTool.isChecked():
+            self.canvas.cancel_shape_fill()
+
     def set_config(self, config: DrawPanelConfig) -> None:
         self.refreshInpainterSelection()
         self.setPenToolWidth(config.pentool_width)
@@ -1017,6 +1072,10 @@ class DrawingPanel(Widget):
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
         self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
         self.rectPanel.use_mask_checker.setChecked(config.rectool_use_mask)
+        self.shapePanel.shapeCombobox.setCurrentIndex(
+            self.shapePanel.shapeCombobox.findData(config.shape_fill_shape)
+        )
+        self.shapePanel.colorPicker.setPickerColor(QColor(config.shape_fill_color))
         if config.current_tool == ImageEditMode.HandTool:
             self.handTool.setChecked(True)
         elif config.current_tool == ImageEditMode.InpaintTool:
@@ -1025,6 +1084,8 @@ class DrawingPanel(Widget):
             self.penTool.setChecked(True)
         elif config.current_tool == ImageEditMode.RectTool:
             self.rectTool.setChecked(True)
+        elif config.current_tool == ImageEditMode.ShapeFillTool:
+            self.shapeTool.setChecked(True)
 
     def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_shape=True, shape=PenShape.Circle) -> QCursor:
         cross_size = 31
@@ -1035,7 +1096,7 @@ class DrawingPanel(Widget):
         if pen_size is None:
             pen_size = self.pentool_pen.width()
         pen_size *= self.canvas.scale_factor
-        map_size = max(cross_size+7, pen_size)
+        map_size = max(cross_size+7, pen_size) if draw_shape else cross_size+7
         cursor_center = map_size // 2
         pen_radius = pen_size // 2
         pen_color.setAlpha(127)
@@ -1267,7 +1328,7 @@ class DrawingPanel(Widget):
         self.canvas.addItem(self.scale_circle)
         
     def setCrossCursor(self) -> None:
-        if not self.isVisible() or self.currentTool != self.rectTool:
+        if not self.isVisible() or self.currentTool not in (self.rectTool, self.shapeTool):
             return
         self.canvas.set_canvas_cursor(self.get_pen_cursor(draw_shape=False))
 
@@ -1361,6 +1422,37 @@ class DrawingPanel(Widget):
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
             self.setCrossCursor()
 
+    def fill_shape(self, rect: QRectF) -> None:
+        """Commit one opaque shape to the existing drawing history.
+
+        >>> DrawingPanel.fill_shape.__annotations__['rect']
+        'QRectF'
+        """
+        if not self.canvas.imgtrans_proj.img_valid:
+            return
+        rect = rect.normalized()
+        bounds = rect.intersected(self.canvas.baseLayer.rect()).toAlignedRect()
+        if rect.isEmpty() or bounds.isEmpty():
+            return
+        image = QImage(bounds.size(), QImage.Format.Format_ARGB32_Premultiplied)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.translate(-bounds.x(), -bounds.y())
+            # Clip the raster, not the ellipse bounds, at page edges.
+            painter.fillPath(
+                shape_fill_path(rect, pcfg.drawpanel.shape_fill_shape),
+                QColor(pcfg.drawpanel.shape_fill_color),
+            )
+        finally:
+            painter.end()
+        command = StrokeItemUndoCommand(
+            self.canvas.drawingLayer, bounds.getRect(), image,
+        )
+        command.setText(self.tr('Shape Fill'))
+        self.canvas.push_undo_command(command)
+
     def _update_rect_mask(self) -> None:
         if self.rect_inpaint_dict is None:
             return
@@ -1430,6 +1522,7 @@ class DrawingPanel(Widget):
             self.clearInpaintItems()
 
     def hideEvent(self, e) -> None:
+        self.canvas.cancel_shape_fill()
         self.canvas.set_magic_wand_hover_tracking(False)
         self.clear_magic_wand_preview()
         self.clearInpaintItems()
