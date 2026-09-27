@@ -35,6 +35,8 @@ Publication preserves custom groups, exclusions, and missing selected families,
 updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. Reshape
 live text and refresh effects before publishing family/weight choices. Refresh
 must not rewrite document formatting, project data, or undo history.
+Picker refresh discards unaccepted search text and restores the committed family
+without emitting a font-change action, even if that family is no longer listed.
 
 ## Font identity
 
