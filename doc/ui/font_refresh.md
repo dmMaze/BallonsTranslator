@@ -1,99 +1,65 @@
 # Runtime font refresh
 
-The font panel reload button is available in GUI mode with Qt 6.4 or later.
-This is a product support boundary, not a claim that Qt 6.4 introduced a
-public font-database refresh API. Qt 5, older Qt 6, and headless startup keep
-the existing registration path without automatic refresh hooks.
+Runtime refresh is supported in GUI mode with Qt 6.4 or later. Qt 5, older Qt 6,
+and headless startup retain normal font registration without refresh hooks.
+This support boundary does not imply a public Qt database-refresh API.
 
 ## Ownership and ordering
 
-`ui/font_change_detection.py` owns native Windows and Qt signal subscriptions.
-It emits separate system-change and Qt-database-change notifications without
-querying fonts, registering fonts, or triggering a reload itself.
-
-`ui/font_refresh.py` accepts explicit refresh/sync requests and owns debounce,
-background file preparation, Qt mutation, and publication to the formatting
-panel. It installs no native filters or application font-change subscriptions.
-The main window connects detection to refresh only for supported GUI sessions
-and stops detection before shutting down the refresh worker. Manual reload
-calls the refresh controller directly and does not depend on detection.
-`utils/font_refresh.py` owns fontconfig refresh, changed-file snapshots, and
-Qt registration updates. `FontRegistry.registrations` retains the IDs and
-file fingerprints created by startup and subsequent manual refreshes.
-
-| Trigger | Behavior |
+| Concern | Owner |
 | --- | --- |
-| Windows `WM_FONTCHANGE` | Debounce 300 ms, force Qt invalidation, synchronize app state |
-| Qt `fontDatabaseChanged`, including native macOS notifications | Debounce and synchronize app state without another forced invalidation |
-| Windows manual reload | Read changed application `fonts/` files, invalidate Qt, and synchronize app state |
-| macOS manual reload | Read changed application `fonts/` files and synchronize Qt's current database; no temporary seed or forced invalidation |
-| Linux manual reload | Read changed application `fonts/` files; on xcb/Wayland refresh fontconfig; invalidate Qt and synchronize app state |
+| Native Windows and Qt change notifications | [`ui/font_change_detection.py`](../../ballontranslator/ui/font_change_detection.py) |
+| Debounce, worker preparation, Qt mutation, and publication | [`ui/font_refresh.py`](../../ballontranslator/ui/font_refresh.py) |
+| Fontconfig refresh, file snapshots, and registration updates | [`utils/font_refresh.py`](../../ballontranslator/utils/font_refresh.py) |
 
-There is no Linux filesystem watcher. WSL tests must use Linux Python and
-its own font environment; Windows-installed fonts are not an equivalent test.
-Automatic refresh retains application font registrations without rescanning
-`fonts/`. Manual refresh adds, replaces, or removes files using owned IDs;
-a failed replacement retains the previous registration. Incomplete directory
-enumeration aborts the update instead of treating unseen files as deleted.
+Detection only emits notifications. The main window connects it to the refresh
+controller for supported sessions and stops detection before worker shutdown.
+Manual reload calls the controller directly. Disk reads and metadata parsing run
+on a worker; Qt mutation/publication run on the GUI thread. Shutdown waits for
+pending reads. Requests coalesce, and self-generated Qt notifications are ignored.
 
-Qt mutation and UI publication run on the GUI thread. Disk reads and font
-metadata parsing run on a worker. Shutdown waits for that worker, including
-any pending filesystem read. Requests received during preparation coalesce
-into a subsequent refresh; signals emitted by our Qt mutations are ignored.
+| Trigger | Refresh boundary |
+| --- | --- |
+| Windows `WM_FONTCHANGE` | Debounce, force Qt invalidation, publish |
+| Qt `fontDatabaseChanged` | Synchronize without another forced invalidation |
+| Manual reload | Scan changed application fonts; Windows invalidates Qt, macOS synchronizes its current database, Linux xcb/Wayland refreshes fontconfig then invalidates Qt |
 
-Forced invalidation briefly registers the bundled OFL Abel font and removes
-only that ID. It relies on an observed Qt implementation side effect, not a
-public refresh guarantee. It never clears all application fonts. Resources
-are packaged with the application and do not require matplotlib or downloads.
+Automatic refresh retains application registrations without rescanning `fonts/`.
+Manual refresh uses only IDs owned by `FontRegistry.registrations`. Failed
+replacements retain the old registration; incomplete directory scans abort
+instead of treating unseen files as deleted. Forced invalidation briefly adds
+and removes a bundled seed font: an observed Qt side effect, not a public
+refresh guarantee. Never clear all application fonts.
 
-Publication rebuilds system entries excluding owned custom registrations,
-preserving custom groups and their exclusions. It replaces `shared.FONT_FAMILIES`,
-registers safe Qt aliases, and clears character-width and punctuation caches.
-The main window reshapes live canvas text and refreshes its effects before
-updating the family/weight choices, so preview and export use the same fonts.
-Missing selected families and saved exclusions remain stored; refresh does not
-edit document formatting or add undo commands. Project JSON fields are unchanged.
+Publication preserves custom groups, exclusions, and missing selected families,
+updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. Reshape
+live text and refresh effects before publishing family/weight choices. Refresh
+must not rewrite document formatting, project data, or undo history.
 
-The reload arrow rotates while refreshing and stops when finished. Animation
-pauses while hidden; the tooltip retains the last completion or failure state
-and reports family counts, additions,
-removals, and elapsed preparation/apply time (excluding debounce). Logs use
-the application's logger with `[font-refresh]` stages: signal, queue, prepare,
-scan, fontconfig, qt, custom, registry, publish, and done. Batch numbers identify
-controller refreshes; self-generated Qt signals are explicitly marked. INFO retains Qt notifications, added/removed family names, and the
-completion timing summary. Other process details (including Windows notifications and manual requests)
-use DEBUG; warnings and errors retain their severity. Detailed DEBUG records
-are emitted only when `BT_FONT_REFRESH_DEBUG=1` is set in the application
-environment. By default they reach neither the terminal nor the log file.
-The shared logger and handler configuration is unchanged.
+## Font identity
 
-## Linux failure boundaries
+Persist family names unchanged; `qfont_with_family()` supplies Qt-safe runtime
+aliases. Picker labels prefer localized typographic-family metadata, with explicit
+display overrides taking precedence. Resolve and cache system labels on demand;
+autocomplete must not open every font. Display aliases must not replace saved-name
+mappings or exported family names. Font weights use CSS/Qt 6 values (`100`–`900`),
+with legacy Qt 5 normalization only at the Qt/HTML boundary.
 
-The ctypes helper calls `FcInitReinitialize` on the process-default fontconfig
-configuration. This assumes the loaded library is the one used by Qt; custom
-Qt builds, separately loaded libraries, and non-fontconfig backends need
-separate validation. Reinitialization replaces programmatic default-config
-changes. The application does not attempt to refresh arbitrary custom FcConfig
-objects or equate an unchanged family list with failure.
+## Failure boundaries and verification
 
-The helper reports skipped, unavailable, failed, or refreshed. Manual refresh
-shows a nonmodal message when the helper is unavailable or fails, while still
-attempting Qt refresh. An unavailable helper may suggest the reported rescan
-interval (or the usual 30 seconds if unknown); interval zero recommends restart.
-An explicit fontconfig failure recommends checking configuration, not waiting.
-Automatic refresh logs errors without opening dialogs.
+Linux refresh calls `FcInitReinitialize` on the process-default configuration and
+assumes Qt uses that fontconfig library. This replaces programmatic default-config
+changes; custom Qt builds/configurations and non-fontconfig backends need separate
+validation. An unchanged family list is not itself a failure. There is no Linux
+filesystem watcher; WSL testing needs Linux Python and its font environment.
 
-## Verification
+Manual helper failures are reported while Qt refresh is still attempted;
+automatic failures are logged without dialogs. Logs use `[font-refresh]`; enable
+`BT_FONT_REFRESH_DEBUG=1` for detailed diagnostics.
 
-Run `tests/test_font_refresh.py` together with the font registry, family
-resolution, and weight tests. They cover registration ownership, corrupt
-replacement retention, request coalescing, cache invalidation, feature gates,
-and fontconfig failure classification. Native external-font behavior requires
-interactive testing on each platform.
-
-Before release, activate/deactivate and install/remove a test font on Windows
-and macOS; on Linux test manual refresh through xcb and Wayland. Check repeated
-refresh, selected missing families, custom-file replacement, other application
-font IDs, excluded/custom-only filters, and themed UI responsiveness. Record
-Qt version and backend; a passing offscreen check does not certify native
-font discovery.
+Follow [repository verification](../../AGENTS.md#verification). Run
+`tests/test_font_refresh.py` with font registry, family-resolution, and weight
+tests. Native validation must cover font install/removal on Windows/macOS and
+manual refresh on Linux xcb/Wayland, repeated refresh, corrupt custom-file
+replacement, missing selections, exclusions, and preservation of unowned font
+IDs. Record Qt/backend versions; offscreen tests cannot certify native discovery.

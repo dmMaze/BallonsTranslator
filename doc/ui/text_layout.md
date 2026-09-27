@@ -49,7 +49,9 @@ in the document but receive derived continuation-row cells so wrapping, box
 growth, cursor, selection, and hit testing agree. Other Unicode separators keep
 Qt behavior.
 
-Character spacing and font features are applied per range. Identity spacing is
+Common ligatures work under both bindings. Discretionary/contextual ligatures
+and oldstyle figures require Qt 6.11; Qt 5 preserves their CSS without applying
+them. Character spacing and font features are applied per range. Identity spacing is
 left unset when common ligatures should remain available because an explicit Qt
 spacing property may suppress optional ligatures. Version-specific feature-tag
 handling stays inside the layout/annotation boundary.
@@ -94,6 +96,10 @@ cursor, hit testing, effects, and visible bounds. Ruby and tate-chu-yoko cannot
 overlap, and automatic Ruby overhang is not supported.
 
 ## Flow and spacing
+
+Character spacing is range-bound; line spacing is paragraph-bound. A caret
+formats its paragraph, a selection formats intersected paragraphs, and Enter
+inherits the block format. `FontFormat` supplies defaults for old or empty rich text.
 
 Whitespace remains document content and must consume explicit editable cells.
 Horizontal and vertical layouts may represent those cells differently, but
@@ -168,5 +174,5 @@ resize, and mode switches. Focused coverage lives in:
 - `tests/test_rich_text_annotations.py`
 - `tests/test_ruby_furigana.py`
 
-Run both PyQt5 and PyQt6 when layout lifetime, shaping, cursor geometry, or
-painting behavior changes.
+Follow the shared [text-engine verification](text_engine.md#invalidation-and-verification)
+for binding and visual checks.

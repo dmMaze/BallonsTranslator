@@ -164,10 +164,9 @@ Eraser stroke
   -> release: one SetTextAlphaMaskCommand for one item
 ```
 
-Preview never mutates committed `FontFormat`, project JSON, `QTextDocument`
-history, or the paired editor. Structural changes settle or cancel incompatible
-previews before indices change. Save, undo/redo, page replacement, selection
-change, and teardown must resolve pending work at its owner.
+Follow the shared [editing lifecycle](text_engine.md#editing-preview-and-undo).
+Stack edits snapshot the complete value; settle incompatible previews before
+changing card indices.
 
 The panel displays the most recently selected primary item's exact values. For
 multi-selection it derives an occurrence map by effect identity and occurrence
@@ -196,8 +195,7 @@ Lettered draws only that item's untransformed, effect-free text over the
 Inpainted crop. None sends no image context. Failure, Stop, stale selection, or
 teardown discards the result and preserves the existing asset. Stop is
 cooperative: an in-flight provider call may finish, but its output is ignored.
-The request boundary owns generic image-edit transport so a future local backend
-does not need to change card, crop, worker, or undo ownership.
+Shared transport is owned by the [LLM image requester](../modules/llm_translator.md#image-editing).
 
 ## Caches and responsive preview
 
@@ -212,8 +210,8 @@ Caches are bounded derived state and never serialized:
 | Project raster decode | Shared by Texture and Image at the project asset boundary; positive entries only |
 
 Requested-quality previews render on the next scene paint and may promote on
-commit. The opt-in Faster Preview preference uses a non-promotable 0.5x scratch
-surface; commit and export always use requested quality. Reshape temporarily
+commit. Faster Preview uses a non-promotable reduced-resolution scratch surface;
+commit and export always use requested quality. Reshape temporarily
 omits effects and rebuilds once geometry settles. Overall Opacity is native
 group state and does not rebuild effect pixels.
 
@@ -243,20 +241,15 @@ cross-layer and export contract, not another submenu leaf.
 
 ## Focused verification
 
-Start with the affected ownership suites under both supported bindings when Qt
-behavior is involved:
+Follow [text-engine verification](text_engine.md#invalidation-and-verification).
+Start with the affected ownership suites:
 
 ```bash
-QT_API=pyqt6 QT_QPA_PLATFORM=offscreen \
-  /opt/miniconda3/envs/common/bin/python -m pytest -q \
+QT_QPA_PLATFORM=offscreen python -m pytest -q \
   tests/test_text_effect_domain.py tests/test_text_effect_persistence.py \
   tests/test_text_effect_preview.py tests/test_typed_text_effect_renderer.py
-
-git diff --check
 ```
 
 Add the Image, Filter, alpha-mask, transform, rich-text, and Run-pipeline suites
-when their boundaries change. Rendering or interaction work still needs a
-themed-app pass covering horizontal and vertical text, Hollow with
-selection/caret, Eraser, preview/cancel/commit, undo/redo, nonlinear transforms,
-zoom, and strict export.
+when their boundaries change. Visual checks should include Hollow with
+selection/caret, Eraser, nonlinear transforms, zoom, and strict export.

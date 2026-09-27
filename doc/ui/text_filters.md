@@ -164,7 +164,7 @@ workers, GPU paths, or second vector/text rasterizer.
    nonzero and negative origins, including cumulative halos.
 4. Test interactive bypass and strict-export failure for missing code,
    exceptions, incompatible schema, invalid output, and invalid halo.
-5. Exercise card preview/cancel/one-undo, reorder/remove/eye, deferred deletion,
-   and Eraser deactivation under PyQt5 and PyQt6 when binding-sensitive.
-6. Run the focused domain, renderer, registry, and panel suites plus
-   `py_compile` and `git diff --check`; finish UI changes with a themed-app pass.
+5. Exercise card reorder/remove/eye and Eraser deactivation through the shared
+   [editing lifecycle](text_engine.md#editing-preview-and-undo).
+6. Run the focused domain, renderer, registry, and panel suites following
+   [text-engine verification](text_engine.md#invalidation-and-verification).

@@ -78,41 +78,19 @@ variant-specific branches to `TextBlkItem` or `TextItemGeometryController`.
 `transform_type`, an exact neutral state, and runtime-only `is_nonlinear`
 capability metadata. UI controls constrain edits to their supported ranges and
 canonical precision before producing model values. The model does not clamp or
-range-validate persisted parameters. `TextTransformStack` is an immutable value
-containing the ordered operation tuple and Glyph Slant angle; neutral entries
-remain in model and UI state but are skipped by the compiler.
-
-`TextTransformStack` combines the ordered global operations with the fixed
-pre-stack `glyph_slant_angle`; undo snapshots that one immutable value so it
-restores the complete visible transform state.
-Project JSON stores only this committed model data. Preview values,
-matrices, mappers, bounds, and caches are derived state and must not be
-serialized.
+range-validate persisted parameters. `TextTransformStack` stores the ordered
+operations and fixed pre-stack `glyph_slant_angle` as one immutable value for
+persistence and undo. Neutral entries remain saved but are skipped by the
+compiler; matrices, mappers, bounds, and previews remain derived state.
 
 Persisted transform entries use a registered type and known fields; parameter
 values are assumed valid, and omitted fields may use the variant's defaults.
 Passive loading still ignores structurally unknown transform entries.
 
-`TextTransformEditSession` owns transient UI state. Typed edits commit at their
-normal editing boundary; drags preview and then create one command or cancel.
-Before a structural edit, save, undo/redo, page change, or scene replacement,
-resolve pending values and previews so stack indices cannot move underneath
-active controls.
-
-```text
-panel or canvas control
-  -> TextTransformEditSession transient preview
-     -> cancel: restore prior state
-     -> commit: create one SetTextTransformCommand
-        -> committed state on each selected item
-        -> geometry compilation, painting, and overlay refresh
-```
-
-One user action creates one `SetTextTransformCommand` containing complete
-before/after transform states for its targets. This command owns transform
-state and overlay refresh only. It must not consume `QTextDocument` history or
-modify paired-editor text; text-edit commands and `SceneTextManager` own those
-paths.
+`TextTransformEditSession` follows the shared
+[editing lifecycle](text_engine.md#editing-preview-and-undo). Commit snapshots
+complete before/after stacks in one `SetTextTransformCommand` and refreshes
+geometry and overlays. Settle pending controls before stack indices change.
 
 For multiple selected items, indexed controls are meaningful only when all
 targets have the same sequence of transform types; matching indices may still
@@ -270,17 +248,13 @@ inversion does not fit this architecture.
 
 ## Focused verification
 
+Follow [text-engine verification](text_engine.md#invalidation-and-verification).
 [`tests/test_text_transform_undo.py`](../../tests/test_text_transform_undo.py)
-is the main focused regression suite. Run its relevant tests first, then broaden
-according to the ownership boundaries changed:
+covers stack persistence, preview/undo, geometry, and interaction:
 
 ```bash
-QT_API=pyqt6 QT_QPA_PLATFORM=offscreen \
-  /opt/miniconda3/envs/common/bin/python -m unittest \
+QT_QPA_PLATFORM=offscreen python -m unittest \
   discover -s tests -p 'test_text_transform_undo.py'
-
-git diff --check
 ```
 
-Rendering or interaction changes still need a themed-app pass covering the
-affected writing modes and neutral, matrix, and nonlinear states.
+Visual checks should cover neutral, matrix, and nonlinear states.
