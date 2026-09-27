@@ -11,6 +11,7 @@ BallonsTranslator is a PyQt/qtpy desktop app for comic image translation.
 - `ballontranslator/utils/textblock.py`: central TextBlock domain object.
 - `ballontranslator/utils/config.py`: persistent config and module settings.
 - Read [Text engine](doc/ui/text_engine.md) before changing text layout, effects, interaction, geometry, performance, or rendering; follow its topic links.
+- Read [Draw panel](doc/ui/draw_panel.md) before changing drawing tools, canvas gestures, brush modifiers, drawing/inpaint state transitions, or drawing save/export behavior.
 
 Use `rg` for repo search.
 

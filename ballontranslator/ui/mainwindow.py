@@ -1562,6 +1562,8 @@ class MainWindow(mainwindow_cls):
     def shortcutEscape(self) -> None:
         if self.canvas.cancel_shape_fill():
             return
+        if self.canvas.reset_brush_line():
+            return
         if self.canvas.alpha_mask_edit_session.handle_escape():
             return
         if self.canvas.path_reorder_active:

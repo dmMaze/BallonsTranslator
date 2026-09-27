@@ -666,6 +666,7 @@ class DrawingPanel(Widget):
         self.inpaintTool = DrawToolCheckBox()
         self.inpaintTool.setObjectName("DrawInpaintTool")
         self.inpaintTool.checked.connect(self.on_use_inpainttool)
+        self.inpaintTool.stateChanged.connect(self.on_brushchecker_changed)
         self.inpaintConfigPanel = InpaintPanel()
         self.inpaintConfigPanel.thicknessChanged.connect(self.setInpaintToolWidth)
         self.inpaintConfigPanel.shapeChanged.connect(self.setInpaintShape)
@@ -692,10 +693,16 @@ class DrawingPanel(Widget):
         self.penTool = DrawToolCheckBox()
         self.penTool.setObjectName("DrawPenTool")
         self.penTool.checked.connect(self.on_use_pentool)
+        self.penTool.stateChanged.connect(self.on_brushchecker_changed)
         self.penConfigPanel = PenConfigPanel()
         self.penConfigPanel.thicknessChanged.connect(self.setPenToolWidth)
         self.penConfigPanel.colorChanged.connect(self.setPenToolColor)
         self.penConfigPanel.shapeChanged.connect(self.setPenShape)
+        brush_tip = self.tr('Shift-click to draw a straight line. Ctrl+Shift-click constrains it horizontally or vertically.')
+        self.penConfigPanel.setToolTip(brush_tip)
+        self.inpaintConfigPanel.thickness_row.setToolTip(
+            brush_tip + '\n' + self.tr('Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.')
+        )
 
         self.shapeTool = DrawToolCheckBox()
         self.shapeTool.setObjectName('DrawShapeTool')
@@ -793,6 +800,8 @@ class DrawingPanel(Widget):
 
     def setInpaintShape(self, shape: int) -> None:
         if self.currentTool is self.inpaintTool:
+            if self.canvas.painting_shape != shape:
+                self.canvas.reset_brush_line()
             if shape == PenShape.MagicWand and self.canvas.painting_shape != shape:
                 # An accumulated Ctrl-brush stroke is not a wand selection.
                 self.clearInpaintItems()
@@ -989,7 +998,9 @@ class DrawingPanel(Widget):
         self.penConfigPanel.colorPicker.setPickerColor(color)
         self.penConfigPanel.alphaSlider.setValue(color.alpha())
 
-    def setPenShape(self, shape: int):
+    def setPenShape(self, shape: int) -> None:
+        if self.currentTool is self.penTool and self.canvas.painting_shape != shape:
+            self.canvas.reset_brush_line()
         self.setPenCursor()
         self.canvas.painting_shape = shape
         pcfg.drawpanel.pentool_shape = shape
@@ -1060,6 +1071,12 @@ class DrawingPanel(Widget):
     def on_shapechecker_changed(self) -> None:
         if not self.shapeTool.isChecked():
             self.canvas.cancel_shape_fill()
+
+    def on_brushchecker_changed(self) -> None:
+        if not self.sender().isChecked():
+            # A tool change ends its brush gesture, not the physical Ctrl hold.
+            self.canvas.reset_brush_line()
+            self.clearInpaintItems()
 
     def set_config(self, config: DrawPanelConfig) -> None:
         self.refreshInpainterSelection()
@@ -1308,8 +1325,11 @@ class DrawingPanel(Widget):
                 self.setCrossCursor()
         self._sync_magic_wand_hover_tracking()
 
-    def on_canvasctrl_released(self):
+    def on_canvasctrl_released(self) -> None:
         if self.isVisible() and self.currentTool == self.inpaintTool:
+            # Releasing Ctrl during a held segment must wait for mouse release.
+            if self.canvas.stroke_img_item is not None and self.canvas.stroke_img_item.is_painting:
+                return
             self.runInpaint()
 
     def on_begin_scale_tool(self, pos: QPointF):
@@ -1537,6 +1557,7 @@ class DrawingPanel(Widget):
             self.clearInpaintItems()
 
     def hideEvent(self, e) -> None:
+        self.canvas.reset_brush_line()
         self.canvas.cancel_shape_fill()
         self.canvas.set_magic_wand_hover_tracking(False)
         self.clear_magic_wand_preview()

@@ -6,7 +6,7 @@ import os
 from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSize, QSizeF, QEvent, QTimer
 from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QMouseEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
-from qtpy.QtWidgets import QGraphicsPathItem
+from qtpy.QtWidgets import QGraphicsLineItem, QGraphicsPathItem
 from qtpy.QtCore import QLineF
 from qtpy.QtGui import QBrush, QColor, QPainterPathStroker
 
@@ -95,9 +95,12 @@ class CustomGV(QGraphicsView):
 
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setMouseTracking(True)
 
     def viewportEvent(self, event: QEvent) -> bool:
         canvas = self.canvas
+        if canvas is not None and canvas._brush_anchor is not None and event.type() == QEvent.Type.Leave:
+            canvas.brush_line_preview.hide()
         if canvas is not None and canvas._magic_wand_hover_enabled:
             etype = event.type()
             if etype in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
@@ -130,12 +133,20 @@ class CustomGV(QGraphicsView):
         if event.key() == QKEY.Key_Control:
             self.ctrl_pressed = False
             self.ctrl_released.emit()
+        if self.canvas is not None and event.key() in (QKEY.Key_Shift, QKEY.Key_Control):
+            modifier = (Qt.KeyboardModifier.ShiftModifier if event.key() == QKEY.Key_Shift
+                        else Qt.KeyboardModifier.ControlModifier)
+            self.canvas.update_brush_line_preview(
+                self.canvas.scene_cursor_pos(), event.modifiers() & ~modifier,
+            )
         return super().keyReleaseEvent(event)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
         key = e.key()
         if key == QKEY.Key_Control:
             self.ctrl_pressed = True
+        if self.canvas is not None and key in (QKEY.Key_Shift, QKEY.Key_Control):
+            self.canvas.update_brush_line_preview(self.canvas.scene_cursor_pos(), e.modifiers())
 
         if self.canvas is not None and self.canvas.path_reorder_active:
             return super().keyPressEvent(e)
@@ -244,6 +255,12 @@ class Canvas(QGraphicsScene):
         self.create_block_origin: QPointF = None
         self._shape_fill_origin: QPointF | None = None
         self._shape_fill_button = Qt.MouseButton.NoButton
+        # Page coordinates survive inpaint's temporary NONE mode while its
+        # worker runs; actual tool/page/history transitions reset the anchor.
+        self._brush_anchor: QPointF | None = None
+        self._brush_anchor_button = Qt.MouseButton.NoButton
+        self._brush_stroke_button = Qt.MouseButton.NoButton
+        self._brush_line_drawing = False
         self.editing_textblkitem: TextBlkItem = None
         self._path_reorder_active = False
         self._path_reorder_drawing = False
@@ -342,6 +359,11 @@ class Canvas(QGraphicsScene):
         self.shape_fill_preview.setPen(QPen(Qt.PenStyle.NoPen))
         self.shape_fill_preview.setZValue(20)
         self.shape_fill_preview.hide()
+        self.brush_line_preview = QGraphicsLineItem(self.baseLayer)
+        self.brush_line_preview.setData(CONTROL_ITEM_DATA_KEY, True)
+        self.brush_line_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.brush_line_preview.setZValue(20)
+        self.brush_line_preview.hide()
         self._text_shape_refresh_timer = QTimer(self.gv)
         self._text_shape_refresh_timer.setSingleShot(True)
         self._text_shape_refresh_timer.timeout.connect(
@@ -760,6 +782,9 @@ class Canvas(QGraphicsScene):
         if key == QKEY.Key_Escape and self.cancel_shape_fill():
             event.accept()
             return
+        if key == QKEY.Key_Escape and self.reset_brush_line():
+            event.accept()
+            return
 
         if self._path_reorder_active:
             if key == QKEY.Key_Escape:
@@ -877,6 +902,71 @@ class Canvas(QGraphicsScene):
                 self.erase_img_key = uuid4().hex
                 compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
                 self.drawingLayer.addQImage(0, 0, self.stroke_img_item._img, compose_mode, self.erase_img_key)
+
+    def reset_brush_line(self) -> bool:
+        """Forget page-local brush anchors and discard an unfinished gesture."""
+        active = self._brush_anchor is not None or self._brush_stroke_button != Qt.MouseButton.NoButton
+        if self._brush_stroke_button != Qt.MouseButton.NoButton and self.stroke_img_item is not None:
+            self.removeItem(self.stroke_img_item)
+        self._brush_anchor = None
+        self._brush_anchor_button = Qt.MouseButton.NoButton
+        self._brush_stroke_button = Qt.MouseButton.NoButton
+        self._brush_line_drawing = False
+        self.brush_line_preview.hide()
+        return active
+
+    def brush_line_endpoint(self, pos: QPointF, modifiers: Qt.KeyboardModifier) -> QPointF:
+        """Constrain a Shift segment to the nearest page axis when Ctrl is held.
+
+        >>> Canvas.brush_line_endpoint.__annotations__['return'].__name__
+        'QPointF'
+        """
+        pos = QPointF(pos)
+        anchor = self._brush_anchor
+        if anchor is not None and modifiers & Qt.KeyboardModifier.ControlModifier:
+            if abs(pos.x() - anchor.x()) >= abs(pos.y() - anchor.y()):
+                pos.setY(anchor.y())
+            else:
+                pos.setX(anchor.x())
+        return pos
+
+    def update_brush_line_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifier) -> None:
+        if (
+            self._brush_anchor is None or not self.drawMode() or not self.painting
+            or self.painting_shape == PenShape.MagicWand
+            or self._brush_stroke_button != Qt.MouseButton.NoButton
+            or not modifiers & Qt.KeyboardModifier.ShiftModifier
+            or modifiers & Qt.KeyboardModifier.AltModifier
+            or not self.gv.viewport().rect().contains(self.gv.mapFromScene(scene_pos))
+        ):
+            self.brush_line_preview.hide()
+            return
+        endpoint = self.brush_line_endpoint(self.baseLayer.mapFromScene(scene_pos), modifiers)
+        if not self.brush_line_preview.isVisible():
+            pen = QPen(QColor(*shared.FOREGROUND_FONTCOLOR), 1, Qt.PenStyle.DashLine)
+            pen.setCosmetic(True)
+            self.brush_line_preview.setPen(pen)
+        self.brush_line_preview.setLine(QLineF(self._brush_anchor, endpoint))
+        self.brush_line_preview.show()
+
+    def _start_brush_stroke(self, event: QGraphicsSceneMouseEvent, pen: QPen, erasing: bool = False) -> None:
+        pos = self.inpaintLayer.mapFromScene(event.scenePos())
+        self._brush_stroke_button = event.button()
+        self._brush_line_drawing = bool(
+            self._brush_anchor is not None
+            and self._brush_anchor_button == event.button()
+            and event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+            and not event.modifiers() & Qt.KeyboardModifier.AltModifier
+        )
+        self.brush_line_preview.hide()
+        if self._brush_line_drawing:
+            pos = self.brush_line_endpoint(pos, event.modifiers())
+            self.addStrokeImageItem(self._brush_anchor, pen, erasing)
+            self.stroke_img_item.lineTo(pos, straight=True)
+            if erasing:
+                self.drawingLayer.updateDrawing()
+        else:
+            self.addStrokeImageItem(pos, pen, erasing)
 
     def startCreateTextblock(
         self,
@@ -1127,6 +1217,11 @@ class Canvas(QGraphicsScene):
         
         elif self.stroke_img_item is not None:
             if self.stroke_img_item.is_painting:
+                if self._brush_line_drawing:
+                    # Shift-click fixes its endpoint at press; incidental drag
+                    # motion must not append a freehand tail before release.
+                    event.accept()
+                    return
                 pos = self.inpaintLayer.mapFromScene(event.scenePos())
                 if self.erase_img_key is None:
                     # painting
@@ -1144,6 +1239,7 @@ class Canvas(QGraphicsScene):
         ):
             self.magic_wand_hover.emit(event.scenePos())
         
+        self.update_brush_line_preview(event.scenePos(), event.modifiers())
         result = super().mouseMoveEvent(event)
         if self._text_creation_cursor_active:
             # Creation is a modal drag, so it overrides child text cursors.
@@ -1156,6 +1252,7 @@ class Canvas(QGraphicsScene):
 
     def clearToolStates(self) -> None:
         self.text_move_session.cancel()
+        self.reset_brush_line()
         self.cancel_shape_fill()
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
@@ -1204,8 +1301,8 @@ class Canvas(QGraphicsScene):
         self.on_copy()
         return True
 
-    def scene_cursor_pos(self):
-        origin = self.gv.mapFromGlobal(QCursor.pos())
+    def scene_cursor_pos(self) -> QPointF:
+        origin = self.gv.viewport().mapFromGlobal(QCursor.pos())
         return self.gv.mapToScene(origin)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
@@ -1253,6 +1350,9 @@ class Canvas(QGraphicsScene):
             self.mid_btn_pressed = True
             self.pan_initial_pos = event.screenPos()
             return
+        if self._brush_stroke_button != Qt.MouseButton.NoButton:
+            event.accept()
+            return
         
         if self.imgtrans_proj.img_valid:
             if self.drawMode() and self.image_edit_mode == ImageEditMode.ShapeFillTool:
@@ -1291,7 +1391,7 @@ class Canvas(QGraphicsScene):
                     event.accept()
                     return
                 elif self.painting:
-                    self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.painting_pen)
+                    self._start_brush_stroke(event, self.painting_pen)
 
             elif btn == Qt.MouseButton.RightButton:
                 # user is drawing using eraser
@@ -1301,7 +1401,7 @@ class Canvas(QGraphicsScene):
                     return
                 elif self.painting:
                     erasing = self.image_edit_mode == ImageEditMode.PenTool
-                    self.addStrokeImageItem(self.inpaintLayer.mapFromScene(event.scenePos()), self.erasing_pen, erasing)
+                    self._start_brush_stroke(event, self.erasing_pen, erasing)
                 else:   # rubber band selection
                     self._begin_rubber_band(
                         event.scenePos(),
@@ -1364,18 +1464,31 @@ class Canvas(QGraphicsScene):
                 self.end_create_shape_fill.emit(rect, btn == Qt.MouseButton.RightButton)
             event.accept()
             return
+        # A Ctrl-held inpaint mask remains after release. Only the gesture's
+        # own button may finish it; a later unrelated release must not reuse it.
+        finished_stroke = None
+        if self._brush_stroke_button != Qt.MouseButton.NoButton:
+            if btn != self._brush_stroke_button:
+                event.accept()
+                return
+            finished_stroke = self.stroke_img_item
+            if finished_stroke is not None:
+                self._brush_anchor = QPointF(finished_stroke.cur_point)
+                self._brush_anchor_button = btn
+            self._brush_stroke_button = Qt.MouseButton.NoButton
+            self._brush_line_drawing = False
         textblk_created = False
         if self.creating_textblock:
             tgt = 0 if btn == Qt.MouseButton.LeftButton else 1
             textblk_created = self.endCreateTextblock(btn=tgt)
         if btn == Qt.MouseButton.RightButton:
-            if self.stroke_img_item is not None:
-                self.finish_erasing.emit(self.stroke_img_item)
+            if finished_stroke is not None:
+                self.finish_erasing.emit(finished_stroke)
             if self.textEditMode() and not textblk_created:
                 self.context_menu_requested.emit(event.screenPos(), False)
         if btn == Qt.MouseButton.LeftButton:
-            if self.stroke_img_item is not None:
-                self.finish_painting.emit(self.stroke_img_item)
+            if finished_stroke is not None:
+                self.finish_painting.emit(finished_stroke)
             elif self.scale_tool_mode:
                 self.end_scale_tool.emit()
         return super().mouseReleaseEvent(event)
@@ -1468,6 +1581,7 @@ class Canvas(QGraphicsScene):
             )
 
     def updateCanvas(self) -> None:
+        self.reset_brush_line()
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.cancel_shape_fill()
@@ -1524,6 +1638,7 @@ class Canvas(QGraphicsScene):
             self.gv.magic_wand_hover_left.emit()
 
     def setPaintMode(self, painting: bool) -> None:
+        self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
         self.alpha_mask_edit_session.deactivate()
@@ -1670,6 +1785,7 @@ class Canvas(QGraphicsScene):
                 self.editing_textblkitem = textitem
 
     def clear_states(self) -> None:
+        self.reset_brush_line()
         self.text_move_session.cancel()
         self.hide_rubber_band()
         self.cancel_shape_fill()
@@ -1773,6 +1889,7 @@ class Canvas(QGraphicsScene):
         self.text_undo_stack.undo()
 
     def redo(self) -> None:
+        self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
         self.cancel_path_reorder()
@@ -1790,6 +1907,7 @@ class Canvas(QGraphicsScene):
             undo_stack.redo()
 
     def undo(self) -> None:
+        self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
         self.cancel_path_reorder()

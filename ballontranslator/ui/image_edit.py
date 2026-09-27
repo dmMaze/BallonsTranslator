@@ -4,7 +4,7 @@ import cv2
 
 from qtpy.QtCore import QRectF, Qt, QPointF, QSize
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsItem
-from qtpy.QtGui import QPen, QPainter, QPainterPath, QPixmap, QImage, QBrush
+from qtpy.QtGui import QPen, QPainter, QPainterPath, QPixmap, QImage, QBrush, QPolygonF
 
 from .misc import pixmap2ndarray
 
@@ -123,7 +123,14 @@ class StrokeImgItem(QGraphicsItem):
         shape_rect = QRectF(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
         self.painter.drawRect(shape_rect)
 
-    def lineTo(self, new_pnt: QPointF, update=True) -> QRectF:
+    def lineTo(self, new_pnt: QPointF, update: bool = True, straight: bool = False) -> QRectF | None:
+        """Extend the stroke; explicit straight segments also sweep square tips.
+
+        >>> stroke = StrokeImgItem(QPen(Qt.GlobalColor.black, 4), QPointF(10, 10), QSize(40, 40))
+        >>> stroke.lineTo(QPointF(30, 10), straight=True).width()
+        24.0
+        >>> stroke.finishPainting()
+        """
         delta = self.cur_point - new_pnt
         delta_w, delta_h = abs(delta.x()),  abs(delta.y())
         rect = None
@@ -133,7 +140,24 @@ class StrokeImgItem(QGraphicsItem):
             delta_w += self._d
             delta_h += self._d
             rect = QRectF(min_x, min_y, delta_w, delta_h)
-            self._line_to(self.cur_point, new_pnt)
+            if straight and self.shape == PenShape.Rectangle:
+                # Sweep the axis-aligned square tip without gaps between clicks;
+                # ordinary freehand rectangle stamping keeps its existing behavior.
+                corners = np.array([
+                    [point.x() + dx, point.y() + dy]
+                    for point in (self.cur_point, new_pnt)
+                    for dx, dy in ((-self._r, -self._r), (self._r, -self._r),
+                                   (self._r, self._r), (-self._r, self._r))
+                ], dtype=np.float32)
+                hull = cv2.convexHull(corners).reshape(-1, 2)
+                self.painter.save()
+                self.painter.setPen(Qt.PenStyle.NoPen)
+                # QPainter.begin() resets the brush between accumulated strokes.
+                self.painter.setBrush(self.pen.color())
+                self.painter.drawPolygon(QPolygonF([QPointF(float(x), float(y)) for x, y in hull]))
+                self.painter.restore()
+            else:
+                self._line_to(self.cur_point, new_pnt)
             self.cur_point = new_pnt
             if update:
                 self.update(rect)
