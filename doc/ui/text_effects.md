@@ -111,6 +111,12 @@ during native horizontal and vertical text editing; ordinary Filters remain
 active. Editing visibility participates in cache identity so settled Image
 pixels cannot leak into the editing surface or vice versa.
 
+Effect repaint keeps the existing surface while automatic document relayout is
+paused. The formatting transaction must resume layout and rebuild placement
+before foreground or stroke clones use the new text. The final repaint or next
+scene paint refreshes the surface; scene painting validates document revision
+and layout generation before reusing cached pixels.
+
 The shared raster allocation policy bounds memory while retaining requested
 effect radii. Tile overlap includes source expansion and each effect's reach;
 cached tiles retain cores and interpolation borders rather than working halos.

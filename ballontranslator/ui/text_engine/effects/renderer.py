@@ -4429,11 +4429,14 @@ class TextEffectRenderer:
     ) -> None:
         if (
             self.repainting
+            or (self.layout is not None and not self.layout.relayout_on_changed)
             or (self.reshaping and not self._export_active)
             or (self.pre_editing and not self._export_active)
         ):
             # Avoid reshape/reentrant work. During IME, reuse the preedit-free
             # cache because PaintContext cannot exclude active preedit glyphs.
+            # Formatting callers rebuild and repaint after resuming layout.
+            # Until then, both foreground and stroke-clone placement are stale.
             return
 
         planned_here = nodes is None

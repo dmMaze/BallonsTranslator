@@ -6,8 +6,8 @@ from unittest.mock import patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QPointF, QRectF, Qt
-from qtpy.QtGui import QTextCursor
-from qtpy.QtWidgets import QApplication
+from qtpy.QtGui import QImage, QPainter, QTextCursor
+from qtpy.QtWidgets import QApplication, QGraphicsScene
 
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.fontformat import TextAlignment
@@ -115,6 +115,77 @@ class VerticalAlignmentTest(unittest.TestCase):
         old_top_level = TextBlock(vertical=True, _alignment=TextAlignment.Left)
         self.assertEqual(old_top_level.alignment, TextAlignment.Right)
         self.assertTrue(old_top_level.src_is_vertical)
+
+    def test_effect_repaint_waits_for_paused_document_layout(self) -> None:
+        for before, after in (
+            ('木', '天地玄黃'),
+            ('天地玄黃', '木'),
+            ('木', '天\n地'),
+            ('天\n地', '木'),
+            ('木', '。'),
+        ):
+            with self.subTest(before=before, after=after):
+                item = self._make_item(
+                    TextAlignment.Right, text=before, stroke_width=0.15,
+                )
+                scene = QGraphicsScene()
+                scene.addItem(item)
+                layout = item.layout
+                renderer = item.effect_renderer
+                original_pixmap = renderer.background_pixmap.cacheKey()
+                original_offsets = [
+                    [list(offset) for offset in row]
+                    for row in layout._draw_offset
+                ]
+                with patch('sys.excepthook') as callback_error, patch.object(
+                    renderer, '_render_effect_surface',
+                    wraps=renderer._render_effect_surface,
+                ) as render:
+                    layout.relayout_on_changed = False
+                    try:
+                        # contentsChanged must not render against the old
+                        # placement, even when the new text has equal length.
+                        cursor = QTextCursor(item.document())
+                        cursor.select(QTextCursor.SelectionType.Document)
+                        cursor.insertText(after)
+                        item.repaint_background()
+                        callback_error.assert_not_called()
+                        render.assert_not_called()
+                        self.assertEqual(layout._draw_offset, original_offsets)
+                        self.assertEqual(
+                            renderer.background_pixmap.cacheKey(), original_pixmap,
+                        )
+                    finally:
+                        layout.relayout_on_changed = True
+                        layout.reLayoutEverything()
+                    # The next scene paint must reject the old cache even
+                    # without an explicit final effect repaint by the caller.
+                    images = []
+                    for fresh in (False, True):
+                        if fresh:
+                            renderer._mark_effect_cache_dirty()
+                        image = QImage(
+                            400, 400, QImage.Format.Format_ARGB32_Premultiplied,
+                        )
+                        image.fill(Qt.GlobalColor.transparent)
+                        painter = QPainter(image)
+                        try:
+                            scene.render(
+                                painter, QRectF(0, 0, 400, 400),
+                                QRectF(-40, -40, 400, 400),
+                            )
+                        finally:
+                            painter.end()
+                        images.append(image)
+                        self.assertGreater(render.call_count, 0)
+                    callback_error.assert_not_called()
+                    self.assertEqual(images[0], images[1])
+                self.assertEqual(item.toPlainText(), after)
+                self.assertFalse(renderer.background_pixmap.isNull())
+                self.assertNotEqual(
+                    renderer.background_pixmap.cacheKey(), original_pixmap,
+                )
+                scene.clear()
 
     def test_versioned_and_horizontal_blocks_preserve_alignment(self):
         current = TextBlock(
