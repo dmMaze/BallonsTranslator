@@ -15,7 +15,9 @@ from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import (
     LLMProfile,
-    migrate_module_llm_profiles,
+    default_codex_profile,
+    default_profiles,
+    load_profiles,
     profile_by_id,
     profile_to_dict,
     normalize_codex_models,
@@ -227,7 +229,16 @@ class ModuleConfig(Config):
             or self.llm_prior_context_token_budget <= 0
         ):
             self.llm_prior_context_token_budget = 4096
-        migrate_module_llm_profiles(self.__dict__)
+        if not isinstance(self.llm_profiles, list):
+            LOGGER.warning('Discard invalid LLM profile list.')
+            self.llm_profiles = []
+        self.llm_profiles = (
+            load_profiles(self.llm_profiles) if self.llm_profiles
+            else [*default_profiles(), default_codex_profile()]
+        )
+        if not isinstance(self.translator_params, dict):
+            LOGGER.warning('Discard invalid translator params config: expected a dictionary.')
+            self.translator_params = {}
         self.codex_models = normalize_codex_models(self.codex_models)
         sync_codex_profile(profile_by_id(self.llm_profiles, 'codex'), self.codex_models)
         if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:

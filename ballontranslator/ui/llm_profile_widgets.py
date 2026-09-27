@@ -1,4 +1,3 @@
-import copy
 import json
 import uuid
 from html import escape
@@ -1787,14 +1786,14 @@ class LLMProfilesWidget(QWidget):
         self.profile_ui_updated.emit()
         QTimer.singleShot(0, lambda: self.ensureRowVisible(imported_rows[-1]))
 
-    def copyProfile(self, profile_id: str):
+    def copyProfile(self, profile_id: str) -> None:
         if profile_id not in self.rows:
             return
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
         if profile is None:
             return
         self.filter_edit.clear()
-        copied = copy_profile(copy.deepcopy(profile))
+        copied = copy_profile(profile)
         copied.id = self._new_custom_profile_id()
         pcfg.module.llm_profiles.append(copied)
         row = self.addProfileRow(copied)

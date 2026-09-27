@@ -304,6 +304,28 @@ class APIProfilesPanelTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_repeated_profile_copies_have_unique_ids_and_independent_settings(self) -> None:
+        source = default_profile('Gemini')
+        source.api_key = 'saved-test-key'
+        original = profile_to_dict(source)
+        with patch.object(pcfg.module, 'llm_profiles', [source]):
+            panel = LLMProfilesWidget()
+            self.addCleanup(panel.deleteLater)
+            panel.copyProfile(source.id)
+            panel.copyProfile(source.id)
+            self.app.processEvents()
+            first, second = pcfg.module.llm_profiles[1:]
+            self.assertEqual(len({source.id, first.id, second.id}), 3)
+            for copied in (first, second):
+                self.assertIn(copied.id, panel.rows)
+                self.assertEqual(profile_to_dict(copied), {
+                    **original, 'id': copied.id, 'name': source.name + ' Copy', 'built_in': False,
+                })
+            first.model_options.append('copy-only-model')
+            self.assertNotIn('copy-only-model', source.model_options)
+            self.assertNotIn('copy-only-model', second.model_options)
+            self.assertEqual(profile_to_dict(source), original)
+
     def test_codex_is_excluded_from_profile_editing_copy_and_delete(self) -> None:
         codex = default_codex_profile()
         api = default_profile('OpenAI')

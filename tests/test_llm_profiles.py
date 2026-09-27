@@ -1,5 +1,4 @@
 import json
-import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -299,7 +298,24 @@ class CodexProfileConfigTest(unittest.TestCase):
                 operation(default_codex_profile())
 
 
-class LLMProfileMigrationTest(unittest.TestCase):
+class LLMProfileConfigTest(unittest.TestCase):
+    def test_invalid_profile_list_recovers_defaults_without_losing_other_settings(self) -> None:
+        expected_ids = [profile.id for profile in default_profiles()] + ['codex']
+        for invalid in (None, {}, 'invalid', 42):
+            with self.subTest(invalid=invalid), self.assertLogs('BallonTranslator', level='WARNING'):
+                module = ModuleConfig(
+                    llm_profiles=invalid, translator_params=invalid,
+                    translator_llm_id='missing', ocr_llm_id='missing', inpaint_llm_id='missing',
+                    llm_glossary_path='saved-glossary.txt',
+                )
+            self.assertEqual([profile.id for profile in module.llm_profiles], expected_ids)
+            self.assertEqual(module.translator_params, {})
+            self.assertEqual(module.llm_glossary_path, 'saved-glossary.txt')
+            self.assertEqual(
+                (module.translator_llm_id, module.ocr_llm_id, module.inpaint_llm_id),
+                (expected_ids[0],) * 3,
+            )
+
     def test_title_link_persistence_and_missing_builtin_field(self) -> None:
         with patch.dict(PROVIDER_DEFAULTS['OpenAI'], title_url='https://example.com'):
             profile = default_profile('OpenAI')
@@ -522,26 +538,6 @@ class LLMProfileMigrationTest(unittest.TestCase):
 
         self.assertEqual(imported.id, 'custom-new')
         self.assertFalse(imported.built_in)
-
-    def test_backup_config_loads_selected_old_llm_translator_as_deepseek_profile(self):
-        cfg_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'config-backup.json')
-        if not os.path.exists(cfg_path):
-            self.skipTest('config/config-backup.json is not available in this checkout')
-
-        cfg = ProgramConfig.load(cfg_path)
-
-        selected = profile_by_id(cfg.module.llm_profiles, cfg.module.translator_llm_id)
-        self.assertEqual(cfg.module.translator, 'LLMTranslator')
-        self.assertNotIn('ChatGPT', cfg.module.translator_params)
-        self.assertNotIn('ChatGPT_exp', cfg.module.translator_params)
-        self.assertNotIn('LLM_API_Translator', cfg.module.translator_params)
-        self.assertIsInstance(selected, LLMProfile)
-        self.assertEqual(selected.id, 'deepseek')
-        self.assertEqual(selected.model, 'deepseek-v4-flash')
-        self.assertEqual(selected.name, 'DeepSeek')
-        self.assertEqual(selected.max_tokens, 4096)
-        deepseek_profiles = [p for p in cfg.module.llm_profiles if p.id == 'deepseek']
-        self.assertEqual(len(deepseek_profiles), 1)
 
     def test_removed_builtin_loads_as_custom_and_survives_restore(self) -> None:
         retired = LLMProfile(
