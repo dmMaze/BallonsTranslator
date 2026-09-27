@@ -171,6 +171,7 @@ class ParamComboBox(ComboBox):
     def __init__(self, param_key: str, options: List[str], size=CONFIG_COMBOBOX_SHORT, scrollWidget: QWidget = None, flush_btn: bool = False, path_selector: bool = False, *args, **kwargs) -> None:
         super().__init__(scrollWidget=scrollWidget, *args, **kwargs)
         self.param_key = param_key
+        self.fit_popup_contents = False
         self.setFixedWidth(size)
         self.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         options = [str(opt) for opt in options]
@@ -186,6 +187,13 @@ class ParamComboBox(ComboBox):
 
     def on_select_changed(self):
         self.paramwidget_edited.emit(self.param_key, self.currentText())
+
+    def showPopup(self) -> None:
+        if self.fit_popup_contents:
+            view = self.view()
+            width = view.sizeHintForColumn(0) + 2 * view.frameWidth() + view.verticalScrollBar().sizeHint().width()
+            view.setMinimumWidth(max(self.width(), width))
+        super().showPopup()
 
 
 class SizeComboBox(QComboBox):

@@ -1,6 +1,5 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-import cv2
 import numpy as np
 
 from .base import InpainterBase, register_inpainter
@@ -96,13 +95,17 @@ class LLMInpaint(LLMImageRequester, InpainterBase):
         profile = runtime_profile(
             pcfg.module.llm_profiles, pcfg.module.inpaint_llm_id
         )
+        self._validate_profile(profile)
+        return profile
+
+    def _validate_profile(self, profile: LLMProfile) -> None:
         if not profile.support_image:
             raise RuntimeError(
                 f'LLM profile "{profile.name}" does not have image cleanup enabled.'
             )
         self._image_model(profile)
-        self._image_base_url(profile)
-        return profile
+        if profile.backend != 'codex':
+            self._image_base_url(profile)
 
     def _sync_inpaint_by_block(self) -> None:
         value = self.get_param_value('inpaint by block')
@@ -120,24 +123,32 @@ class LLMInpaint(LLMImageRequester, InpainterBase):
         img: np.ndarray,
         mask: np.ndarray,
         textblock_list: List[TextBlock] = None,
+        *,
+        profile: Optional[LLMProfile] = None,
+        use_mask: bool = True,
     ) -> np.ndarray:
         del textblock_list
-        profile = self.profile
+        if self.stop_event is not None and self.stop_event.is_set():
+            raise LLMRequestStopped()
+        masked = mask > 127
+        if use_mask and not np.any(masked):
+            return img.copy()
+        if (profile is not None and profile.backend == 'codex') or (
+            profile is None and pcfg.module.inpaint_llm_id == 'codex'
+        ):
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
+        if profile is None:
+            profile = self.profile
+        else:
+            self._validate_profile(profile)
         retry_attempt = 0
-        mask_original = (mask > 127)[..., None].astype(np.uint8)
         while True:
             if self.stop_event is not None and self.stop_event.is_set():
                 raise LLMRequestStopped()
             try:
-                result = self._request_inpaint(profile, img)
-                if result.shape[:2] != img.shape[:2]:
-                    result = cv2.resize(
-                        result,
-                        (img.shape[1], img.shape[0]),
-                        interpolation=cv2.INTER_LINEAR,
-                    )
-                result = result.astype(np.uint8, copy=False)
-                return result * mask_original + img * (1 - mask_original)
+                result = self._request_inpaint(profile, img, mask=mask if use_mask else None)
+                return np.where(masked[..., None], result, img) if use_mask else result
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as error:

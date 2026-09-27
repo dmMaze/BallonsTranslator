@@ -36,6 +36,9 @@ from ballontranslator.utils.llm_profiles import (
     LLM_TRANSLATOR_KEY,
     THINKING_AUTO,
     profile_by_id,
+    codex_thinking_options,
+    image_model_choices,
+    split_image_model_selection,
 )
 
 if shared.FLAG_QT6:
@@ -294,6 +297,10 @@ class ModuleSelectionMenu(QMenu):
     def selectedProfileId(self) -> str:
         return getattr(pcfg.module, self.profile_id_attr)
 
+    def _profileSettingValue(self, profile: LLMProfile, key: str) -> str:
+        """Let local selectors display choices without editing shared profiles."""
+        return getattr(profile, key)
+
     def rebuildMenu(self) -> None:
         # QMenu.clear() removes submenu actions but leaves their owned menus.
         for action in self.actions():
@@ -365,10 +372,13 @@ class ModuleSelectionMenu(QMenu):
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
         if profile is not None:
             setattr(profile, key, value)
+            if profile.backend == 'codex' and key == 'model':
+                profile.thinking_level_options = codex_thinking_options(profile, pcfg.module.codex_models)
             if key == self.model_attr:
                 options = getattr(profile, self.model_options_attr)
-                if value and value not in options:
-                    options.insert(0, value)
+                option = split_image_model_selection(value)[1] if key == 'image_model' else value
+                if option and option not in options:
+                    options.insert(0, option)
         self.selectLLMProfile(profile_id)
 
     def _profile_menu_groups(self) -> List[Tuple[str, str, str]]:
@@ -391,8 +401,9 @@ class ModuleSelectionMenu(QMenu):
         selected_profile = self.isCurrentLLM() and self.selectedProfileId() == profile_id
         for section, value_attr, options_attr in self._profile_menu_groups():
             _add_bottom_menu_section(menu, section, color=self.modality_color)
-            options = [str(option) for option in getattr(profile, options_attr) if str(option)]
-            current_value = str(getattr(profile, value_attr) or 'None')
+            options = (image_model_choices(profile) if value_attr == 'image_model'
+                       else [str(option) for option in getattr(profile, options_attr) if str(option)])
+            current_value = str(self._profileSettingValue(profile, value_attr) or 'None')
             for option in options:
                 _add_bottom_menu_action(
                     menu,
@@ -412,9 +423,9 @@ class ModuleSelectionMenu(QMenu):
     def _buttonTextForProfile(self, profile: LLMProfile) -> str:
         if self._is_text_modality():
             model_options = [str(option) for option in profile.model_options if str(option)]
-            model = str(profile.model or '').strip()
+            model = str(self._profileSettingValue(profile, 'model') or '').strip()
             thinking_level = str(
-                profile.thinking_level or THINKING_AUTO
+                self._profileSettingValue(profile, 'thinking_level') or THINKING_AUTO
             ).strip()
             if model_options and model:
                 name = _simplify_llm_model_name(model)
@@ -423,7 +434,7 @@ class ModuleSelectionMenu(QMenu):
                 return name
             return profile.name or self.llm_key
 
-        model = str(getattr(profile, self.model_attr) or '').strip()
+        model = str(self._profileSettingValue(profile, self.model_attr) or '').strip()
         return _simplify_llm_model_name(model) or profile.name or self.llm_key
 
     def selectedText(self) -> str:

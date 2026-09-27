@@ -2,6 +2,33 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en_US">
 <context>
+    <name>CodexSettingsPanel</name>
+    <message>
+        <source>Add image model</source>
+        <translation type="unfinished">添加图像模型</translation>
+    </message>
+    <message>
+        <source>Image model name</source>
+        <translation type="unfinished">图像模型名称</translation>
+    </message>
+    <message>
+        <source>Delete image model and its combinations</source>
+        <translation type="unfinished">删除图像模型及其组合</translation>
+    </message>
+    <message>
+        <source>Choose an image model directly, or a GPT → GPT Image combination for assisted editing. Use + to add an image model ID. Availability is checked when used.</source>
+        <translation type="unfinished">选择图像模型直接编辑，或选择 GPT → GPT Image 组合进行辅助编辑。使用 + 添加图像模型 ID。使用时会检查可用性。</translation>
+    </message>
+    <message>
+        <source>Invalid image model</source>
+        <translation type="unfinished">无效的图像模型</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID, or choose a GPT → GPT Image combination from the list.</source>
+        <translation type="unfinished">请输入图像模型 ID，或从列表中选择 GPT → GPT Image 组合。</translation>
+    </message>
+</context>
+<context>
     <name>AddWordItemWidget</name>
     <message>
         <location filename="../../ballontranslator/ui/spellcheck.py" line="690"/>
@@ -1176,6 +1203,11 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="817"/>
+        <source>Reload fonts</source>
+        <translation>重载字体</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="877"/>
         <source>Font Family</source>
         <translation>字体</translation>
@@ -1413,14 +1445,6 @@
         <location filename="../../ballontranslator/ui/font_refresh.py" line="227"/>
         <source>Immediate system font refresh is unavailable. With the usual fontconfig settings, try again after about 30 seconds; if fonts are still missing, restart the application.</source>
         <translation>无法立即刷新系统字体。使用常规 Fontconfig 设置时，请等待约 30 秒后重试；如果仍有字体缺失，请重启应用程序。</translation>
-    </message>
-</context>
-<context>
-    <name>FontReloadButton</name>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="812"/>
-        <source>Reload fonts</source>
-        <translation>重载字体</translation>
     </message>
 </context>
 <context>
@@ -2304,6 +2328,14 @@
 <context>
     <name>InpainterSelectorRow</name>
     <message>
+        <source>Prompt override</source>
+        <translation type="unfinished">提示词覆盖</translation>
+    </message>
+    <message>
+        <source>Leave blank to use the selected profile’s inpainting prompt.</source>
+        <translation type="unfinished">留空以使用所选配置的图像修复提示词。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="167"/>
         <source>Inpainter</source>
         <translation>修复工具</translation>
@@ -2931,6 +2963,10 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleManager</name>
     <message>
+        <source>The drawing LLM profile is unavailable. Select a profile in the drawing panel.</source>
+        <translation type="unfinished">绘图工具所选的 LLM 配置不可用，请在绘图面板中重新选择。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1404"/>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1733"/>
         <source>Preparing module: </source>
@@ -3085,8 +3121,8 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="110"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="596"/>
-        <source>Proxy address used for the OpenAI-compatible client.</source>
-        <translation>用于兼容 OpenAI 格式客户端的代理地址。</translation>
+        <source>Proxy address used for LLM requests.</source>
+        <translation type="unfinished">用于 LLM 请求的代理地址。</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="38"/>
@@ -4737,11 +4773,6 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>添加语言模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="623"/>
-        <source>Delete current image model</source>
-        <translation>删除当前图像模型</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="679"/>
         <source>Text</source>
         <translation>文本</translation>
@@ -4887,6 +4918,14 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <source>Enable image cleanup for this profile.</source>
         <translation type="vanished">启用图像修复能力</translation>
     </message>
+    <message>
+        <source>Delete current image model and all its reasoning combinations</source>
+        <translation type="unfinished">删除当前图像模型及其所有推理组合</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID. Reasoning combinations are added automatically from vision models.</source>
+        <translation type="unfinished">请输入图像模型 ID。推理组合会根据视觉模型列表自动添加。</translation>
+    </message>
 </context>
 <context>
     <name>ProgressMessageBox</name>
@@ -4920,6 +4959,18 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 </context>
 <context>
     <name>RectPanel</name>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation type="unfinished">勾选“使用掩膜”后即可更改掩膜提取方法和膨胀程度。</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation type="unfinished">使用掩膜</translation>
+    </message>
+    <message>
+        <source>When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. Local inpainters treat the entire rectangle as masked.</source>
+        <translation type="unfinished">取消勾选后，LLM 修复模型不接收掩膜，并替换整个矩形区域。本地修复模型则将整个矩形视为掩膜区域。</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="400"/>
         <source>Dilate</source>

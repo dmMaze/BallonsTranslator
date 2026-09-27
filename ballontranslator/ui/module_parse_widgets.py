@@ -197,7 +197,7 @@ class ParamEditor(QPlainTextEdit):
 
         self.setFixedWidth(int(CONFIG_COMBOBOX_LONG))
         self.textChanged.connect(self.on_text_changed)
-        self.document().documentLayout().documentSizeChanged.connect(lambda *_: self.adjustSize())
+        self.document().documentLayout().documentSizeChanged.connect(self.adjustSize)
 
     def on_text_changed(self):
         self.paramwidget_edited.emit(self.param_key, self.text())

@@ -1,10 +1,11 @@
-"""Shared OpenAI-compatible Chat Completions request transport."""
+"""Shared request dispatch for API Chat Completions and Codex Responses."""
 
 from __future__ import annotations
 
 import re
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -14,6 +15,7 @@ from .exceptions import (
     LLMApiKeyRequiredError,
     LLMOutputLimitError,
     LLMRequestStopped,
+    LLMUserActionRequiredError,
 )
 from ballontranslator.utils.llm_profiles import (
     LLMProfile,
@@ -68,6 +70,21 @@ def _uses_provider_base_url(base_url: str, provider: str) -> bool:
     )
 
 
+def gpt_model_version(model: str) -> Optional[Tuple[int, int]]:
+    """Recognize GPT IDs, including gateway namespaces and model suffixes.
+
+    >>> gpt_model_version('openai/gpt-5.6-luna')
+    (5, 6)
+    >>> gpt_model_version('gpt-4o-mini')
+    (4, 0)
+    >>> gpt_model_version('custom-gpt-6') is None
+    True
+    """
+    name = str(model or '').strip().rsplit('/', 1)[-1].lower()
+    match = re.match(r'^gpt-(\d+)(?:\.(\d+)|o)?(?:[-:]|$)', name)
+    return (int(match[1]), int(match[2] or 0)) if match else None
+
+
 def openai_chat_completion_args(
     profile: LLMProfile,
     model: str,
@@ -85,22 +102,16 @@ def openai_chat_completion_args(
     >>> openai_chat_completion_args(profile, 'gpt-4o')['temperature']
     0.1
     """
-
+    if profile.backend == 'codex':
+        return {}
     base_url = _normalized_base_url(_openai_sdk_base_url(profile.base_url))
     openai_base_url = _normalized_base_url(
         PROVIDER_DEFAULTS['OpenAI']['base_url']
     )
-    model_name = str(model or '').rsplit('/', 1)[-1].lower()
+    model_name = str(model or '').strip().rsplit('/', 1)[-1].lower()
     is_native_openai = not base_url or base_url == openai_base_url
     args: Dict[str, Any] = {}
-    version_match = re.match(
-        r'^gpt-(\d+)(?:\.(\d+))?(?:-|$)', model_name
-    )
-    gpt_version = (
-        (int(version_match.group(1)), int(version_match.group(2) or 0))
-        if version_match
-        else None
-    )
+    gpt_version = gpt_model_version(model)
     if gpt_version is None or gpt_version < (5, 5):
         args['top_p'] = float(profile.top_p)
         args['temperature'] = float(profile.temperature)
@@ -157,6 +168,7 @@ class LLMChatResult:
     content: str
     usage: Any = None
     finish_reason: str = ''
+    prompt_cache_diagnostics: object = None
 
 
 class LLMChatRequestError(RuntimeError):
@@ -168,7 +180,7 @@ class LLMChatRequestError(RuntimeError):
 
 
 class LLMChatRequester:
-    """Issue one profile-backed OpenAI-compatible chat request.
+    """Issue one profile-backed API or Codex chat request.
 
     Prompt construction and retries stay with the owning Translator or OCR
     module; this boundary owns only transport and provider normalization.
@@ -189,11 +201,14 @@ class LLMChatRequester:
         self.request_count_minute = 0
         self.minute_start_time = time.time()
         self.stop_event: Optional[threading.Event] = None
+        self._codex_cache_keys: Dict[Tuple[str, str, int], str] = {}
 
     def set_stop_event(
         self,
         stop_event: Optional[threading.Event],
     ) -> None:
+        if stop_event is not self.stop_event:
+            self._codex_cache_keys.clear()
         self.stop_event = stop_event
 
     def _wait(self, seconds: float) -> None:
@@ -304,6 +319,18 @@ class LLMChatRequester:
         api_args: Dict[str, Any],
     ) -> LLMChatResult:
         """Perform one request; feature owners decide whether to retry it."""
+        if profile.backend == 'codex':
+            from .codex import account, request_chat_completion
+            self._respect_delay()
+            identity = (profile.id, str(api_args['model']), account.generation)
+            if identity not in self._codex_cache_keys:
+                self._codex_cache_keys[identity] = str(uuid.uuid4())
+            return request_chat_completion(
+                profile, api_args, self.stop_event,
+                self._codex_cache_keys[identity], str(self.get_param_value('proxy') or ''),
+            )
+        if profile.backend != 'openai':
+            raise LLMUserActionRequiredError('This LLM profile backend is unavailable.')
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay()
@@ -327,6 +354,7 @@ class LLMChatRequester:
             finish_reason=str(
                 getattr(choice, 'finish_reason', '') or ''
             ),
+            prompt_cache_diagnostics=getattr(completion, 'prompt_cache_diagnostics', None),
         )
         if result.finish_reason.strip().lower() == 'length':
             usage = format_completion_token_usage(result)

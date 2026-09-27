@@ -2,10 +2,14 @@
 
 import base64
 import io
+import json
+import re
 import threading
 import time
+import uuid
 from collections import deque
 from dataclasses import dataclass
+from itertools import islice
 from typing import Dict, Mapping, Optional, Sequence
 from urllib.parse import urlparse, urlunparse
 
@@ -20,8 +24,11 @@ from ballontranslator.modules.exceptions import (
     LLMRequestStopped,
     LLMUserActionRequiredError,
 )
-from ballontranslator.utils.llm_profiles import LLMProfile, resolve_api_key
+from ballontranslator.utils.llm_profiles import (
+    LLMProfile, image_responses_url, resolve_api_key, split_image_model_selection,
+)
 from ballontranslator.utils.logger import logger as LOGGER
+from . import image_generation
 
 
 @dataclass(frozen=True)
@@ -166,6 +173,7 @@ class LLMImageRequester:
         self.client = None
         self.client_cache_key = None
         self.stop_event = None
+        self._image_cache_keys: Dict[tuple, str] = {}
 
     def _request_param(self, name: str):
         policy = self._image_request_policy
@@ -212,7 +220,9 @@ class LLMImageRequester:
             )
         return base_url
 
-    def set_stop_event(self, stop_event) -> None:
+    def set_stop_event(self, stop_event: Optional[threading.Event]) -> None:
+        if stop_event is not self.stop_event:
+            self._image_cache_keys.clear()
         self.stop_event = stop_event
 
     def _wait(self, seconds: float) -> None:
@@ -280,6 +290,8 @@ class LLMImageRequester:
         return api_key
 
     def _initialize_client(self, profile: LLMProfile):
+        if profile.backend != 'openai':
+            raise LLMUserActionRequiredError('Image editing is unavailable for this LLM profile backend.')
         api_key = self._api_key_for_profile(profile)
         base_url = self._image_base_url(profile)
         proxy = self._request_param('proxy') or ''
@@ -313,24 +325,72 @@ class LLMImageRequester:
         )
 
     @staticmethod
-    def _response_error_message(response) -> str:
+    def _diagnostic_url(value: str) -> str:
+        """Keep endpoint identity without credentials or signed query values.
+
+        >>> LLMImageRequester._diagnostic_url('https://user:secret@example/v1?token=secret')
+        'https://example/v1'
+        """
         try:
-            data = response.json()
-            if isinstance(data, dict):
-                error = data.get('error')
-                if isinstance(error, dict) and error.get('message'):
-                    return str(error['message'])
-                for key in ('message', 'detail'):
-                    if data.get(key):
-                        return str(data[key])
-        except Exception:
+            parsed = urlparse(value)
+            return urlunparse(parsed._replace(netloc=parsed.netloc.rsplit('@', 1)[-1],
+                                             params='', query='', fragment=''))
+        except ValueError:
+            return '<invalid URL>'
+
+    @classmethod
+    def _diagnostic_text(cls, value: str, secrets: Sequence[Optional[str]]) -> str:
+        for secret in secrets:
+            if isinstance(secret, str) and secret:
+                # Error-body excerpts may contain a JSON-escaped copy of input.
+                for encoded in (secret, json.dumps(secret)[1:-1], json.dumps(secret, ensure_ascii=False)[1:-1]):
+                    value = value.replace(encoded, '<redacted>')
+        value = re.sub(r'https?://[^\s<>"\']+', lambda match: cls._diagnostic_url(match[0]), value)
+        value = re.sub(r'data:[^,\s]*;base64,[A-Za-z0-9+/=]+|[A-Za-z0-9+/=]{80,}', '<image data omitted>', value)
+        return ' '.join(value.split())[:2048]
+
+    def _log_image_response_failure(
+        self, profile: LLMProfile, response, endpoint: str,
+        secrets: Sequence[Optional[str]], data: object = None,
+        response_body: Optional[str] = None,
+    ) -> None:
+        def preview(value: object, depth: int = 0) -> object:
+            if depth > 4:
+                return '<omitted>'
+            if isinstance(value, dict):
+                return {str(key): ('<omitted>' if str(key).lower() in (
+                    'b64_json', 'image', 'images', 'mask', 'image_url', 'input',
+                    'input_references', 'prompt', 'revised_prompt', 'headers',
+                    'authorization', 'api_key', 'access_token', 'refresh_token',
+                    'result',
+                ) or (key == 'data' and isinstance(item, str)) else preview(item, depth + 1))
+                        for key, item in islice(value.items(), 12)}
+            if isinstance(value, list):
+                return [preview(item, depth + 1) for item in value[:3]]
+            if isinstance(value, str):
+                return self._diagnostic_text(value, secrets)[:512]
+            return value
+
+        headers = getattr(response, 'headers', {})
+        content_type = str(headers.get('content-type', ''))
+        body = (json.dumps(preview(data), ensure_ascii=False) if data is not None
+                else '<image body omitted>' if content_type.lower().startswith('image/')
+                else response_body if response_body is not None
+                else str(getattr(response, 'text', '')))
+        try:
+            endpoint = str(response.url)
+        except (AttributeError, RuntimeError):
             pass
-        text = getattr(response, 'text', '')
-        if text:
-            return str(text)
-        status = getattr(response, 'status_code', '')
-        reason = getattr(response, 'reason_phrase', '')
-        return f'HTTP {status} {reason}'.strip()
+        LOGGER.warning(
+            'LLM image response failed: profile_id=%r, profile_name=%r, endpoint=%r, '
+            'status=%s, content_type=%r, location=%r, response=%s',
+            self._diagnostic_text(str(profile.id), secrets),
+            self._diagnostic_text(str(profile.name), secrets),
+            self._diagnostic_text(self._diagnostic_url(endpoint), secrets),
+            getattr(response, 'status_code', ''), self._diagnostic_text(content_type, secrets)[:128],
+            self._diagnostic_text(self._diagnostic_url(str(headers.get('location', ''))), secrets),
+            self._diagnostic_text(body, secrets) or '<empty>',
+        )
 
     @staticmethod
     def _join_url(base_url: str, path: str) -> str:
@@ -531,13 +591,126 @@ class LLMImageRequester:
             'Content-Type': 'application/json',
         }
 
-    def _raise_for_response(self, profile: LLMProfile, response) -> None:
-        status_code = getattr(response, 'status_code', 200)
-        if status_code < 400:
-            return
-        if status_code in (401, 403):
-            raise LLMApiKeyRequiredError(profile.id, profile.name)
-        raise RuntimeError(self._response_error_message(response))
+    def _decode_api_image_response(
+        self, profile: LLMProfile, response, endpoint: str,
+        prompt: Optional[str], *, gemini: bool = False, assisted: bool = False,
+    ) -> np.ndarray:
+        """Report failed provider responses without logging successful image bodies.
+
+        >>> image = requester._decode_api_image_response(profile, response, endpoint, None)  # doctest: +SKIP
+        """
+        data = None
+        body = bytearray() if assisted else None
+        incomplete_body = False
+        try:
+            api_key = resolve_api_key(profile)
+        except Exception:
+            api_key = profile.api_key
+        secrets = (api_key, profile.image_prompt, prompt)
+        try:
+            if self.stop_event is not None and self.stop_event.is_set():
+                raise LLMRequestStopped()
+            status = response.status_code
+            if assisted:
+                limit = 16 * 1024 if status >= 300 else image_generation.MAX_IMAGE_RESPONSE_BYTES
+                try:
+                    for chunk in response.iter_bytes():
+                        if self.stop_event is not None and self.stop_event.is_set():
+                            raise LLMRequestStopped()
+                        received = len(body) + len(chunk)
+                        if received > limit or (status >= 300 and received == limit):
+                            incomplete_body = True
+                            if status >= 300:
+                                body.extend(chunk[:limit - len(body)])
+                                break
+                            raise LLMUserActionRequiredError('The image provider returned an oversized response.')
+                        body.extend(chunk)
+                except LLMRequestStopped:
+                    raise
+                except Exception:
+                    # Error diagnostics are best effort: an interrupted error
+                    # body must not turn known auth/permission failures into retries.
+                    incomplete_body = True
+                    if status < 300:
+                        raise
+                if self.stop_event is not None and self.stop_event.is_set():
+                    raise LLMRequestStopped()
+            if 300 <= status < 400:
+                location = self._diagnostic_text(self._diagnostic_url(
+                    str(getattr(response, 'headers', {}).get('location', ''))), secrets)
+                raise LLMUserActionRequiredError(
+                    f'Image endpoint returned HTTP {status} redirect'
+                    + (f' to {location}' if location else '')
+                    + '. Set the image Base URL to the provider’s image endpoint.'
+                )
+            try:
+                data = json.loads(body) if assisted else response.json()
+            except ValueError:
+                if status < 400:
+                    raise LLMUserActionRequiredError(
+                        ('The image provider returned an invalid Responses result. ' if assisted
+                         else f'Image endpoint returned HTTP {status} with an empty or non-JSON response. ')
+                        + 'Check the image Base URL; it must be the provider’s image endpoint.'
+                    ) from None
+            if self.stop_event is not None and self.stop_event.is_set():
+                raise LLMRequestStopped()
+            error_data = data
+            if assisted and isinstance(data, dict) and data.get('type') == 'response.failed':
+                error_data = data.get('response', data)
+            error = error_data.get('error', error_data) if isinstance(error_data, dict) else error_data
+            auth_error = isinstance(error, dict) and (
+                str(error.get('code') or error.get('type') or '').lower() in (
+                    'invalid_api_key', 'incorrect_api_key', 'missing_api_key',
+                    'expired_api_key', 'invalid_token', 'authentication_error',
+                )
+            )
+            if status == 401 or auth_error:
+                raise LLMApiKeyRequiredError(profile.id, profile.name)
+            if status >= 400 or (isinstance(error_data, dict) and error_data.get('error')):
+                message = next((error[key] for key in ('message', 'detail', 'code')
+                                if isinstance(error.get(key), str) and error[key]), '') if isinstance(error, dict) else error
+                if not isinstance(message, str) or not message:
+                    # Structured validation errors may echo inputs. Their safe
+                    # preview is logged separately, never stringify them for retries.
+                    message = (body.decode('utf-8', errors='replace') if assisted
+                               else str(getattr(response, 'text', ''))) if data is None and not incomplete_body else ''
+                message = message or f'Image service returned an error (HTTP {status}).'
+                message = self._diagnostic_text(message, secrets)
+                if status == 403 or (assisted and status < 500 and status not in (408, 429)):
+                    raise LLMUserActionRequiredError(
+                        f'Image service rejected this request (HTTP {status}): {message} '
+                        'Check the selected model, endpoint, and account access.'
+                    )
+                raise RuntimeError(f'Image service returned HTTP {status}: {message}')
+            if assisted:
+                raw = image_generation.decode_responses_image(data)
+                if self.stop_event is not None and self.stop_event.is_set():
+                    raise LLMRequestStopped()
+                try:
+                    return self._decode_image_bytes(raw)
+                except (OSError, ValueError) as error:
+                    raise LLMUserActionRequiredError('The image provider returned an invalid image.') from error
+            return (self._decode_gemini_response_image(data) if gemini
+                    else self._decode_response_image(data))
+        except LLMRequestStopped:
+            raise
+        except Exception as error:
+            try:
+                self._log_image_response_failure(
+                    profile, response, endpoint, secrets, data,
+                    '<incomplete response body omitted>' if incomplete_body else
+                    body.decode('utf-8', errors='replace') if body is not None and data is None else None,
+                )
+            except Exception:
+                # Diagnostics must not replace the response or authentication error.
+                pass
+            # Download failures can include signed URLs in their exception text;
+            # outer retry owners must not re-log their query credentials.
+            if not isinstance(error, LLMUserActionRequiredError):
+                message = self._diagnostic_text(str(error), secrets)
+                if message != str(error):
+                    raise RuntimeError(message) from None
+            raise
 
     def _request_openrouter_image(
         self,
@@ -547,8 +720,9 @@ class LLMImageRequester:
         prompt: Optional[str] = None,
         model: Optional[str] = None,
     ) -> np.ndarray:
+        endpoint = self._join_url(self._image_base_url(profile), '/images')
         response = client.post(
-            self._join_url(self._image_base_url(profile), '/images'),
+            endpoint,
             headers=self._headers(
                 self._api_key_for_profile(profile), json_request=True
             ),
@@ -556,8 +730,7 @@ class LLMImageRequester:
                 profile, image_file, prompt=prompt, model=model
             ),
         )
-        self._raise_for_response(profile, response)
-        return self._decode_response_image(response.json())
+        return self._decode_api_image_response(profile, response, endpoint, prompt)
 
     def _request_gemini_image(
         self,
@@ -568,10 +741,9 @@ class LLMImageRequester:
         model: Optional[str] = None,
     ) -> np.ndarray:
         selected_model = self._image_model(profile, model)
+        endpoint = self._gemini_generate_content_url(self._image_base_url(profile), selected_model)
         response = client.post(
-            self._gemini_generate_content_url(
-                self._image_base_url(profile), selected_model
-            ),
+            endpoint,
             headers=self._gemini_headers(
                 self._api_key_for_profile(profile)
             ),
@@ -579,8 +751,7 @@ class LLMImageRequester:
                 profile, image_file, prompt=prompt, model=selected_model
             ),
         )
-        self._raise_for_response(profile, response)
-        return self._decode_gemini_response_image(response.json())
+        return self._decode_api_image_response(profile, response, endpoint, prompt, gemini=True)
 
     def _request_openai_compatible_image(
         self,
@@ -595,9 +766,10 @@ class LLMImageRequester:
         )
         base_url = self._image_base_url(profile)
         headers = self._headers(self._api_key_for_profile(profile))
+        endpoint = self._generation_url(base_url) if image_file is None else base_url
         if image_file is None:
             response = client.post(
-                self._generation_url(base_url),
+                endpoint,
                 headers=self._headers(
                     self._api_key_for_profile(profile), json_request=True
                 ),
@@ -605,7 +777,7 @@ class LLMImageRequester:
             )
         else:
             response = client.post(
-                base_url,
+                endpoint,
                 headers=headers,
                 data={'model': args['model'], 'prompt': args['prompt']},
                 files={
@@ -614,8 +786,88 @@ class LLMImageRequester:
                     ),
                 },
             )
-        self._raise_for_response(profile, response)
-        return self._decode_response_image(response.json())
+        return self._decode_api_image_response(profile, response, endpoint, prompt)
+
+    def _image_cache_key(self, identity: tuple) -> str:
+        # Reuse the job's identity across crops and retries, without chat history.
+        if identity not in self._image_cache_keys:
+            self._image_cache_keys[identity] = str(uuid.uuid4())
+        return self._image_cache_keys[identity]
+
+    def _image_reference_bytes(
+        self, image: Optional[np.ndarray], mask: Optional[np.ndarray], prompt: str,
+    ) -> tuple[Optional[bytes], Optional[bytes], str]:
+        image_bytes = mask_bytes = None
+        if image is not None:
+            with self._png_image_file(image) as image_file:
+                image_bytes = image_file.getvalue()
+        if mask is not None:
+            # References describe the editable area; local compositing enforces it.
+            mask_rgb = np.repeat((mask > 127)[..., None], 3, axis=2).astype(np.uint8) * 255
+            with self._png_image_file(mask_rgb) as mask_file:
+                mask_bytes = mask_file.getvalue()
+            prompt += (
+                '\nImage 1 is the source image. Image 2 is a mask: white marks '
+                'the editable region and black marks pixels to preserve. '
+                'Apply the requested cleanup only inside the white region. '
+                'Return only the edited image 1, preserving its framing, '
+                'aspect ratio, artwork, and positions. Do not include the mask.'
+            )
+        return image_bytes, mask_bytes, prompt
+
+    def _request_assisted_image(
+        self, client, profile: LLMProfile, endpoint: str,
+        image: Optional[np.ndarray], mask: Optional[np.ndarray],
+        prompt: Optional[str], model: str, reasoning_model: str,
+    ) -> np.ndarray:
+        """Read one bounded Responses result using the profile's API client.
+
+        >>> pixels = requester._request_assisted_image(client, profile, endpoint, None, None, 'Draw.', 'gpt-image-2', 'gpt-6-sol')  # doctest: +SKIP
+        """
+        image_bytes, mask_bytes, instructions = self._image_reference_bytes(
+            image, mask, profile.image_prompt if prompt is None else prompt,
+        )
+        payload = image_generation.responses_image_payload(
+            reasoning_model, model, instructions,
+            image_generation.image_references(image_bytes, mask_bytes),
+            self._image_cache_key((profile.id, reasoning_model, self.client_cache_key)),
+            stream=False,
+        )
+        if self.stop_event is not None and self.stop_event.is_set():
+            raise LLMRequestStopped()
+        with client.stream('POST', endpoint, headers=self._headers(
+            self._api_key_for_profile(profile), json_request=True,
+        ), json=payload) as response:
+            return self._decode_api_image_response(profile, response, endpoint, prompt, assisted=True)
+
+    def _request_codex_image(
+        self,
+        profile: LLMProfile,
+        image: Optional[np.ndarray],
+        mask: Optional[np.ndarray],
+        prompt: Optional[str],
+        model: str,
+        reasoning_model: str,
+    ) -> np.ndarray:
+        """Send source and mask references through subscription authentication.
+
+        >>> pixels = requester._request_codex_image(profile, crop, mask, None, 'gpt-image-2', '')  # doctest: +SKIP
+        """
+        from .codex import account, request_image
+
+        image_bytes, mask_bytes, instructions = self._image_reference_bytes(
+            image, mask, profile.image_prompt if prompt is None else prompt,
+        )
+        cache_key = (self._image_cache_key((profile.id, reasoning_model, account.generation))
+                     if reasoning_model else '')
+        raw = request_image(
+            model, instructions, image_bytes, mask_bytes,
+            self.stop_event, proxy=self._request_param('proxy') or '',
+            timeout=self._request_timeout(),
+            reasoning_model=reasoning_model,
+            cache_key=cache_key,
+        )
+        return self._decode_image_bytes(raw)
 
     def request_image(
         self,
@@ -625,18 +877,61 @@ class LLMImageRequester:
         model: Optional[str] = None,
         *,
         resize_to_input: bool = False,
+        mask: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         """Return one generated RGB(A) image for optional input context."""
         if self.stop_event is not None and self.stop_event.is_set():
             raise LLMRequestStopped()
-        client = self._initialize_client(profile)
+        if mask is not None and (image is None or mask.shape != image.shape[:2]):
+            raise ValueError('The inpaint mask must match the input image dimensions.')
+        if profile.backend == 'codex':
+            from .codex import account
+            account.require_sign_in(self.stop_event)
+        try:
+            reasoning_model, selected_model = split_image_model_selection(self._image_model(profile, model))
+        except ValueError as error:
+            raise LLMUserActionRequiredError(str(error)) from error
+        instructions = profile.image_prompt if prompt is None else prompt
+        if (reasoning_model or profile.backend == 'codex') and (
+            not isinstance(instructions, str) or not instructions.strip()
+        ):
+            raise LLMUserActionRequiredError('Enter an image prompt before requesting an image.')
+        responses_url = image_responses_url(profile) if reasoning_model else ''
+        if reasoning_model and profile.backend != 'codex' and not responses_url:
+            raise LLMUserActionRequiredError(
+                'Assisted image editing needs an API base URL (root or /v1), '
+                'or an endpoint ending in /images/edits, /images/generations, '
+                'or /responses on a service '
+                'that supports the Responses image tool. Update the endpoint '
+                'or select a direct image model.'
+            )
+        client = None if profile.backend == 'codex' else self._initialize_client(profile)
         original_shape = None if image is None else image.shape[:2]
         request_image = (
             None if image is None else self._scale_image_for_request(image)
         )
+        if mask is not None and (profile.backend == 'codex' or reasoning_model) and mask.shape != request_image.shape[:2]:
+            # Area coverage keeps thin marks that nearest sampling loses.
+            mask = cv2.resize((mask > 127).astype(np.float32),
+                              (request_image.shape[1], request_image.shape[0]),
+                              interpolation=cv2.INTER_AREA)
+            mask = (mask > 0).astype(np.uint8) * 255
+        padding = (0, 0, 0, 0)
+        if request_image is not None and (profile.backend == 'codex' or reasoning_model):
+            height, width = request_image.shape[:2]
+            # Keep extreme crops within 3:1 for these image routes. Padding
+            # preserves source geometry; strip it before final resizing.
+            extra_h = max(0, (width + 2) // 3 - height)
+            extra_w = max(0, (height + 2) // 3 - width)
+            padding = (extra_h // 2, extra_h - extra_h // 2,
+                       extra_w // 2, extra_w - extra_w // 2)
+            if any(padding):
+                request_image = cv2.copyMakeBorder(request_image, *padding, cv2.BORDER_REPLICATE)
+                if mask is not None:
+                    mask = cv2.copyMakeBorder(mask, *padding, cv2.BORDER_CONSTANT, value=0)
         image_file = (
             None
-            if request_image is None
+            if request_image is None or profile.backend == 'codex' or reasoning_model
             else self._png_image_file(request_image)
         )
         try:
@@ -645,19 +940,34 @@ class LLMImageRequester:
                 # A reserved slot remains counted, but Stop must still win
                 # before the synchronous provider call begins.
                 raise LLMRequestStopped()
-            base_url = self._image_base_url(profile)
-            if self._is_gemini_url(base_url):
+            base_url = '' if profile.backend == 'codex' else self._image_base_url(profile)
+            if profile.backend == 'codex':
+                result = self._request_codex_image(
+                    profile, request_image, mask, prompt, selected_model, reasoning_model
+                )
+            elif reasoning_model:
+                result = self._request_assisted_image(
+                    client, profile, responses_url, request_image, mask, prompt,
+                    selected_model, reasoning_model,
+                )
+            elif self._is_gemini_url(base_url):
                 result = self._request_gemini_image(
-                    client, profile, image_file, prompt=prompt, model=model
+                    client, profile, image_file, prompt=prompt, model=selected_model
                 )
             elif self._is_openrouter_url(base_url):
                 result = self._request_openrouter_image(
-                    client, profile, image_file, prompt=prompt, model=model
+                    client, profile, image_file, prompt=prompt, model=selected_model
                 )
             else:
                 result = self._request_openai_compatible_image(
-                    client, profile, image_file, prompt=prompt, model=model
+                    client, profile, image_file, prompt=prompt, model=selected_model
                 )
+            if self.stop_event is not None and self.stop_event.is_set():
+                raise LLMRequestStopped()
+            if any(padding):
+                result = cv2.resize(result, (request_image.shape[1], request_image.shape[0]), interpolation=cv2.INTER_LINEAR)
+                top, _, left, _ = padding
+                result = result[top:top + height, left:left + width]
             if (
                 resize_to_input
                 and original_shape is not None
@@ -678,9 +988,11 @@ class LLMImageRequester:
         profile: LLMProfile,
         img: np.ndarray,
         prompt: Optional[str] = None,
+        *,
+        mask: Optional[np.ndarray] = None,
     ) -> np.ndarray:
         result = self.request_image(
-            profile, img, prompt=prompt, resize_to_input=True
+            profile, img, prompt=prompt, resize_to_input=True, mask=mask
         )
         channels = img.shape[2]
         if result.shape[2] != channels:

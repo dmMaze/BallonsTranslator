@@ -1,4 +1,5 @@
 import threading
+import time
 from typing import Callable, List, Optional, Union
 import os.path as osp
 
@@ -17,6 +18,7 @@ from ballontranslator.utils.imgproc_utils import enlarge_window, get_block_mask
 from ballontranslator.utils.io_utils import text_is_empty
 from ballontranslator.modules.translators import MissingTranslatorParams
 from ballontranslator.modules.exceptions import (
+    CodexSignInRequiredError,
     LLMApiKeyRequiredError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
@@ -31,6 +33,7 @@ from ballontranslator.modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR
 import ballontranslator.modules as modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
 from ballontranslator.utils.textblock import TextBlock, sort_regions
+from ballontranslator.utils.textblock_mask import region_mask
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
 from ballontranslator.utils.download_util import DownloadCancelled, sizeof_fmt
@@ -43,7 +46,9 @@ from .custom_widget import ImgtransProgressMessageBox, ParamComboBox, ProgressMe
 from .configpanel import ConfigPanel
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.config import pcfg, RunStatus, save_config
-from ballontranslator.utils.llm_profiles import LLM_INPAINT_KEY, LLM_OCR_KEY
+from ballontranslator.utils.llm_profiles import (
+    LLM_INPAINT_KEY, LLM_OCR_KEY, LLMProfile, profile_by_id, profile_from_config,
+)
 from ballontranslator.utils.global_callbacks import register_global_callback
 cfg_module = pcfg.module
 
@@ -122,6 +127,10 @@ def _show_llm_user_action_required_dialog(
     >>> issubclass(LLMApiKeyRequiredError, LLMUserActionRequiredError)
     True
     """
+    if isinstance(error, CodexSignInRequiredError):
+        from .codex_account import show_codex_sign_in_required
+        show_codex_sign_in_required(error)
+        return
     if isinstance(error, LLMApiKeyRequiredError):
         _show_llm_key_required_dialog(error)
         return
@@ -413,15 +422,33 @@ class InpaintThread(ModuleThread):
         self.job = lambda : self._set_module(inpainter)
         self.start()
 
-    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None):
-        self.job = lambda : self._inpaint(img, mask, img_key, inpaint_rect)
+    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None, *, profile: Optional[LLMProfile] = None, use_mask: bool = True) -> None:
+        # A canvas request must not inherit a stopped pipeline's event.
+        self.pipeline_stop_event = threading.Event()
+        self.job = lambda : self._inpaint(img, mask, img_key, inpaint_rect, profile=profile, use_mask=use_mask)
         self.start()
     
-    def _inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None):
+    def _inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect=None, *, profile: Optional[LLMProfile] = None, use_mask: bool = True) -> None:
         inpaint_dict = {}
         self.inpainting = True
+        module_name = getattr(self.inpainter, 'name', type(self.inpainter).__name__)
+        context = (
+            f'inpainter={module_name!r}, '
+            f'backend={profile.backend if profile is not None else "native"!r}, '
+            f'model={profile.image_model if profile is not None else "-"!r}, '
+            f'rectangle={inpaint_rect}, use_mask={use_mask}'
+        )
+        LOGGER.info('Draw inpaint started: %s', context)
+        started = time.monotonic()
+        outcome = 'failed'
         try:
-            inpainted = self.inpainter.inpaint(img, mask)
+            if hasattr(self.inpainter, 'set_stop_event'):
+                self.inpainter.set_stop_event(self.pipeline_stop_event)
+            if not use_mask:
+                # Alpha preservation and undo metadata share the actual edited area.
+                mask = np.full_like(mask, 255)
+            options = {} if profile is None else {'profile': profile, 'use_mask': use_mask}
+            inpainted = self.inpainter.inpaint(img, mask, **options)
             inpaint_dict = {
                 'inpainted': inpainted,
                 'img': img,
@@ -429,8 +456,10 @@ class InpaintThread(ModuleThread):
                 'img_key': img_key,
                 'inpaint_rect': inpaint_rect
             }
+            outcome = 'completed'
             self.finish_inpaint.emit(inpaint_dict)
         except LLMUserActionRequiredError as e:
+            outcome = 'requires-action'
             _show_llm_user_action_required_dialog(
                 e,
                 self.tr('Inpainting Failed.'),
@@ -438,17 +467,18 @@ class InpaintThread(ModuleThread):
             )
             if self.pipeline_stop_event is not None:
                 self.pipeline_stop_event.set()
-            self.inpainting = False
             self.inpaint_failed.emit()
         except LLMRequestStopped:
-            LOGGER.info('Inpainting stopped by user.')
-            self.inpainting = False
+            outcome = 'cancelled'
             self.inpaint_failed.emit()
         except Exception as e:
             create_error_dialog(e, self.tr('Inpainting Failed.'), 'InpaintFailed')
-            self.inpainting = False
             self.inpaint_failed.emit()
-        self.inpainting = False
+        finally:
+            self.inpainting = False
+            # Dialog helpers already log failure details; keep timing context quiet.
+            log = LOGGER.debug if outcome in ('failed', 'requires-action') else LOGGER.info
+            log('Draw inpaint %s: %s, elapsed=%.3fs', outcome, context, time.monotonic() - started)
 
 
 class TextDetectThread(ModuleThread):
@@ -698,6 +728,9 @@ class TranslateThread(ModuleThread):
                 # self.pipeline_pagekey_queue = []
                 # return
             self.blockSignals(False)
+            if stop_event.is_set():
+                self.module_thread_stopped.emit()
+                break
             self.finished_counter += 1
             self.progress_changed.emit(self.finished_counter)
 
@@ -748,8 +781,10 @@ class ImgtransThread(QThread):
     def isStopRequested(self):
         return self.stop_event.is_set()
 
-    def clearStopRequest(self):
-        self.stop_event.clear()
+    def clearStopRequest(self) -> None:
+        # Each job has its own cancellation and transport-cache identity; late
+        # work from the previous job must retain its previous stop signal.
+        self.stop_event = threading.Event()
         self._pipeline_stop_emitted = False
 
     def _emit_pipeline_stopped_if_ready(self, imgtrans_running: bool):
@@ -962,6 +997,8 @@ class ImgtransThread(QThread):
                         self.translator,
                     )
             self.finish_blktrans.emit(mode, blk_ids)
+        if self.isStopRequested():
+            return
         if mode > 1:
             if hasattr(self.inpaint_thread.inpainter, 'set_stop_event'):
                 self.inpaint_thread.inpainter.set_stop_event(self.stop_event)
@@ -969,6 +1006,8 @@ class ImgtransThread(QThread):
             im_h, im_w = tgt_img.shape[:2]
             progress_prod = 100. / len(blk_list) if len(blk_list) > 0 else 0
             for ii, blk in enumerate(blk_list):
+                if self.isStopRequested():
+                    break
                 xyxy_ori = np.array(blk.xyxy, dtype=np.int64)
                 xyxy_ori[::2] = np.clip(xyxy_ori[::2], 0, im_w)
                 xyxy_ori[1::2] = np.clip(xyxy_ori[1::2], 0, im_h)
@@ -979,7 +1018,7 @@ class ImgtransThread(QThread):
                     xyxy = np.array(xyxy, dtype=np.int64)
                     x1, y1, x2, y2 = xyxy.astype(np.int64)
                     im = np.copy(to_inpaint[y1: y2, x1: x2])
-                    maskseg_method = get_maskseg_method()
+                    maskseg_method = region_mask if cfg_module.inpainter == LLM_INPAINT_KEY else get_maskseg_method()
                     inpaint_mask_array, ballon_mask, bub_dict = maskseg_method(im, mask=tgt_mask[y1: y2, x1: x2])
                     mask = self.post_process_mask(inpaint_mask_array)
                     if mask.sum() > 0:
@@ -1201,6 +1240,8 @@ class ImgtransThread(QThread):
                         imgname,
                         blk_list,
                     )
+                    if self.isStopRequested():
+                        break
                     self.translate_counter += 1
                     self.update_translate_progress.emit(self.translate_counter)
 
@@ -1262,6 +1303,8 @@ class ImgtransThread(QThread):
                     imgname,
                     blk_list,
                 )
+                if self.isStopRequested():
+                    break
                 self.translate_counter += 1
                 self.update_translate_progress.emit(self.translate_counter)
 
@@ -1355,7 +1398,6 @@ class ModuleManager(QObject):
     page_trans_finished = Signal(int)
     module_selection_changed = Signal(str, str)
 
-    run_canvas_inpaint = False
     is_waiting_th = False
     block_set_inpainter = False
 
@@ -1365,7 +1407,7 @@ class ModuleManager(QObject):
         super().__init__(*args, **kwargs)
         self.imgtrans_proj = imgtrans_proj
         self._pending_canvas_inpaint: Optional[dict] = None
-        self._canvas_inpaint_source: Optional[np.ndarray] = None
+        self._canvas_inpaint_request: Optional[dict] = None
         self.check_inpaint_fin_timer = QTimer(self)
         self.check_inpaint_fin_timer.timeout.connect(self.check_inpaint_th_finished)
         self.prepare_msgbox: ProgressMessageBox = None
@@ -1407,6 +1449,7 @@ class ModuleManager(QObject):
         for module_thread in [self.textdetect_thread, self.ocr_thread, self.translate_thread, self.inpaint_thread]:
             module_thread.module_prepare_progress.connect(self.on_module_prepare_progress)
             module_thread.finish_set_module.connect(lambda th=module_thread: self.on_module_prepare_finished(th))
+            module_thread.finished.connect(self._continue_pending_prepare)
 
         self.package_install_thread = PackageInstallThread()
         self.package_install_thread.package_prepare_progress.connect(self.on_module_prepare_progress)
@@ -1424,6 +1467,7 @@ class ModuleManager(QObject):
         self.imgtrans_thread.finish_blktrans_stage.connect(self.on_finish_blktrans_stage)
         self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
         self.imgtrans_thread.pipeline_stopped.connect(self.on_imgtrans_thread_stopped)
+        self.imgtrans_thread.finished.connect(self._continue_canvas_inpaint)
 
         merge_config_module_params(
             cfg_module.translator_params, GET_VALID_TRANSLATORS(), TRANSLATORS.get)
@@ -1497,7 +1541,11 @@ class ModuleManager(QObject):
 
     def _prepare_modules_then(self, required_modules: List[tuple], on_success: Callable, on_failure: Callable = None):
         # RUN may need several stages; prepare them serially to keep one modal dialog.
-        queue = [(module_key, module_name) for module_key, module_name in required_modules if not self._module_ready(module_key, module_name)]
+        queue = [
+            (module_key, module_name) for module_key, module_name in required_modules
+            if self._thread_for_module_key(module_key).isRunning()
+            or not self._module_ready(module_key, module_name)
+        ]
         if not queue:
             on_success()
             return
@@ -1523,10 +1571,16 @@ class ModuleManager(QObject):
             module_specs.append((module_key, module_name, spec))
         return collect_missing_module_requirements(module_specs, create_package_manager())
 
-    def _continue_pending_prepare(self):
+    def _continue_pending_prepare(self) -> None:
+        if self._pending_prepare_success is None and self._pending_prepare_failure is None:
+            return
         while self._pending_prepare_queue:
-            module_key, module_name = self._pending_prepare_queue.pop(0)
+            module_key, module_name = self._pending_prepare_queue[0]
+            # A preparation signal can arrive before native work leaves run().
+            if self._thread_for_module_key(module_key).isRunning():
+                return
             if self._module_ready(module_key, module_name):
+                self._pending_prepare_queue.pop(0)
                 continue
             self._setter_for_module_key(module_key)(module_name)
             return
@@ -1970,18 +2024,20 @@ class ModuleManager(QObject):
     def inpainterBusy(self):
         return self.inpaint_thread.isRunning()
 
-    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect = None, **kwargs):
+    def inpaint(self, img: np.ndarray, mask: np.ndarray, img_key: str = None, inpaint_rect = None, *, profile: Optional[LLMProfile] = None, use_mask: bool = True, **kwargs: object) -> None:
         if self.inpaint_thread.isRunning():
             LOGGER.warning('Waiting for inpainting to finish')
             return
-        self.inpaint_thread.inpaint(img, mask, img_key, inpaint_rect)
+        self.inpaint_thread.inpaint(img, mask, img_key, inpaint_rect, profile=profile, use_mask=use_mask)
 
-    def terminateRunningThread(self):
+    def terminateRunningThread(self) -> None:
         if self.textdetect_thread.isRunning():
             self.textdetect_thread.quit()
         if self.ocr_thread.isRunning():
             self.ocr_thread.quit()
         if self.inpaint_thread.isRunning():
+            if self.inpaint_thread.pipeline_stop_event is not None:
+                self.inpaint_thread.pipeline_stop_event.set()
             self.inpaint_thread.quit()
         if self.translate_thread.isRunning():
             self.translate_thread.quit()
@@ -2199,8 +2255,9 @@ class ModuleManager(QObject):
             return True
         return False
 
-    def finishImgtransPipeline(self):
-        if self.proj_finished():
+    def finishImgtransPipeline(self) -> None:
+        # Stopped runs finish through the worker shutdown path, not progress.
+        if not self.imgtrans_thread.isStopRequested() and self.proj_finished():
             self.progress_msgbox.hide()
             self.imgtrans_pipeline_finished.emit()
     
@@ -2282,25 +2339,69 @@ class ModuleManager(QObject):
         self.ocr_thread.setOCR(ocr)
 
     def on_finish_inpaint(self, inpaint_dict: dict) -> None:
-        apply_result = (
-            self.run_canvas_inpaint
-            and self._canvas_inpaint_source is self.imgtrans_proj.inpainted_array
-        )
-        self.run_canvas_inpaint = False
-        self._canvas_inpaint_source = None
+        request = self._canvas_inpaint_request
+        apply_result = request is not None and self._canvas_inpaint_source_matches(request)
+        self._canvas_inpaint_request = None
         if apply_result:
             self.canvas_inpaint_finished.emit(inpaint_dict)
+        else:
+            reason = 'source image changed' if request is not None else 'page changed or request cancelled'
+            LOGGER.info('Draw inpaint result discarded: %s, rectangle=%s', reason, inpaint_dict.get('inpaint_rect'))
+            if request is not None:
+                self.canvas_inpaint_failed.emit()
+
+    def _canvas_inpaint_source_matches(self, request: dict) -> bool:
+        source = request['source']
+        if source is not self.imgtrans_proj.inpainted_array:
+            return False
+        rect = request.get('inpaint_rect')
+        if rect is not None:
+            x1, y1, x2, y2 = rect
+            source = source[y1:y2, x1:x2]
+        # Undo/redo can edit the same array. Ignore changes outside this crop.
+        return np.array_equal(source, request['img'])
 
     def canvas_inpaint(self, inpaint_dict: dict) -> None:
-        """Keep a canvas request until module preparation and the worker finish.
+        """Freeze drawing selections until module preparation and the worker finish.
 
         >>> manager.canvas_inpaint(request)  # doctest: +SKIP
         """
-        # The page may change while this request waits for an older inference.
+        draw = pcfg.drawpanel
+        profile = None
+        if self._pending_canvas_inpaint is not None:
+            LOGGER.info('Draw inpaint queued request discarded: replaced by a newer request, rectangle=%s',
+                        self._pending_canvas_inpaint.get('inpaint_rect'))
+        if draw.inpainter == LLM_INPAINT_KEY:
+            selected = profile_by_id(cfg_module.llm_profiles, draw.inpaint_llm_id)
+            if selected is None:
+                self._pending_canvas_inpaint = None
+                _show_llm_user_action_required_dialog(
+                    LLMUserActionRequiredError(self.tr(
+                        'The drawing LLM profile is unavailable. Select a profile in the drawing panel.'
+                    )),
+                    self.tr('Inpainting Failed.'), 'InpaintFailed',
+                )
+                self.canvas_inpaint_failed.emit()
+                return
+            profile = profile_from_config(selected)
+            profile.image_model = draw.inpaint_llm_model or profile.image_model
+            override = draw.inpaint_prompt_override.strip()
+            if override:
+                profile.image_prompt = override
+        use_mask = inpaint_dict.get('use_mask', True)
+        LOGGER.info('Draw inpaint submitted: inpainter=%r, backend=%r, model=%r, rectangle=%s, use_mask=%s',
+                    draw.inpainter, profile.backend if profile is not None else 'native',
+                    profile.image_model if profile is not None else '-',
+                    inpaint_dict.get('inpaint_rect'), use_mask)
+        # The page and drawing selections may change while an older job finishes.
         self._pending_canvas_inpaint = {
             **inpaint_dict,
+            'source': self.imgtrans_proj.inpainted_array,
             'img': inpaint_dict['img'].copy(),
             'mask': inpaint_dict['mask'].copy(),
+            'inpainter': draw.inpainter,
+            'profile': profile,
+            'use_mask': use_mask,
         }
         self._continue_canvas_inpaint()
 
@@ -2308,12 +2409,16 @@ class ModuleManager(QObject):
         if (
             self._pending_canvas_inpaint is None
             or self.inpaint_thread.isRunning()
+            or self.imgtrans_thread.isRunning()
             or self._pending_prepare_success is not None
             or self._pending_batch_package_success is not None
         ):
             return
+        if not self._canvas_inpaint_source_matches(self._pending_canvas_inpaint):
+            self._fail_pending_canvas_inpaint('source image changed')
+            return
         self._prepare_modules_then(
-            [('inpainter', cfg_module.inpainter)],
+            [('inpainter', self._pending_canvas_inpaint['inpainter'])],
             self._start_canvas_inpaint,
             self._fail_pending_canvas_inpaint,
         )
@@ -2321,26 +2426,36 @@ class ModuleManager(QObject):
     def _start_canvas_inpaint(self) -> None:
         # finish_set_module can be delivered before QThread.run() returns.
         # QThread.finished resumes the request if the worker is still busy.
-        if self._pending_canvas_inpaint is None or self.inpaint_thread.isRunning():
+        if (self._pending_canvas_inpaint is None or self.inpaint_thread.isRunning()
+                or self.imgtrans_thread.isRunning()):
+            return
+        if not self._canvas_inpaint_source_matches(self._pending_canvas_inpaint):
+            self._fail_pending_canvas_inpaint('source image changed')
+            return
+        if not self._module_ready('inpainter', self._pending_canvas_inpaint['inpainter']):
+            self._continue_canvas_inpaint()
             return
         inpaint_dict = self._pending_canvas_inpaint
         self._pending_canvas_inpaint = None
-        self._canvas_inpaint_source = self.imgtrans_proj.inpainted_array
-        self.run_canvas_inpaint = True
-        self.inpaint(**inpaint_dict)
+        self._canvas_inpaint_request = inpaint_dict
+        worker_request = dict(inpaint_dict)
+        worker_request.pop('source')
+        worker_request.pop('inpainter')
+        # Native modules may edit their input; keep the comparison snapshot intact.
+        worker_request['img'] = inpaint_dict['img'].copy()
+        self.inpaint(**worker_request)
 
-    def _fail_pending_canvas_inpaint(self) -> None:
+    def _fail_pending_canvas_inpaint(self, reason: str = 'preparation failed or cancelled') -> None:
         if self._pending_canvas_inpaint is not None:
+            LOGGER.debug('Draw inpaint queued request discarded: %s; inpainter=%r, rectangle=%s', reason,
+                         self._pending_canvas_inpaint['inpainter'],
+                         self._pending_canvas_inpaint.get('inpaint_rect'))
             self._pending_canvas_inpaint = None
             self.canvas_inpaint_failed.emit()
 
     def on_canvas_inpaint_failed(self) -> None:
-        notify = (
-            self.run_canvas_inpaint
-            and self._canvas_inpaint_source is self.imgtrans_proj.inpainted_array
-        )
-        self.run_canvas_inpaint = False
-        self._canvas_inpaint_source = None
+        notify = self._canvas_inpaint_request is not None
+        self._canvas_inpaint_request = None
         if notify:
             self.canvas_inpaint_failed.emit()
     
@@ -2441,9 +2556,15 @@ class ModuleManager(QObject):
             module.updateParam(param_key, param_content['content'])
 
     def handle_page_changed(self) -> None:
+        if self._pending_canvas_inpaint is not None:
+            LOGGER.info('Draw inpaint queued request discarded: page changed, rectangle=%s',
+                        self._pending_canvas_inpaint.get('inpaint_rect'))
+        if self._canvas_inpaint_request is not None:
+            LOGGER.info('Draw inpaint cancellation requested: page changed.')
+        self._pending_canvas_inpaint = None
+        self._canvas_inpaint_request = None
         if not self.imgtrans_thread.isRunning():
             # Killing a QThread inside native model inference can abort the
             # process. Let it finish, discard its result, then run the next page.
-            self._pending_canvas_inpaint = None
-            self.run_canvas_inpaint = False
-            self._canvas_inpaint_source = None
+            if self.inpaint_thread.pipeline_stop_event is not None:
+                self.inpaint_thread.pipeline_stop_event.set()

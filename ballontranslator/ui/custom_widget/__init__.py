@@ -9,7 +9,7 @@ from .flow_layout import FlowLayout, JustifiedFlowLayout
 from .label import FadeLabel, SmallColorPickerLabel, ColorPickerLabel, NestedColorPickerLabel, ClickableLabel, CheckableLabel, TextCheckerLabel, ParamNameLabel, SmallParamLabel, SizeControlLabel, SmallSizeControlLabel
 from .slider import PaintQSlider
 from .helper import isDarkTheme, themeColor
-from .push_button import ExpandingToolButton, NoBorderPushBtn
+from .push_button import ExpandingToolButton, NoBorderPushBtn, RefreshButton
 from .checkbox import QFontChecker, AlignmentChecker
 
 

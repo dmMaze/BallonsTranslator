@@ -14,7 +14,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qtpy.QtCore import QElapsedTimer, QLocale, QModelIndex, QSignalBlocker, QTimer, Signal, Qt
+from qtpy.QtCore import QLocale, QModelIndex, QSignalBlocker, Signal, Qt
 from qtpy.QtGui import (
     QActionGroup,
     QColor,
@@ -25,8 +25,6 @@ from qtpy.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
-    QPaintEvent,
-    QShowEvent,
     QPen,
     QPixmap,
     QStandardItemModel,
@@ -49,13 +47,12 @@ from ...custom_widget import (
     CheckableLabel,
     ColorPickerLabel,
     QFontChecker,
+    RefreshButton,
     SizeComboBox,
     SizeControlLabel,
     TextCheckerLabel,
     Widget,
 )
-from ...icon_rendering import render_svg_pixmap
-from ...misc import themed_icon_path
 from ..item import TextBlkItem
 from ..font_family import qfont_with_family
 from ..annotations import (
@@ -794,70 +791,6 @@ class FontFamilyComboBox(QComboBox):
             self.apply_fontfamily()
 
 
-class FontReloadButton(QToolButton):
-    """Show the themed reload SVG and animate only while busy and visible.
-
-    >>> issubclass(FontReloadButton, QToolButton)
-    True
-    """
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent)
-        self.setObjectName('FontReloadButton')
-        self._busy = False
-        self._angle = 0.0
-        self._elapsed = QElapsedTimer()
-        self._rotation_timer = QTimer(self)
-        self._rotation_timer.setInterval(30)
-        self._rotation_timer.timeout.connect(self._advance_rotation)
-        self.setAccessibleName(self.tr('Reload fonts'))
-
-    def set_busy(self, busy: bool) -> None:
-        if self._busy == busy:
-            return
-        self._busy = busy
-        self.setEnabled(not busy)
-        if busy and self.isVisible():
-            self._elapsed.start()
-            self._rotation_timer.start()
-        else:
-            self._rotation_timer.stop()
-        self._angle = 0.0
-        self.update()
-
-    def _advance_rotation(self) -> None:
-        self._angle = (self._elapsed.elapsed() % 900) * 360.0 / 900
-        self.update()
-
-    def showEvent(self, event: QShowEvent) -> None:
-        super().showEvent(event)
-        if self._busy:
-            self._elapsed.start()
-            self._rotation_timer.start()
-
-    def hideEvent(self, event: QHideEvent) -> None:
-        self._rotation_timer.stop()
-        super().hideEvent(event)
-
-    def paintEvent(self, event: QPaintEvent) -> None:
-        super().paintEvent(event)
-        icon = (
-            'fontfmt_reload_activate.svg'
-            if self.isDown() and self.isEnabled()
-            else 'fontfmt_reload.svg'
-        )
-        pixmap = render_svg_pixmap(
-            themed_icon_path(icon), 20, 20, self.devicePixelRatioF(),
-        )
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-        painter.translate(self.width() / 2, self.height() / 2)
-        painter.rotate(self._angle)
-        if not self.isEnabled():
-            painter.setOpacity(0.45)
-        painter.drawPixmap(-10, -10, pixmap)
-        painter.end()
-
-
 class FontFormatPanel(Widget):
     reload_fonts_requested = Signal()
     
@@ -880,7 +813,8 @@ class FontFormatPanel(Widget):
 
         self.reloadFontsButton = None
         if runtime_font_refresh_supported():
-            self.reloadFontsButton = FontReloadButton(self)
+            self.reloadFontsButton = RefreshButton(self)
+            self.reloadFontsButton.setAccessibleName(self.tr('Reload fonts'))
             self.reloadFontsButton.setToolTip(self.tr('Reload system fonts and fonts folder'))
             self.reloadFontsButton.clicked.connect(self.reload_fonts_requested)
 

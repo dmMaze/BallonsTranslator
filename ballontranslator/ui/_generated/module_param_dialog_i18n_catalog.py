@@ -107,7 +107,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Max Requests Per Minute', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Requests Per Minute'),
     },
     ('ocr', 'LLMOCR', 'proxy', 'description'): {
-        "source": 'Proxy address used for the OpenAI-compatible client.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy address used for the OpenAI-compatible client.'),
+        "source": 'Proxy address used for LLM requests.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy address used for LLM requests.'),
     },
     ('ocr', 'LLMOCR', 'proxy', 'display_name'): {
         "source": 'Proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy'),
@@ -593,7 +593,7 @@ MODULE_PARAM_CATALOG = {
         "source": 'Max Requests Per Minute', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Requests Per Minute'),
     },
     ('translator', 'LLMTranslator', 'proxy', 'description'): {
-        "source": 'Proxy address used for the OpenAI-compatible client.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy address used for the OpenAI-compatible client.'),
+        "source": 'Proxy address used for LLM requests.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy address used for LLM requests.'),
     },
     ('translator', 'LLMTranslator', 'proxy', 'display_name'): {
         "source": 'Proxy', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Proxy'),

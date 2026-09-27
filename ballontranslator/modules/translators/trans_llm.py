@@ -26,6 +26,7 @@ from ..context.history import (
 )
 from ..context.token_usage import (
     format_completion_token_usage,
+    format_prompt_cache_diagnostics,
     messages_token_count,
 )
 from ..context.translation_context import (
@@ -46,6 +47,7 @@ from ..llm_chat import (
     LLMChatResult,
     LLMChatRequester,
     LLMChatRequestError,
+    gpt_model_version,
     openai_chat_completion_args,
     openai_json_response_format,
 )
@@ -59,6 +61,7 @@ from .llm_translation_contract import (
     render_history_page,
     render_user_prompt,
     translation_json_schema,
+    translation_cache_messages,
     translation_system_prompt,
 )
 from ballontranslator.modules.exceptions import (
@@ -91,9 +94,13 @@ MAX_PAGE_LONG_SIDE = 1536
 PAGE_IMAGE_JPEG_QUALITY = 85
 
 
+def _uses_explicit_cache(profile: LLMProfile) -> bool:
+    return profile.backend == 'openai' and (gpt_model_version(profile.model) or (0, 0)) >= (5, 6)
+
+
 @register_translator("LLMTranslator")
 class LLMTranslator(LLMChatRequester, BaseTranslator):
-    """Profile-backed OpenAI-compatible translator.
+    """Profile-backed translator using API chat or Codex Responses.
 
     Example:
         >>> parse_translation_response(
@@ -131,7 +138,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         "proxy": {
             "value": "",
             "display_name": "Proxy",
-            "description": "Proxy address used for the OpenAI-compatible client.",
+            "description": "Proxy address used for LLM requests.",
         },
     }
 
@@ -204,6 +211,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             if profile.json_schema_response_format
             else 'json_object'
         )
+        output_limit = (
+            '' if profile.backend == 'codex'
+            else f'max_output_tokens={profile.max_tokens!r}, '
+        )
+        cache_mode = 'explicit' if _uses_explicit_cache(profile) else 'implicit'
         return (
             'LLM translation run: '
             f'profile_id={str(profile.id)!r}, '
@@ -213,10 +225,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             f'vision={vision_enabled}, '
             f'summary_memory={summary_memory_enabled}, '
             f'overwrite_summary={overwrite_summary}, '
-            f'max_output_tokens={profile.max_tokens!r}, '
+            f'{output_limit}'
             f'thinking_setting='
             f'{str(profile.thinking_level or THINKING_AUTO)!r}, '
-            f'response_format={response_format!r}'
+            f'response_format={response_format!r}, '
+            f'prompt_cache={cache_mode!r}'
         )
 
     def unload_model(self, empty_cache=False):
@@ -355,9 +368,14 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         )
         if empty_page_summary and not request_summary:
             return []
+        if pcfg.module.translator_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         if not self.all_model_loaded():
             self.load_model()
         profile = self.profile
+        model = self._text_model(profile)
+        array_response = profile.backend == 'codex' or gpt_model_version(model) is not None
         target_language_name = self._translated_lang(target_language)
         prompt_spec = TranslationPromptSpec(
             source_language=self._translated_lang(source_language),
@@ -367,9 +385,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 target_language_name,
                 history_enabled=history_enabled,
                 summary_enabled=request_summary,
+                array_response=array_response,
             ),
             summary_enabled=request_summary,
             history_enabled=history_enabled,
+            array_response=array_response,
         )
         vision_request = None
         if (
@@ -382,7 +402,6 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 str(page_key),
                 profile,
             )
-        model = self._text_model(profile)
         request_context = self._snapshot_request_context(
             project,
             page_key,
@@ -575,7 +594,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         True
         """
         use_history = prompt_spec.history_enabled
-        summary_enabled = prompt_spec.summary_enabled
+        # Saved context remains available even when this request needs no new summary.
         memory_record = (
             project.get_llm_compact_memory()
             if memory_enabled and project is not None
@@ -677,7 +696,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                         project,
                         page.page_key,
                         target_language,
-                        summary_enabled=summary_enabled,
+                        summary_enabled=memory_enabled,
                     )
                     for page in self._history_window.history
                 )
@@ -695,7 +714,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                         project,
                         self._history_window.request_page_key,
                         target_language,
-                        summary_enabled=summary_enabled,
+                        summary_enabled=memory_enabled,
                     )
                     if previous_page is None:
                         rebuild_reason = ContextReason.PREVIOUS_INCOMPLETE
@@ -710,26 +729,22 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     project,
                     candidate_key,
                     target_language,
-                    summary_enabled=summary_enabled,
+                    summary_enabled=memory_enabled,
                 ),
-                render_page=lambda page: render_history_page(
-                    page,
-                    model,
-                    prompt_spec,
-                ),
+                render_page=lambda page: render_history_page(page, model, prompt_spec),
                 reserved_tokens=current_summary_tokens,
             )
 
         missing_history_summaries = tuple(
             page.page_key
             for page in history
-            if summary_enabled and not page.snapshot.summary
+            if memory_enabled and not page.snapshot.summary
         )
         if missing_history_summaries:
             self.logger.debug(
                 'LLM history summary policy: '
                 f'pages_without_summary={missing_history_summaries!r}; '
-                'their assistant examples contain an empty page_summary.'
+                'no saved page summary is available.'
             )
 
         # Retired summaries stay saved, but must not refill the prompt after
@@ -1066,11 +1081,20 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         summary_enabled: bool = False,
     ) -> Dict:
         model = self._text_model(profile)
+        gpt_version = gpt_model_version(model)
         api_args = {
             "model": model,
             "messages": messages,
         }
         api_args.update(openai_chat_completion_args(profile, model))
+        if _uses_explicit_cache(profile):
+            api_args['messages'] = translation_cache_messages(messages)
+            # The subscription endpoint rejects both public API cache controls;
+            # retain its implicit cache and original instruction mapping.
+            # extra_body carries the API fields through the installed SDK.
+            api_args.setdefault('extra_body', {})['prompt_cache_options'] = {
+                'mode': 'explicit', 'ttl': '30m',
+            }
         api_args["response_format"] = openai_json_response_format(
             profile,
             'translation_response',
@@ -1078,6 +1102,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 translation_json_schema(
                     expected_translations,
                     summary_enabled=summary_enabled,
+                    array_response=profile.backend == 'codex' or gpt_version is not None,
                 )
                 if profile.json_schema_response_format
                 else {}
@@ -1102,6 +1127,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         attempt: Optional[int] = None,
     ) -> None:
         summary = format_completion_token_usage(completion)
+        diagnostics = format_prompt_cache_diagnostics(completion.prompt_cache_diagnostics)
+        summary = ', '.join(part for part in (
+            summary, f'prompt_cache_diagnostics={diagnostics}',
+        ) if part)
         finish_reason = str(completion.finish_reason or '').replace(
             '\r', ' '
         ).replace('\n', ' ')
@@ -1110,15 +1139,14 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 part for part in (summary, f'finish_reason={finish_reason}')
                 if part
             )
-        if summary:
-            details = []
-            if page_key is not None:
-                safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
-                details.append(f'page={safe_page_key or "-"}')
-            if attempt is not None:
-                details.append(f'attempt={attempt}')
-            details.append(summary)
-            self.logger.debug(f'LLM token usage: {", ".join(details)}')
+        details = []
+        if page_key is not None:
+            safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
+            details.append(f'page={safe_page_key or "-"}')
+        if attempt is not None:
+            details.append(f'attempt={attempt}')
+        details.append(summary)
+        self.logger.debug(f'LLM token usage: {", ".join(details)}')
 
     def _request_translation(
         self,
@@ -1236,6 +1264,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     parsed = parse_translation_response(
                         raw_response,
                         len(queries),
+                        array_response=prompt_spec.array_response,
                     )
                 except Exception:
                     safe_page_key = str(usage_page_key or '-').replace(

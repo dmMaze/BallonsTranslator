@@ -55,6 +55,8 @@ class EditingLayerOpacityTests(unittest.TestCase):
         layout.addWidget(self.canvas.gv)
         layout.addWidget(self.panel)
         layout.addWidget(self.bar)
+        # Keep the sampled page area visible alongside the drawing controls.
+        self.window.resize(1000, 800)
         self.window.show()
         self.canvas.updateCanvas()
         self.text_item = TextBlkItem(TextBlock(

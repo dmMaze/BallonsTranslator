@@ -2,6 +2,8 @@
 
 from collections.abc import Mapping
 from functools import lru_cache
+import json
+import re
 from typing import Dict, List
 
 
@@ -174,3 +176,27 @@ def format_token_usage(usage) -> str:
 
 def format_completion_token_usage(completion) -> str:
     return format_token_usage(_usage_member(completion, 'usage'))
+
+
+def format_prompt_cache_diagnostics(diagnostics: object) -> str:
+    """Log diagnostic codes/counts without dumping arbitrary provider fields.
+
+    >>> format_prompt_cache_diagnostics(None)
+    'not_reported'
+    >>> format_prompt_cache_diagnostics({'type': 'cache_miss', 'reason': 'input_changed'})
+    '{"type":"cache_miss","reason":"input_changed"}'
+    """
+    if diagnostics is None:
+        return 'not_reported'
+    fields = {}
+    for name in ('type', 'reason'):
+        value = _usage_member(diagnostics, name)
+        # These are machine-readable codes. Free-form strings could echo inputs
+        # or credentials, so they do not belong in routine request diagnostics.
+        if isinstance(value, str) and re.fullmatch(r'[a-z][a-z0-9_]{0,127}', value):
+            fields[name] = value
+    for name in ('comparison_reusable_tokens', 'cache_missed_tokens'):
+        value = _usage_count(diagnostics, name)
+        if value is not None:
+            fields[name] = value
+    return json.dumps(fields, separators=(',', ':')) if fields else 'unrecognized'
