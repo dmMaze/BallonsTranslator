@@ -8,7 +8,7 @@ from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSize, QSizeF, QEve
 from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QMouseEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 from qtpy.QtWidgets import QGraphicsPathItem
 from qtpy.QtCore import QLineF
-from qtpy.QtGui import QColor, QPainterPathStroker
+from qtpy.QtGui import QBrush, QColor, QPainterPathStroker
 
 try:
     from qtpy.QtWidgets import QUndoStack, QUndoCommand
@@ -194,7 +194,7 @@ class Canvas(QGraphicsScene):
     end_create_textblock = Signal(QRectF)
     paste2selected_textitems = Signal()
     end_create_rect = Signal(QRectF, int)
-    end_create_shape_fill = Signal(QRectF)
+    end_create_shape_fill = Signal(QRectF, bool)
     finish_painting = Signal(StrokeImgItem)
     finish_erasing = Signal(StrokeImgItem)
     delete_textblks = Signal(int)
@@ -243,6 +243,7 @@ class Canvas(QGraphicsScene):
         self._text_creation_cursor_active = False
         self.create_block_origin: QPointF = None
         self._shape_fill_origin: QPointF | None = None
+        self._shape_fill_button = Qt.MouseButton.NoButton
         self.editing_textblkitem: TextBlkItem = None
         self._path_reorder_active = False
         self._path_reorder_drawing = False
@@ -916,6 +917,7 @@ class Canvas(QGraphicsScene):
         if self._shape_fill_origin is None:
             return False
         self._shape_fill_origin = None
+        self._shape_fill_button = Qt.MouseButton.NoButton
         self.shape_fill_preview.hide()
         return True
 
@@ -1254,10 +1256,22 @@ class Canvas(QGraphicsScene):
         
         if self.imgtrans_proj.img_valid:
             if self.drawMode() and self.image_edit_mode == ImageEditMode.ShapeFillTool:
-                if btn == Qt.MouseButton.LeftButton:
+                if self._shape_fill_origin is None and btn in (
+                    Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton,
+                ):
                     self._shape_fill_origin = self.baseLayer.mapFromScene(event.scenePos())
+                    self._shape_fill_button = btn
                     self.shape_fill_preview.setPath(QPainterPath())
-                    self.shape_fill_preview.setBrush(QColor(pcfg.drawpanel.shape_fill_color))
+                    color = QColor(pcfg.drawpanel.shape_fill_color)
+                    color.setAlpha(pcfg.drawpanel.shape_fill_alpha)
+                    erasing = btn == Qt.MouseButton.RightButton
+                    # Outline the erase region without covering the existing drawing.
+                    pen = QPen(QColor(*shared.FOREGROUND_FONTCOLOR), 1, Qt.PenStyle.DashLine)
+                    pen.setCosmetic(True)
+                    self.shape_fill_preview.setPen(pen if erasing else QPen(Qt.PenStyle.NoPen))
+                    self.shape_fill_preview.setBrush(
+                        QBrush(Qt.BrushStyle.NoBrush) if erasing else QBrush(color)
+                    )
                     self.shape_fill_preview.show()
                 event.accept()
                 return
@@ -1342,12 +1356,12 @@ class Canvas(QGraphicsScene):
         if btn == Qt.MouseButton.MiddleButton:
             self.mid_btn_pressed = False
         if self._shape_fill_origin is not None:
-            if btn == Qt.MouseButton.LeftButton:
+            if btn == self._shape_fill_button:
                 rect = QRectF(
                     self._shape_fill_origin, self.baseLayer.mapFromScene(event.scenePos()),
                 ).normalized()
                 self.cancel_shape_fill()
-                self.end_create_shape_fill.emit(rect)
+                self.end_create_shape_fill.emit(rect, btn == Qt.MouseButton.RightButton)
             event.accept()
             return
         textblk_created = False

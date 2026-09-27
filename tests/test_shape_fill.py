@@ -14,7 +14,7 @@ from qtpy.QtWidgets import QApplication, QHBoxLayout, QShortcut, QWidget
 
 from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.drawingpanel import DrawingPanel
-from ballontranslator.ui.image_edit import ImageEditMode
+from ballontranslator.ui.image_edit import ImageEditMode, PenShape
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.misc import pixmap2ndarray
 from ballontranslator.utils.config import DrawPanelConfig, pcfg
@@ -129,26 +129,32 @@ class ShapeFillTests(unittest.TestCase):
     def test_preview_is_excluded_from_export_and_cancelled_on_state_changes(self) -> None:
         before = self.rendered()
         escape_activations = QSignalSpy(self.escape_shortcut.activated)
-        for cancel in (
+        cancellations = (
             lambda: QTest.keyClick(self.canvas.gv, Qt.Key.Key_Escape),
             lambda: self.panel.setCurrentToolByName('pen'),
+            lambda: self.panel.setCurrentToolByName('inpaint'),
+            lambda: self.panel.setCurrentToolByName('rect'),
+            lambda: self.panel.setCurrentToolByName('hand'),
             self.panel.hide,
             self.canvas.updateCanvas,
             lambda: self.canvas.setPaintMode(False),
             self.canvas.clearToolStates,
             self.canvas.on_activation_changed,
-        ):
-            self.panel.show()
-            self.canvas.setPaintMode(True)
-            self.panel.setCurrentToolByName('shape')
-            self.drag(QPointF(20, 20), QPointF(80, 80), release=False)
-            self.assertTrue(self.canvas.shape_fill_preview.isVisible())
-            np.testing.assert_array_equal(self.rendered(), before)
-            cancel()
-            self.assertFalse(self.canvas.shape_fill_preview.isVisible())
-            QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.LeftButton)
-            self.assertEqual(self.canvas.draw_undo_stack.count(), 0)
-        self.assertEqual(len(escape_activations), 1)
+        )
+        for button in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+            for cancel in cancellations:
+                with self.subTest(button=button, cancel=cancel):
+                    self.panel.show()
+                    self.canvas.setPaintMode(True)
+                    self.panel.setCurrentToolByName('shape')
+                    self.drag(QPointF(20, 20), QPointF(80, 80), release=False, button=button)
+                    self.assertTrue(self.canvas.shape_fill_preview.isVisible())
+                    np.testing.assert_array_equal(self.rendered(), before)
+                    cancel()
+                    self.assertFalse(self.canvas.shape_fill_preview.isVisible())
+                    QTest.mouseRelease(self.canvas.gv.viewport(), button)
+                    self.assertEqual(self.canvas.draw_undo_stack.count(), 0)
+        self.assertEqual(len(escape_activations), 2)
 
     def test_other_mouse_buttons_do_not_finish_left_drag(self) -> None:
         self.drag(QPointF(20, 20), QPointF(60, 60), release=False)
@@ -166,12 +172,13 @@ class ShapeFillTests(unittest.TestCase):
     def test_undo_and_redo_cancel_pending_fill(self) -> None:
         self.drag(QPointF(20, 20), QPointF(40, 40))
         saved = self.rendered()
-        for history in (self.canvas.undo, self.canvas.redo):
-            self.drag(QPointF(60, 60), QPointF(80, 80), release=False)
-            history()
-            self.assertFalse(self.canvas.shape_fill_preview.isVisible())
-            QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.LeftButton)
-            self.assertEqual(self.canvas.draw_undo_stack.count(), 1)
+        for button in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+            for history in (self.canvas.undo, self.canvas.redo):
+                self.drag(QPointF(60, 60), QPointF(80, 80), release=False, button=button)
+                history()
+                self.assertFalse(self.canvas.shape_fill_preview.isVisible())
+                QTest.mouseRelease(self.canvas.gv.viewport(), button)
+                self.assertEqual(self.canvas.draw_undo_stack.count(), 1)
         np.testing.assert_array_equal(self.rendered(), saved)
 
     def test_switching_held_brush_or_rect_to_fill_cancels_previous_gesture(self) -> None:
@@ -255,6 +262,112 @@ class ShapeFillTests(unittest.TestCase):
         self.canvas.undo()
         np.testing.assert_array_equal(self.rendered(), before)
 
+    def test_shape_eraser_geometry_history_and_source_preservation(self) -> None:
+        self.drag(QPointF(10, 10), QPointF(90, 90))
+        before = self.rendered()
+        self.panel.shapePanel.alphaSlider.setValue(0)
+        for shape in (0, 1):
+            self.panel.shapePanel.shapeCombobox.setCurrentIndex(shape)
+            self.drag(QPointF(80, 80), QPointF(20, 20), button=Qt.MouseButton.RightButton)
+            erased = self.rendered()
+            np.testing.assert_array_equal(erased[50, 50], (180, 180, 180, 255))
+            np.testing.assert_array_equal(
+                erased[21, 21], (180, 180, 180, 255) if shape == 0 else (224, 40, 70, 255),
+            )
+            saved = pixmap2ndarray(self.canvas.drawingLayer.get_drawed_pixmap())
+            self.assertEqual(saved[50, 50, 3], 0)
+            self.canvas.undo()
+            np.testing.assert_array_equal(self.rendered(), before)
+            self.canvas.redo()
+            np.testing.assert_array_equal(self.rendered(), erased)
+            self.canvas.undo()
+        self.assertTrue(np.all(self.project.img_array == 240))
+        self.assertTrue(np.all(self.project.inpainted_array == 180))
+        self.assertTrue(np.all(self.project.mask_array == 127))
+
+    def test_right_drag_ignores_left_release_and_can_be_cancelled(self) -> None:
+        self.drag(QPointF(10, 10), QPointF(90, 90))
+        before = self.rendered()
+        viewport = self.canvas.gv.viewport()
+        for cancel in (self.canvas.clearToolStates, self.canvas.on_activation_changed,
+                       lambda: self.panel.setCurrentToolByName('pen')):
+            self.panel.setCurrentToolByName('shape')
+            self.drag(QPointF(20, 20), QPointF(80, 80), release=False,
+                      button=Qt.MouseButton.RightButton)
+            pos = self.canvas.gv.mapFromScene(QPointF(80, 80))
+            QTest.mousePress(viewport, Qt.MouseButton.LeftButton, pos=pos)
+            QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton, pos=pos)
+            self.assertTrue(self.canvas.shape_fill_preview.isVisible())
+            np.testing.assert_array_equal(self.rendered(), before)
+            cancel()
+            QTest.mouseRelease(viewport, Qt.MouseButton.RightButton, pos=pos)
+            self.assertFalse(self.canvas.shape_fill_preview.isVisible())
+            self.assertEqual(self.canvas.draw_undo_stack.count(), 1)
+            np.testing.assert_array_equal(self.rendered(), before)
+
+    def test_alpha_controls_preview_saved_pixels_and_export(self) -> None:
+        self.panel.shapePanel.alphaSlider.setValue(128)
+        before = self.rendered()
+        self.drag(QPointF(20, 20), QPointF(80, 80), release=False)
+        self.assertEqual(self.canvas.shape_fill_preview.brush().color().alpha(), 128)
+        np.testing.assert_array_equal(self.rendered(), before)
+        QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.LeftButton,
+                           pos=self.canvas.gv.mapFromScene(QPointF(80, 80)))
+        saved = pixmap2ndarray(self.canvas.drawingLayer.get_drawed_pixmap())
+        self.assertEqual(saved[50, 50, 3], 128)
+        np.testing.assert_allclose(self.rendered()[50, 50], (202, 110, 125, 255), atol=1)
+        self.canvas.undo()
+        np.testing.assert_array_equal(self.rendered(), before)
+        self.canvas.redo()
+        np.testing.assert_array_equal(
+            pixmap2ndarray(self.canvas.drawingLayer.get_drawed_pixmap()), saved,
+        )
+        self.panel.shapePanel.alphaSlider.setValue(0)
+        self.drag(QPointF(10, 10), QPointF(90, 90))
+        self.assertEqual(self.canvas.draw_undo_stack.count(), 1)
+
+    def test_switching_shape_and_brush_erasers_preserves_tool_settings(self) -> None:
+        self.panel.setPenToolColor(QColor(10, 20, 30, 64))
+        self.panel.shapePanel.alphaSlider.setValue(128)
+        for tool in ('pen', 'inpaint'):
+            self.panel.setCurrentToolByName(tool)
+            self.drag(QPointF(30, 30), QPointF(60, 60), release=False,
+                      button=Qt.MouseButton.RightButton)
+            stroke = self.canvas.stroke_img_item
+            self.panel.setCurrentToolByName('shape')
+            self.assertFalse(stroke.painter.isActive())
+            QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.RightButton)
+            self.assertIsNone(self.canvas.stroke_img_item)
+            self.assertIsNone(self.canvas.erase_img_key)
+            self.assertEqual(self.canvas.draw_undo_stack.count(), 0)
+
+        self.drag(QPointF(20, 20), QPointF(80, 80))
+        self.drag(QPointF(30, 30), QPointF(60, 60), button=Qt.MouseButton.RightButton)
+        self.panel.setCurrentToolByName('pen')
+        self.drag(QPointF(40, 40), QPointF(50, 50))
+        saved = pixmap2ndarray(self.canvas.drawingLayer.get_drawed_pixmap())
+        self.assertEqual(saved[45, 45, 3], 64)
+        self.assertEqual(pcfg.drawpanel.shape_fill_alpha, 128)
+        self.drag(QPointF(40, 40), QPointF(50, 50), button=Qt.MouseButton.RightButton)
+        saved = pixmap2ndarray(self.canvas.drawingLayer.get_drawed_pixmap())
+        self.assertEqual(saved[45, 45, 3], 0)
+
+    def test_shape_erase_does_not_inherit_magic_wand_state(self) -> None:
+        self.panel.setCurrentToolByName('inpaint')
+        self.panel.inpaintConfigPanel.shapeCombobox.setCurrentIndex(PenShape.MagicWand)
+        self.panel.setCurrentToolByName('shape')
+        self.drag(QPointF(20, 20), QPointF(80, 80))
+        self.drag(QPointF(30, 30), QPointF(60, 60), button=Qt.MouseButton.RightButton)
+        np.testing.assert_array_equal(self.rendered()[45, 45], (180, 180, 180, 255))
+        self.assertFalse(self.canvas._magic_wand_hover_enabled)
+        self.panel.setCurrentToolByName('inpaint')
+        self.assertTrue(self.canvas._magic_wand_hover_enabled)
+        self.assertEqual(self.canvas.painting_shape, PenShape.MagicWand)
+        QTest.mouseClick(self.canvas.gv.viewport(), Qt.MouseButton.RightButton,
+                         pos=self.canvas.gv.mapFromScene(QPointF(45, 45)))
+        self.assertTrue(np.all(self.project.inpainted_array == 240))
+        self.assertFalse(np.any(self.project.mask_array))
+
     def test_saved_drawing_tracks_live_eraser_and_page_replacement(self) -> None:
         self.drag(QPointF(20, 20), QPointF(80, 80))
         before = self.rendered()
@@ -278,6 +391,7 @@ class ShapeFillTests(unittest.TestCase):
         np.testing.assert_array_equal(pixels[50, 50], (1, 2, 3, 255))
 
     def test_color_picker_and_saved_tool_settings(self) -> None:
+        self.panel.shapePanel.alphaSlider.setValue(128)
         picker = self.panel.shapePanel.colorPicker
         with patch('qtpy.QtWidgets.QColorDialog.getColor', return_value=QColor('#12ab34')):
             QTest.mouseClick(picker, Qt.MouseButton.LeftButton)
@@ -285,19 +399,29 @@ class ShapeFillTests(unittest.TestCase):
         config = DrawPanelConfig(**json.loads(json.dumps(asdict(pcfg.drawpanel))))
         self.assertEqual(config.shape_fill_color, '#12ab34')
         self.assertEqual(config.shape_fill_shape, 'ellipse')
+        self.assertEqual(config.shape_fill_alpha, 128)
         self.assertEqual(config.current_tool, ImageEditMode.ShapeFillTool)
         with patch('qtpy.QtWidgets.QColorDialog.getColor', return_value=QColor()):
             QTest.mouseClick(picker, Qt.MouseButton.LeftButton)
         self.assertEqual(pcfg.drawpanel.shape_fill_color, '#12ab34')
         self.panel.setCurrentToolByName('rect')
+        self.panel.shapePanel.alphaSlider.setValue(255)
         self.panel.set_config(config)
+        self.assertEqual(self.panel.shapePanel.alphaSlider.value(), 128)
         self.assertEqual(self.canvas.image_edit_mode, ImageEditMode.ShapeFillTool)
         self.drag(QPointF(20, 20), QPointF(80, 80))
-        np.testing.assert_array_equal(self.rendered()[50, 50], (18, 171, 52, 255))
+        np.testing.assert_allclose(self.rendered()[50, 50], (99, 175, 116, 255), atol=1)
 
     def test_old_and_invalid_config_preserve_other_settings(self) -> None:
         old = DrawPanelConfig(pentool_width=42)
         self.assertEqual((old.shape_fill_shape, old.shape_fill_color), ('rectangle', '#ffffff'))
+        self.assertEqual(old.shape_fill_alpha, 255)
+        for alpha, expected in ((None, 255), ([], 255), ('bad', 255),
+                                (0.5, 255), (-1, 0), (256, 255)):
+            with self.assertLogs('BallonTranslator', level='WARNING'):
+                config = DrawPanelConfig(shape_fill_alpha=alpha, pentool_width=42)
+            self.assertEqual(config.shape_fill_alpha, expected)
+            self.assertEqual(config.pentool_width, 42)
         for shape, color in ((None, None), ([], []), ('triangle', '#12345g')):
             with self.assertLogs('BallonTranslator', level='WARNING'):
                 config = DrawPanelConfig(

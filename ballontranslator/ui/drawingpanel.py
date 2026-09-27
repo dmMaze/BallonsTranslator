@@ -487,7 +487,16 @@ class ShapeFillPanel(Widget):
         layout.addWidget(self.shapeCombobox, 0, 1)
         layout.addWidget(ToolNameLabel(100, self.tr('Color')), 1, 0)
         layout.addWidget(self.colorPicker, 1, 1, Qt.AlignmentFlag.AlignLeft)
+        self.alphaSlider = PaintQSlider()
+        self.alphaSlider.setRange(0, 255)
+        self.alphaSlider.setValue(pcfg.drawpanel.shape_fill_alpha)
+        self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
+        layout.addWidget(ToolNameLabel(100, self.tr('Alpha')), 2, 0)
+        layout.addWidget(self.alphaSlider, 2, 1)
         layout.setVerticalSpacing(14)
+
+    def on_alpha_changed(self, value: int) -> None:
+        pcfg.drawpanel.shape_fill_alpha = value
 
     def on_shape_changed(self) -> None:
         pcfg.drawpanel.shape_fill_shape = self.shapeCombobox.currentData()
@@ -690,7 +699,7 @@ class DrawingPanel(Widget):
 
         self.shapeTool = DrawToolCheckBox()
         self.shapeTool.setObjectName('DrawShapeTool')
-        self.shapeTool.setToolTip(self.tr('Shape Fill'))
+        self.shapeTool.setToolTip(self.tr('Shape Fill: left-drag to fill, right-drag to erase'))
         self.shapeTool.setAccessibleName(self.tr('Shape Fill'))
         self.shapeTool.checked.connect(self.on_use_shapetool)
         self.shapeTool.stateChanged.connect(self.on_shapechecker_changed)
@@ -1076,6 +1085,7 @@ class DrawingPanel(Widget):
             self.shapePanel.shapeCombobox.findData(config.shape_fill_shape)
         )
         self.shapePanel.colorPicker.setPickerColor(QColor(config.shape_fill_color))
+        self.shapePanel.alphaSlider.setValue(config.shape_fill_alpha)
         if config.current_tool == ImageEditMode.HandTool:
             self.handTool.setChecked(True)
         elif config.current_tool == ImageEditMode.InpaintTool:
@@ -1422,8 +1432,8 @@ class DrawingPanel(Widget):
                 self.canvas.image_edit_mode = ImageEditMode.RectTool
             self.setCrossCursor()
 
-    def fill_shape(self, rect: QRectF) -> None:
-        """Commit one opaque shape to the existing drawing history.
+    def fill_shape(self, rect: QRectF, erasing: bool = False) -> None:
+        """Commit one filled or erased shape to the existing drawing history.
 
         >>> DrawingPanel.fill_shape.__annotations__['rect']
         'QRectF'
@@ -1434,6 +1444,11 @@ class DrawingPanel(Widget):
         bounds = rect.intersected(self.canvas.baseLayer.rect()).toAlignedRect()
         if rect.isEmpty() or bounds.isEmpty():
             return
+        color = QColor(pcfg.drawpanel.shape_fill_color)
+        # Match the pen eraser: fill opacity does not weaken erasing.
+        color.setAlpha(255 if erasing else pcfg.drawpanel.shape_fill_alpha)
+        if color.alpha() == 0:
+            return
         image = QImage(bounds.size(), QImage.Format.Format_ARGB32_Premultiplied)
         image.fill(Qt.GlobalColor.transparent)
         painter = QPainter(image)
@@ -1443,14 +1458,14 @@ class DrawingPanel(Widget):
             # Clip the raster, not the ellipse bounds, at page edges.
             painter.fillPath(
                 shape_fill_path(rect, pcfg.drawpanel.shape_fill_shape),
-                QColor(pcfg.drawpanel.shape_fill_color),
+                color,
             )
         finally:
             painter.end()
         command = StrokeItemUndoCommand(
-            self.canvas.drawingLayer, bounds.getRect(), image,
+            self.canvas.drawingLayer, bounds.getRect(), image, erasing,
         )
-        command.setText(self.tr('Shape Fill'))
+        command.setText(self.tr('Shape Erase') if erasing else self.tr('Shape Fill'))
         self.canvas.push_undo_command(command)
 
     def _update_rect_mask(self) -> None:

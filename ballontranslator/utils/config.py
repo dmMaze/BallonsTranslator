@@ -283,6 +283,7 @@ class DrawPanelConfig(Config):
     recttool_dilate_ksize: int = 2
     shape_fill_shape: str = 'rectangle'
     shape_fill_color: str = '#ffffff'
+    shape_fill_alpha: int = 255
 
     def __post_init__(self) -> None:
         if not isinstance(self.rectool_use_mask, bool):
@@ -308,6 +309,7 @@ class DrawPanelConfig(Config):
             LOGGER.warning('Discard invalid drawpanel.shape_fill_color %r.', self.shape_fill_color)
             self.shape_fill_color = '#ffffff'
         for name, default, minimum, maximum in (
+            ('shape_fill_alpha', 255, 0, 255),
             ('inpainter_shape', 0, 0, 2),
             ('magicwand_tolerance', 32, 0, 255),
             ('magicwand_range', 0, -50, 50),
