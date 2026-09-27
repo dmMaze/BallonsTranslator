@@ -477,6 +477,18 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                 self._orientation(chinese, position).isIdentity()
             )
 
+    def test_dash_variants_rotate_in_both_modes(self) -> None:
+        text = '〜‐゠ー〰‑‒－ｰ⸻⹀'
+        for roman in (False, True):
+            item = self._make_item(text, roman)
+            for position, char in enumerate(text):
+                with self.subTest(roman=roman, char=char):
+                    orientation = self._orientation(item, position)
+                    self.assertAlmostEqual(orientation.m11(), 0.0)
+                    self.assertAlmostEqual(orientation.m12(), 1.0)
+                    self.assertAlmostEqual(orientation.m21(), -1.0)
+                    self.assertAlmostEqual(orientation.m22(), 0.0)
+
     def test_rotated_glyph_slant_uses_visible_baseline_in_both_modes(self):
         for text, roman in (('（A', True), ('AＡ', False)):
             with self.subTest(text=text, roman=roman):

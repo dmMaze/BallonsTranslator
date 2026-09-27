@@ -83,7 +83,7 @@ class InpainterBase(BaseModule):
                 self.name = key
                 break
     
-    def memory_safe_inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+    def memory_safe_inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, **kwargs: object) -> np.ndarray:
         '''
         handle cuda out of memory
         '''
@@ -95,12 +95,12 @@ class InpainterBase(BaseModule):
             return hasattr(torch, 'cuda') and isinstance(exc, torch.cuda.OutOfMemoryError)
 
         try:
-            return self._inpaint(img, mask, textblock_list)
+            return self._inpaint(img, mask, textblock_list, **kwargs)
         except Exception as e:
             if is_cuda_oom(e):
                 soft_empty_cache()
                 try:
-                    return self._inpaint(img, mask, textblock_list)
+                    return self._inpaint(img, mask, textblock_list, **kwargs)
                 except Exception as ee:
                     if is_cuda_oom(ee):
                         self.logger.warning(f'CUDA out of memory while calling {self.name}, fall back to cpu...\n\
@@ -109,7 +109,7 @@ class InpainterBase(BaseModule):
                         if self.params is not None and 'device' in self.params:
                             original_device = self.get_param_value('device')
                         self.moveToDevice('cpu')
-                        inpainted = self._inpaint(img, mask, textblock_list)
+                        inpainted = self._inpaint(img, mask, textblock_list, **kwargs)
                         precision = None
                         if hasattr(self, 'precision'):
                             precision = self.precision
@@ -120,7 +120,11 @@ class InpainterBase(BaseModule):
             else:
                 raise e
 
-    def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, check_need_inpaint: bool = False) -> np.ndarray:
+    def inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, check_need_inpaint: bool = False, **kwargs: object) -> np.ndarray:
+        """Preserve crop and alpha handling for request-specific module options.
+
+        >>> result = inpainter.inpaint(image, mask, profile=profile)  # doctest: +SKIP
+        """
         
         if not self.all_model_loaded():
             self.load_model()
@@ -153,7 +157,7 @@ class InpainterBase(BaseModule):
                         if original_alpha is not None:
                             return np.concatenate([result_rgb, original_alpha], axis=2)
                         return result_rgb
-            result_rgb = self.memory_safe_inpaint(img_rgb, mask, textblock_list)
+            result_rgb = self.memory_safe_inpaint(img_rgb, mask, textblock_list, **kwargs)
             # Recombine with alpha if original was RGBA
             if original_alpha is not None:
                 result_alpha = inpaint_handle_alpha_channel(original_alpha, mask)
@@ -190,7 +194,7 @@ class InpainterBase(BaseModule):
                         # cv2.waitKey(0)
                 
                 if need_inpaint:
-                    inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]] = self.memory_safe_inpaint(im, msk)
+                    inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]] = self.memory_safe_inpaint(im, msk, **kwargs)
 
                 mask[xyxy[1]:xyxy[3], xyxy[0]:xyxy[2]] = 0
             
@@ -200,7 +204,7 @@ class InpainterBase(BaseModule):
                 return np.concatenate([inpainted, result_alpha], axis=2)
             return inpainted
 
-    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None) -> np.ndarray:
+    def _inpaint(self, img: np.ndarray, mask: np.ndarray, textblock_list: List[TextBlock] = None, **kwargs: object) -> np.ndarray:
         raise NotImplementedError
     
     def moveToDevice(self, device: str, precision: str = None):

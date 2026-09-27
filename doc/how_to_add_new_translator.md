@@ -1,142 +1,77 @@
-[简体中文](../doc/加别的翻译器.md) | English | [pt-BR](../doc/Como_add_um_novo_tradutor.md) | [Русский](../doc/add_translator_ru.md)
+[简体中文](加别的翻译器.md) | English | [Русский](add_translator_ru.md)
 
----
+# Add a translator
 
-If you know how to to call the target translator api or translation model in python, implement a class in ballontranslator/dl/translators.__init__.py as follows to use it in the app.      
+Implement a registered `BaseTranslator` in `custom_modules/trans_<name>.py`
+for a local extension, or `ballontranslator/modules/translators/trans_<name>.py`
+for a built-in module. Restart after adding the file. Discovery reads metadata
+without importing the module; do not add an eager import to `__init__.py`.
 
-The following example DummyTranslator is commented out of ballontranslator/dl/translator/__init__.py and can be uncommented to test in the program.
+## Minimal module
+
+Save this as `custom_modules/trans_example.py`. It copies source text so discovery,
+language selection, and result mapping can be checked without an API or model.
+
+```python
+from typing import List
+
+from ballontranslator.modules.translators.base import BaseTranslator, register_translator
 
 
-``` python
+@register_translator("example_copy")
+class ExampleTranslator(BaseTranslator):
+    concate_text = False
+    params = {"description": "Copy source text without a translation service."}
 
-# "dummy translator" is the name showed in the app
-@register_translator('dummy translator')
-class DummyTranslator(BaseTranslator):
+    def _setup_translator(self) -> None:
+        self.lang_map["日本語"] = "ja"
+        self.lang_map["English"] = "en"
 
-    concate_text = True
-
-    # parameters showed in the config panel. 
-    # keys are parameter names, if value type is str, it will be a text editor(required key)
-    # if value type is dict, you need to spicify the 'type' of the parameter, 
-    # following 'device' is a selector, options a cpu and cuda, default is cpu
-    params: Dict = {
-        'api_key': '', 
-        'device': {
-            'type': 'selector',
-            'options': ['cpu', 'cuda'],
-            'value': 'cpu'
-        }
-    }
-
-    def _setup_translator(self):
-        '''
-        do the setup here.  
-        keys of lang_map are those languages options showed in the app, 
-        assign corresponding language keys accepted by API to supported languages.  
-        Only the languages supported by the translator are assigned here, this translator only supports Japanese, and English.
-        For a full list of languages see LANGMAP_GLOBAL in translator.__init__
-        '''
-        self.lang_map['日本語'] = 'ja'
-        self.lang_map['English'] = 'en'  
-        
     def _translate(self, src_list: List[str]) -> List[str]:
-        '''
-        do the translation here.  
-        This translator do nothing but return the original text.
-        '''
-        source = self.lang_map[self.lang_source]
-        target = self.lang_map[self.lang_target]
-        
-        translation = text
-        return translation
-
-    def updateParam(self, param_key: str, param_content):
-        '''
-        required only if some state need to be updated immediately after user change the translator params,
-        for example, if this translator is a pytorch model, you can convert it to cpu/gpu here.
-        '''
-        super().updateParam(param_key, param_content)
-        if param_key == 'device':
-            # get current state from params
-            # self.model.to(self.params['device']['value'])
-            pass
-
-    @property
-    def supported_tgt_list(self) -> List[str]:
-        '''
-        required only if the translator's language supporting is asymmetric, 
-        for example, this translator only supports English -> Japanese, no Japanese -> English.
-        '''
-        return ['English']
-
-    @property
-    def supported_src_list(self) -> List[str]:
-        '''
-        required only if the translator's language supporting is asymmetric.
-        '''
-        return ['日本語']
+        return list(src_list)
 ```
 
-First the translator must be decorated with register_translator and inherit from the base class BaseTranslator, the 'dummy translator' passed to the decorator is the name of the translator that will be displayed in the interface, be careful not to rename it with an existing translator.  
-This ```concate_text``` will be explained later, **set it to False if this translator is a offline model or target api accept str list**.  
-``` python
-@register_translator('dummy translator')
-class DummyTranslator(BaseTranslator):  
-    concate_text = True
+The registry key is persisted in config; choose a unique, stable name. Language
+keys come from `LANGMAP_GLOBAL` in
+[`base.py`](../ballontranslator/modules/translators/base.py); values are the
+service's language codes. Runtime calls can read them through
+`self.lang_map[self.lang_source]` and `self.lang_map[self.lang_target]`.
+
+## Extension contracts
+
+- `_translate` receives a list and must return the same number of strings in the
+  same order. Keep `concate_text=False` for list-aware APIs and local models.
+  `True` lets the base class join page input and split the result; use it only
+  when the service preserves the separators. The public `translate()` handles
+  strings, empty input, model loading, and optional project context.
+- Define config fields in class-level `params`. A string supplies a text field;
+  a selector uses `{"type": "selector", "options": [...], "value": ...}`.
+  Read values with `get_param_value()`. Override `updateParam()` only for actual
+  runtime updates, calling the base implementation first.
+- Keep metadata statically readable by
+  [`lazy_registry.py`](../ballontranslator/modules/lazy_registry.py): literal
+  params and language assignments, or supported pure helpers. Asymmetric language
+  support can use `supported_src_list`/`supported_tgt_list` properties returning
+  literal lists. Settings discovery must not run constructors, setup, model
+  loading, or network requests.
+- Heavy model state belongs in `BaseModule`'s `_load_model_keys`/`_load_model`
+  lifecycle. Preserve worker-owned execution and headless behavior; follow
+  [repository dependency and data rules](../AGENTS.md#changes-and-data-safety).
+- Prefer overriding `_translate` over the public pipeline methods. If an
+  integration needs shared LLM context, use the ownership boundaries in the
+  [LLM guide](modules/llm_translator.md).
+
+## Verification
+
+From the repository root, using the app's Python environment:
+
+```bash
+python -m py_compile custom_modules/trans_example.py
+python -c 'from ballontranslator.modules import TRANSLATORS; t = TRANSLATORS.get("example_copy")("日本語", "English"); assert t.translate(["one", "two"]) == ["one", "two"]; assert t.translate("one") == "one"'
 ```
 
-If the new translator requires user-configurable parameters, construct a dictionary named params as below, otherwise leave it alone or assign None to it.  
-
-The keys in params is the corresponding parameter names displayed in the interface, if the corresponding value type is str, it will show in app as a text editor, in following example, the api_key be a text editor with an empty default value.  
-The value of the parameter can also be a dictionary, in which case it must be described by 'type', in following example, the 'device' parameter will be shown as a selector in app, valid options are 'cpu' and 'cuda.  
-``` python
-    params: Dict = {
-        'api_key': '', 
-        'device': {
-            'type': 'selector',
-            'options': ['cpu', 'cuda'],
-            'value': 'cpu'
-        }
-    }
-```  
-<p align = "center">
-<img src="./src/new_translator.png">
-</p>
-<p align = "center">
-params displayed in the app's config panel.
-</p>  
-
-Implement ```_setup_translator```: initialized the translator here. 
-
-``` python
-def _setup_translator(self):
-    '''
-    do the setup here.  
-    keys of lang_map are those languages options showed in the app, 
-    assign corresponding language keys accepted by API to supported languages.  
-    Only the languages supported by the translator are assigned here, this translator only supports Japanese, and English.
-    For a full list of languages see LANGMAP_GLOBAL in translator.__init__
-    '''
-    self.lang_map['日本語'] = 'ja'
-    self.lang_map['English'] = 'en'  
-```
-
-Implement ```_translate```, the following lang_source and lang_target are the languages selected in the interface at this point, you can use the previous lang_map to get the corresponding api language keywords and make a request or process text & feed into model here.  
-If prementioned ```concate_text``` is set to False, input could be str list(all text recognized in a page) or str, else the input could be concated text of a str list (['text1', 'text2'] -> 'text1 \n###\n text2'), set it to True only if this translator is a online api and don't accept str list to make fewer requests.
-
-``` python
-def _translate(self, src_list: List[str]) -> List[str]:
-    '''
-    do the translation here.  
-    This translator do nothing but return the original text.
-    '''
-    source = self.lang_map[self.lang_source]
-    target = self.lang_map[self.lang_target]
-    
-    translation = text
-    return translation
-```
-
-Re-implement ```updateParam```, ```supported_tgt_list```, ```supported_src_list``` if necessary, please refer to their comments for further details.
-
-Once the translator is implemented, it is recommended to test it following the example in tests/test_translators.py.
+For a real translator, check language metadata and params before initialization,
+string/list/empty input, output count/order, and service/model failure behavior.
+Use mocked transports for automated tests. Follow
+[repository verification](../AGENTS.md#verification), and confirm settings can be
+opened without loading a model or contacting the service.

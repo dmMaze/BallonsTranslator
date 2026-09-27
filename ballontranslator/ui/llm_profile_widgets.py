@@ -1,4 +1,3 @@
-import copy
 import json
 import uuid
 from html import escape
@@ -41,7 +40,7 @@ from .llm_modality import (
 )
 from .misc import themed_icon_path
 from .module_parse_widgets import ParamWidget, SecretParamWidget
-from ballontranslator.utils.shared import size2width
+from ballontranslator.utils.shared import LLM_PROFILE_EDITOR_WIDTH_SCALE, LLM_PROMPT_EDITOR_WIDTH, size2width
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.secret_store import SecretStore
 from ballontranslator.utils.llm_profiles import (
@@ -53,6 +52,7 @@ from ballontranslator.utils.llm_profiles import (
     LLMProfile,
     normalize_codex_thinking_level,
     profile_thinking_level_options,
+    image_model_choices,
     is_profile_title_url,
     parse_profile_title,
     copy_profile,
@@ -62,6 +62,7 @@ from ballontranslator.utils.llm_profiles import (
     restore_builtin_profiles,
     resolve_api_key,
     store_api_key,
+    split_image_model_selection,
 )
 
 
@@ -96,13 +97,11 @@ PROFILE_MODALITY_PARAM_DEFS = {
         ('image_prompt', 'editor'),
     ],
 }
-PROFILE_EDITOR_WIDTH_SCALE = 1.15
-
 PROFILE_FIELD_TYPES = get_type_hints(LLMProfile)
 
 
-def _widen_profile_editor(editor: QWidget):
-    editor.setFixedWidth(round(editor.width() * PROFILE_EDITOR_WIDTH_SCALE))
+def _widen_profile_editor(editor: QWidget) -> None:
+    editor.setFixedWidth(round(editor.width() * LLM_PROFILE_EDITOR_WIDTH_SCALE))
 
 
 class ProfileNameEdit(QLineEdit):
@@ -313,7 +312,7 @@ class ProfileDetailsWidget(QWidget):
             layout.addWidget(section, 0, Qt.AlignmentFlag.AlignLeft)
         self._alignParamColumns()
 
-    def _addParamWidget(self, layout, params: dict, scrollWidget: QWidget, parent: QWidget):
+    def _addParamWidget(self, layout: QVBoxLayout, params: dict, scrollWidget: QWidget, parent: QWidget) -> None:
         param_widget = ParamWidget(params, scrollWidget=scrollWidget, parent=parent)
         param_widget.layout().setContentsMargins(0, 0, 0, 0)
         param_widget.paramwidget_edited.connect(self.paramwidget_edited.emit)
@@ -321,7 +320,9 @@ class ProfileDetailsWidget(QWidget):
         for key, editor in param_widget.param_widgets.items():
             self.param_widgets[key] = editor
             self._param_owners[key] = param_widget
-            if isinstance(editor, (QLineEdit, ParamComboBox, QPlainTextEdit)):
+            if isinstance(editor, QPlainTextEdit):
+                editor.setFixedWidth(LLM_PROMPT_EDITOR_WIDTH)
+            elif isinstance(editor, (QLineEdit, ParamComboBox)):
                 _widen_profile_editor(editor)
         layout.addWidget(param_widget, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -380,7 +381,7 @@ class ProfileCardWidget(QGroupBox):
     set_ocr_requested = Signal(str)
     set_inpainter_requested = Signal(str)
 
-    def __init__(self, profile: LLMProfile, scrollWidget: QWidget = None, *args, **kwargs):
+    def __init__(self, profile: LLMProfile, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.setObjectName('LLMProfileCard')
         self.profile = profile
@@ -452,7 +453,6 @@ class ProfileCardWidget(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 18, 16, 14)
         layout.setSpacing(8)
-
         self.name_edit = ProfileNameEdit(profile.name, self)
         self.name_edit.edit_requested.connect(self.startNameEdit)
         self.name_edit.edit_finished.connect(self.on_name_edit_finished)
@@ -494,7 +494,7 @@ class ProfileCardWidget(QGroupBox):
         self.delete_btn.setObjectName('LLMProfileDeleteButton')
         self.delete_btn.setIcon(QIcon(themed_icon_path('titlebar_close.svg')))
         self.delete_btn.setToolTip(self.tr('Delete'))
-        self.delete_btn.clicked.connect(lambda: self.delete_requested.emit(self.profile.id))
+        self.delete_btn.clicked.connect(self.requestDelete)
         self.delete_btn.setFixedSize(18, 18)
 
         self.summary_widget = QWidget(self)
@@ -656,7 +656,7 @@ class ProfileCardWidget(QGroupBox):
         self.remove_image_model_btn = QToolButton(self)
         self.remove_image_model_btn.setObjectName('LLMProfileModelRemoveButton')
         self.remove_image_model_btn.setIcon(QIcon(themed_icon_path('titlebar_min.svg')))
-        self.remove_image_model_btn.setToolTip(self.tr('Delete current image model'))
+        self.remove_image_model_btn.setToolTip(self.tr('Delete current image model and all its reasoning combinations'))
         self.remove_image_model_btn.setFixedSize(16, 16)
         self.remove_image_model_btn.clicked.connect(self.deleteCurrentImageModel)
         self.image_model_modality_row = QWidget(self.image_model_summary_widget)
@@ -676,14 +676,14 @@ class ProfileCardWidget(QGroupBox):
         image_model_label_row.addStretch(1)
         self.image_model_combo = ParamComboBox(
             'image_model',
-            profile.image_model_options,
+            [],
             size=size2width('short'),
             scrollWidget=scrollWidget,
         )
         self.image_model_combo.setObjectName('LLMProfileModelCombo')
+        self.image_model_combo.fit_popup_contents = True
         self.image_model_label.setToolTip(image_model_tooltip)
         self.image_model_combo.setToolTip(image_model_tooltip)
-        self.image_model_combo.setCurrentText(profile.image_model)
         image_column.addWidget(self.image_model_modality_row)
         image_column.addWidget(self.image_model_combo, 0, Qt.AlignmentFlag.AlignLeft)
 
@@ -703,6 +703,7 @@ class ProfileCardWidget(QGroupBox):
             # The finish handlers own option insertion; otherwise Enter also lets
             # QComboBox insert the edit text before editingFinished is emitted.
             combo.setInsertPolicy(combo.InsertPolicy.NoInsert)
+        self._syncImageModelCombo()
         self._setSummaryColumnWidth(self.model_summary_widget, model_label_row, self.model_combo)
         self._setSummaryColumnWidth(self.vision_model_summary_widget, vision_model_label_row, self.vision_model_combo)
         self._setSummaryColumnWidth(self.image_model_summary_widget, image_model_label_row, self.image_model_combo)
@@ -757,7 +758,7 @@ class ProfileCardWidget(QGroupBox):
     def syncFromProfile(self) -> None:
         self._syncComboBox(self.model_combo, self.profile.model_options, self.profile.model)
         self._syncComboBox(self.vision_model_combo, self.profile.vision_model_options, self.profile.vision_model)
-        self._syncComboBox(self.image_model_combo, self.profile.image_model_options, self.profile.image_model)
+        self._syncImageModelCombo()
         vision_detail_combo = self.details.param_widgets.get('vision_detail_level')
         if isinstance(vision_detail_combo, ParamComboBox):
             self._syncComboBox(
@@ -788,13 +789,14 @@ class ProfileCardWidget(QGroupBox):
     def _syncComboBox(self, combo: ParamComboBox, options, value: str):
         combo.blockSignals(True)
         option_texts = [str(option) for option in options if str(option)]
+        value = str(value or '')
+        if value and value not in option_texts:
+            option_texts.append(value)
         current_options = [combo.itemText(i) for i in range(combo.count())]
         if current_options != option_texts:
             combo.clear()
             combo.addItems(option_texts)
-        value = str(value or '')
-        if value and combo.findText(value) < 0:
-            combo.addItem(value)
+        combo.setCurrentIndex(combo.findText(value))
         combo.setCurrentText(value)
         combo.blockSignals(False)
 
@@ -1057,11 +1059,11 @@ class ProfileCardWidget(QGroupBox):
             name = f'[{name}]({self.profile.title_url})'
         self.name_edit.setText(name)
         self.name_edit.resizeToContent()
-        self._position_header_controls()
         self.setTitle('')
         self.title_label.hide()
         self.name_edit.show()
         self.name_edit.raise_()
+        self._position_header_controls()
         self.name_edit.startEdit(select_all=True)
 
     def on_name_edit_finished(self) -> None:
@@ -1081,7 +1083,7 @@ class ProfileCardWidget(QGroupBox):
     def _finishNameEditCycle(self):
         self._name_editing = False
 
-    def setActionButtonsVisible(self, visible: bool):
+    def setActionButtonsVisible(self, visible: bool) -> None:
         self._action_buttons_visible = visible
         self.more_btn.setVisible(visible)
         self.delete_btn.setVisible(visible)
@@ -1132,6 +1134,9 @@ class ProfileCardWidget(QGroupBox):
             self.more_btn.setIcon(self.edit_icon)
         return super().leaveEvent(event)
 
+    def requestDelete(self) -> None:
+        self.delete_requested.emit(self.profile.id)
+
     def contextMenuEvent(self, event):
         menu = QMenu(self)
         edit_action = QAction(self.tr('Edit name'), menu)
@@ -1159,7 +1164,7 @@ class ProfileCardWidget(QGroupBox):
         if action == edit_action:
             self.startNameEdit()
         elif action == delete_action:
-            self.delete_requested.emit(self.profile.id)
+            self.requestDelete()
         elif action == copy_action:
             self.copy_requested.emit(self.profile.id)
         elif action == copy_json_action:
@@ -1210,17 +1215,15 @@ class ProfileCardWidget(QGroupBox):
         options = self.profile.vision_model_options
         if value and value not in options:
             options.append(value)
+            self._syncImageModelCombo()
         self._syncThinkingLevel()
         self.profile_changed.emit()
         self.profile_summary_changed.emit()
 
-    def on_image_model_edited(self, param_key, value):
+    def on_image_model_edited(self, param_key: str, value: str) -> None:
         if self._image_model_editing:
             return
         self.profile.image_model = value
-        options = self.profile.image_model_options
-        if value and value not in options:
-            options.append(value)
         self.profile_changed.emit()
         self.profile_summary_changed.emit()
 
@@ -1361,6 +1364,7 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.blockSignals(False)
         self.profile.vision_model = text
         self._syncThinkingLevel()
+        self._syncImageModelCombo()
         if emit_changed:
             self.profile_changed.emit()
             self.profile_summary_changed.emit()
@@ -1377,6 +1381,7 @@ class ProfileCardWidget(QGroupBox):
         if editor is None:
             self._image_model_editing = False
             return
+        self.remove_image_model_btn.setEnabled(False)
         editor.setReadOnly(False)
         editor.setPlaceholderText(self.tr('Image model name'))
         try:
@@ -1388,9 +1393,9 @@ class ProfileCardWidget(QGroupBox):
         editor.setFocus()
         editor.selectAll()
 
-    def finishImageModelEdit(self) -> None:
+    def finishImageModelEdit(self) -> bool:
         if not self._image_model_editing:
-            return
+            return True
         editor = self.image_model_combo.lineEdit()
         text = editor.text().strip() if editor is not None else ''
         self._image_model_editing = False
@@ -1399,19 +1404,27 @@ class ProfileCardWidget(QGroupBox):
             editor.setPlaceholderText('')
         if not text:
             self._setImageModelText(self._previous_image_model_text, emit_changed=False)
-            return
+            return False
+        try:
+            reasoning_model, text = split_image_model_selection(text)
+            if reasoning_model:
+                raise ValueError('Expected an image model ID.')
+        except ValueError:
+            self._setImageModelText(self._previous_image_model_text, emit_changed=False)
+            QMessageBox.warning(self, self.tr('Add image model'), self.tr(
+                'Enter an image model ID. Reasoning combinations are added automatically from vision models.'
+            ))
+            return False
         options = self.profile.image_model_options
         if text not in options:
             options.append(text)
-            self.image_model_combo.blockSignals(True)
-            self.image_model_combo.addItem(text)
-            self.image_model_combo.blockSignals(False)
         self._setImageModelText(text, emit_changed=True)
+        return True
 
-    def deleteCurrentImageModel(self):
-        if self._image_model_editing:
-            self.finishImageModelEdit()
-        current = self.image_model_combo.currentText()
+    def deleteCurrentImageModel(self) -> None:
+        if self._image_model_editing and not self.finishImageModelEdit():
+            return
+        _, current = split_image_model_selection(self.image_model_combo.currentText())
         options = [str(option) for option in self.profile.image_model_options if str(option)]
         if current not in options:
             return
@@ -1419,20 +1432,21 @@ class ProfileCardWidget(QGroupBox):
         options.pop(removed_idx)
         self.profile.image_model_options = options
         next_model = options[min(removed_idx, len(options) - 1)] if options else ''
-        self.image_model_combo.blockSignals(True)
-        self.image_model_combo.clear()
-        self.image_model_combo.addItems(options)
-        self.image_model_combo.blockSignals(False)
         self._setImageModelText(next_model, emit_changed=True)
 
-    def _setImageModelText(self, text: str, emit_changed: bool):
-        self.image_model_combo.blockSignals(True)
-        self.image_model_combo.setCurrentText(text)
-        self.image_model_combo.blockSignals(False)
+    def _setImageModelText(self, text: str, emit_changed: bool) -> None:
         self.profile.image_model = text
+        self._syncImageModelCombo()
         if emit_changed:
             self.profile_changed.emit()
             self.profile_summary_changed.emit()
+
+    def _syncImageModelCombo(self) -> None:
+        # Finish or cancel an active add before replacing its editable draft.
+        if not self._image_model_editing:
+            self._syncComboBox(self.image_model_combo, image_model_choices(self.profile), self.profile.image_model)
+            _, image_model = split_image_model_selection(self.profile.image_model)
+            self.remove_image_model_btn.setEnabled(image_model in self.profile.image_model_options)
 
     def on_api_key_finished(self):
         store_api_key(self.profile, self.api_key_widget.text())
@@ -1470,11 +1484,13 @@ class ProfileCardWidget(QGroupBox):
             self.refreshKeyStatus()
         elif param_key == 'vision_detail_level':
             self.profile_summary_changed.emit()
+        elif param_key == 'image_base_url':
+            self._syncImageModelCombo()
         self.profile_changed.emit()
         if param_key in ('thinking_level', 'vision_thinking_level'):
             self.profile_summary_changed.emit()
 
-    def toggleVisionSupport(self):
+    def toggleVisionSupport(self) -> None:
         self.profile.support_vision = not bool(self.profile.support_vision)
         if self.profile.support_vision and not self.profile.vision_model:
             self.profile.vision_model = self.profile.model
@@ -1483,13 +1499,14 @@ class ProfileCardWidget(QGroupBox):
             if self.profile.vision_model not in options:
                 options.insert(0, self.profile.vision_model)
         self._syncVisionModelCombo()
+        self._syncImageModelCombo()
         self.refreshVisionBadge()
         self.refreshConditionalVisibility()
         self.profile_changed.emit()
         self.profile_selector_changed.emit()
         self.profile_summary_changed.emit()
 
-    def toggleTextSupport(self):
+    def toggleTextSupport(self) -> None:
         self.profile.support_text = not bool(self.profile.support_text)
         if self.profile.support_text and not self.profile.model:
             options = [str(option) for option in self.profile.model_options if str(option)]
@@ -1505,16 +1522,17 @@ class ProfileCardWidget(QGroupBox):
         self.profile_selector_changed.emit()
         self.profile_summary_changed.emit()
 
-    def toggleImageSupport(self):
+    def toggleImageSupport(self) -> None:
         self.profile.support_image = not bool(self.profile.support_image)
         if self.profile.support_image and not self.profile.image_model:
             options = [str(option) for option in self.profile.image_model_options if str(option)]
             self.profile.image_model = options[0] if options else ''
         if self.profile.support_image and self.profile.image_model:
             options = self.profile.image_model_options
-            if self.profile.image_model not in options:
-                options.insert(0, self.profile.image_model)
-        self._syncComboBox(self.image_model_combo, self.profile.image_model_options, self.profile.image_model)
+            _, image_model = split_image_model_selection(self.profile.image_model)
+            if image_model not in options:
+                options.insert(0, image_model)
+        self._syncImageModelCombo()
         self.refreshImageBadge()
         self.refreshConditionalVisibility()
         self.profile_changed.emit()
@@ -1719,7 +1737,7 @@ class LLMProfilesWidget(QWidget):
                 widget.deleteLater()
         self.rows.clear()
 
-    def addProfileRow(self, profile: LLMProfile):
+    def addProfileRow(self, profile: LLMProfile) -> ProfileCardWidget:
         row = ProfileCardWidget(profile, scrollWidget=self.scrollWidget)
         row.profile_changed.connect(self.onProfileChanged)
         row.profile_selector_changed.connect(self.onProfileSelectorChanged)
@@ -1737,7 +1755,8 @@ class LLMProfilesWidget(QWidget):
     def rebuild(self):
         self.clearRows()
         for profile in pcfg.module.llm_profiles:
-            self.addProfileRow(profile)
+            if profile.backend != 'codex':
+                self.addProfileRow(profile)
         self.applyFilter()
         self._selected_profile_ids = self._currentSelectedProfileIds()
 
@@ -1828,6 +1847,8 @@ class LLMProfilesWidget(QWidget):
         self.profile_ui_updated.emit()
 
     def copyProfileAsJson(self, profile_id: str):
+        if profile_id not in self.rows:
+            return
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
         if profile is None:
             return
@@ -1855,12 +1876,14 @@ class LLMProfilesWidget(QWidget):
         self.profile_ui_updated.emit()
         QTimer.singleShot(0, lambda: self.ensureRowVisible(imported_rows[-1]))
 
-    def copyProfile(self, profile_id: str):
+    def copyProfile(self, profile_id: str) -> None:
+        if profile_id not in self.rows:
+            return
         profile = profile_by_id(pcfg.module.llm_profiles, profile_id)
         if profile is None:
             return
         self.filter_edit.clear()
-        copied = copy_profile(copy.deepcopy(profile))
+        copied = copy_profile(profile)
         copied.id = self._new_custom_profile_id()
         pcfg.module.llm_profiles.append(copied)
         row = self.addProfileRow(copied)
@@ -1869,6 +1892,8 @@ class LLMProfilesWidget(QWidget):
         self.profile_ui_updated.emit()
 
     def deleteProfile(self, profile_id: str):
+        if profile_id not in self.rows:
+            return
         if len(pcfg.module.llm_profiles) <= 1:
             return
         pcfg.module.llm_profiles = [p for p in pcfg.module.llm_profiles if p.id != profile_id]

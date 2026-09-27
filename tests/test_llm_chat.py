@@ -13,10 +13,11 @@ from ballontranslator.modules.exceptions import (
 from ballontranslator.modules.llm_chat import (
     LLMChatRequester,
     LLMChatRequestError,
+    LLMChatResult,
     openai_chat_completion_args,
     openai_json_response_format,
 )
-from ballontranslator.utils.llm_profiles import default_profile
+from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile
 
 
 class FakeAuthError(Exception):
@@ -61,6 +62,22 @@ class LLMChatRequesterTest(unittest.TestCase):
         self.requester = RequesterHarness()
         self.profile = default_profile('OpenAI')
         self.profile.api_key = 'sk-demo'
+
+    def test_codex_backends_dispatch_independently_and_report_usage(self) -> None:
+        self.requester.values.update({'retry attempts': 1, 'retry timeout': 0})
+        result = LLMChatResult('ok', {'input_tokens': 10, 'output_tokens': 2})
+        http_profile = default_codex_profile()
+        app_profile = default_profile('Codex')
+        with mock.patch('ballontranslator.modules.codex.request_chat_completion', return_value=result) as http, \
+                mock.patch('ballontranslator.modules.llm_codex.request_codex_completion', return_value=result) as app:
+            self.requester.request_chat_completion(http_profile, {'model': 'gpt-6-sol'})
+            http.assert_called_once()
+            app.assert_not_called()
+            self.requester.request_chat_completion(app_profile, {'model': 'gpt-6-sol'})
+            http.assert_called_once()
+            app.assert_called_once()
+        self.assertEqual(self.requester.usage_totals.requests, 2)
+        self.assertEqual(self.requester.usage_totals.total_tokens, 24)
 
     def test_codex_rpm_wait_counts_toward_request_delay(self) -> None:
         for delay, expected_wait in ((5, 10.1), (20, 19.0)):

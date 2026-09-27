@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import re
 from collections.abc import Mapping
@@ -26,7 +25,10 @@ from ballontranslator.utils.structures import Config, field, nested_dataclass
 LLM_TRANSLATOR_KEY = "LLMTranslator"
 LLM_OCR_KEY = "LLMOCR"
 LLM_INPAINT_KEY = "LLMInpaint"
-OLD_LLM_TRANSLATORS = ("ChatGPT", "ChatGPT_exp", "LLM_API_Translator")
+CODEX_MODEL_OPTIONS = (
+    "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+    "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
+)
 
 THINKING_AUTO = "Auto"
 THINKING_DISABLED = "Disabled"
@@ -53,40 +55,38 @@ CODEX_MODEL_REASONING_EFFORTS = {
 VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 LLM_TRANSPORT_OPTIONS = ['OpenAI-compatible', 'Codex App Server']
 CODEX_EXECUTION_OPTIONS = ['Python SDK', 'CLI']
-PROVIDER_ALIASES = {
-    "Google": "Gemini",
-}
 PROVIDER_DEFAULTS = {
-    "OpenAI": {
-        "id": "openai",
-        "base_url": "https://api.openai.com/v1",
-        "require_api_key": True,
-        "model": "gpt-5.5",
-        "support_vision": True,
-        "vision_model": "gpt-5.5",
-        "vision_detail_level": "auto",
-        "model_options": [
-            "gpt-6-sol", "gpt-6-luna",
-            "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
-            "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
-        ],
-        "vision_model_options": [
-            "gpt-6-sol", "gpt-6-luna",
-            "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
-            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
-            "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
-        ],
-        "support_image": True,
-        "image_base_url": "https://api.openai.com/v1/images/edits",
-        "image_model_options": ["gpt-image-2"]
-    },
     "DeepSeek": {
         "id": "deepseek",
         "base_url": "https://api.deepseek.com",
         "require_api_key": True,
         "model": "deepseek-v4-flash",
         "model_options": ["deepseek-v4-flash", "deepseek-v4-pro"],
+    },
+    "OpenAI": {
+        "id": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "require_api_key": True,
+        "model": "gpt-5.6-luna",
+        "support_vision": True,
+        "vision_model": "gpt-5.6-luna",
+        "vision_detail_level": "auto",
+        "model_options": [
+            "gpt-6-astra", "gpt-6-sol", "gpt-6-luna",
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
+        ],
+        "vision_model_options": [
+            "gpt-6-astra", "gpt-6-sol", "gpt-6-luna",
+            "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
+            "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+            "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini",
+        ],
+        "support_image": True,
+        "image_base_url": "https://api.openai.com/v1/images/edits",
+        "image_model_options": ["gpt-image-2"],
+        "image_model": "gpt-image-2",
     },
     "Gemini": {
         "id": "google",
@@ -147,7 +147,8 @@ PROVIDER_DEFAULTS = {
         "vision_model_options": ["llama3.1", "qwen2.5", "mistral"],
     },
     "Codex": {
-        "id": "codex",
+        "id": "codex-app-server",
+        "name": "Codex App Server",
         "transport": "Codex App Server",
         "require_api_key": False,
         "thinking_level": "none",
@@ -183,22 +184,6 @@ DEFAULT_INPAINT_PROMPT = (
     "cleaned image."
 )
 
-def _normal_url(url: str) -> str:
-    url = (url or "").strip()
-    if url == "http://localhost:11434/v1/":
-        return url
-    return url.rstrip("/")
-
-
-def _strip_model_prefix(model: str) -> str:
-    model = (model or "").strip()
-    if ": " in model:
-        model = model.split(": ", 1)[1]
-    if model == "(override model field)":
-        model = ""
-    return model
-
-
 @nested_dataclass
 class LLMProfile(Config):
     """Typed persistent LLM profile config.
@@ -211,6 +196,7 @@ class LLMProfile(Config):
     id: str = ""
     profile_type = "llm"
     name: str = ""
+    backend: str = "openai"
     title_url: str = ""
     built_in: bool = False
     transport: str = 'OpenAI-compatible'
@@ -248,6 +234,32 @@ class LLMProfile(Config):
     low_vram_mode: bool = False
 
     def __post_init__(self) -> None:
+        if self.backend not in ('openai', 'codex', 'unavailable'):
+            LOGGER.warning('Discard invalid LLM profile backend for %s.', self.id or self.name)
+            # An unknown backend must never fall through to a paid API request.
+            self.backend = 'unavailable'
+        for key in ('vision_model_options', 'image_model_options'):
+            raw_options = getattr(self, key)
+            options = list(dict.fromkeys(
+                option.strip() for option in raw_options
+                if isinstance(option, str) and option.strip() and '→' not in option and '->' not in option
+            )) if isinstance(raw_options, list) else []
+            if options != raw_options:
+                LOGGER.warning('Discard invalid %s entries for %s.', key, self.id or self.name)
+            setattr(self, key, options)
+        try:
+            reasoning_model, image_model = split_image_model_selection(self.image_model)
+            self.image_model = f'{reasoning_model} → {image_model}' if reasoning_model else image_model
+        except ValueError:
+            LOGGER.warning('Discard invalid image model selection for %s.', self.id or self.name)
+            self.image_model = image_model = ''
+        if self.backend == 'codex':
+            self.transport = 'OpenAI-compatible'
+            self.api_key = ''
+            self.require_api_key = False
+            self.support_text = self.support_vision = self.support_image = True
+            self.image_model_options = _merge_profile_options(None, self.image_model_options, image_model)
+            self.json_schema_response_format = True
         if not isinstance(self.title_url, str) or (
             self.title_url and not is_profile_title_url(self.title_url)
         ):
@@ -256,12 +268,87 @@ class LLMProfile(Config):
 
     @classmethod
     def from_provider(cls, provider: str) -> "LLMProfile":
-        provider = canonical_provider(provider)
         info = copy.deepcopy(PROVIDER_DEFAULTS[provider])
-        return cls(**info, name=provider, built_in=True)
+        info.setdefault("name", provider)
+        return cls(**info, built_in=True)
 
     def to_dict(self) -> Dict:
-        return copy.deepcopy(self.__dict__)
+        data = copy.deepcopy(self.__dict__)
+        if self.backend == 'codex':
+            data['api_key'] = ''
+            # Text/vision options come from the catalog; image choices are user-owned.
+            for key in ('model_options', 'vision_model_options',
+                        'thinking_level_options', 'support_text', 'support_vision', 'support_image'):
+                data.pop(key, None)
+        return data
+
+
+def split_image_model_selection(value: str) -> Tuple[str, str]:
+    """Resolve a direct image ID or an explicit GPT image-tool selection.
+
+    >>> split_image_model_selection('gpt-6-sol → gpt-image-2')
+    ('gpt-6-sol', 'gpt-image-2')
+    >>> split_image_model_selection('image-model')
+    ('', 'image-model')
+    """
+    if not isinstance(value, str):
+        raise ValueError('The image model selection must be text.')
+    reasoning, separator, image = value.replace('->', '→').partition('→')
+    if not separator:
+        return '', reasoning.strip()
+    reasoning, image = reasoning.strip(), image.strip()
+    if (not reasoning.startswith('gpt-') or reasoning.startswith('gpt-image-')
+            or not image.startswith('gpt-image-') or '→' in image
+            or any(character.isspace() for character in reasoning + image)):
+        raise ValueError('Image assistance requires a GPT model and a GPT Image model.')
+    return reasoning, image
+
+
+def image_responses_url(profile: LLMProfile) -> str:
+    """Resolve Responses from a base or endpoint on the configured image service.
+
+    >>> image_responses_url(default_profile('OpenAI'))
+    'https://api.openai.com/v1/responses'
+    """
+    if profile.backend != 'openai':
+        return ''
+    try:
+        url = urlsplit(profile.image_base_url.strip())
+        host = url.hostname or ''
+    except (AttributeError, ValueError):
+        return ''
+    if (url.scheme not in ('http', 'https') or not host
+            or host == 'generativelanguage.googleapis.com'
+            or host == 'openrouter.ai' or host.endswith('.openrouter.ai')):
+        return ''
+    path = url.path.rstrip('/')
+    for suffix in ('/images/edits', '/images/generations', '/responses'):
+        if path.endswith(suffix):
+            return url._replace(path=path[:-len(suffix)] + '/responses', fragment='').geturl()
+    if not path or path.endswith('/v1'):
+        return url._replace(path=path + '/responses', fragment='').geturl()
+    return ''
+
+
+def image_model_choices(profile: LLMProfile) -> List[str]:
+    """Derive image choices on demand; saved options contain only image IDs.
+
+    >>> profile = LLMProfile(backend='codex', image_model_options=['gpt-image-2'],
+    ...                      vision_model_options=['gpt-6-sol', 'other-model'])
+    >>> image_model_choices(profile)
+    ['gpt-image-2', 'gpt-6-sol → gpt-image-2']
+    """
+    choices = list(profile.image_model_options)
+    if profile.backend != 'codex' and not image_responses_url(profile):
+        return choices
+    reasoning_models = [model for model in profile.vision_model_options
+                        if model.startswith('gpt-') and not model.startswith('gpt-image-')
+                        and not any(character.isspace() for character in model)
+                        and '→' not in model and '->' not in model]
+    image_models = [model for model in choices if model.startswith('gpt-image-')
+                    and not any(character.isspace() for character in model)
+                    and '→' not in model and '->' not in model]
+    return choices + [f'{reasoning} → {image}' for reasoning in reasoning_models for image in image_models]
 
 
 def is_profile_title_url(value: str) -> bool:
@@ -431,32 +518,31 @@ def profile_to_export_dict(profile: Any) -> Dict:
     """
 
     exported = profile_to_dict(profile)
+    if exported.get('backend') == 'codex':
+        raise ValueError('Codex settings cannot be exported as an API profile.')
     exported['profile_type'] = LLMProfile.profile_type
     exported['api_key'] = resolve_api_key(profile)
     return exported
 
 
-def _normalize_import_profile_data(data: Mapping) -> Dict[str, Any]:
-    """Normalize imported values while letting omitted fields use profile defaults."""
+def _normalize_profile_data(data: Mapping) -> Dict[str, Any]:
+    """Keep valid supplied values while omitted or invalid fields use defaults."""
 
     type_hints = get_type_hints(LLMProfile)
     normalized = {}
     for key, expected in type_hints.items():
-        origin = get_origin(expected)
-        args = get_args(expected)
-        if origin is list:
-            value = data.get(key)
-            item_type = args[0] if args else Any
-            normalized[key] = (
-                value if isinstance(value, list)
-                and (item_type is Any or all(isinstance(item, item_type) for item in value))
-                else []
-            )
-            continue
         if key not in data:
             continue
         value = data[key]
-        expected = type_hints.get(key)
+        origin = get_origin(expected)
+        args = get_args(expected)
+        if origin is list:
+            item_type = args[0] if args else Any
+            if isinstance(value, list):
+                valid = [item for item in value if item_type is Any or isinstance(item, item_type)]
+                if valid or not value:
+                    normalized[key] = valid
+            continue
         if key == 'api_key':
             if isinstance(value, str):
                 normalized[key] = value
@@ -467,7 +553,9 @@ def _normalize_import_profile_data(data: Mapping) -> Dict[str, Any]:
         elif expected is int:
             if isinstance(value, int) and not isinstance(value, bool):
                 normalized[key] = value
-        elif isinstance(value, expected):
+        elif key == 'backend' or isinstance(value, expected):
+            # Keep invalid backend values for __post_init__ to disable. Dropping
+            # one here would silently select the default API transport instead.
             normalized[key] = value
     return normalized
 
@@ -487,11 +575,13 @@ def profiles_from_json(value: str) -> List[LLMProfile]:
     candidates = [decoded] if isinstance(decoded, Mapping) else decoded if isinstance(decoded, list) else []
     profiles = []
     for candidate in candidates:
-        if not isinstance(candidate, Mapping) or candidate.get('profile_type') != LLMProfile.profile_type:
+        if (not isinstance(candidate, Mapping)
+                or candidate.get('profile_type') != LLMProfile.profile_type
+                or candidate.get('backend') == 'codex'):
             continue
         data = copy.deepcopy(dict(candidate))
         data.pop('profile_type', None)
-        data = _normalize_import_profile_data(data)
+        data = _normalize_profile_data(data)
         try:
             profiles.append(profile_from_config(data))
         except (TypeError, ValueError):
@@ -514,8 +604,19 @@ def default_profiles() -> List[LLMProfile]:
     return [default_profile(provider) for provider in PROVIDER_DEFAULTS]
 
 
-def canonical_provider(provider: str) -> str:
-    return PROVIDER_ALIASES.get(provider, provider)
+def default_codex_profile() -> LLMProfile:
+    """Create the dedicated Codex settings entry in the shared runtime format.
+
+    >>> default_codex_profile().id
+    'codex'
+    """
+    return LLMProfile(
+        id='codex', name='Codex', backend='codex', built_in=True,
+        model_options=list(CODEX_MODEL_OPTIONS),
+        vision_model_options=list(CODEX_MODEL_OPTIONS),
+        image_model='gpt-image-2', image_model_options=['gpt-image-2'],
+        vision_detail_level='auto',
+    )
 
 
 def _provider_from_profile_id(profile_id: str) -> str:
@@ -551,6 +652,68 @@ def profile_by_id(
     return None
 
 
+def normalize_codex_models(value: Any) -> Dict[str, Dict[str, List[str]]]:
+    """Keep only public, usable catalog metadata; never persist account data.
+
+    >>> normalize_codex_models({'m': {'modalities': ['text'], 'efforts': ['high']}})
+    {'m': {'modalities': ['text'], 'efforts': ['high']}}
+    """
+    if not isinstance(value, dict):
+        LOGGER.warning('Discard invalid Codex model catalog.')
+        return {}
+    models = {}
+    for model, entry in value.items():
+        if not isinstance(model, str) or not model.strip() or not isinstance(entry, dict):
+            LOGGER.warning('Discard invalid Codex model catalog entry.')
+            continue
+        if set(entry) - {'modalities', 'efforts'}:
+            LOGGER.warning('Discard unknown fields from Codex model catalog entry.')
+        clean = {}
+        # Reasoning levels belong to the model catalog and can grow independently
+        # of this app; supported input modalities are an application constraint.
+        for key, allowed in (('modalities', ('text', 'image')), ('efforts', None)):
+            items = entry.get(key, [])
+            if not isinstance(items, list):
+                LOGGER.warning('Discard invalid Codex model %s for %s.', key, model)
+                items = []
+            clean[key] = list(dict.fromkeys(
+                item for item in items
+                if isinstance(item, str) and item.strip() and (allowed is None or item in allowed)
+            ))
+            if clean[key] != items:
+                LOGGER.warning('Discard invalid Codex model %s entries for %s.', key, model)
+        if clean['modalities']:
+            models[model] = clean
+    return models
+
+
+def codex_thinking_options(profile: LLMProfile, models: Dict) -> List[str]:
+    return [THINKING_AUTO] + [
+        THINKING_DISABLED if effort == 'none' else effort
+        for effort in models.get(profile.model, {}).get('efforts', [])
+    ]
+
+
+def sync_codex_profile(profile: LLMProfile, models: Dict) -> None:
+    """Refresh text/vision options without changing selections or saved image choices.
+
+    >>> profile = default_codex_profile()
+    >>> sync_codex_profile(profile, {'m': {'modalities': ['text'], 'efforts': ['high']}})
+    >>> profile.model, profile.model_options
+    ('', ['m'])
+    """
+    profile.api_key = ''
+    profile.require_api_key = False
+    if models:
+        profile.model_options = [model for model, entry in models.items() if 'text' in entry['modalities']]
+        profile.vision_model_options = [model for model, entry in models.items() if 'image' in entry['modalities']]
+    else:
+        defaults = list(CODEX_MODEL_OPTIONS)
+        profile.model_options = _merge_profile_options(defaults, None, profile.model)
+        profile.vision_model_options = _merge_profile_options(defaults, None, profile.vision_model)
+    profile.thinking_level_options = codex_thinking_options(profile, models)
+
+
 def runtime_profile(
     profiles: Sequence[Any],
     selected_profile_id: str,
@@ -584,6 +747,10 @@ def _merge_profile_options(default_options: Any, saved_options: Any, selected: A
 def _merge_builtin_profile_options(profile: LLMProfile) -> LLMProfile:
     provider = _provider_from_profile_id(_builtin_profile_id(profile))
     if not provider:
+        if profile.built_in:
+            # Removed presets remain user-owned profiles, including their keys.
+            LOGGER.warning('Load unrecognized built-in LLM profile as a custom profile.')
+            profile.built_in = False
         return profile
     defaults = PROVIDER_DEFAULTS[provider]
     profile.model_options = _merge_profile_options(
@@ -593,7 +760,8 @@ def _merge_builtin_profile_options(profile: LLMProfile) -> LLMProfile:
         defaults.get('vision_model_options'), profile.vision_model_options, profile.vision_model,
     )
     profile.image_model_options = _merge_profile_options(
-        defaults.get('image_model_options'), profile.image_model_options, profile.image_model,
+        defaults.get('image_model_options'), profile.image_model_options,
+        split_image_model_selection(profile.image_model)[1],
     )
     if provider == 'OpenAI' and not profile.image_base_url:
         profile.image_base_url = defaults['image_base_url']
@@ -601,48 +769,42 @@ def _merge_builtin_profile_options(profile: LLMProfile) -> LLMProfile:
 
 
 def load_profiles(profiles: List[Any]) -> List[LLMProfile]:
+    """Load API profiles and one canonical Codex settings entry.
+
+    >>> [profile.id for profile in load_profiles([])]
+    ['codex']
+    """
     loaded = []
+    codex = None
     for profile in profiles or []:
         if not isinstance(profile, (Mapping, LLMProfile)):
+            LOGGER.warning('Discard invalid LLM profile config entry.')
+            continue
+        profile_id = _profile_value(profile, 'id')
+        is_codex = _profile_value(profile, 'backend') == 'codex'
+        if is_codex != (profile_id == 'codex'):
+            LOGGER.warning('Discard LLM profile with an invalid Codex identity.')
+            continue
+        if is_codex:
+            if codex is not None:
+                LOGGER.warning('Discard duplicate Codex settings entry.')
+                continue
+            data = profile.__dict__ if isinstance(profile, LLMProfile) else dict(profile)
+            normalized = _normalize_profile_data(data)
+            if any(key not in normalized or normalized[key] != value for key, value in data.items()):
+                LOGGER.warning('Discard invalid or unknown Codex settings fields.')
+            normalized.update(id='codex', backend='codex', name='Codex', built_in=True, title_url='')
+            codex = profile_from_config({**default_codex_profile().__dict__, **normalized})
+            loaded.append(codex)
             continue
         loaded.append(_merge_builtin_profile_options(profile_from_config(profile)))
+    if codex is None:
+        loaded.append(default_codex_profile())
     return loaded
 
 
-def _dedupe_profile_entries(entries: List[Tuple[Any, bool]], selected_profile_id: str = "") -> List[LLMProfile]:
-    deduped = []
-    by_key = {}
-    for raw_profile, selected_old_translator in entries:
-        profile = profile_from_config(raw_profile)
-        selected_profile = profile.id == selected_profile_id
-        builtin_id = _builtin_profile_id(profile)
-        key = ("builtin", builtin_id) if builtin_id else ("custom", profile.id)
-        provider = _provider_from_profile_id(builtin_id)
-        has_key = bool(profile.api_key)
-        builtin_model = bool(provider and profile.model in PROVIDER_DEFAULTS[provider]["model_options"][:2])
-        score = (bool(selected_old_translator), bool(selected_profile), has_key, builtin_model)
-        existing_idx = by_key.get(key)
-        if existing_idx is None:
-            by_key[key] = len(deduped)
-            deduped.append((profile, score))
-        elif score > deduped[existing_idx][1]:
-            deduped[existing_idx] = (profile, score)
-
-    profiles = []
-    for profile, _score in deduped:
-        builtin_id = _builtin_profile_id(profile)
-        provider = _provider_from_profile_id(builtin_id)
-        if provider:
-            defaults = PROVIDER_DEFAULTS[provider]
-            profile.id = defaults["id"]
-            profile.name = provider
-            profile.built_in = True
-        profiles.append(profile)
-    return profiles
-
-
-def restore_builtin_profiles(existing_profiles: List[Any]) -> List[LLMProfile]:
-    """Replace all built-in profiles while keeping user profiles.
+def restore_builtin_profiles(existing_profiles: List[LLMProfile]) -> List[LLMProfile]:
+    """Restore API defaults in normalized config, keeping user and Codex settings.
 
     Example:
         >>> custom = copy_profile(default_profile('OpenAI'))
@@ -651,10 +813,10 @@ def restore_builtin_profiles(existing_profiles: List[Any]) -> List[LLMProfile]:
         'custom'
     """
 
-    existing = load_profiles(existing_profiles)
-    user_profiles = [p for p in existing if not p.built_in]
+    codex_profiles = [profile for profile in existing_profiles if profile.backend == 'codex']
+    user_profiles = [p for p in existing_profiles if not p.built_in]
     preserved_keys = {}
-    for profile in existing:
+    for profile in existing_profiles:
         if not profile.built_in or not profile.api_key:
             continue
         builtin_id = _builtin_profile_id(profile)
@@ -666,12 +828,15 @@ def restore_builtin_profiles(existing_profiles: List[Any]) -> List[LLMProfile]:
         api_key = preserved_keys.get(profile.id)
         if api_key:
             profile.api_key = api_key
-    return user_profiles + builtins
+    return user_profiles + builtins + codex_profiles
 
 
 def copy_profile(profile: Any) -> LLMProfile:
     copied = profile_from_config(profile)
-    copied.id = _stable_profile_id(copied.id, copied.base_url, copied.model, copied.api_key, suffix="copy")
+    if copied.backend == 'codex':
+        raise ValueError('Codex settings cannot be copied as an API profile.')
+    # The profile panel assigns a unique ID before adding the copy to config.
+    copied.id = ''
     copied.name = copied.name + " Copy"
     copied.built_in = False
     return copied
@@ -685,195 +850,3 @@ def resolve_api_key(profile: Any, secret_store: SecretStore = None) -> str:
 def store_api_key(profile: LLMProfile, api_key: str, secret_store: SecretStore = None) -> None:
     secret_store = secret_store or SecretStore()
     profile.api_key = secret_store.store(profile.id, api_key or "")
-
-
-def _stable_profile_id(provider: str, base_url: str, model: str, api_key: Any, suffix: str = "") -> str:
-    seed = "|".join([provider or "", _normal_url(base_url or ""), model or "", str(api_key or ""), suffix])
-    digest = hashlib.sha1(seed.encode("utf8")).hexdigest()[:10]
-    provider_slug = (provider or "llm").lower().replace(" ", "-")
-    return f"{provider_slug}-{digest}"
-
-
-def _infer_provider(provider: str, base_url: str, model: str) -> str:
-    provider = canonical_provider(provider)
-    url = _normal_url(base_url).lower()
-    model = (model or "").lower()
-    if "api.deepseek.com" in url or model.startswith("deepseek"):
-        return "DeepSeek"
-    if "generativelanguage.googleapis.com" in url or model.startswith("gemini"):
-        return "Gemini"
-    if "api.x.ai" in url or model.startswith("grok"):
-        return "Grok"
-    if "openrouter.ai" in url:
-        return "OpenRouter"
-    if "localhost:1234" in url:
-        return "LM Studio"
-    if "localhost:11434" in url or "127.0.0.1:11434" in url:
-        return "Ollama"
-    if provider in PROVIDER_DEFAULTS:
-        return provider
-    return "OpenAI"
-
-
-def normalize_model(provider: str, model: str) -> Tuple[str, str]:
-    provider = canonical_provider(provider)
-    model = _strip_model_prefix(model)
-    thinking = THINKING_AUTO
-    if provider == "OpenAI":
-        aliases = {
-            "gpt3": "gpt-5.5",
-            "text-davinci-003": "gpt-5.5",
-            "gpt35-turbo": "gpt-5.5",
-            "gpt-3.5-turbo": "gpt-5.5",
-            "gpt4": "gpt-5.5",
-            "gpt-4": "gpt-5.5",
-        }
-        model = aliases.get(model, model)
-    elif provider == "DeepSeek":
-        if model == "deepseek-reasoner":
-            model = "deepseek-v4-flash"
-            thinking = "high"
-        elif model == "deepseek-chat":
-            model = "deepseek-v4-flash"
-            thinking = THINKING_AUTO
-    if not model:
-        model = PROVIDER_DEFAULTS[provider]["model"]
-    return model, thinking
-
-
-def _old_base_url(old_key: str, params: Dict, provider: str) -> str:
-    if old_key == "LLM_API_Translator":
-        base_url = params.get("endpoint") or ""
-    else:
-        base_url = params.get("3rd party api url") or ""
-    if base_url:
-        return str(base_url).strip()
-    return PROVIDER_DEFAULTS.get(provider, PROVIDER_DEFAULTS["OpenAI"])["base_url"]
-
-
-def _old_api_key(old_key: str, params: Dict) -> str:
-    if old_key == "LLM_API_Translator":
-        return str(params.get("apikey") or "").strip()
-    return str(params.get("api key") or "").strip()
-
-
-def profile_from_old_settings(old_key: str, params: Dict, secret_store: SecretStore = None) -> Optional[LLMProfile]:
-    """Convert one old LLM translator config to a new profile.
-
-    Example:
-        >>> profile_from_old_settings('LLM_API_Translator', {}, secret_store=SecretStore()) is None
-        True
-    """
-
-    params = params or {}
-    override_model = _strip_model_prefix(str(params.get("override model") or ""))
-    raw_model = _strip_model_prefix(str(override_model or params.get("model") or ""))
-    using_override = bool(override_model)
-    raw_provider = str(params.get("provider") or "")
-    provider = _infer_provider(raw_provider, _old_base_url(old_key, params, "OpenAI"), raw_model)
-    base_url = _old_base_url(old_key, params, provider)
-    model, thinking = normalize_model(provider, raw_model)
-    if provider in {"OpenAI", "DeepSeek"} and not using_override:
-        if model not in PROVIDER_DEFAULTS[provider]["model_options"]:
-            model = PROVIDER_DEFAULTS[provider]["model"]
-            thinking = THINKING_AUTO
-    api_key = _old_api_key(old_key, params)
-    require_key = PROVIDER_DEFAULTS[provider]["require_api_key"]
-    if require_key and not api_key:
-        return None
-
-    profile = default_profile(provider)
-    matched_builtin = (
-        _normal_url(base_url) == _normal_url(PROVIDER_DEFAULTS[provider]["base_url"])
-        and model in PROVIDER_DEFAULTS[provider]["model_options"]
-    )
-    profile.id = PROVIDER_DEFAULTS[provider]["id"] if matched_builtin else _stable_profile_id(provider, base_url, model, api_key)
-    profile.name = provider if matched_builtin else f"{provider} {model}"
-    profile.built_in = matched_builtin
-    profile.base_url = base_url
-    profile.require_api_key = require_key
-    profile.model = model
-    profile.thinking_level = thinking
-    if "max tokens" in params:
-        profile.max_tokens = params["max tokens"]
-    if "temperature" in params:
-        profile.temperature = params["temperature"]
-    if "top p" in params:
-        profile.top_p = params["top p"]
-    if "frequency penalty" in params:
-        profile.frequency_penalty = params["frequency penalty"]
-    if "presence penalty" in params:
-        profile.presence_penalty = params["presence penalty"]
-    if "low vram mode" in params:
-        profile.low_vram_mode = params["low vram mode"]
-    if api_key:
-        store_api_key(profile, api_key, secret_store=secret_store)
-    if profile.model not in profile.model_options:
-        profile.model_options.insert(0, profile.model)
-    return profile
-
-
-def migrate_module_llm_profiles(module_cfg: Dict, secret_store: SecretStore = None) -> Dict:
-    """Migrate legacy translators and add the Codex preset once on upgrade.
-
-    Example:
-        >>> migrated = migrate_module_llm_profiles(
-        ...     {}, secret_store=SecretStore())
-        >>> bool(migrated['llm_profiles'])
-        True
-    """
-
-    if not isinstance(module_cfg, dict):
-        return module_cfg
-    secret_store = secret_store or SecretStore()
-    raw_profiles = module_cfg.get("llm_profiles") or []
-    profiles_were_missing = "llm_profiles" not in module_cfg
-    if isinstance(raw_profiles, list):
-        profiles = load_profiles(raw_profiles) if raw_profiles else default_profiles()
-    else:
-        profiles = default_profiles()
-
-    trans_params = module_cfg.get("translator_params")
-    if not isinstance(trans_params, dict):
-        trans_params = {}
-        module_cfg["translator_params"] = trans_params
-    current_translator = module_cfg.get("translator")
-    migrated_entries = []
-    selected_profile = None
-    for old_key in OLD_LLM_TRANSLATORS:
-        if old_key not in trans_params:
-            continue
-        old_params = trans_params.get(old_key) or {}
-        profile = profile_from_old_settings(
-            old_key,
-            old_params,
-            secret_store=secret_store,
-        )
-        trans_params.pop(old_key, None)
-        if profile is None:
-            continue
-        migrated_entries.append((profile, bool(current_translator == old_key)))
-        if current_translator == old_key:
-            selected_profile = profile.id
-
-    if migrated_entries:
-        profiles = _dedupe_profile_entries(
-            migrated_entries + [(profile, False) for profile in profiles],
-            selected_profile or module_cfg.get("translator_llm_id", ""),
-        )
-        if selected_profile:
-            module_cfg["translator"] = LLM_TRANSLATOR_KEY
-            module_cfg["translator_llm_id"] = selected_profile
-    elif profiles_were_missing:
-        profiles = default_profiles()
-
-    codex_migrated = module_cfg.get('llm_codex_profile_migrated', False)
-    if type(codex_migrated) is not bool:
-        LOGGER.warning('Discard invalid module.llm_codex_profile_migrated: expected a boolean.')
-        codex_migrated = False
-    # Persist the upgrade marker so a later user deletion stays deleted.
-    if not codex_migrated and profile_by_id(profiles, 'codex') is None:
-        profiles.append(default_profile('Codex'))
-    module_cfg['llm_codex_profile_migrated'] = True
-    module_cfg["llm_profiles"] = profiles
-    return module_cfg

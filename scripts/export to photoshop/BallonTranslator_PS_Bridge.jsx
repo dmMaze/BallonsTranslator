@@ -105,6 +105,7 @@ var BT_I18N = {
         } catch (e) {}
         if (loc.indexOf("ru") !== -1) return "ru";
         if (loc.indexOf("zh") !== -1 || loc.indexOf("cn") !== -1) return "zh";
+        if (loc.indexOf("ko") !== -1) return "ko";
         return "en";
     },
 
@@ -112,112 +113,134 @@ var BT_I18N = {
         dlgTitle: {
             en: "BallonsTranslator - Photoshop Bridge",
             ru: "\u041c\u043e\u0441\u0442 BallonsTranslator - Photoshop",
-            zh: "BallonsTranslator - Photoshop \u6865\u63a5"
+            zh: "BallonsTranslator - Photoshop \u6865\u63a5",
+            ko: "BallonsTranslator - Photoshop \ube0c\ub9ac\uc9c0"
         },
         projInfo: {
             en: "Project Information",
             ru: "\u0418\u043d\u0444\u043e\u0440\u043c\u0430\u0446\u0438\u044f \u043e \u043f\u0440\u043e\u0435\u043a\u0442\u0435",
-            zh: "\u9879\u76ee\u4fe1\u606f"
+            zh: "\u9879\u76ee\u4fe1\u606f",
+            ko: "\ud504\ub85c\uc81d\ud2b8 \uc815\ubcf4"
         },
         projFile: {
             en: "Project File: ",
             ru: "\u0424\u0430\u0439\u043b \u043f\u0440\u043e\u0435\u043a\u0442\u0430: ",
-            zh: "\u9879\u76ee\u6587\u4ef6: "
+            zh: "\u9879\u76ee\u6587\u4ef6: ",
+            ko: "\ud504\ub85c\uc81d\ud2b8 \ud30c\uc77c: "
         },
         projDir: {
             en: "Directory: ",
             ru: "\u041f\u0430\u043f\u043a\u0430: ",
-            zh: "\u76ee\u5f55: "
+            zh: "\u76ee\u5f55: ",
+            ko: "\ud3f4\ub354: "
         },
         totalPages: {
             en: "Total Pages: ",
             ru: "\u0412\u0441\u0435\u0433\u043e \u0441\u0442\u0440\u0430\u043d\u0438\u0446: ",
-            zh: "\u603b\u9875\u6570: "
+            zh: "\u603b\u9875\u6570: ",
+            ko: "\uc804\uccb4 \ud398\uc774\uc9c0: "
         },
         selectPages: {
             en: "Select Pages to Import",
             ru: "\u0412\u044b\u0431\u043e\u0440 \u0441\u0442\u0440\u0430\u043d\u0438\u0446 \u0434\u043b\u044f \u0438\u043c\u043f\u043e\u0440\u0442\u0430",
-            zh: "\u9009\u62e9\u8981\u5bfc\u5165\u7684\u9875\u9762"
+            zh: "\u9009\u62e9\u8981\u5bfc\u5165\u7684\u9875\u9762",
+            ko: "\uac00\uc838\uc62c \ud398\uc774\uc9c0 \uc120\ud0dd"
         },
         selectAll: {
             en: "Select All",
             ru: "\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u0432\u0441\u0435",
-            zh: "\u5168\u9009"
+            zh: "\u5168\u9009",
+            ko: "\ubaa8\ub450 \uc120\ud0dd"
         },
         deselectAll: {
             en: "Deselect All",
             ru: "\u0421\u043d\u044f\u0442\u044c \u0432\u0441\u0435",
-            zh: "\u53d6\u6d88\u5168\u9009"
+            zh: "\u53d6\u6d88\u5168\u9009",
+            ko: "\ubaa8\ub450 \uc120\ud0dd \ud574\uc81c"
         },
         importOpts: {
             en: "Import & Styling Options",
             ru: "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0438\u043c\u043f\u043e\u0440\u0442\u0430 \u0438 \u0441\u0442\u0438\u043b\u0435\u0439",
-            zh: "\u5bfc\u5165\u4e0e\u6837\u5f0f\u9009\u9879"
+            zh: "\u5bfc\u5165\u4e0e\u6837\u5f0f\u9009\u9879",
+            ko: "\uac00\uc838\uc624\uae30 \ubc0f \uc2a4\ud0c0\uc77c \uc635\uc158"
         },
         chkInpaint: {
             en: "Include Inpainted clean plate (/inpainted/)",
             ru: "\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u043b\u043e\u0439 \u043a\u043b\u0438\u043d\u0430 (/inpainted/)",
-            zh: "\u5305\u542b\u4fee\u56fe\u6e05\u6d01\u56fe\u5c42 (/inpainted/)"
+            zh: "\u5305\u542b\u4fee\u56fe\u6e05\u6d01\u56fe\u5c42 (/inpainted/)",
+            ko: "\ubcf5\uc6d0\ub41c \uc774\ubbf8\uc9c0 \ub808\uc774\uc5b4 \ud3ec\ud568 (/inpainted/)"
         },
         chkMask: {
             en: "Include Text Mask layer (/mask/) [Hidden]",
             ru: "\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0441\u043b\u043e\u0439 \u043c\u0430\u0441\u043a\u0438 (/mask/) [\u0441\u043a\u0440\u044b\u0442]",
-            zh: "\u5305\u542b\u6587\u672c\u8499\u7248\u56fe\u5c42 (/mask/) [\u9690\u85cf]"
+            zh: "\u5305\u542b\u6587\u672c\u8499\u7248\u56fe\u5c42 (/mask/) [\u9690\u85cf]",
+            ko: "\ud14d\uc2a4\ud2b8 \ub9c8\uc2a4\ud06c \ub808\uc774\uc5b4 \ud3ec\ud568 (/mask/) [\uc228\uae40]"
         },
         chkTrans: {
             en: "Create Translation Text Layers",
             ru: "\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0442\u0435\u043a\u0441\u0442\u043e\u0432\u044b\u0435 \u0441\u043b\u043e\u0438 \u043f\u0435\u0440\u0435\u0432\u043e\u0434\u0430",
-            zh: "\u521b\u5efa\u7ffb\u8bd1\u6587\u672c\u56fe\u5c42"
+            zh: "\u521b\u5efa\u7ffb\u8bd1\u6587\u672c\u56fe\u5c42",
+            ko: "\ubc88\uc5ed \ud14d\uc2a4\ud2b8 \ub808\uc774\uc5b4 \ub9cc\ub4e4\uae30"
         },
         chkOrig: {
             en: "Create Original OCR Reference Layers [Hidden]",
             ru: "\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0441\u043b\u043e\u0438 \u043e\u0440\u0438\u0433\u0438\u043d\u0430\u043b\u044c\u043d\u043e\u0433\u043e OCR [\u0441\u043a\u0440\u044b\u0442]",
-            zh: "\u521b\u5efa\u539f\u6587OCR\u53c2\u8003\u56fe\u5c42 [\u9690\u85cf]"
+            zh: "\u521b\u5efa\u539f\u6587OCR\u53c2\u8003\u56fe\u5c42 [\u9690\u85cf]",
+            ko: "\uc6d0\ubcf8 OCR \ucc38\uc870 \ub808\uc774\uc5b4 \ub9cc\ub4e4\uae30 [\uc228\uae40]"
         },
         chkSmartBox: {
             en: "Smart Balloon Bounds (Adapt box for horizontal text)",
             ru: "\u0423\u043c\u043d\u044b\u0435 \u0433\u0440\u0430\u043d\u0438\u0446\u044b (\u0430\u0434\u0430\u043f\u0442\u0430\u0446\u0438\u044f \u043f\u043e\u0434 \u0433\u043e\u0440\u0438\u0437\u043e\u043d\u0442\u0430\u043b\u044c\u043d\u044b\u0439 \u0442\u0435\u043a\u0441\u0442)",
-            zh: "\u667a\u80fd\u6c14\u6ce1\u8fb9\u754c (\u9002\u5e94\u6a2a\u6392\u6587\u672c)"
+            zh: "\u667a\u80fd\u6c14\u6ce1\u8fb9\u754c (\u9002\u5e94\u6a2a\u6392\u6587\u672c)",
+            ko: "\uc2a4\ub9c8\ud2b8 \ub9d0\ud48d\uc120 \uc601\uc5ed (\uac00\ub85c\uc4f0\uae30 \ud14d\uc2a4\ud2b8\uc5d0 \ub9de\uac8c \uc870\uc815)"
         },
         chkStroke: {
             en: "Smart Stroke (Auto-add 3px white outline on text)",
             ru: "\u0411\u0435\u043b\u0430\u044f \u043e\u0431\u0432\u043e\u0434\u043a\u0430 (\u0430\u0432\u0442\u043e-3px \u0434\u043b\u044f \u0447\u0438\u0442\u0430\u0435\u043c\u043e\u0441\u0442\u0438 \u043d\u0430 \u0441\u043a\u0440\u0438\u043d\u0442\u043e\u043d\u0430\u0445)",
-            zh: "\u667a\u80fd\u767d\u8272\u63cf\u8fb9 (\u81ea\u52a83px\u767d\u8fb9\u63d0\u5347\u53ef\u8bfb\u6027)"
+            zh: "\u667a\u80fd\u767d\u8272\u63cf\u8fb9 (\u81ea\u52a83px\u767d\u8fb9\u63d0\u5347\u53ef\u8bfb\u6027)",
+            ko: "\uc2a4\ub9c8\ud2b8 \uc678\uacfd\uc120 (\ud14d\uc2a4\ud2b8\uc5d0 \ud770\uc0c9 \uc678\uacfd\uc120 \uc790\ub3d9 \ucd94\uac00)"
         },
         chkVCenter: {
             en: "Vertical Centering (Auto-center text vertically & fit frame)",
             ru: "\u0412\u0435\u0440\u0442\u0438\u043a\u0430\u043b\u044c\u043d\u043e\u0435 \u0446\u0435\u043d\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 (\u0430\u0432\u0442\u043e-\u0446\u0435\u043d\u0442\u0440 \u0438 \u043f\u043e\u0434\u0433\u043e\u043d\u043a\u0430 \u0440\u0430\u043c\u043a\u0438)",
-            zh: "\u5782\u76f4\u5c45\u4e2d (\u81ea\u52a8\u5782\u76f4\u5c45\u4e2d\u5e76\u88c1\u526a\u6587\u672c\u6846)"
+            zh: "\u5782\u76f4\u5c45\u4e2d (\u81ea\u52a8\u5782\u76f4\u5c45\u4e2d\u5e76\u88c1\u526a\u6587\u672c\u6846)",
+            ko: "\uc138\ub85c \uac00\uc6b4\ub370 \uc815\ub82c (\ud14d\uc2a4\ud2b8\ub97c \uac00\uc6b4\ub370\uc5d0 \ub9de\ucd94\uace0 \uc0c1\uc790 \uc870\uc815)"
         },
         btnSavePSD: {
             en: "Send Changes to BallonsTranslator",
             ru: "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u0432 BallonsTranslator",
-            zh: "\u5c06\u66f4\u6539\u53d1\u9001\u5230BallonsTranslator"
+            zh: "\u5c06\u66f4\u6539\u53d1\u9001\u5230BallonsTranslator",
+            ko: "\ubcc0\uacbd \uc0ac\ud56d\uc744 BallonsTranslator\ub85c \ubcf4\ub0b4\uae30"
         },
         btnImport: {
             en: "Import Selected Pages",
             ru: "\u0418\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b",
-            zh: "\u5bfc\u5165\u6240\u9009\u9875\u9762"
+            zh: "\u5bfc\u5165\u6240\u9009\u9875\u9762",
+            ko: "\uc120\ud0dd\ud55c \ud398\uc774\uc9c0 \uac00\uc838\uc624\uae30"
         },
         btnCancel: {
             en: "Cancel",
             ru: "\u041e\u0442\u043c\u0435\u043d\u0430",
-            zh: "\u53d6\u6d88"
+            zh: "\u53d6\u6d88",
+            ko: "\ucde8\uc18c"
         },
         importSuccess: {
             en: "Successfully imported {count} page(s) into Photoshop!",
             ru: "\u0423\u0441\u043f\u0435\u0448\u043d\u043e \u0438\u043c\u043f\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u043e {count} \u0441\u0442\u0440\u0430\u043d\u0438\u0446 \u0432 Photoshop!",
-            zh: "\u6210\u529f\u5bfc\u5165 {count} \u9875\u5230 Photoshop\uff01"
+            zh: "\u6210\u529f\u5bfc\u5165 {count} \u9875\u5230 Photoshop\uff01",
+            ko: "{count}\ud398\uc774\uc9c0\ub97c Photoshop\uc73c\ub85c \uac00\uc838\uc654\uc2b5\ub2c8\ub2e4!"
         },
         saveSuccess: {
             en: "Sent {count} text block change(s) for page '{page}' to BallonsTranslator.",
             ru: "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0439: {count}, \u0441\u0442\u0440\u0430\u043d\u0438\u0446\u0430 '{page}'.",
-            zh: "\u5df2\u5c06 '{page}' \u9875\u7684 {count} \u4e2a\u6587\u672c\u5757\u66f4\u6539\u53d1\u9001\u5230BallonsTranslator\u3002"
+            zh: "\u5df2\u5c06 '{page}' \u9875\u7684 {count} \u4e2a\u6587\u672c\u5757\u66f4\u6539\u53d1\u9001\u5230BallonsTranslator\u3002",
+            ko: "'{page}' \ud398\uc774\uc9c0\uc758 \ud14d\uc2a4\ud2b8 \ube14\ub85d \ubcc0\uacbd \uc0ac\ud56d {count}\uac1c\ub97c BallonsTranslator\ub85c \ubcf4\ub0c8\uc2b5\ub2c8\ub2e4."
         },
         fontWarning: {
             en: "Note: The following font(s) were not found in Photoshop and used default fallback:\n{fonts}",
             ru: "\u0412\u043d\u0438\u043c\u0430\u043d\u0438\u0435: \u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0435 \u0448\u0440\u0438\u0444\u0442\u044b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u044b \u0432 Photoshop (\u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d \u0441\u0442\u0430\u043d\u0434\u0430\u0440\u0442\u043d\u044b\u0439):\n{fonts}",
-            zh: "\u6ce8\u610f\uff1a\u4ee5\u4e0b\u5b57\u4f53\u5728 Photoshop \u4e2d\u672a\u627e\u5230\uff0c\u5df2\u4f7f\u7528\u9ed8\u8ba4\u5b57\u4f53\u66ff\u4ee3\uff1a\n{fonts}"
+            zh: "\u6ce8\u610f\uff1a\u4ee5\u4e0b\u5b57\u4f53\u5728 Photoshop \u4e2d\u672a\u627e\u5230\uff0c\u5df2\u4f7f\u7528\u9ed8\u8ba4\u5b57\u4f53\u66ff\u4ee3\uff1a\n{fonts}",
+            ko: "\ucc38\uace0: \ub2e4\uc74c \uae00\uaf34\uc744 Photoshop\uc5d0\uc11c \ucc3e\uc744 \uc218 \uc5c6\uc5b4 \uae30\ubcf8 \uae00\uaf34\ub85c \ub300\uccb4\ud588\uc2b5\ub2c8\ub2e4:\n{fonts}"
         }
     },
 
@@ -427,7 +450,7 @@ var BT_PS = (function () {
         if (!e) return false;
         if (e.number === 8007 || e.number === -128) return true;
         var msg = (e.message || String(e)).toLowerCase();
-        return msg.indexOf("cancel") !== -1 || msg.indexOf("отмен") !== -1;
+        return msg.indexOf("cancel") !== -1 || msg.indexOf("\u043e\u0442\u043c\u0435\u043d") !== -1;
     }
 
     function openSilent(fileObj) {
@@ -613,9 +636,10 @@ function runBallonTranslatorBridge() {
     grpLang.orientation = "row";
     grpLang.alignment = ["right", "top"];
     grpLang.add("statictext", undefined, "Language / \u042f\u0437\u044b\u043a:");
-    var cmbLang = grpLang.add("dropdownlist", undefined, ["English", "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", "\u4e2d\u6587"]);
+    var cmbLang = grpLang.add("dropdownlist", undefined, ["English", "\u0420\u0443\u0441\u0441\u043a\u0438\u0439", "\u4e2d\u6587", "\uD55C\uAD6D\uC5B4"]);
     if (BT_I18N.currentLang === "ru") cmbLang.selection = 1;
     else if (BT_I18N.currentLang === "zh") cmbLang.selection = 2;
+    else if (BT_I18N.currentLang === "ko") cmbLang.selection = 3;
     else cmbLang.selection = 0;
 
     // Project Info Panel
@@ -705,6 +729,7 @@ function runBallonTranslatorBridge() {
     cmbLang.onChange = function() {
         if (cmbLang.selection.index === 1) BT_I18N.currentLang = "ru";
         else if (cmbLang.selection.index === 2) BT_I18N.currentLang = "zh";
+        else if (cmbLang.selection.index === 3) BT_I18N.currentLang = "ko";
         else BT_I18N.currentLang = "en";
 
         dlg.text = BT_I18N.t("dlgTitle");

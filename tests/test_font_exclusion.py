@@ -249,6 +249,7 @@ class FontExclusionUiTests(unittest.TestCase):
         )
 
         panel.familybox.setCurrentIndex(0)
+        panel.familybox.activated.emit(0)
 
         self.assertEqual(changes, [('font_family', allowed_font)])
 

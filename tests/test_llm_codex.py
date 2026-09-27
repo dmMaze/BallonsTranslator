@@ -252,7 +252,7 @@ class CodexTransportTest(unittest.TestCase):
         for execution in ('Python SDK', 'CLI'):
             self.profile.codex_execution = execution
             with mock.patch.object(pcfg, 'module', ModuleConfig(
-                llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+                llm_profiles=[self.profile], translator_llm_id='codex-app-server', ocr_llm_id='codex-app-server',
             )):
                 translator = LLMTranslator('English', '繁體中文', **{'delay': 0})
                 ocr = LLMOCR(**{'delay': 0})
@@ -458,7 +458,7 @@ class CodexTransportTest(unittest.TestCase):
 
     def test_capacity_retries_only_the_failed_request_and_remains_cancellable(self) -> None:
         with mock.patch.object(pcfg, 'module', ModuleConfig(
-            llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+            llm_profiles=[self.profile], translator_llm_id='codex-app-server', ocr_llm_id='codex-app-server',
         )):
             for owner in (LLMTranslator('English', '繁體中文'), LLMOCR()):
                 with self.subTest(owner=type(owner).__name__):
@@ -497,7 +497,7 @@ class CodexTransportTest(unittest.TestCase):
 
     def test_busy_exhaustion_is_bounded_and_intermediate_errors_do_not_resubmit(self) -> None:
         with mock.patch.object(pcfg, 'module', ModuleConfig(
-            llm_profiles=[self.profile], translator_llm_id='codex',
+            llm_profiles=[self.profile], translator_llm_id='codex-app-server',
         )):
             translator = LLMTranslator('English', '繁體中文', **{
                 'retry attempts': 2, 'retry timeout': 600, 'delay': 0,
@@ -650,7 +650,7 @@ class CodexTransportTest(unittest.TestCase):
         logger = logging.getLogger('BallonTranslator')
         for scenario in ('repeated_usage', 'no_usage'):
             with self.subTest(scenario=scenario), mock.patch.object(pcfg, 'module', ModuleConfig(
-                llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+                llm_profiles=[self.profile], translator_llm_id='codex-app-server', ocr_llm_id='codex-app-server',
             )):
                 self.scenario = scenario
                 usage_path = Path(self.temp.name, f'{scenario}.log')
@@ -693,7 +693,7 @@ class CodexTransportTest(unittest.TestCase):
         import numpy as np
 
         with mock.patch.object(pcfg, 'module', ModuleConfig(
-            llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+            llm_profiles=[self.profile], translator_llm_id='codex-app-server', ocr_llm_id='codex-app-server',
         )):
             translator = LLMTranslator('English', '繁體中文', **{'delay': 0})
             ocr = LLMOCR(**{'delay': 0})
@@ -713,7 +713,7 @@ class CodexTransportTest(unittest.TestCase):
 
         self.profile.thinking_level = 'high'
         with mock.patch.object(pcfg, 'module', ModuleConfig(
-            llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+            llm_profiles=[self.profile], translator_llm_id='codex-app-server', ocr_llm_id='codex-app-server',
             ocr_llm_page_level=True,
         )), mock.patch('ballontranslator.modules.llm_chat.LLMChatRequester._openai_module',
                        side_effect=AssertionError('HTTP client must not be used')):
@@ -752,14 +752,14 @@ class CodexProfileTest(unittest.TestCase):
         self.assertEqual(profile.codex_executable, 'codex')
         self.assertFalse(profile.codex_save_sessions)
         self.assertEqual(profile.prompt, 'keep this')
-        self.assertEqual(default_profiles()[0].id, 'openai')
+        self.assertIn('openai', [profile.id for profile in default_profiles()])
 
     def test_codex_profile_survives_config_save_and_load(self) -> None:
         profile = default_profile('Codex')
         profile.codex_executable = 'C:/tools/codex.exe'
         profile.codex_timeout = 300
         profile.codex_save_sessions = True
-        cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='codex'))
+        cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='codex-app-server'))
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory, 'config.json')
             path.write_text(json_dump_program_config(cfg), encoding='utf-8')
@@ -781,7 +781,7 @@ class CodexLiveTest(unittest.TestCase):
         profile.codex_executable = os.environ.get('BALLONTRANSLATOR_CODEX_EXECUTABLE', 'codex')
         profile.thinking_level = 'low'
         config = ModuleConfig(
-            llm_profiles=[profile], translator_llm_id='codex', ocr_llm_id='codex',
+            llm_profiles=[profile], translator_llm_id='codex-app-server', ocr_llm_id='codex-app-server',
             ocr_llm_page_level=True, ocr_llm_sort_reading_order=True,
             llm_translate_vision=True, llm_translate_summary_memory=True,
             llm_translate_context=LLMTranslateContext.HISTORY,

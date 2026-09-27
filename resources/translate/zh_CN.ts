@@ -2,6 +2,158 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN" sourcelanguage="en_US">
 <context>
+    <name>CodexSettingsPanel</name>
+    <message>
+        <source>Add image model</source>
+        <translation>添加图像模型</translation>
+    </message>
+    <message>
+        <source>Image model name</source>
+        <translation>图像模型名称</translation>
+    </message>
+    <message>
+        <source>Delete image model and its combinations</source>
+        <translation>删除图像模型及其组合</translation>
+    </message>
+    <message>
+        <source>Choose an image model directly, or a GPT → GPT Image combination for assisted editing. Use + to add an image model ID. Availability is checked when used.</source>
+        <translation>选择图像模型直接编辑，或选择 GPT → GPT Image 组合进行辅助编辑。使用 + 添加图像模型 ID。使用时会检查可用性。</translation>
+    </message>
+    <message>
+        <source>Invalid image model</source>
+        <translation>无效的图像模型</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID, or choose a GPT → GPT Image combination from the list.</source>
+        <translation>请输入图像模型 ID，或从列表中选择 GPT → GPT Image 组合。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="67"/>
+        <source>Sign in</source>
+        <translation>登录</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="68"/>
+        <source>Sign out</source>
+        <translation>退出登录</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="69"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="79"/>
+        <source>Refresh models</source>
+        <translation>刷新模型列表</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="80"/>
+        <source>Refresh models from your ChatGPT account.</source>
+        <translation>刷新 ChatGPT 账户可用的模型列表。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="87"/>
+        <source>Text</source>
+        <translation>文本</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="88"/>
+        <source>Vision</source>
+        <translation>视觉</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="89"/>
+        <source>Image</source>
+        <translation>图像</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="136"/>
+        <source>Reasoning level</source>
+        <translation>推理强度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="137"/>
+        <source>Auto uses the provider default. Disabled requests no reasoning; explicit levels set the reasoning effort.</source>
+        <translation>“自动”使用服务商默认设置；“禁用”关闭推理；其他选项指定推理强度。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="138"/>
+        <source>Vision detail level</source>
+        <translation>图像细节级别</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="139"/>
+        <source>Image detail level sent to the vision model.</source>
+        <translation>设置视觉模型处理图像的细节级别。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="140"/>
+        <source>Translation prompt</source>
+        <translation>翻译提示词</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="141"/>
+        <source>Additional translation instructions for style and wording.</source>
+        <translation>补充翻译风格和措辞要求。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="142"/>
+        <source>OCR prompt</source>
+        <translation>OCR 提示词</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="143"/>
+        <source>Instructions sent to the vision model for OCR.</source>
+        <translation>发送给视觉模型的文字识别指令。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="144"/>
+        <source>Inpainting prompt</source>
+        <translation>图像修复提示词</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="145"/>
+        <source>Instructions sent to the image model for cleanup.</source>
+        <translation>发送给图像模型的修复指令。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="172"/>
+        <source>Models</source>
+        <translation>模型</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="173"/>
+        <source>Request settings</source>
+        <translation>请求设置</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="199"/>
+        <source>Sign out of Codex</source>
+        <translation>退出 Codex 登录</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="199"/>
+        <source>Sign out of your ChatGPT account?</source>
+        <translation>确定要退出 ChatGPT 账户吗？</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="209"/>
+        <source>Connected: {account}</source>
+        <translation>已连接：{account}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="240"/>
+        <source>Select a model</source>
+        <translation>选择模型</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="241"/>
+        <source>Using default models. Sign in and refresh for available account models.</source>
+        <translation>当前使用默认模型。登录后刷新可查看账户可用的模型。</translation>
+    </message>
+</context>
+<context>
     <name>AddWordItemWidget</name>
     <message>
         <location filename="../../ballontranslator/ui/spellcheck.py" line="690"/>
@@ -157,6 +309,11 @@
     <message>
         <source>Lettering layer opacity</source>
         <translation type="vanished">嵌字层不透明度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="631"/>
+        <source>Editing layer opacity</source>
+        <translation>编辑图层不透明度</translation>
     </message>
 </context>
 <context>
@@ -851,6 +1008,11 @@
         <source>Vertical Text Layout</source>
         <translation>竖排特性</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="740"/>
+        <source>Codex</source>
+        <translation>Codex</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>
@@ -884,6 +1046,32 @@
     <message>
         <source>Mask Transparency</source>
         <translation type="vanished">掩膜透明度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="701"/>
+        <source>Shift-click to draw a straight line. Ctrl+Shift-click constrains it horizontally or vertically.</source>
+        <translation>按住 Shift 单击绘制直线；按住 Ctrl+Shift 单击绘制水平或垂直直线。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="704"/>
+        <source>Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>按住 Ctrl 累积笔画，松开后执行修复。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="709"/>
+        <source>Shape Fill: left-drag to fill, right-drag to erase</source>
+        <translation>形状填充：左键拖动填充，右键拖动擦除</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="710"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1488"/>
+        <source>Shape Fill</source>
+        <translation>形状填充</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1488"/>
+        <source>Shape Erase</source>
+        <translation>形状擦除</translation>
     </message>
 </context>
 <context>
@@ -1176,6 +1364,11 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="817"/>
+        <source>Reload fonts</source>
+        <translation>重载字体</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="877"/>
         <source>Font Family</source>
         <translation>字体</translation>
@@ -1413,14 +1606,6 @@
         <location filename="../../ballontranslator/ui/font_refresh.py" line="227"/>
         <source>Immediate system font refresh is unavailable. With the usual fontconfig settings, try again after about 30 seconds; if fonts are still missing, restart the application.</source>
         <translation>无法立即刷新系统字体。使用常规 Fontconfig 设置时，请等待约 30 秒后重试；如果仍有字体缺失，请重启应用程序。</translation>
-    </message>
-</context>
-<context>
-    <name>FontReloadButton</name>
-    <message>
-        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="812"/>
-        <source>Reload fonts</source>
-        <translation>重载字体</translation>
     </message>
 </context>
 <context>
@@ -2304,6 +2489,14 @@
 <context>
     <name>InpainterSelectorRow</name>
     <message>
+        <source>Prompt override</source>
+        <translation>提示词覆盖</translation>
+    </message>
+    <message>
+        <source>Leave blank to use the selected profile’s inpainting prompt.</source>
+        <translation>留空以使用所选配置的图像修复提示词。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="167"/>
         <source>Inpainter</source>
         <translation>修复工具</translation>
@@ -2931,6 +3124,10 @@ All existing translation results will be cleared!</source>
 <context>
     <name>ModuleManager</name>
     <message>
+        <source>The drawing LLM profile is unavailable. Select a profile in the drawing panel.</source>
+        <translation>绘图工具所选的 LLM 配置不可用，请在绘图面板中重新选择。</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1404"/>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1733"/>
         <source>Preparing module: </source>
@@ -3031,6 +3228,11 @@ All existing translation results will be cleared!</source>
         <source>Set Inpainter...</source>
         <translation type="vanished">正在初始化修复工具...</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="2382"/>
+        <source>Inpainting Failed.</source>
+        <translation>图像修复失败。</translation>
+    </message>
 </context>
 <context>
     <name>ModuleParamDialog</name>
@@ -3093,8 +3295,8 @@ All existing translation results will be cleared!</source>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="110"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="596"/>
-        <source>Proxy address used for the OpenAI-compatible client.</source>
-        <translation>用于兼容 OpenAI 格式客户端的代理地址。</translation>
+        <source>Proxy address used for LLM requests.</source>
+        <translation>用于 LLM 请求的代理地址。</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="38"/>
@@ -4745,11 +4947,6 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>添加语言模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="623"/>
-        <source>Delete current image model</source>
-        <translation>删除当前图像模型</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="679"/>
         <source>Text</source>
         <translation>文本</translation>
@@ -4895,6 +5092,24 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <source>Enable image cleanup for this profile.</source>
         <translation type="vanished">启用图像修复能力</translation>
     </message>
+    <message>
+        <source>Delete current image model and all its reasoning combinations</source>
+        <translation>删除当前图像模型及其所有推理组合</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID. Reasoning combinations are added automatically from vision models.</source>
+        <translation>请输入图像模型 ID。推理组合会根据视觉模型列表自动添加。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="438"/>
+        <source>Use a plain name or [Name](https://example.com).</source>
+        <translation>输入名称或 [名称](https://example.com)。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1001"/>
+        <source>Right click to edit the name or link.</source>
+        <translation>右键单击编辑名称或链接。</translation>
+    </message>
 </context>
 <context>
     <name>ProgressMessageBox</name>
@@ -4928,6 +5143,18 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 </context>
 <context>
     <name>RectPanel</name>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation>勾选“使用掩膜”后即可更改掩膜提取方法和膨胀程度。</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation>使用掩膜</translation>
+    </message>
+    <message>
+        <source>When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. Local inpainters treat the entire rectangle as masked.</source>
+        <translation>取消勾选后，LLM 修复模型不接收掩膜，并替换整个矩形区域。本地修复模型则将整个矩形视为掩膜区域。</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="400"/>
         <source>Dilate</source>
@@ -6765,22 +6992,22 @@ Then restart Photoshop. Explorer will now open the source file and destination l
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="364"/>
         <source>Show Text Detection</source>
-        <translation type="unfinished"></translation>
+        <translation>显示文本检测</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="365"/>
         <source>Show OCR</source>
-        <translation type="unfinished"></translation>
+        <translation>显示 OCR</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="366"/>
         <source>Show Translation</source>
-        <translation type="unfinished"></translation>
+        <translation>显示翻译</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="367"/>
         <source>Show Inpainting</source>
-        <translation type="unfinished"></translation>
+        <translation>显示图像修复</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="395"/>
@@ -7216,6 +7443,114 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="549"/>
         <source>Images (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</source>
         <translation>图像文件 (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</translation>
+    </message>
+</context>
+<context>
+    <name>CodexAccountController</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_account.py" line="124"/>
+        <source>Could not open the browser. Check your default browser settings and try signing in again.</source>
+        <translation>无法打开浏览器。请检查默认浏览器设置后重新登录。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_account.py" line="181"/>
+        <source>Codex</source>
+        <translation>Codex</translation>
+    </message>
+</context>
+<context>
+    <name>CodexAccountWorker</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_account.py" line="69"/>
+        <source>Codex could not connect. Check the network, then refresh or sign in again.</source>
+        <translation>无法连接 Codex。请检查网络后刷新或重新登录。</translation>
+    </message>
+</context>
+<context>
+    <name>CodexSignInButton</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="18"/>
+        <source>Sign in</source>
+        <translation>登录</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="20"/>
+        <source>Sign in with ChatGPT</source>
+        <translation>使用 ChatGPT 账户登录</translation>
+    </message>
+</context>
+<context>
+    <name>CodexSignInDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="37"/>
+        <source>Codex sign-in</source>
+        <translation>登录 Codex</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="57"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="61"/>
+        <source>Continue</source>
+        <translation>继续</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="81"/>
+        <source>You are signed in to Codex.</source>
+        <translation>已登录 Codex。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="83"/>
+        <source>Your Codex sign-in is no longer valid. Please sign in again.</source>
+        <translation>Codex 登录已失效，请重新登录。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="85"/>
+        <source>You need to sign in to use Codex.</source>
+        <translation>请先登录以使用 Codex。</translation>
+    </message>
+</context>
+<context>
+    <name>RefreshButton</name>
+    <message>
+        <location filename="../../ballontranslator/ui/custom_widget/push_button.py" line="29"/>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+</context>
+<context>
+    <name>ShapeFillPanel</name>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="476"/>
+        <source>Rectangle</source>
+        <translation>矩形</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="477"/>
+        <source>Ellipse</source>
+        <translation>椭圆</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="481"/>
+        <source>Fill Color</source>
+        <translation>填充颜色</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="486"/>
+        <source>Shape</source>
+        <translation>形状</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="488"/>
+        <source>Color</source>
+        <translation>颜色</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="494"/>
+        <source>Alpha</source>
+        <translation>不透明度</translation>
     </message>
 </context>
 </TS>

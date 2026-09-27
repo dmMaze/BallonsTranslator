@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from functools import lru_cache
+import json
+import re
 from typing import Dict, List, Optional, Sequence
 
 
@@ -257,3 +259,27 @@ def format_run_token_usage(totals: Sequence[LLMUsageTotals]) -> str:
             f'estimated_cost_usd={cost_text}, priced_subtotal_usd={cost:.6f}, '
             f'unpriced_requests={requests - priced}, '
             'price_basis=OpenAI Standard API equivalent (not a bill), rates_date=2026-09-11')
+
+
+def format_prompt_cache_diagnostics(diagnostics: object) -> str:
+    """Log diagnostic codes/counts without dumping arbitrary provider fields.
+
+    >>> format_prompt_cache_diagnostics(None)
+    'not_reported'
+    >>> format_prompt_cache_diagnostics({'type': 'cache_miss', 'reason': 'input_changed'})
+    '{"type":"cache_miss","reason":"input_changed"}'
+    """
+    if diagnostics is None:
+        return 'not_reported'
+    fields = {}
+    for name in ('type', 'reason'):
+        value = _usage_member(diagnostics, name)
+        # These are machine-readable codes. Free-form strings could echo inputs
+        # or credentials, so they do not belong in routine request diagnostics.
+        if isinstance(value, str) and re.fullmatch(r'[a-z][a-z0-9_]{0,127}', value):
+            fields[name] = value
+    for name in ('comparison_reusable_tokens', 'cache_missed_tokens'):
+        value = _usage_count(diagnostics, name)
+        if value is not None:
+            fields[name] = value
+    return json.dumps(fields, separators=(',', ':')) if fields else 'unrecognized'

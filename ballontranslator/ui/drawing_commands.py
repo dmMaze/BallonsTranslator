@@ -1,4 +1,4 @@
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QDateTime, QRectF, QPoint
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QLineF, QRectF, QPoint
 from qtpy.QtGui import QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -6,6 +6,7 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from typing import Union, Tuple, List
+from uuid import uuid4
 import numpy as np
 from ballontranslator.utils.logger import logger
 
@@ -15,27 +16,28 @@ from .text_engine.editing.widgets import TransPairWidget
 
 
 class StrokeItemUndoCommand(QUndoCommand):
-    def __init__(self, target_layer: DrawingLayer, rect: Tuple[int], qimg: QImage, erasing=False):
+    def __init__(
+        self, target_layer: DrawingLayer, rect: tuple[int, int, int, int],
+        qimg: QImage, erasing: bool = False,
+    ) -> None:
         super().__init__()
         self.qimg = qimg
         self.x = rect[0]
         self.y = rect[1]
         self.target_layer = target_layer
-        self.key = str(QDateTime.currentMSecsSinceEpoch())
+        self.key = uuid4().hex
         if erasing:
             self.compose_mode = QPainter.CompositionMode.CompositionMode_DestinationOut
         else:
             self.compose_mode = QPainter.CompositionMode.CompositionMode_SourceOver
         
-    def undo(self):
+    def undo(self) -> None:
         if self.qimg is not None:
             self.target_layer.removeQImage(self.key)
-            self.target_layer.update()
 
-    def redo(self):
+    def redo(self) -> None:
         if self.qimg is not None:
             self.target_layer.addQImage(self.x, self.y, self.qimg, self.compose_mode, self.key)
-            self.target_layer.scene().update()
 
 
 class InpaintUndoCommand(QUndoCommand):

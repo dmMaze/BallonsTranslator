@@ -492,6 +492,7 @@ class SceneTextManager(QObject):
         self,
         reason=SceneTextReplacementReason.CURRENT_PAGE_RELOAD,
     ) -> None:
+        self.canvas.text_move_session.cancel()
         self.canvas.alpha_mask_edit_session.deactivate()
         self.canvas.cancel_path_reorder()
         self.canvas.set_primary_selected_text_item(None)
@@ -750,7 +751,10 @@ class SceneTextManager(QObject):
                 )
             )
 
-    def onDeleteBlkItems(self, mode: int):
+    def onDeleteBlkItems(self, mode: int) -> None:
+        # Recovery masks and undo rectangles must use committed geometry;
+        # command construction can capture or mutate items before stack.push().
+        self.formatpanel.resolve_text_transform_edits_for_history_change()
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) == 0 and self.txtblkShapeControl.blk_item is not None:
             selected_blks.append(self.txtblkShapeControl.blk_item)
@@ -811,7 +815,8 @@ class SceneTextManager(QObject):
             fmt = self.formatpanel.global_format
         self.apply_fontformat(fmt)
 
-    def onAutoLayoutTextblks(self):
+    def onAutoLayoutTextblks(self) -> None:
+        self.formatpanel.resolve_text_transform_edits_for_history_change()
         selected_blks = self.canvas.selected_text_items()
         old_html_lst, old_rect_lst, trans_widget_lst = [], [], []
         selected_blks = [blk for blk in selected_blks if not blk.fontformat.vertical]
@@ -824,14 +829,16 @@ class SceneTextManager(QObject):
 
             self.canvas.push_undo_command(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
 
-    def onResetAngle(self):
+    def onResetAngle(self) -> None:
+        self.formatpanel.resolve_text_transform_edits_for_history_change()
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(
                 ResetAngleCommand(selected_blks)
             )
 
-    def onSqueezeBlk(self):
+    def onSqueezeBlk(self) -> None:
+        self.formatpanel.resolve_text_transform_edits_for_history_change()
         selected_blks = self.canvas.selected_text_items()
         if len(selected_blks) > 0:
             self.canvas.push_undo_command(SqueezeCommand(selected_blks, self.txtblkShapeControl))
@@ -1271,7 +1278,8 @@ class SceneTextManager(QObject):
         if len(cl) != 0:
             cl.sort(key=lambda x: x.idx)
 
-    def updateTextBlkList(self):
+    def updateTextBlkList(self) -> None:
+        self.canvas.text_move_session.cancel()
         cbl = self.imgtrans_proj.current_block_list()
         if cbl is None:
             return

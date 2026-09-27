@@ -86,7 +86,10 @@ PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 PUNSET_COMPACT = PUNSET_PAUSEORSTOP.union(PUNSET_BRACKET)
 
 PUNSET_INSEPARABLE_REPEAT = {'—', '―', '‥', '…', '⋯'}
-PUNSET_NONBRACKET = {'⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~'}
+PUNSET_NONBRACKET = {
+    '⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~',
+    '〜', '‐', '゠', 'ー', '〰', '‑', '‒', '－', 'ｰ', '⸻', '⹀',
+}
 PUNSET_VERNEEDROTATE = (
     PUNSET_NONBRACKET
     | PUNSET_BRACKET

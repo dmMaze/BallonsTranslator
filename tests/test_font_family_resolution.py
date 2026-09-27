@@ -1,14 +1,18 @@
+import gc
 import os
 import unittest
+import weakref
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy import QT6
-from qtpy.QtGui import QFont, QFontDatabase, QRawFont, QTextDocument
-from qtpy.QtWidgets import QApplication
+from qtpy.QtCore import QEvent, Qt
+from qtpy.QtGui import QColor, QFont, QFontDatabase, QPalette, QRawFont, QTextDocument
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import QApplication, QWidget
 
 from ballontranslator.ui.text_engine.font_family import (
     font_family_for_project,
@@ -60,12 +64,253 @@ class FontFamilyResolutionTests(unittest.TestCase):
                 # Rendering and completion must not eagerly open the collection.
                 self.assertLess(lookup.call_count, len(entries) // 2)
                 combo.hidePopup()
+                combo.setFocus()
+                combo.lineEdit().selectAll()
+                QTest.keyClicks(combo.lineEdit(), 'Family')
+                self.app.processEvents()
+                self.assertTrue(combo.completer().popup().isVisible())
+                self.assertLess(lookup.call_count, len(entries) // 2)
+                combo.completer().popup().hide()
                 combo.set_current_family('Family 199')
                 self.assertEqual(combo.currentText(), 'Display Family 199')
                 self.assertEqual(combo.current_storage_family(), 'Family 199')
             finally:
                 combo.close()
                 combo.deleteLater()
+
+    def test_picker_filters_font_list_by_substring(self) -> None:
+        from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+
+        entries = [
+            FontEntry('Stored Sans', 'Alpha Sans', 'DejaVu Sans', 'custom'),
+            FontEntry('Stored Serif', 'Beta Serif', 'DejaVu Serif', 'custom'),
+            FontEntry('Stored Mono', 'Symbols [Mono]', 'DejaVu Sans Mono', 'custom'),
+        ]
+        registry = FontRegistry(custom_entries=entries)
+        with patch.object(shared, 'FONT_REGISTRY', registry):
+            combo = FontFamilyComboBox()
+            try:
+                combo.update_font_entries(entries)
+                combo.show()
+                combo.setFocus()
+                self.app.processEvents()
+                editor = combo.lineEdit()
+                completer = combo.completer()
+                changes = Mock()
+                combo.param_changed.connect(changes)
+                for query, expected in (
+                    ('sAnS', ['Alpha Sans']),
+                    ('[M', ['Symbols [Mono]']),
+                    ('eri', ['Beta Serif']),
+                ):
+                    with self.subTest(query=query):
+                        editor.selectAll()
+                        QTest.keyClicks(editor, query)
+                        self.app.processEvents()
+                        matches = combo.view().model()
+                        self.assertEqual([
+                            matches.index(row, 0).data()
+                            for row in range(matches.rowCount())
+                        ], expected)
+                        self.assertEqual(editor.text(), query)
+                        changes.assert_not_called()
+                        popup = completer.popup()
+                        self.assertEqual(
+                            popup is not None and popup.isVisible(), bool(expected),
+                        )
+
+                # The combo's own dropdown must show the filtered list too,
+                # and accept the canonical family even at the same proxy row.
+                completer.popup().hide()
+                combo.showPopup()
+                self.app.processEvents()
+                self.assertEqual(combo.count(), 1)
+                self.assertEqual(combo.itemText(0), 'Beta Serif')
+                QTest.keyClick(combo.view(), Qt.Key.Key_Return)
+                self.app.processEvents()
+                self.assertEqual(combo.currentText(), 'Beta Serif')
+                self.assertEqual(combo.current_storage_family(), 'Stored Serif')
+                self.assertEqual(combo.count(), len(entries))
+                self.assertFalse(combo.view().isVisible())
+                changes.assert_called_once_with('font_family', 'Stored Serif')
+
+                editor.selectAll()
+                QTest.keyClicks(editor, 'Sans')
+                self.assertEqual(combo.count(), 1)
+                combo.update_font_entries(entries)
+                self.assertEqual(combo.current_storage_family(), 'Stored Serif')
+                self.assertEqual(combo.count(), len(entries))
+            finally:
+                combo.close()
+                combo.deleteLater()
+
+    def test_picker_completion_applies_family_only_once(self) -> None:
+        from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+
+        entries = [
+            FontEntry('Stored Sans', 'Alpha Sans', 'DejaVu Sans', 'custom'),
+            FontEntry('Stored Serif', 'Beta Serif', 'DejaVu Serif', 'custom'),
+        ]
+        with patch.object(shared, 'FONT_REGISTRY', FontRegistry(custom_entries=entries)):
+            combo = FontFamilyComboBox()
+            try:
+                combo.update_font_entries(entries)
+                combo.set_current_family('Stored Sans')
+                combo.show()
+                combo.setFocus()
+                self.app.processEvents()
+                changes = Mock()
+                combo.param_changed.connect(changes)
+                editor = combo.lineEdit()
+                editor.selectAll()
+                QTest.keyClicks(editor, 'eri')
+                popup = combo.completer().popup()
+                QTest.keyClick(popup, Qt.Key.Key_Down)
+                QTest.keyClick(popup, Qt.Key.Key_Return)
+                self.app.processEvents()
+                self.assertEqual(combo.currentText(), 'Beta Serif')
+                changes.assert_called_once_with('font_family', 'Stored Serif')
+
+                combo.clearFocus()
+                self.app.processEvents()
+                changes.assert_called_once_with('font_family', 'Stored Serif')
+
+                # Choosing the displayed family again is still meaningful
+                # when applying it to a mixed selection of text items.
+                combo.showPopup()
+                QTest.keyClick(combo.view(), Qt.Key.Key_Return)
+                self.app.processEvents()
+                self.assertEqual(changes.call_count, 2)
+            finally:
+                combo.close()
+                combo.deleteLater()
+
+    def test_picker_refresh_preserves_committed_family_during_search(self) -> None:
+        from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+
+        entries = [
+            FontEntry('Stored Sans', 'Alpha Sans', 'DejaVu Sans', 'custom'),
+            FontEntry('Stored Serif', 'Beta Serif', 'DejaVu Serif', 'custom'),
+        ]
+        for committed, available in (
+            ('Stored Sans', entries), ('Stored Sans', entries[1:]), ('', entries),
+        ):
+            with self.subTest(committed=committed, selected_font_present=len(available) == 2), patch.object(
+                shared, 'FONT_REGISTRY', FontRegistry(custom_entries=entries),
+            ):
+                combo = FontFamilyComboBox()
+                try:
+                    combo.update_font_entries(entries)
+                    combo.set_current_family(committed)
+                    combo.show()
+                    combo.setFocus()
+                    self.app.processEvents()
+                    changes = Mock()
+                    combo.param_changed.connect(changes)
+                    combo.lineEdit().selectAll()
+                    QTest.keyClicks(combo.lineEdit(), 'Beta Serif')
+                    self.assertTrue(combo.completer().popup().isVisible())
+                    changes.assert_not_called()
+
+                    shared.FONT_REGISTRY = FontRegistry(custom_entries=available)
+                    combo.update_font_entries(available)
+                    self.app.processEvents()
+                    self.assertEqual(combo.current_storage_family(), committed)
+                    self.assertFalse(combo.completer().popup().isVisible())
+                    changes.assert_not_called()
+                finally:
+                    combo.close()
+                    combo.deleteLater()
+
+    def test_picker_completion_inherits_window_theme(self) -> None:
+        from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+
+        entries = [FontEntry(name, name, name, 'custom') for name in (
+            'DejaVu Sans', 'Liberation Sans',
+        )]
+        original_palette = self.app.palette()
+        original_stylesheet = self.app.styleSheet()
+        window = QWidget()
+        with patch.object(shared, 'FONT_REGISTRY', FontRegistry(custom_entries=entries)):
+            try:
+                # Production themes MainWindow, not QApplication. A dark OS
+                # palette must not leak into a light-themed completion popup.
+                self.app.setStyleSheet('')
+                palette = QPalette(original_palette)
+                palette.setColor(QPalette.ColorRole.Base, QColor('black'))
+                palette.setColor(QPalette.ColorRole.Window, QColor('black'))
+                self.app.setPalette(palette)
+                window.setStyleSheet('QWidget { background-color: #eceef5; color: #333333; }')
+                combo = FontFamilyComboBox(window)
+                combo.update_font_entries(entries)
+                window.resize(400, 300)
+                combo.resize(260, 30)
+                window.show()
+                self.app.processEvents()
+
+                # Reuse the same popup through theme changes as well.
+                for theme_index, background in enumerate(('#eceef5', '#262a30', '#eceef5')):
+                    with self.subTest(background=background):
+                        if theme_index:
+                            window.setStyleSheet(
+                                f'QWidget {{ background-color: {background}; color: #808080; }}'
+                            )
+                        combo.setFocus()
+                        combo.lineEdit().selectAll()
+                        QTest.keyClicks(combo.lineEdit(), 'Sans')
+                        self.app.processEvents()
+                        popup = combo.completer().popup()
+                        self.assertTrue(popup.isVisible())
+                        search_image = popup.viewport().grab().toImage()
+                        popup.hide()
+                        combo.showPopup()
+                        self.app.processEvents()
+                        dropdown_image = combo.view().viewport().grab().toImage()
+                        # Sample empty row space, away from glyphs/selection.
+                        for image in (search_image, dropdown_image):
+                            self.assertEqual(
+                                image.pixelColor(image.width() - 3, image.height() - 3),
+                                QColor(background),
+                            )
+                        combo.hidePopup()
+            finally:
+                window.close()
+                window.deleteLater()
+                self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                self.app.setPalette(original_palette)
+                self.app.setStyleSheet(original_stylesheet)
+
+    def test_picker_completion_shows_full_rows_and_releases_delegate(self) -> None:
+        from ballontranslator.ui.text_engine.formatting.panel import FontFamilyComboBox
+
+        entries = [FontEntry(name, name, name, 'custom') for name in (
+            'DejaVu Sans', 'Liberation Sans', 'Noto Sans',
+        )]
+        with patch.object(shared, 'FONT_REGISTRY', FontRegistry(custom_entries=entries)):
+            combo = FontFamilyComboBox()
+            combo.update_font_entries(entries)
+            combo.move(100, 100)
+            combo.show()
+            combo.setFocus()
+            self.app.processEvents()
+            combo.lineEdit().selectAll()
+            QTest.keyClicks(combo.lineEdit(), 'Sans')
+            self.app.processEvents()
+            popup = combo.completer().popup()
+            last = popup.model().index(popup.model().rowCount() - 1, 0)
+            self.assertLessEqual(
+                popup.visualRect(last).bottom(), popup.viewport().rect().bottom(),
+            )
+            self.assertFalse(popup.verticalScrollBar().isVisible())
+            combo_ref = weakref.ref(combo)
+            delegate_ref = weakref.ref(popup.itemDelegate())
+            combo.close()
+            combo.deleteLater()
+            del combo, popup
+            self.app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            gc.collect()
+            self.assertIsNone(combo_ref())
+            self.assertIsNone(delegate_ref())
 
     def test_internal_alias_round_trips_without_leaking_into_text(self):
         family = '[test-vendor]Synthetic Font'

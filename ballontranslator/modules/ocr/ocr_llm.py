@@ -82,7 +82,7 @@ PAGE_OCR_SYSTEM_PROMPT = (
 
 @register_OCR("LLMOCR")
 class LLMOCR(LLMChatRequester, OCRBase):
-    """Profile-backed OCR using OpenAI-compatible vision chat models.
+    """Profile-backed OCR using API or Codex vision models.
 
     Example:
         >>> LLMOCR._normalized_text('a\\n b ')
@@ -115,7 +115,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         "proxy": {
             "value": "",
             "display_name": "Proxy",
-            "description": "Proxy address used for the OpenAI-compatible client.",
+            "description": "Proxy address used for LLM requests.",
         },
         "description": "OCR using the selected vision-capable LLM profile.",
     }
@@ -303,9 +303,10 @@ class LLMOCR(LLMChatRequester, OCRBase):
     def _request_with_retries(
         self,
         profile: LLMProfile,
-        api_args: Dict,
+        messages: List[Dict],
         *,
         failure_label: str,
+        response_schema: Optional[Dict] = None,
     ) -> str:
         retry_attempt = 0
         while True:
@@ -314,7 +315,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             try:
                 completion = self.request_chat_completion(
                     profile,
-                    api_args,
+                    self._api_args(profile, messages, response_schema),
                 )
                 if completion.usage is not None:
                     self.token_count += completion.usage.total_tokens
@@ -342,11 +343,14 @@ class LLMOCR(LLMChatRequester, OCRBase):
         prompt: Optional[str] = None,
         **kwargs,
     ) -> str:
+        if pcfg.module.ocr_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         profile = self.profile
         messages = self._messages(img, profile, prompt=prompt)
         return self._normalized_text(self._request_with_retries(
             profile,
-            self._api_args(profile, messages),
+            messages,
             failure_label='LLM OCR',
         ))
 
@@ -406,6 +410,9 @@ class LLMOCR(LLMChatRequester, OCRBase):
         if not pcfg.module.ocr_llm_page_level or not full_page or not blk_list:
             return super()._ocr_blk_list(img, blk_list, *args, **kwargs)
 
+        if pcfg.module.ocr_llm_id == 'codex':
+            from ..codex import account
+            account.require_sign_in(self.stop_event)
         self.logger.info(f"Performing Page-level LLM OCR on {len(blk_list)} blocks...")
         mask_non_text = pcfg.module.ocr_llm_mask_non_text
         sort_reading_order = pcfg.module.ocr_llm_sort_reading_order
@@ -416,15 +423,12 @@ class LLMOCR(LLMChatRequester, OCRBase):
             expected_count = len(blk_list)
             raw_response = self._request_with_retries(
                 profile,
-                self._api_args(
-                    profile,
-                    self._page_messages(
-                        create_annotated_page(img, blk_list, mask_non_text=mask_non_text),
-                        profile, expected_count, mask_non_text, sort_reading_order,
-                    ),
-                    self._page_response_schema(expected_count, sort_reading_order),
+                self._page_messages(
+                    create_annotated_page(img, blk_list, mask_non_text=mask_non_text),
+                    profile, expected_count, mask_non_text, sort_reading_order,
                 ),
                 failure_label='Page-level LLM OCR request',
+                response_schema=self._page_response_schema(expected_count, sort_reading_order),
             )
             texts, order = self._parse_page_ocr_response(
                 raw_response,

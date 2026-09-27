@@ -206,6 +206,7 @@ class FontWeightUiTest(unittest.TestCase):
         panel.familybox.update_font_entries([entry])
 
         panel.familybox.setCurrentIndex(0)
+        panel.familybox.activated.emit(0)
 
         self.assertEqual(active.font_family, 'Example Book')
         self.assertIs(active.font_weight, FontWeight.Light)
@@ -370,7 +371,9 @@ class FontWeightUiTest(unittest.TestCase):
         combo.setEditText('Made Up Font')
         combo.apply_fontfamily()
 
-        self.assertEqual(changes, ['Example Sans', 'Missing Legacy Font'])
+        # Restoring an existing family is not a new user change, and an
+        # invalid edit must not reapply it either.
+        self.assertEqual(changes, ['Example Sans'])
         self.assertEqual(combo.currentText(), 'Missing Legacy Font')
 
     def test_bold_shortcut_toggles_native_weight_without_changing_synthetic_bold(self) -> None:

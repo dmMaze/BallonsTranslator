@@ -4,118 +4,70 @@
 
 BallonsTranslator is a PyQt/qtpy desktop app for comic image translation.
 
-Important areas:
-- `ballontranslator/launch.py`: startup, dependency checks, Qt setup, headless mode.
-- `ballontranslator/ui/`: Qt UI, canvas, panels, module manager, worker threads.
-- `ballontranslator/modules/`: pluggable detector/OCR/translator/inpainter implementations.
+- `ballontranslator/launch.py`: startup, dependencies, Qt setup, and headless mode.
+- `ballontranslator/ui/`: canvas, panels, module manager, and workers.
+- `ballontranslator/modules/`: registered detector/OCR/translator/inpainter implementations.
 - `ballontranslator/utils/proj_imgtrans.py`: project persistence and image/textblock state.
 - `ballontranslator/utils/textblock.py`: central TextBlock domain object.
 - `ballontranslator/utils/config.py`: persistent config and module settings.
-- `doc/ui/text_engine.md`: required entry guide for text layout, effects, interaction, geometry, performance, and rendering; read it before changing those paths and follow its detailed-topic links.
+- Read [Text engine](doc/ui/text_engine.md) before changing text layout, effects, interaction, geometry, performance, or rendering; follow its topic links.
+- Read [Draw panel](doc/ui/draw_panel.md) before changing drawing tools, canvas gestures, brush modifiers, drawing/inpaint state transitions, or drawing save/export behavior.
 
-## Refactoring Rules
+Use `rg` for repo search.
 
-- Preserve behavior unless explicitly asked to change it.
-- Prefer small, reviewable refactors over broad rewrites.
-- Treat all pre-existing modified, untracked, and ignored files as user-owned. Never delete, overwrite, move, clean, or restore them unless the user explicitly authorizes that operation for the exact paths involved, this applies especially to `config/`, backup files, credentials, projects, models, and other user-generated state.
-- Keep passive config and project loading permissive for optional feature data. Unknown, removed, renamed, malformed, or out-of-range fields and entries must log a warning, discard only the invalid portion, and continue loading the rest; they must not abort loading or cause an existing config/project to be replaced with an empty or template file. Keep strict validation for live runtime values and explicit write/export boundaries.
-- Be careful with Qt signal/thread behavior in `ballontranslator/ui/module_manager.py`.
-- Do not rename registered module keys unless compatibility aliases are added.
-- Keep model-loading lazy/eager behavior intact.
-- Keep module selection lazy/config-only. Data needed by the config UI before module initialization must come from lazy metadata or `SafeEval`-compatible pure helpers, not from `__init__`, `_setup_*`, `update_*`, `flush`, model loading, downloads, or network calls.
-- Prefer the app's real construction path over test-only knobs. Do not keep constructor arguments, wrappers, helper functions, or public APIs only because tests use them; tests can patch small instance attributes or call narrower internals when needed.
-- Let the owning module be the integration point. Prefer registering a translator, cache, or helper in the module that owns the feature over threading it through unrelated shared utilities.
-- When a simplification removes an indirection, remove the surrounding leftovers in the same pass: stale shared hooks, unused helpers, compatibility shims, redundant wrappers, and tests that only preserve the old shape.
-- Avoid adding dependencies unless approved.
+## Changes and Data Safety
 
-## New Feature Rules
+- Preserve behavior unless explicitly asked to change it; prefer small, reviewable changes within the existing architecture.
+- Treat pre-existing modified, untracked, and ignored files as user-owned. Never delete, overwrite, move, clean, or restore them without explicit authorization for the exact paths, especially config, backups, credentials, projects, and models. Follow existing save/backup behavior for source images, translations, masks, and project JSON.
+- Passive config/project loading must warn about unknown, removed, renamed, malformed, or out-of-range optional data, discard only invalid portions, and continue. Never let it replace an existing file with empty/template state. Keep live runtime values and explicit write/export boundaries strict; give new saved fields defaults for older projects.
+- Use the existing module registries and stable keys; renames require compatibility aliases. Preserve lazy/eager model-loading behavior. Config UI metadata must be lazy or `SafeEval`-compatible and pure, without executing initialization, `_setup_*`, updates, `flush`, model loading, downloads, or network calls.
+- New dependencies require approval. Optional integrations must fail gracefully with a clear setup message.
+- Make surprising behavior opt-in or clearly discoverable through existing config/UI/module parameters. Preserve Qt localization and ensure pipeline features work or safely no-op in headless mode.
+- Keep long-running inference, IO, downloads, and model loading off the Qt main thread; trace signal and worker ordering, especially in `ui/module_manager.py`.
 
-- Start with the existing architecture. Prefer extending `ballontranslator/ui/`, `ballontranslator/modules/`, `ballontranslator/utils/config.py`, and `ballontranslator/utils/proj_imgtrans.py` patterns before introducing new frameworks or global services.
-- Keep features behind explicit config, UI controls, or module parameters when behavior may surprise existing users.
-- Preserve project JSON compatibility. If a feature adds saved fields, provide defaults for old projects and avoid breaking older project files.
-- For new automation modules, use the existing registry pattern and stable module keys. Do not rename existing keys without compatibility aliases.
-- Keep UI work responsive. Long-running OCR, translation, inpainting, IO, downloads, and model loading must not block the Qt main thread.
-- Respect headless mode. If a feature affects the translation pipeline, make sure it works or safely no-ops under `--headless`.
-- Avoid mandatory new dependencies. Optional integrations should fail gracefully with a clear error or setup message.
-- Keep user data safe. Do not overwrite source images, existing translations, masks, or project JSON without following existing save/backup behavior.
-- Preserve localization. New visible UI strings should use Qt translation patterns already used in the surrounding code.
+## Performance and Maintainability
 
-## Maintainability Rules
+- Trace production callers and data flow before changing code. Search for existing methods, helpers, and patterns; reuse or extend the owning implementation before adding another. Prefer standard-library and Qt facilities over custom equivalents.
+- Use the simplest structure that meets current requirements. Add a helper or abstraction only when it removes demonstrated duplication or establishes a meaningful responsibility boundary. Avoid pass-through wrappers, speculative extension points, generic frameworks for one concrete operation, and layers that merely forward the same data.
+- Put integration in the feature's owning module and shape APIs around production callers. Avoid test-only constructors, injection points, and shared hooks; tests can patch small instance attributes or narrower internals. Use names that make ownership clear.
+- Check call frequency across the full operation and repeated lifecycle events. Reuse available results instead of repeating lookups, conversions, copies, validation, IO, or initialization. Fix duplicate calls and signal-driven work at their owner before adding caches or parallelism; justify performance complexity with tracing or measurement.
+- Update only changed data and widgets. Keep setters and refreshers idempotent and coalesce equivalent work. Sanitize config at load/migration boundaries; reserve whole-panel rebuilds for reset/restore rather than ordinary row/card edits.
+- Use indexed lookups for repeated access and derive values on demand, avoiding per-item full scans and eagerly materialized maps. Reuse existing caches; new caches need a demonstrated cost and explicit invalidation/lifetime. Keep render-only state out of shared config.
+- Give state transitions one clear owner. Avoid redundant synchronization paths, equivalent signal emissions, and broad `blockSignals()` used to hide update loops.
+- Simplification must remove the obsolete path too: unused helpers, shims, hooks, duplicate state, and architecture-preserving tests. Review the complete caller chain for leftover indirection and repeated work.
+- Add useful type hints and return types to new or modified functions. Prefer domain/Qt types and precise callables; use `Any` only at dynamic boundaries and avoid unrelated annotation churn.
 
-- Add type hints, including return types, to new or modified Python functions and methods when their types are stable and useful. Prefer concrete domain and Qt types and precise callable signatures; reserve `Any` for genuinely dynamic boundaries, and do not churn unrelated legacy code solely for annotation coverage.
-- Shape APIs around the app's current caller chain. A small public helper at the UI boundary is easier to review than a stack of generic helpers, constructor injection, and wrapper layers that no production caller needs.
-- Prefer clear ownership names over broad global names. A helper named for the boundary that consumes it is easier to review than a shared API with hidden registration state.
-- In code review, check both sides of every simplification: the new direct path should be obvious, and the old path should be gone enough that future readers do not have to understand both.
-- Tests should protect behavior and failure modes, not obsolete architecture. After simplifying a feature, adjust tests to cover fallback behavior and real public helpers instead of preserving removed injection or wrapper APIs.
-- Do not test incidental widget hierarchy, object names, exact sizes, margins, spacing, stretch factors, or other cosmetic implementation details. Protect observable behavior and failure modes; verify styling with themed visual checks instead.
+## UI Styling
 
-## Documentation Rules
+- Lightweight settings/tools should reuse a frameless `Qt.Dialog`, transparent outer widget, rounded theme-token `QFrame`, and scoped stylesheet. Keep native dialogs for platform workflows; confirmations, progress, and costly-to-dismiss flows must not close on outside clicks.
+- Keep selectors and lists in the application font; use a dedicated preview for content fonts. Match widget structure before adjusting alignment, such as bare checkboxes plus `ParamNameLabel`.
+- Scope config styles by object/section names, never broad widget selectors. Use `resources/themes.json` and `resources/stylesheet.css` tokens, except established accents such as `rgb(30, 147, 229)`. Custom config rows needing a painted background require an object name and `WA_StyledBackground`.
+- Scope ordinary checkbox indicators without affecting icon-based controls. `QListWidget` indicators are item-view subcontrols; style their selected, hover, and disabled states separately and check readability in both themes.
+- Render manually painted SVG pixmaps through `ui/icon_rendering.py`.
+- Never change style machinery inside `Polish`, `StyleChange`, or `Paint`: no `setStyle`, `setStyleSheet`, explicit polish/unpolish, `ensurePolished`, or delegate replacement. Re-entering native style code can crash Qt. Prefer scoped subcontrols, construction-time setup, or idempotent setup in safe show/input events.
 
-- Keep maintainer documentation as concise current-state guidance, not an implementation diary. Document architecture and ownership, stable contracts, failure modes, extension points, and verification; leave control-by-control UI details, pixel measurements, temporary decisions, change history, and behavior already clear from code or tests out of the guide.
-- Keep each fact in one owning guide and link to it from overview documents. When behavior changes, replace stale prose and remove nearby duplication in the same pass instead of appending another narrative layer.
+## Qt Event Filters
 
-## Performance Rules
+- Reuse `OutsideClickFramelessMixin` from `ui/framelesswindow.py` before the Qt base for lightweight centered, draggable windows with Escape/outside-click dismissal, `title_bar`, and `close_button`. Keep `hide()` for cached panels; override `_dismiss_transient_window()` with `reject()` for staged dialogs and `_preserve_on_outside_click()` for owned popups/dialogs.
+- Application event filters are global hooks: install only while active where possible, and remove on hide, collapse, close, or destruction.
+- Check relevance before event details. Global filters first check visibility, receiver, and widget/event types; local filters first guard the watched object. Only then access `event.type()`, global positions, or widget-specific methods.
+- Outside-click handling should use widget-target mouse presses and explicit popup/dialog whitelists, not broad geometry or `QWindow` interpretation.
 
-- For startup or UI latency regressions, trace the real caller chain and repeated lifecycle events before optimizing. Check whether a signal path, selection mirror, or config-panel refresh is rebuilding the same widget more than once.
-- Keep widget updates incremental. Do not use whole-list rebuilds, config re-deduplication, or blanket row recreation for ordinary edits when a single row/card/summary can be synced in place.
-- Keep config sanitation in config/migration code. UI widgets such as LLM profile editors should assume already-valid data, and reserve full rebuilds for explicit reset/restore paths.
-- Make selection setters and metadata refreshers idempotent. If the selected module/profile and visible widget are already current, return without rebuilding or re-emitting equivalent work.
-- For lookup tables, metadata caches, or derived maps, pre-index by the lookup key and resolve entries lazily. Do not scan the whole dataset for each selected module, profile, row, or widget.
-- Keep lookup work O(1) and on demand. Avoid eagerly materializing derived maps, injecting render-only data into shared config, or rebuilding widgets just to refresh unchanged metadata.
-- Avoid using broad `blockSignals()` as a substitute for correct update ownership. Prefer precise state-transition updates and signal names that describe their real consumer path.
+## Qt Signals and QObject Lifetimes
 
-## UI Styling Rules
+- Never connect child/transient signals to lambdas, nested functions, or partials capturing parents or other QObjects. Bindings can retain callbacks and invalid wrappers after native deletion. Prefer bound QObject slots, action data/properties read through `sender()`, or typed row signals.
+- Pure-Python or fixed-lifetime callbacks without a demonstrated lifetime problem need no blanket rewrite.
+- `close()`/`hide()` do not delete objects. For one-shot modal dialogs, read state after `exec_()` and call `deleteLater()` in `finally`; preserve intentionally cached panels.
 
-- For lightweight tool or settings dialogs that should match the config panel, prefer a frameless `Qt.Dialog` with a transparent outer widget, a rounded theme-token-backed `QFrame` surface, and object-name-scoped stylesheet rules. Keep native titled dialogs for platform-native workflows and do not make confirmations, progress dialogs, or other costly-to-dismiss flows close on an outside click.
-- Keep control and list typography consistent with the application UI. Do not assign content fonts to selector rows merely to preview them; use a dedicated preview when the content font itself must be shown.
-- Keep config-panel styling scoped. Prefer object names and section-specific selectors such as `ConfigContentScrollContent`, profile-card object names, or spell-check object names over broad `QWidget`, `QLabel`, `QCheckBox`, or `QListWidget` rules that can leak into unrelated panels.
-- Use existing theme tokens from `resources/themes.json` and `resources/stylesheet.css` instead of hard-coded colors, except for established project accent values such as `rgb(30, 147, 229)`.
-- For config rows that contain buttons or custom widgets, set an object name and `WA_StyledBackground` on the row container when its empty space must match the surrounding panel.
-- For checkbox styling, do not add broad `QCheckBox::indicator` rules. Scope normal config checkboxes with object names, and leave icon-based checkboxes such as toolbar, titlebar, alignment, font, and leftbar checkers under their existing rules.
-- Remember that `QListWidget` check indicators are item-view indicators, not child `QCheckBox` widgets. Style `QListWidget::indicator`, selected, hover, and disabled item states separately, and verify selected items stay readable in both light and dark themes.
-- Match widget structure before fighting fonts or spacing. If two checkbox rows need to align, use the same construction pattern, for example a bare checkbox plus `ParamNameLabel`, rather than mixing `QCheckBox(text=...)` with a separate label.
-- Render manually painted SVG pixmaps through `ballontranslator/ui/icon_rendering.py`.
-- Do not change a widget's style machinery while handling `QEvent.Polish`, `QEvent.StyleChange`, or `QEvent.Paint`: avoid `setStyle()`, `setStyleSheet()`, explicit `polish()`/`unpolish()`, `ensurePolished()`, and item-delegate replacement in those callbacks. These operations can re-enter Qt's native style code and crash on platform-specific bindings. Prefer scoped stylesheet subcontrols such as `QMenu::right-arrow` and `QComboBox::down-arrow`, construction-time setup, or idempotent setup from safe show/input events before painting.
-- For UI-heavy changes, run at least `python -m py_compile` on touched Python files, `git diff --check`, and an offscreen Qt smoke check when practical. State when visual polish still needs a real themed-app pass.
+## Comments and Documentation
 
-## Qt Event Filter Rules
-
-- Reuse `OutsideClickFramelessMixin` from `ballontranslator.ui.framelesswindow` for lightweight frameless widgets or dialogs that center on their parent, drag from a `title_bar`, close on Escape/outside click, and expose a `close_button`. Put the mixin before the Qt widget base; keep its default `hide()` behavior for panels, override `_dismiss_transient_window()` with `reject()` for dialogs with staged edits, and override `_preserve_on_outside_click()` when owned popups or dialogs must keep the parent open.
-- Treat `QApplication` and `QCoreApplication` event filters as global hooks. Install them only while the behavior is active when possible, and remove them on hide, collapse, close, or destroy.
-- In app-wide `eventFilter` methods, check cheap relevance first, such as visibility, expected receiver, `isinstance(watched, QWidget)`, or `isinstance(event, QMouseEvent)`, before calling `event.type()`, `globalPosition()`, `globalPos()`, or widget-specific event methods.
-- In widget-local filters, guard with the watched object first, for example `if obj is not target: return super().eventFilter(obj, event)`, before reading event details.
-- For outside-click handling, prefer widget-target mouse press rules and explicit popup/dialog whitelists over broad geometry or `QWindow` event interpretation.
-- For risky app-wide filter changes, add an offscreen Qt regression that sends an irrelevant watched object or non-mouse event and proves the filter ignores it before requesting `event.type()`.
-
-## Qt Signal and QObject Lifetime Rules
-
-- Do not connect a child or transient QObject signal to a lambda, nested function, or `functools.partial` that captures its parent, another widget, or another transient QObject. Qt parent ownership destroys the native children, but the binding may retain the Python callback and invalid wrappers after native deletion.
-- Prefer a direct bound QObject slot. For repeated menu actions or rows, store small values with `QAction.setData()` or `QObject.setProperty()` and read them through `sender()`, or expose a typed row signal and connect it to the owner's bound method.
-- A lambda that captures no QObject is not automatically a leak; do not replace fixed-lifetime or pure-Python callbacks without a demonstrated lifecycle problem.
-- Treat `close()` and `hide()` as visibility changes, not deletion. For one-shot modal dialogs, read required state after `exec_()` and call `deleteLater()` in `finally`; preserve intentional cached panels.
-- For lifecycle fixes, add a focused offscreen regression that processes deferred deletes and verifies behavior plus wrapper/registry release, and run it under both PyQt5 and PyQt6 when binding behavior is relevant.
-
-## Code Comment Rules
-- Include a standard Python >>> doctest snippet in the docstring of core classes and complex functions.
-- Add the minimum comments needed to make code review efficient.
-- Comment non-obvious intent, invariants, compatibility constraints, and failure modes.
-- For Qt threading, signals, model loading, project JSON compatibility, and file IO, add short comments when the ordering or side effect is important.
-- Prefer comments that explain why code is structured a certain way, not what each line does.
-- Do not add boilerplate comments, redundant docstrings, or comments that merely repeat function or variable names.
-- When refactoring complex logic, add a brief comment before the extracted block if it preserves a subtle behavior from the old implementation.
-
-## Done Criteria For Features
-
-- Existing workflows still run.
-- New behavior is configurable or clearly discoverable.
-- Old projects load without errors.
-- Relevant checks were run, or limitations are stated.
+- Comment non-obvious intent, invariants, compatibility, and ordering/failure constraints, especially around Qt, model loading, persistence, and IO. Explain subtle preserved behavior during refactors; omit boilerplate and narration. Include a standard Python `>>>` doctest example for core classes and complex functions.
+- Maintainer guides cover current ownership, stable contracts, failure modes, extension points, and verification. Omit UI walkthroughs, pixel measurements, temporary decisions, change history, and behavior already clear from code/tests. Keep each fact in one owning guide, link from overviews, and replace stale prose and nearby duplication when behavior changes.
 
 ## Verification
 
-For narrow Python changes:
-- Run targeted import checks where possible.
-- Run relevant tests if available.
-- For UI/threading changes, explain what was not practically verified.
-
-Use `rg` for repo search.
+- Test observable behavior and failure modes through real construction paths, not obsolete APIs, incidental widget hierarchy, object names, sizes, margins, spacing, or stretch factors.
+- Run targeted import checks and relevant tests for Python changes. UI-heavy changes require `python -m py_compile` on touched files, `git diff --check`, and an offscreen Qt smoke check when practical. Use a themed-app pass for styling and state any unverified UI/threading behavior.
+- Risky global-filter changes need a regression proving irrelevant receivers/non-mouse events are ignored before `event.type()` is requested.
+- QObject lifecycle fixes need deferred-delete processing and assertions for behavior plus wrapper/registry release. Run both PyQt5 and PyQt6 when binding behavior matters.
+- Completion requires existing workflows and older projects to work, new behavior to be configurable or discoverable, and verification results or limitations to be stated.

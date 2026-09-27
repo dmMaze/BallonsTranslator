@@ -15,11 +15,14 @@ from .logger import logger as LOGGER
 from .io_utils import json_dump_nested_obj, np, serialize_np
 from .llm_profiles import (
     LLMProfile,
+    default_codex_profile,
     default_profiles,
     load_profiles,
-    migrate_module_llm_profiles,
     profile_by_id,
+    profile_from_config,
     profile_to_dict,
+    normalize_codex_models,
+    sync_codex_profile,
 )
 from .secret_store import SecretStore, is_portable_secret
 from .text_effects import without_project_raster_effects
@@ -105,7 +108,7 @@ class ModuleConfig(Config):
     ocr_params: Dict = field(default_factory=lambda: dict())
     translator_params: Dict = field(default_factory=lambda: dict())
     llm_profiles: List[LLMProfile] = field(default_factory=lambda: list())
-    llm_codex_profile_migrated: bool = True
+    codex_models: Dict = field(default_factory=dict)
     translator_llm_id: str = ''
     ocr_llm_id: str = ''
     inpaint_llm_id: str = ''
@@ -241,10 +244,35 @@ class ModuleConfig(Config):
             or self.llm_prior_context_token_budget <= 0
         ):
             self.llm_prior_context_token_budget = 4096
-        if not self.llm_profiles:
-            self.llm_profiles = default_profiles()
-        else:
-            self.llm_profiles = load_profiles(self.llm_profiles)
+        if not isinstance(self.llm_profiles, list):
+            LOGGER.warning('Discard invalid LLM profile list.')
+            self.llm_profiles = []
+        # The old App Server preset used the HTTP backend's now-reserved ID.
+        legacy = profile_by_id(self.llm_profiles, 'codex')
+        transport = legacy.get('transport') if isinstance(legacy, Mapping) else getattr(legacy, 'transport', None)
+        backend = legacy.get('backend') if isinstance(legacy, Mapping) else getattr(legacy, 'backend', None)
+        if transport == 'Codex App Server' and backend != 'codex':
+            migrated = profile_from_config(legacy)
+            migrated.id = 'codex-app-server'
+            suffix = 2
+            while profile_by_id(self.llm_profiles, migrated.id) is not None:
+                migrated.id = f'codex-app-server-{suffix}'
+                suffix += 1
+            if migrated.name == 'Codex':
+                migrated.name = 'Codex App Server'
+            self.llm_profiles = [migrated if profile is legacy else profile for profile in self.llm_profiles]
+            for key in ('translator_llm_id', 'ocr_llm_id', 'inpaint_llm_id'):
+                if getattr(self, key) == 'codex':
+                    setattr(self, key, migrated.id)
+        self.llm_profiles = (
+            load_profiles(self.llm_profiles) if self.llm_profiles
+            else [*default_profiles(), default_codex_profile()]
+        )
+        if not isinstance(self.translator_params, dict):
+            LOGGER.warning('Discard invalid translator params config: expected a dictionary.')
+            self.translator_params = {}
+        self.codex_models = normalize_codex_models(self.codex_models)
+        sync_codex_profile(profile_by_id(self.llm_profiles, 'codex'), self.codex_models)
         if (not self.translator_llm_id or not profile_by_id(self.llm_profiles, self.translator_llm_id)) and self.llm_profiles:
             self.translator_llm_id = self.llm_profiles[0].id
         if (not self.ocr_llm_id or not profile_by_id(self.llm_profiles, self.ocr_llm_id)) and self.llm_profiles:
@@ -271,6 +299,10 @@ class DrawPanelConfig(Config):
     pentool_color: List = field(default_factory=lambda: [0, 0, 0])
     pentool_width: float = 30.
     pentool_shape: int = 0
+    inpainter: str = 'lama_large_512px'
+    inpaint_llm_id: str = ''
+    inpaint_llm_model: str = ''
+    inpaint_prompt_override: str = ''
     inpainter_width: float = 30.
     inpainter_shape: int = 0
     magicwand_tolerance: int = 32
@@ -278,11 +310,38 @@ class DrawPanelConfig(Config):
     magicwand_fill_mode: int = 0
     current_tool: int = 0
     rectool_auto: bool = False
+    rectool_use_mask: bool = True
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
+    shape_fill_shape: str = 'rectangle'
+    shape_fill_color: str = '#ffffff'
+    shape_fill_alpha: int = 255
 
     def __post_init__(self) -> None:
+        if not isinstance(self.rectool_use_mask, bool):
+            LOGGER.warning('Discard invalid drawpanel.rectool_use_mask config.')
+            self.rectool_use_mask = True
+        for name, default in (
+            ('inpainter', 'lama_large_512px'),
+            ('inpaint_llm_id', ''),
+            ('inpaint_llm_model', ''),
+            ('inpaint_prompt_override', ''),
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, str) or (name == 'inpainter' and not value.strip()):
+                LOGGER.warning('Discard invalid drawpanel.%s config.', name)
+                setattr(self, name, default)
+        if self.shape_fill_shape not in ('rectangle', 'ellipse'):
+            LOGGER.warning('Discard invalid drawpanel.shape_fill_shape %r.', self.shape_fill_shape)
+            self.shape_fill_shape = 'rectangle'
+        if (
+            not isinstance(self.shape_fill_color, str)
+            or re.fullmatch(r'#[0-9a-fA-F]{6}', self.shape_fill_color) is None
+        ):
+            LOGGER.warning('Discard invalid drawpanel.shape_fill_color %r.', self.shape_fill_color)
+            self.shape_fill_color = '#ffffff'
         for name, default, minimum, maximum in (
+            ('shape_fill_alpha', 255, 0, 255),
             ('inpainter_shape', 0, 0, 2),
             ('magicwand_tolerance', 32, 0, 255),
             ('magicwand_range', 0, -50, 50),
@@ -507,7 +566,6 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
-            migrate_module_llm_profiles(module_cfg)
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:
