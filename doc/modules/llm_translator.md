@@ -1,5 +1,7 @@
 # LLMTranslator
 
+Timeout-triggered OCR text cleanup: [Jev OCR filter (experimental)](jev_ocr_filter.md).
+
 This guide describes the stable contracts and ownership boundaries of LLM
 translation. The code and focused tests remain authoritative.
 
@@ -10,7 +12,7 @@ translation. The code and focused tests remain authoritative.
 | Translation prompt, message order, JSON schema, and response parsing | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
 | Request snapshots, retries, history orchestration, summaries, and compaction | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
 | Provider clients, throttling, endpoint quirks, and completion normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
-| Official Codex Python SDK transport and cancellable request lifecycle | [`llm_codex.py`](../../ballontranslator/modules/llm_codex.py) |
+| Codex SDK/CLI transports and cancellable request lifecycle | [`llm_codex.py`](../../ballontranslator/modules/llm_codex.py) |
 | Image encoding shared by LLM modules | [`llm_vision.py`](../../ballontranslator/modules/llm_vision.py) |
 | History, saved-context packing, glossary parsing, and token estimates | [`context/`](../../ballontranslator/modules/context) |
 | Text-block preprocessing, finalization, and page-coverage decisions | [`base.py`](../../ballontranslator/modules/translators/base.py) |
@@ -39,8 +41,8 @@ are disposable runtime snapshots; neither replaces project state.
 
 ## Codex subscription backend
 
-On Python 3.10 or newer, the LLM translation/OCR module dependency check includes
-the Codex SDK. For manual installation, run
+Codex profiles select `codex_execution`: **Python SDK** (default) or **CLI**.
+SDK mode requires Python 3.10 or newer. Install it with
 `python -m pip install -r requirements-codex.txt` with the same Python executable
 that launches BallonsTranslator; installing into a different virtual environment
 does not make the SDK available to the running application. The official Python SDK
@@ -61,9 +63,23 @@ selected models or custom choices.
 The text and vision defaults are both `gpt-5.6-sol`; account/client availability follows the
 [official Codex model catalog](https://learn.chatgpt.com/docs/models).
 
-Leave **Codex Executable** as `codex` to use the SDK's bundled runtime;
-an explicit executable name or path overrides it. No separate npm installation
-is needed. Expand the Codex profile and open **Codex Login** to reuse the current
+In SDK mode, leave **Codex Executable** as `codex` for the bundled runtime;
+an explicit executable name or path overrides it. CLI mode uses the original
+stdio App Server implementation and requires a separately installed Codex CLI
+on PATH or at the configured executable path; it does not import or require the
+Python SDK. There is no automatic fallback between modes. Both modes share
+translation/OCR payloads, authentication, timeout and retry policy. CLI mode
+owns a fresh process per request; SDK mode retains batch client reuse.
+Quota exhaustion takes precedence over capacity/503 retry classification in
+both modes, including SDK RPC exceptions and intermediate App Server events.
+
+中文設定說明：在「設定 → 模組 → LLM Profile」展開 Codex，使用
+**Codex Execution** 選擇 `Python SDK`（預設）或 `CLI`。
+CLI 模式需自行安裝 Codex CLI，並在 **Codex Executable** 填入 `codex`
+或執行檔路徑；不需要 Python SDK。兩者保留既有翻譯、OCR、登入、
+併發與重試功能，不會因逾時自動切換模式重送。既有設定不會被覆寫。
+
+Expand the Codex profile and open **Codex Login** to reuse the current
 login, sign in through a browser, authorize a device code, or sign in with an
 API key. Browser/device authorization is cancellable and runs outside the UI
 thread. Closing the dialog cancels and cleans up its pending login first.
@@ -136,7 +152,7 @@ keeps conversations isolated: clients are reused, conversations are not. Complet
 threads are unsubscribed and SDK event subscriptions released. Failed, cancelled,
 or timed-out clients are closed before a retry; they never return to the idle pool.
 This reduces process startup overhead without changing prompts or promising lower
-token usage. Existing RPM, backoff, history, summary, and ordered-result policies apply.
+token usage. Existing RPM, retry, history, summary, and ordered-result policies apply.
 
 The queue finalizes results, summaries, and progress in submission order; a
 slow earlier page can hold later results. Each page snapshots the summaries
@@ -190,32 +206,36 @@ combine internal model calls, so their long-context estimate is approximate.
 Unknown prices or incomplete usage produce `estimated_cost_usd=unavailable`
 with a `priced_subtotal_usd` and `unpriced_requests`, not a guessed zero bill.
 
-Terminal `Selected model is at capacity`, HTTP 503 connection rejections, and request timeouts
-use the requesting module's existing **Retry Attempts** (total attempts,
-including the first). Before retrying the same payload, wait at least 60 seconds
-or **Retry Timeout**, whichever is larger; double this delay up to 300 seconds
-(or the configured timeout if higher), adding up to 10 seconds of jitter.
-With 5 attempts and a 7-second timeout, the four waits are approximately
-60, 120, 240, and 300 seconds. The wait is cancellable and shared by that
-module's Codex workers: pending starts pause, while active requests can finish.
-Translation, OCR, and summary compaction use the same retry implementation;
-translation and OCR retain separate rate budgets. Retries count against RPM,
-and any reported failed-attempt usage contributes to the run total; missing
-usage is not assumed to be zero. Exhaustion stops the run without entering
-another generic retry loop.
+Terminal capacity rejections and HTTP 503 errors use **Retry Attempts** (total
+attempts including the first) and the fixed **Retry Timeout** (default 30 seconds).
+The cancellable cooldown is shared by Codex workers; active requests can finish.
+OCR and summary compaction retain this policy for timeouts, as does translation
+when timeout rescue is disabled. Exhaustion stops without an outer retry loop.
+Retries consume RPM and any reported usage; missing usage is not zero.
 
-**Codex Timeout** bounds each attempt (default 180 seconds), excluding capacity
-cooldown. Cancellation requests `turn/interrupt` when the turn ID is known;
-cleanup always closes the
-owned server before a retry starts. Timeouts retry the same model and payload
-with the shared backoff above; each attempt gets a fresh timeout. Reported usage
-before timeout is counted, but resubmission can consume additional tokens if
-the service already processed the request. Missing CLI/login, quota exhaustion,
-protocol failures, and other uncertain failures still stop without resubmission.
-Explicit context-window rejection uses the existing context recovery path;
-completed but invalid model output follows existing parsing/retry rules.
-Completed pages and project saves keep their existing ownership and resume rules.
-Use Continue for saved completed pages; a fresh run may translate them again.
+**Jev 處理異常字元 (Experimental)** is optional and disabled by default in LLMTranslator.
+When enabled, on the first full-page translation timeout, the transport closes that request,
+[Jev](jev_ocr_filter.md) checks the page's OCR text, and the same translation model
+gets one more attempt. Normal OCR and successful translations do not invoke Jev.
+No OCR rescan or rescue model is used. Partial selections without full-page
+coverage retain ordinary retries.
+
+The retry reuses the profile and context snapshot with privately cleaned sources;
+saved OCR, block identities and geometry remain unchanged. Empty sources retain
+their IDs and produce empty translations. A second timeout or failed response
+ends that page attempt without another cleanup or provider/parsing retry.
+Cancellation and account errors still propagate. Jev's provider/key configuration,
+input-token counts, actual HTTP request counts and cleanup audit are documented
+in its [owning guide](jev_ocr_filter.md); these remain separate from Codex usage.
+SDK and CLI share this flow; ordinary OCR and translation prompts are unchanged.
+
+**Codex Timeout** bounds each translation attempt (default 30 seconds), excluding
+capacity cooldown. Cancellation sends `turn/interrupt` when a turn ID is known,
+and failed/timed-out clients close before any replacement request. Explicit
+context-window rejection uses existing optional-context recovery, except during
+the single rescue retry. Completed
+pages and project saves retain their ownership and resume rules; Continue skips
+saved completed pages, whereas a fresh run may translate them again.
 
 Use a current CLI with the App Server `thread/inject_items` and `environments`
 fields; experimental protocol access is negotiated during initialization.

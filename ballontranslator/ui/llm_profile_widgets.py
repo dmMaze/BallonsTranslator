@@ -43,11 +43,13 @@ from .misc import themed_icon_path
 from .module_parse_widgets import ParamWidget, SecretParamWidget
 from ballontranslator.utils.shared import size2width
 from ballontranslator.utils.config import pcfg
+from ballontranslator.utils.secret_store import SecretStore
 from ballontranslator.utils.llm_profiles import (
     LLM_INPAINT_KEY,
     LLM_OCR_KEY,
     LLM_TRANSLATOR_KEY,
     LLM_TRANSPORT_OPTIONS,
+    CODEX_EXECUTION_OPTIONS,
     LLMProfile,
     normalize_codex_thinking_level,
     profile_thinking_level_options,
@@ -65,6 +67,7 @@ from ballontranslator.utils.llm_profiles import (
 
 PROFILE_COMMON_PARAM_DEFS = [
     ('transport', 'selector'),
+    ('codex_execution', 'selector'),
     ('codex_executable', 'line_editor'),
     ('codex_timeout', 'line_editor'),
     ('codex_save_sessions', 'checkbox'),
@@ -397,6 +400,7 @@ class ProfileCardWidget(QGroupBox):
         self.profile_param_display_names = {
             'transport': self.tr('Translation / OCR Backend'),
             'codex_executable': self.tr('Codex Executable'),
+            'codex_execution': self.tr('Codex Execution'),
             'codex_timeout': self.tr('Codex Timeout (seconds)'),
             'codex_save_sessions': self.tr('Save Codex Sessions (token monitors)'),
             'base_url': self.tr('Base URL'),
@@ -419,9 +423,10 @@ class ProfileCardWidget(QGroupBox):
             'low_vram_mode': self.tr('Low VRAM Mode'),
         }
         self.profile_param_descriptions = {
-            'transport': self.tr('Codex App Server uses the official Python SDK with your saved ChatGPT or API Key login.'),
-            'codex_executable': self.tr('Use codex for the bundled Python SDK runtime, or a custom executable path. Manage authentication with Codex Login.'),
-            'codex_timeout': self.tr('Stop a Codex request after this many seconds (1-86400). Retry Attempts controls delayed retries with the same model; resubmission may consume additional tokens.'),
+            'transport': self.tr('Codex App Server uses your saved ChatGPT or API Key login.'),
+            'codex_execution': self.tr('Python SDK requires requirements-codex.txt. CLI uses a separately installed Codex CLI without the Python SDK.'),
+            'codex_executable': self.tr('Python SDK: codex selects the bundled runtime. CLI: codex uses PATH. A custom executable path is supported in both modes.'),
+            'codex_timeout': self.tr('Stop a Codex request after this many seconds (1-86400). Timed-out requests follow the retry attempts and retry timeout settings.'),
             'codex_save_sessions': self.tr('Let Codex save sessions for tools such as token-monitor. Saves token usage AND conversation content, including prompts and images, under CODEX_HOME/sessions (default: ~/.codex/sessions). Off by default; disabling affects future requests and does not delete saved sessions.'),
             'base_url': self.tr('OpenAI-compatible API base URL.'),
             'image_base_url': self.tr('OpenAI-compatible image API base URL used only by LLMInpaint.'),
@@ -801,6 +806,8 @@ class ProfileCardWidget(QGroupBox):
             description = self.profile_param_descriptions.get(key, '')
             if key == 'transport':
                 options = LLM_TRANSPORT_OPTIONS
+            elif key == 'codex_execution':
+                options = CODEX_EXECUTION_OPTIONS
             elif key in ('thinking_level', 'vision_thinking_level'):
                 options = profile_thinking_level_options(self.profile, vision=key == 'vision_thinking_level')
             elif key == 'vision_detail_level':
@@ -1580,7 +1587,7 @@ class ProfileCardWidget(QGroupBox):
         self.vision_model_combo.setVisible(support_vision)
         self.image_model_combo.setVisible(support_image)
         self.setActionButtonsVisible(self._action_buttons_visible)
-        for key in ('codex_executable', 'codex_timeout', 'codex_save_sessions'):
+        for key in ('codex_execution', 'codex_executable', 'codex_timeout', 'codex_save_sessions'):
             self.details.setParamVisible(key, codex)
         self.details.setParamVisible('require_api_key', not codex or support_image)
         self.details.setParamVisible('vision_detail_level', not codex)
@@ -1632,7 +1639,7 @@ class LLMProfilesWidget(QWidget):
     set_ocr_requested = Signal(str)
     set_inpainter_requested = Signal(str)
 
-    def __init__(self, scrollWidget: QWidget = None, *args, **kwargs):
+    def __init__(self, scrollWidget: QWidget = None, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.scrollWidget = scrollWidget
         self.rows = {}
@@ -1668,6 +1675,29 @@ class LLMProfilesWidget(QWidget):
         self.actions_layout.addStretch(-1)
         self.actions_layout.addWidget(self.filter_edit)
         self.layout.addLayout(self.actions_layout)
+        typesafe_row = QWidget(self)
+        typesafe_row.setObjectName('LLMTypeSafeKeyRow')
+        typesafe_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        typesafe_layout = QHBoxLayout(typesafe_row)
+        typesafe_layout.setContentsMargins(0, 0, 0, 0)
+        typesafe_label = QLabel(self.tr('TypeSafe API Key (Jev)'), typesafe_row)
+        typesafe_label.setObjectName('LLMProfileFieldLabel')
+        self.typesafe_api_key_widget = SecretParamWidget('ocr_jev_typesafe_api_key', parent=typesafe_row)
+        self.typesafe_api_key_widget.editor.setObjectName('LLMProfileApiKeyEditor')
+        self.typesafe_api_key_widget.editor.setPlaceholderText(self.tr('Environment fallback'))
+        self.typesafe_api_key_widget.editor.setToolTip(
+            self.typesafe_api_key_widget.editor.toolTip() + '\n' + self.tr(
+                'Leave empty to use TYPESAFE_API_KEY. Used only by the experimental Jev filter with the TypeSafe official API.'
+            )
+        )
+        self.typesafe_api_key_widget.setText(SecretStore().resolve(pcfg.module.ocr_jev_typesafe_api_key).value)
+        self.typesafe_api_key_widget.editor.editingFinished.connect(self.on_typesafe_api_key_finished)
+        typesafe_label.setBuddy(self.typesafe_api_key_widget.editor)
+        typesafe_label.setToolTip(self.typesafe_api_key_widget.editor.toolTip())
+        typesafe_layout.addWidget(typesafe_label)
+        typesafe_layout.addWidget(self.typesafe_api_key_widget)
+        typesafe_layout.addStretch(1)
+        self.layout.addWidget(typesafe_row)
         self.rows_layout = QVBoxLayout()
         self.rows_layout.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.rows_layout.setSpacing(12)
@@ -1675,6 +1705,11 @@ class LLMProfilesWidget(QWidget):
         self.restore_btn.clicked.connect(self.restoreBuiltins)
         self.filter_edit.textChanged.connect(self.applyFilter)
         self.rebuild()
+
+    def on_typesafe_api_key_finished(self) -> None:
+        pcfg.module.ocr_jev_typesafe_api_key = SecretStore().store(
+            'jev-typesafe', self.typesafe_api_key_widget.text().strip(),
+        )
 
     def clearRows(self):
         while self.rows_layout.count():

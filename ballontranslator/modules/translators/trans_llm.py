@@ -1,3 +1,4 @@
+import os.path as osp
 from dataclasses import replace
 import threading
 import traceback
@@ -103,7 +104,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         ('心',)
     """
 
-    dependencies = ['openai>=2.8.1', 'openai-codex==0.156.1; python_version >= "3.10"', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
+    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
 
     concate_text = False
     params: Dict = {
@@ -130,9 +131,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             "description": "Retries for API or parsing failures.",
         },
         "retry timeout": {
-            "value": 7.0,
+            "value": 30.0,
             "display_name": "Retry Timeout",
             "description": "Delay between retries in seconds.",
+        },
+        "timeout rescue": {
+            "type": "checkbox",
+            "value": False,
+            "display_name": "Jev 處理異常字元 (Experimental)",
+            "description": "On the first full-page Codex translation timeout, close the request, check OCR text with Jev, then translate once more with the same model. Saved OCR is preserved. Configure the Jev provider in Run / Translation and its API key in LLM Profiles or the environment.",
         },
         "proxy": {
             "value": "",
@@ -168,6 +175,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
 
         self._history_window: Optional[HistoryWindow] = None
         self._context_lock = threading.RLock()
+        self.jev_cleanup_totals: Dict[str, int] = {}
         self._pending_visual_summaries: Dict[
             str,
             Tuple[
@@ -321,10 +329,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 commit_history_window=True,
             )
         super().translate_textblk_lst(
-            textblk_lst,
-            project=project,
-            page_key=page_key,
-            full_page=full_page,
+            textblk_lst, project=project, page_key=page_key, full_page=full_page,
         )
 
     def translate(
@@ -440,6 +445,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window=commit_history_window,
             vision_request=vision_request,
             summary_expected_record=existing_summary,
+            rescue_source=(
+                osp.join(project.directory or '', page_key)
+                if commit_history_window and project is not None
+                and page_key in project.pages else None
+            ),
         )
         if text_trans is None:
             text_trans = [''] * len(text) if is_list else ''
@@ -1158,6 +1168,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         usage_page_key=None,
         usage_attempt: Optional[int] = None,
         summary_enabled: bool = False,
+        retry_timeouts: bool = True,
+        attempts: Optional[int] = None,
     ) -> str:
         try:
             result = self.request_chat_completion(
@@ -1168,6 +1180,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     expected_translations,
                     summary_enabled=summary_enabled,
                 ),
+                **({'retry_timeouts': False} if not retry_timeouts else {}),
+                **({'attempts': attempts} if attempts is not None else {}),
             )
         except LLMChatRequestError as error:
             if is_context_length_error(error.provider_error):
@@ -1192,6 +1206,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         commit_history_window: bool = True,
         vision_request: Optional[EncodedChatImage] = None,
         summary_expected_record: Optional[Dict[str, object]] = None,
+        rescue_source: Optional[str] = None,
     ) -> List[str]:
         """Translate with ordinary retries and optional-context recovery.
 
@@ -1210,6 +1225,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             return []
         if profile is None:
             profile = self.profile
+        from ..llm_codex import CodexTimeoutError
         summary_enabled = prompt_spec.summary_enabled
         usage_page_key = (
             request_context.request_page_key
@@ -1228,6 +1244,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             ),
         )
         retry_attempt = 0
+        rescue_enabled = (
+            rescue_source is not None and profile.transport == 'Codex App Server'
+            and self.get_param_value('timeout rescue') is True
+        )
+        rescue_attempted = False
         provider_attempt = 0
         active_context = request_context
         has_optional_summaries = bool(
@@ -1254,6 +1275,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     'usage_page_key': usage_page_key,
                     'usage_attempt': provider_attempt,
                 }
+                if rescue_enabled:
+                    request_kwargs['retry_timeouts'] = False
+                if rescue_attempted:
+                    request_kwargs['attempts'] = 1
                 if summary_enabled:
                     request_kwargs['summary_enabled'] = summary_enabled
                 raw_response = self._request_translation(
@@ -1277,9 +1302,46 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     )
                     raise
                 translations = list(parsed.translations)
+                if rescue_attempted:
+                    # Keep original IDs aligned; cleared sources cannot regain invented text.
+                    translations = [value if source.strip() else ''
+                                    for source, value in zip(queries, translations)]
                 successful_context = active_context
                 break
+            except CodexTimeoutError as error:
+                if not rescue_enabled:
+                    raise
+                if rescue_attempted:
+                    raise RuntimeError(
+                        'Codex translation timed out again after Jev cleanup; original page retained.'
+                    ) from error
+                from ..ocr.jev_filter import filter_ocr_texts
+
+                # The Codex transport has already interrupted and closed this request.
+                # Clean only this request's sources, never the saved OCR or another page.
+                rescue_attempted = True
+                cleanup: Dict[str, int] = {}
+                try:
+                    queries = tuple(filter_ocr_texts(
+                        queries, self.stop_event, rescue_source, cleanup,
+                    ))
+                finally:
+                    # Parallel pages collect independently; only merge completed counters.
+                    with self._context_lock:
+                        for name, value in cleanup.items():
+                            self.jev_cleanup_totals[name] = self.jev_cleanup_totals.get(name, 0) + value
+                self.logger.info(
+                    'Codex timeout rescue: page=%s, Jev checks=1; retrying translation once.',
+                    usage_page_key,
+                )
+                messages, prompt = assemble_translation_request(
+                    queries, prompt_spec=prompt_spec, request_context=active_context,
+                    image_part=vision_request.image_part() if vision_request is not None else None,
+                )
+                continue
             except ContextLengthError as error:
+                if rescue_attempted:
+                    raise
                 # Provider tokenization can exceed our estimate; remove optional
                 # summaries, then whole history pages, without consuming retries.
                 if recovery_attempts >= recovery_limit:
@@ -1311,6 +1373,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as e:
+                if rescue_attempted:
+                    raise
                 if isinstance(e, InvalidNumTranslations):
                     self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
                 retry_attempt += 1

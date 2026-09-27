@@ -89,7 +89,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         'a b'
     """
 
-    dependencies = ['openai>=2.8.1', 'openai-codex==0.156.1; python_version >= "3.10"', 'httpx[socks,brotli]']
+    dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]']
 
     params: Dict = {
         "max requests per minute": {
@@ -108,7 +108,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             "description": "Retries for API failures.",
         },
         "retry timeout": {
-            "value": 7.0,
+            "value": 30.0,
             "display_name": "Retry Timeout",
             "description": "Delay between retries in seconds.",
         },
@@ -303,10 +303,9 @@ class LLMOCR(LLMChatRequester, OCRBase):
     def _request_with_retries(
         self,
         profile: LLMProfile,
-        messages: List[Dict],
+        api_args: Dict,
         *,
         failure_label: str,
-        response_schema: Optional[Dict] = None,
     ) -> str:
         retry_attempt = 0
         while True:
@@ -315,7 +314,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             try:
                 completion = self.request_chat_completion(
                     profile,
-                    self._api_args(profile, messages, response_schema),
+                    api_args,
                 )
                 if completion.usage is not None:
                     self.token_count += completion.usage.total_tokens
@@ -347,7 +346,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
         messages = self._messages(img, profile, prompt=prompt)
         return self._normalized_text(self._request_with_retries(
             profile,
-            messages,
+            self._api_args(profile, messages),
             failure_label='LLM OCR',
         ))
 
@@ -410,31 +409,22 @@ class LLMOCR(LLMChatRequester, OCRBase):
         self.logger.info(f"Performing Page-level LLM OCR on {len(blk_list)} blocks...")
         mask_non_text = pcfg.module.ocr_llm_mask_non_text
         sort_reading_order = pcfg.module.ocr_llm_sort_reading_order
-        annotated_img = create_annotated_page(
-            img,
-            blk_list,
-            mask_non_text=mask_non_text,
-        )
 
         raw_response: Optional[str] = None
         try:
             profile = self.profile
             expected_count = len(blk_list)
-            messages = self._page_messages(
-                annotated_img,
-                profile,
-                expected_count,
-                mask_non_text,
-                sort_reading_order,
-            )
             raw_response = self._request_with_retries(
                 profile,
-                messages,
-                failure_label='Page-level LLM OCR request',
-                response_schema=self._page_response_schema(
-                    expected_count,
-                    sort_reading_order,
+                self._api_args(
+                    profile,
+                    self._page_messages(
+                        create_annotated_page(img, blk_list, mask_non_text=mask_non_text),
+                        profile, expected_count, mask_non_text, sort_reading_order,
+                    ),
+                    self._page_response_schema(expected_count, sort_reading_order),
                 ),
+                failure_label='Page-level LLM OCR request',
             )
             texts, order = self._parse_page_ocr_response(
                 raw_response,

@@ -2,7 +2,7 @@ import json, os, re, string, traceback
 import os.path as osp
 import copy
 from dataclasses import fields
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Union
 
 from . import shared
 from .fontformat import (
@@ -21,7 +21,7 @@ from .llm_profiles import (
     profile_by_id,
     profile_to_dict,
 )
-from .secret_store import SecretStore
+from .secret_store import SecretStore, is_portable_secret
 from .text_effects import without_project_raster_effects
 
 class RunStatus:
@@ -95,6 +95,8 @@ class ModuleConfig(Config):
     enable_inpaint: bool = True
     # 是否在 OCR 后进行字体检测（默认不启用）
     ocr_font_detect: bool = False
+    ocr_jev_provider: str = 'typesafe'
+    ocr_jev_typesafe_api_key: Union[str, Dict] = ''
     ocr_text_postprocess: str = OCRTextPostprocess.NONE
     ocr_llm_page_level: bool = False
     ocr_llm_mask_non_text: bool = True
@@ -145,13 +147,16 @@ class ModuleConfig(Config):
                 saving_module_params[pk] = pv
         return sd
 
-    def get_saving_params(self, to_dict=True):
+    def get_saving_params(self, to_dict: bool = True) -> Union[Dict, 'ModuleConfig']:
         params = copy.copy(self)
         params.ocr_params = self.get_params('ocr', for_saving=True)
         params.inpainter_params = self.get_params('inpainter', for_saving=True)
         params.textdetector_params = self.get_params('textdetector', for_saving=True)
         params.translator_params = self.get_params('translator', for_saving=True)
         params.llm_profiles = self.get_saving_llm_profiles()
+        params.ocr_jev_typesafe_api_key = SecretStore().prepare_for_save(
+            'jev-typesafe', self.ocr_jev_typesafe_api_key,
+        )
         if to_dict:
             return params.__dict__
         return params
@@ -197,7 +202,7 @@ class ModuleConfig(Config):
     def all_stages_disabled(self):
         return (self.enable_detect or self.enable_ocr or self.enable_translate or self.enable_inpaint) is False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         for setting_name, default in (
             ('ocr_llm_page_level', False),
             ('ocr_llm_mask_non_text', True),
@@ -211,6 +216,15 @@ class ModuleConfig(Config):
                     f'Discard invalid module.{setting_name} config: expected a boolean.'
                 )
                 setattr(self, setting_name, default)
+        if self.ocr_jev_provider not in ('typesafe', 'openrouter'):
+            LOGGER.warning('Discard invalid module.ocr_jev_provider config: expected typesafe or openrouter.')
+            self.ocr_jev_provider = 'typesafe'
+        if (
+            not isinstance(self.ocr_jev_typesafe_api_key, str)
+            and not is_portable_secret(self.ocr_jev_typesafe_api_key)
+        ) or SecretStore().resolve(self.ocr_jev_typesafe_api_key).error:
+            LOGGER.warning('Discard invalid module.ocr_jev_typesafe_api_key config.')
+            self.ocr_jev_typesafe_api_key = ''
         if self.ocr_text_postprocess not in OCRTextPostprocess.Valid:
             self.ocr_text_postprocess = OCRTextPostprocess.NONE
         if self.translate_context not in TranslateContext.Valid:

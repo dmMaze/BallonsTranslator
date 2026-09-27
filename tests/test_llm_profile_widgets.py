@@ -10,19 +10,61 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QContextMenuEvent
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QMenu, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QApplication, QLineEdit, QMenu, QVBoxLayout, QWidget
 
-from ballontranslator.ui.llm_profile_widgets import ProfileCardWidget
+from ballontranslator.ui.llm_profile_widgets import LLMProfilesWidget, ProfileCardWidget
 from ballontranslator.ui.misc import parse_stylesheet
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
+from ballontranslator.utils import config as config_module, shared
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, pcfg
-from ballontranslator.utils.llm_profiles import LLMProfile, default_profile
+from ballontranslator.utils.llm_profiles import LLMProfile, default_profile, profile_by_id, resolve_api_key
+from ballontranslator.utils.secret_store import SecretStore, is_portable_secret
 
 
 class LLMProfileModelSelectorTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_jev_key_editors_mask_save_to_config_reload_and_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(shared, 'CONFIG_PATH', os.path.join(directory, 'config.json')), \
+                mock.patch.object(pcfg, 'module', ModuleConfig()), mock.patch('requests.post') as post:
+            panel = LLMProfilesWidget()
+            self.addCleanup(panel.deleteLater)
+            widgets = {'typesafe': panel.typesafe_api_key_widget,
+                       'openrouter': panel.rows['openrouter'].api_key_widget}
+            for provider, widget in widgets.items():
+                editor = widget.editor
+                self.assertEqual(editor.echoMode(), QLineEdit.EchoMode.Password)
+                self.assertEqual(editor.text(), '')
+                editor.setText(f'  test-{provider}-key  ' if provider == 'typesafe' else f'test-{provider}-key')
+                editor.editingFinished.emit()
+                saved = (pcfg.module.ocr_jev_typesafe_api_key if provider == 'typesafe'
+                         else profile_by_id(pcfg.module.llm_profiles, 'openrouter').api_key)
+                self.assertTrue(is_portable_secret(saved))
+                self.assertEqual(SecretStore().resolve(saved).value, f'test-{provider}-key')
+            self.assertTrue(config_module.save_config())
+            with open(shared.CONFIG_PATH, encoding='utf-8') as stream:
+                saved_json = stream.read()
+            self.assertNotIn('ocr_jev_openrouter_api_key', saved_json)
+            for provider in widgets:
+                self.assertNotIn(f'test-{provider}-key', saved_json)
+            saved_config = ProgramConfig.load(shared.CONFIG_PATH)
+            with mock.patch.object(pcfg, 'module', saved_config.module):
+                reloaded = LLMProfilesWidget()
+                self.addCleanup(reloaded.deleteLater)
+                widgets = {'typesafe': reloaded.typesafe_api_key_widget,
+                           'openrouter': reloaded.rows['openrouter'].api_key_widget}
+                for provider, widget in widgets.items():
+                    self.assertEqual(widget.text(), f'test-{provider}-key')
+                    widget.editor.clear()
+                    widget.editor.editingFinished.emit()
+                self.assertTrue(config_module.save_config())
+                cleared = ProgramConfig.load(shared.CONFIG_PATH)
+                self.assertEqual(cleared.module.ocr_jev_typesafe_api_key, '')
+                self.assertEqual(resolve_api_key(profile_by_id(cleared.module.llm_profiles, 'openrouter')), '')
+            post.assert_not_called()
 
     def test_upgraded_config_exposes_selectable_codex_in_translation_and_ocr_menus(self) -> None:
         cockpit = default_profile('Ollama')
@@ -110,6 +152,12 @@ class LLMProfileModelSelectorTest(unittest.TestCase):
         profile = default_profile('Codex')
         card = ProfileCardWidget(profile)
         self.addCleanup(card.deleteLater)
+        execution = card.details.param_widgets['codex_execution']
+        self.assertEqual(execution.currentText(), 'Python SDK')
+        execution.setCurrentText('CLI')
+        self.assertEqual(profile.codex_execution, 'CLI')
+        execution.setCurrentText('Python SDK')
+        self.assertEqual(profile.codex_execution, 'Python SDK')
         thinking = card.details.param_widgets['thinking_level']
         vision_thinking = card.details.param_widgets['vision_thinking_level']
         self.assertEqual(card.model_combo.currentText(), 'gpt-5.6-sol')

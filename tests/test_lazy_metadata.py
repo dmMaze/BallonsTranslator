@@ -10,8 +10,8 @@ from ballontranslator.utils.registry import ModuleSpec
 
 class LazyMetadataTests(unittest.TestCase):
 
-    def test_llm_preparation_detects_missing_codex_sdk_before_requests(self) -> None:
-        from ballontranslator.modules.prepare_local_files import MissingDependency, ensure_module_files
+    def test_llm_preparation_does_not_require_sdk_for_cli(self) -> None:
+        from ballontranslator.modules.prepare_local_files import ensure_module_files
         from ballontranslator.utils.py_package_manager import PyPackageManager
 
         root = Path(__file__).resolve().parents[1]
@@ -24,10 +24,7 @@ class LazyMetadataTests(unittest.TestCase):
                 with mock.patch.object(PyPackageManager, '_requirement_satisfied',
                                        side_effect=lambda req: req.name != 'openai-codex'), \
                         mock.patch.object(PyPackageManager, '_import_available', return_value=True):
-                    with self.assertRaises(MissingDependency) as caught:
-                        ensure_module_files(spec)
-                self.assertEqual(len(caught.exception.requirements), 1)
-                self.assertIn('openai-codex==0.156.1', caught.exception.requirements[0])
+                    ensure_module_files(spec)
 
     def scan_source(self, source: str, module_type: str):
         with tempfile.NamedTemporaryFile('w', suffix='.py', delete=False, encoding='utf8') as f:

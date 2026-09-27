@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 import re
 import threading
 import time
@@ -324,8 +323,11 @@ class LLMChatRequester:
         self,
         profile: LLMProfile,
         api_args: Dict[str, Any],
+        *,
+        retry_timeouts: bool = True,
+        attempts: Optional[int] = None,
     ) -> LLMChatResult:
-        """Request a result, backing off on Codex capacity rejection or timeout.
+        """Request a result, waiting a fixed interval after Codex retryable failures.
 
         >>> callable(LLMChatRequester.request_chat_completion)
         True
@@ -333,9 +335,8 @@ class LLMChatRequester:
         if profile.transport == 'Codex App Server':
             from .llm_codex import CodexBusyError, CodexTimeoutError, request_codex_completion
 
-            attempts = max(1, int(self.get_param_value('retry attempts')))
-            retry_delay = max(60.0, float(self.get_param_value('retry timeout')))
-            max_retry_delay = max(300.0, retry_delay)
+            attempts = max(1, int(self.get_param_value('retry attempts') if attempts is None else attempts))
+            retry_delay = max(0.0, float(self.get_param_value('retry timeout')))
             for attempt in range(1, attempts + 1):
                 # Release the lock during cooldown so other failed requests can
                 # extend it. Already-running requests may finish normally.
@@ -356,18 +357,18 @@ class LLMChatRequester:
                 except (CodexBusyError, CodexTimeoutError) as error:
                     with self._codex_usage_lock:
                         self.usage_totals.add(api_args.get('model', ''), error.usage)
+                    if isinstance(error, CodexTimeoutError) and not retry_timeouts:
+                        raise
                     if attempt >= attempts:
                         self.logger.error('Codex retry budget exhausted after %d attempts: %s', attempts, error)
                         raise
-                    wait = retry_delay + random.uniform(0, min(10.0, retry_delay * 0.1))
                     with self._codex_throttle_lock:
-                        self._codex_cooldown_until = max(self._codex_cooldown_until, time.monotonic() + wait)
+                        self._codex_cooldown_until = max(self._codex_cooldown_until, time.monotonic() + retry_delay)
                     self.logger.warning(
                         'Codex retryable failure: %s. Attempt %d/%d; cooling down for %.1f seconds; %s',
-                        error, attempt, attempts, wait,
+                        error, attempt, attempts, retry_delay,
                         format_completion_token_usage(error) or 'usage=unavailable',
                     )
-                    retry_delay = min(retry_delay * 2, max_retry_delay)
             with self._codex_usage_lock:
                 self.usage_totals.add(api_args.get('model', ''), result.usage)
             return result

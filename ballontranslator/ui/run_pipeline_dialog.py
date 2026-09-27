@@ -1214,6 +1214,34 @@ class RunPipelineDialog(QDialog):
         ))
         translation_grid.addWidget(llm_features_row, 4, 0, 1, 2)
 
+        provider_row = QWidget(section)
+        provider_row.setObjectName('RunPipelineGeneralSettingRow')
+        provider_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        provider_layout = QHBoxLayout(provider_row)
+        provider_layout.setContentsMargins(0, 0, 0, 0)
+        provider_layout.setSpacing(8)
+        provider_label = QLabel(self.tr('Jev API provider'), provider_row)
+        provider_label.setObjectName('RunPipelineSettingLabel')
+        provider_layout.addWidget(provider_label)
+        provider_layout.addStretch()
+        self.jev_provider_combobox = BottomBorderComboBox(provider_row)
+        self.jev_provider_combobox.addItem(self.tr('TypeSafe (official)'), 'typesafe')
+        self.jev_provider_combobox.addItem(self.tr('OpenRouter'), 'openrouter')
+        self.jev_provider_combobox.setCurrentIndex(
+            self.jev_provider_combobox.findData(pcfg.module.ocr_jev_provider)
+        )
+        self.jev_provider_combobox.setFixedWidth(RUN_PIPELINE_SETTING_CONTROL_WIDTH)
+        self.jev_provider_combobox.currentIndexChanged.connect(self._on_jev_provider_changed)
+        provider_label.setBuddy(self.jev_provider_combobox)
+        provider_layout.addWidget(self.jev_provider_combobox)
+        provider_row.setVisible(self._llm_settings_visible)
+        provider_row.setToolTip(self.tr(
+            'Used by Jev 處理異常字元 (Experimental) in LLMTranslator settings. '
+            'TypeSafe key: LLM Profiles / TypeSafe API Key (Jev), or TYPESAFE_API_KEY. '
+            'OpenRouter reuses the existing OpenRouter profile API key, or OPENROUTER_API_KEY.'
+        ))
+        layout.addWidget(provider_row)
+
         self.context_row.setVisible(not self._llm_settings_visible)
 
         self.source_combobox.currentTextChanged.connect(
@@ -1290,6 +1318,9 @@ class RunPipelineDialog(QDialog):
     def _on_translate_target_changed(self, target: str):
         pcfg.module.translate_target = target
         self.translate_target_changed.emit(target)
+
+    def _on_jev_provider_changed(self) -> None:
+        pcfg.module.ocr_jev_provider = self.jev_provider_combobox.currentData()
 
     def _on_translate_context_changed(self):
         context = self.context_combobox.currentData()

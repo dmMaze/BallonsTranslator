@@ -809,6 +809,7 @@ class ImgtransThread(QThread):
         self.translate_thread = translate_thread
         self.translate_thread.module_thread_stopped.connect(self.on_module_thread_stopped)
         self.translate_thread.finished.connect(self.on_module_thread_stopped)
+        self.finished.connect(self.on_module_thread_stopped)
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
@@ -1386,6 +1387,8 @@ class ImgtransThread(QThread):
             LOGGER.info('Image translation task stopped by user.')
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         except Exception as e:
+            # Wake the translation consumer when its producer fails before enqueueing all pages.
+            self.requestStop()
             create_error_dialog(e, self.tr('Image translation failed.'), 'ImageTranslationFailed')
         finally:
             self.job = None
@@ -1459,6 +1462,7 @@ class ModuleManager(QObject):
         self.config_panel: ConfigPanel = None
         self.parent_widget = None
         self._llm_usage_totals: Dict[str, LLMUsageTotals] = {}
+        self._jev_cleanup_totals: Optional[Dict[str, int]] = None
 
     def setupThread(
         self,
@@ -2225,11 +2229,15 @@ class ModuleManager(QObject):
 
     def _begin_llm_usage_run(self, ocr_enabled: bool, translate_enabled: bool) -> None:
         self._llm_usage_totals = {}
+        self._jev_cleanup_totals = None
         for stage, enabled, module in (('OCR', ocr_enabled, self.ocr),
                                        ('translation', translate_enabled, self.translator)):
             if enabled and isinstance(getattr(module, 'usage_totals', None), LLMUsageTotals):
                 module.usage_totals = LLMUsageTotals()
                 self._llm_usage_totals[stage] = module.usage_totals
+        if translate_enabled and hasattr(self.translator, 'jev_cleanup_totals'):
+            self.translator.jev_cleanup_totals = {}
+            self._jev_cleanup_totals = self.translator.jev_cleanup_totals
 
     def _finish_llm_usage_when_idle(self) -> None:
         # Selected-block completion signals also fire between stages. Wait for
@@ -2239,11 +2247,16 @@ class ModuleManager(QObject):
 
     def _finish_llm_usage_run(self) -> None:
         totals, self._llm_usage_totals = self._llm_usage_totals, {}
-        if any(item.requests for item in totals.values()):
+        cleanup, self._jev_cleanup_totals = self._jev_cleanup_totals, None
+        if any(item.requests for item in totals.values()) or cleanup:
             status = 'stopped' if self.imgtrans_thread.isStopRequested() else 'finished'
-            for stage, usage in totals.items():
-                LOGGER.info(f'LLM {stage} run usage: status={status}, {format_run_token_usage([usage])}')
-            LOGGER.info(f'LLM run usage: status={status}, {format_run_token_usage(list(totals.values()))}')
+            if cleanup:
+                from ballontranslator.modules.ocr.jev_filter import format_jev_cleanup_totals
+                LOGGER.info(f'Jev OCR cleanup run: status={status}, {format_jev_cleanup_totals(cleanup)}')
+            if any(item.requests for item in totals.values()):
+                for stage, usage in totals.items():
+                    LOGGER.info(f'LLM {stage} run usage: status={status}, {format_run_token_usage([usage])}')
+                LOGGER.info(f'LLM run usage: status={status}, {format_run_token_usage(list(totals.values()))}')
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':

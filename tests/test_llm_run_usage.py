@@ -11,10 +11,77 @@ from ballontranslator.modules.context.token_usage import (
     LLMUsageTotals, estimated_token_cost, format_run_token_usage,
 )
 from ballontranslator.modules.llm_chat import LLMChatRequester
+from ballontranslator.modules.ocr.base import OCRBase
+from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.ui.module_manager import ModuleManager
+from ballontranslator.utils.config import pcfg
 
 
 class LLMRunUsageTest(unittest.TestCase):
+    def test_jev_input_requests_and_cost_are_separate_and_reset_for_each_run(self) -> None:
+        app = QApplication.instance() or QApplication([])
+        manager = ModuleManager(None)
+        ocr, translator = OCRBase(), LLMTranslator('日本語', '繁體中文')
+        manager.ocr_thread = SimpleNamespace(ocr=ocr)
+        manager.translate_thread = SimpleNamespace(translator=translator)
+        manager.imgtrans_thread = SimpleNamespace(isStopRequested=lambda: False)
+        try:
+            with mock.patch('ballontranslator.ui.module_manager.LOGGER.info') as log:
+                translator.jev_cleanup_totals.update(requests=99, input_tokens=999, cleared_blocks=99)
+                manager._begin_llm_usage_run(True, True)
+                self.assertEqual(translator.jev_cleanup_totals, {})
+                translator.jev_cleanup_totals.update(
+                    requests=3, input_tokens=100, reported_input_requests=1,
+                    cost_nano_usd=6200, estimated_cost_requests=1, reported_cost_requests=1,
+                    calls=3, changed_calls=2, cleared_blocks=1, trimmed_blocks=2,
+                    kept_blocks=10, removed_characters=50,
+                )
+                translator.usage_totals.requests = 1
+                translator.usage_totals.add('gpt-6-luna', {'input_tokens': 1000, 'output_tokens': 100})
+                manager._finish_llm_usage_run()
+                manager._finish_llm_usage_run()
+                messages = [call.args[0] for call in log.call_args_list]
+                self.assertEqual(len(messages), 3)
+                cleanup = next(s for s in messages if s.startswith('Jev OCR cleanup run:'))
+                self.assertIn('requests=3, input_tokens=100, missing_input_usage_requests=2,', cleanup)
+                self.assertIn('cost_usd=unavailable, cost_source=mixed, priced_subtotal_usd=0.000006200,', cleanup)
+                self.assertIn('unpriced_requests=1,', cleanup)
+                self.assertIn('changed_blocks=3 (cleared=1, trimmed=2)', cleanup)
+                self.assertIn('removed_characters=50, kept_blocks=10, changed_calls=2/3', cleanup)
+                for excluded in ('output_tokens', 'total_tokens', 'completion', 'estimated_cost'):
+                    self.assertNotIn(excluded, cleanup)
+                # Do not mix input-only Jev usage into full-token translation totals.
+                total = messages[-1]
+                self.assertIn('requests=1, total_tokens=1100, missing_usage_requests=0,', total)
+                self.assertIn('estimated_cost_usd=0.000150,', total)
+
+                log.reset_mock()
+                manager._begin_llm_usage_run(True, False)
+                manager._finish_llm_usage_run()
+                log.assert_not_called()
+                manager._begin_llm_usage_run(False, True)
+                self.assertEqual(translator.jev_cleanup_totals, {})
+                self.assertEqual(list(manager._llm_usage_totals), ['translation'])
+                # Skipped filtering still reports zero API requests and removals.
+                translator.jev_cleanup_totals.update(calls=1, changed_calls=0, cleared_blocks=0,
+                                              trimmed_blocks=0, kept_blocks=3, removed_characters=0)
+                manager.imgtrans_thread.isStopRequested = lambda: True
+                manager._finish_llm_usage_run()
+                manager._finish_llm_usage_run()
+                log.assert_called_once()
+                self.assertIn('status=stopped, requests=0, input_tokens=0,', log.call_args.args[0])
+                self.assertIn('cost_usd=0.000000000, cost_source=none,', log.call_args.args[0])
+                self.assertIn('unpriced_requests=0,', log.call_args.args[0])
+                self.assertIn('changed_blocks=0', log.call_args.args[0])
+                self.assertIn('changed_calls=0/1', log.call_args.args[0])
+            with mock.patch('ballontranslator.ui.module_manager.LOGGER.info') as log:
+                manager._begin_llm_usage_run(True, False)
+                manager._finish_llm_usage_run()
+                log.assert_not_called()
+        finally:
+            manager.deleteLater()
+            app.processEvents()
+
     def test_prices_cache_reasoning_long_context_and_unknown_usage(self) -> None:
         counts = {'prompt': 1000, 'completion': 100}
         for model, cost in (('gpt-6-astra', '0.015'), ('gpt-6-sol', '0.003'),

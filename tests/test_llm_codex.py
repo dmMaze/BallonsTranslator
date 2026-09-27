@@ -173,7 +173,7 @@ class CodexTransportTest(unittest.TestCase):
 
         self.addCleanup(mock.patch.stopall)
         mock.patch('ballontranslator.modules.llm_codex.shutil.which', return_value=sys.executable).start()
-        mock.patch('openai_codex.client.subprocess.Popen', side_effect=launch).start()
+        mock.patch('ballontranslator.modules.llm_codex.subprocess.Popen', side_effect=launch).start()
         self.args = {
             'model': 'gpt-5.6-sol',
             'messages': [
@@ -193,10 +193,111 @@ class CodexTransportTest(unittest.TestCase):
             self.assertIsNotNone(process.poll(), 'Codex process leaked')
             self.assertTrue(process.stdin.closed)
             self.assertTrue(process.stdout.closed)
-            self.assertTrue(process.stderr.closed)
+            if process.stderr is not None:
+                self.assertTrue(process.stderr.closed)
 
     def requests(self):
         return [json.loads(line) for line in self.log.read_text(encoding='utf-8').splitlines()]
+
+    def test_cli_without_sdk_preserves_requests_login_and_failure_cleanup(self) -> None:
+        from ballontranslator.modules.llm_codex import CodexSessionPool, CodexTimeoutError
+        self.profile.codex_execution = 'CLI'
+        pool = CodexSessionPool()
+        with mock.patch.dict(sys.modules, {'openai_codex': None, 'openai_codex.client': None}):
+            with pool.batch():
+                for scenario in ('success', 'early'):
+                    self.scenario = scenario
+                    result = request_codex_completion(self.profile, self.args, pool=pool)
+                    self.assertEqual(json.loads(result.content), {'1': '譯文一', '2': '譯文二'})
+                    self.assertEqual(result.usage.total_tokens, 120)
+                self.assertEqual(pool.idle, [])
+                self.assertEqual(len(self.processes), 2)
+            sent = {r['method']: r.get('params', {}) for r in self.requests()}
+            self.assertEqual(sent['turn/start']['outputSchema'], {'type': 'object'})
+            self.assertEqual(sent['turn/start']['input'][1]['type'], 'image')
+            self.assertTrue(sent['thread/start']['ephemeral'])
+            self.assertEqual(len(sent['thread/inject_items']['items']), 3)
+            self.scenario = 'success'
+            for method in ('reuse', 'chatgpt', 'chatgptDeviceCode', 'apiKey'):
+                with self.subTest(login=method):
+                    account = authenticate_codex(self.profile, method, api_key='test-key')
+                    self.assertEqual(account['type'], 'apiKey' if method == 'apiKey' else 'chatgpt')
+            self.profile.codex_timeout = 1
+            for scenario, error in (
+                ('capacity', CodexBusyError), ('busy503', CodexBusyError),
+                ('quota', CodexRequestError), ('disconnect', CodexRequestError),
+                ('tool', CodexRequestError), ('malformed', CodexRequestError),
+                ('invalid_result', CodexRequestError), ('timeout', CodexTimeoutError),
+            ):
+                with self.subTest(scenario=scenario):
+                    self.scenario = scenario
+                    with self.assertRaises(error):
+                        request_codex_completion(self.profile, self.args)
+            self.assertIn('turn/interrupt', [r.get('method') for r in self.requests()])
+
+    def test_cli_requires_installed_executable_and_execution_round_trips(self) -> None:
+        self.profile.codex_execution = 'CLI'
+        self.profile.codex_executable = 'codex'
+        with mock.patch('ballontranslator.modules.llm_codex.shutil.which', return_value=None):
+            with self.assertRaisesRegex(CodexRequestError, 'Install Codex CLI'):
+                request_codex_completion(self.profile, self.args)
+        self.assertEqual(self.processes, [])
+        self.assertEqual(profile_from_config(self.profile.to_dict()).codex_execution, 'CLI')
+        self.assertEqual(profile_from_config({}).codex_execution, 'Python SDK')
+        self.assertEqual(profile_from_config({'codex_execution': []}).codex_execution, 'Python SDK')
+
+    def test_both_modes_stop_translation_and_ocr_on_quota_without_retry(self) -> None:
+        import numpy as np
+
+        for execution in ('Python SDK', 'CLI'):
+            self.profile.codex_execution = execution
+            with mock.patch.object(pcfg, 'module', ModuleConfig(
+                llm_profiles=[self.profile], translator_llm_id='codex', ocr_llm_id='codex',
+            )):
+                translator = LLMTranslator('English', '繁體中文', **{'delay': 0})
+                ocr = LLMOCR(**{'delay': 0})
+                for scenario in ('credits_rpc', 'credits_event', 'credits_terminal', 'quota'):
+                    self.scenario = scenario
+                    for operation in (lambda: translator.translate(['first', 'second']),
+                                      lambda: ocr.ocr_img(np.zeros((12, 12, 3), dtype=np.uint8))):
+                        with self.subTest(execution=execution, scenario=scenario):
+                            count = len(self.processes)
+                            with self.assertRaisesRegex(CodexRequestError, 'Codex quota exhausted:'):
+                                operation()
+                            self.assertEqual(len(self.processes), count + 1)
+                            self.assertIsNotNone(self.processes[-1].poll())
+
+    def test_cli_parallel_and_cancel_do_not_reuse_sdk_clients(self) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+        from ballontranslator.modules.llm_codex import CodexSessionPool
+
+        pool = CodexSessionPool()
+        with pool.batch():
+            request_codex_completion(self.profile, self.args, pool=pool)
+            sdk_process = self.processes[0]
+            self.profile.codex_execution = 'CLI'
+            with ThreadPoolExecutor(max_workers=3) as workers:
+                futures = [workers.submit(request_codex_completion, self.profile, self.args, pool=pool)
+                           for _ in range(3)]
+                self.assertEqual([f.result().usage.total_tokens for f in futures], [120] * 3)
+            self.assertEqual(len(self.processes), 4)
+            self.assertTrue(all(p.poll() is not None for p in self.processes[1:]))
+            self.assertIsNone(sdk_process.poll())
+            self.profile.codex_execution = 'Python SDK'
+            request_codex_completion(self.profile, self.args, pool=pool)
+            self.assertEqual(len(self.processes), 4)
+        self.profile.codex_execution = 'CLI'
+        self.scenario = 'cancel'
+        stop = threading.Event()
+        timer = threading.Timer(0.5, stop.set)
+        timer.start()
+        try:
+            with self.assertRaises(LLMRequestStopped):
+                request_codex_completion(self.profile, self.args, stop)
+        finally:
+            timer.cancel()
+            timer.join()
+        self.assertIsNotNone(self.processes[-1].poll())
 
     def test_messages_schema_usage_and_ephemeral_isolation(self) -> None:
         before = copy.deepcopy(self.args)
@@ -382,10 +483,7 @@ class CodexTransportTest(unittest.TestCase):
                         result = owner.request_chat_completion(self.profile, self.args)
                     self.assertIn('譯文一', result.content)
                     self.assertEqual(len(self.processes) - before, 5)
-                    for actual, base in zip(waits, (60, 120, 240, 300)):
-                        self.assertGreaterEqual(actual, base)
-                        self.assertLessEqual(actual, base + 10)
-                    self.assertEqual(len(waits), 4)
+                    self.assertEqual(waits, [7.0] * 4)
                     self.assertEqual(owner.usage_totals.requests, 5)
                     self.assertEqual(owner.usage_totals.total_tokens, 120)
                     self.assertIn('missing_usage_requests=4', format_run_token_usage([owner.usage_totals]))
@@ -409,8 +507,7 @@ class CodexTransportTest(unittest.TestCase):
             clock = [1000.0]
 
             def wait(seconds: float) -> None:
-                self.assertGreaterEqual(seconds, 600)
-                self.assertLessEqual(seconds, 610)
+                self.assertEqual(seconds, 600)
                 clock[0] += seconds
 
             with mock.patch('ballontranslator.modules.llm_chat.time.monotonic', side_effect=lambda: clock[0]), \
@@ -448,8 +545,7 @@ class CodexTransportTest(unittest.TestCase):
                     before = len(self.processes)
 
                     def wait(seconds: float) -> None:
-                        self.assertGreaterEqual(seconds, 60)
-                        self.assertLessEqual(seconds, 66)
+                        self.assertAlmostEqual(seconds, 7.0, delta=0.1)
                         self.assertIsNotNone(self.processes[-1].poll())
                         self.assertEqual(self.requests()[-1]['method'], 'turn/interrupt')
                         if outcome == 'cancel':
@@ -652,7 +748,7 @@ class CodexProfileTest(unittest.TestCase):
                                  'codex_executable': None, 'codex_save_sessions': 'false',
                                  'prompt': 'keep this'}])[0]
         self.assertEqual(profile.transport, 'OpenAI-compatible')
-        self.assertEqual(profile.codex_timeout, 180)
+        self.assertEqual(profile.codex_timeout, 30)
         self.assertEqual(profile.codex_executable, 'codex')
         self.assertFalse(profile.codex_save_sessions)
         self.assertEqual(profile.prompt, 'keep this')

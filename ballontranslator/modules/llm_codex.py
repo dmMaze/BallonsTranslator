@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import queue
 import shutil
+import signal
 import sys
 import subprocess
 import tempfile
@@ -17,7 +19,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 from .exceptions import LLMRequestStopped, LLMUserActionRequiredError
 from .llm_chat import LLMChatRequestError, LLMChatResult
 from ballontranslator.utils.llm_profiles import (
-    CODEX_MODEL_REASONING_EFFORTS, LLMProfile,
+    CODEX_EXECUTION_OPTIONS, CODEX_MODEL_REASONING_EFFORTS, LLMProfile,
 )
 
 
@@ -62,6 +64,20 @@ def _quota_exhausted(detail: str, info: Any = None) -> bool:
             'out of credits', 'usage limit reached', 'insufficient_quota')))
 
 
+def _codex_overrides() -> Dict[str, str]:
+    # Both transports disable integrations without modifying the user's config.
+    overrides = {
+        'model_provider': '"openai"', 'mcp_servers': '{}',
+        'model_providers': '{}', 'project_doc_max_bytes': '0',
+        'web_search': '"disabled"', 'notify': '[]',
+    }
+    for feature in ('shell_tool', 'apps', 'plugins', 'hooks', 'multi_agent',
+                    'browser_use', 'computer_use', 'image_generation',
+                    'code_mode', 'code_mode_host', 'memories', 'skill_search'):
+        overrides[f'features.{feature}'] = 'false'
+    return overrides
+
+
 class _CodexSession:
     """Adapt the official SDK to the cancellable translation worker.
 
@@ -92,15 +108,7 @@ class _CodexSession:
         self.turn_id = ''
         self.login_id = ''
         self.response_model = RootModel[Dict[str, Any]]
-        overrides = {
-            'model_provider': '"openai"', 'mcp_servers': '{}',
-            'model_providers': '{}', 'project_doc_max_bytes': '0',
-            'web_search': '"disabled"', 'notify': '[]',
-        }
-        for feature in ('shell_tool', 'apps', 'plugins', 'hooks', 'multi_agent',
-                        'browser_use', 'computer_use', 'image_generation',
-                        'code_mode', 'code_mode_host', 'memories', 'skill_search'):
-            overrides[f'features.{feature}'] = 'false'
+        overrides = _codex_overrides()
         # SDK environment overrides are merged with the parent environment.
         # Empty values keep inherited credentials from overriding the saved login.
         self.client = CodexClient(CodexConfig(
@@ -176,7 +184,7 @@ class _CodexSession:
                     )
                     self.incoming.put({'id': message['id'], 'result': result.root})
         except Exception as error:
-            # The SDK raises RPC failures instead of returning raw envelopes.
+            # SDK RPC exceptions carry structured error data instead of envelopes.
             data = getattr(error, 'data', None)
             info = data.get('codexErrorInfo') if isinstance(data, dict) else None
             prefix = 'Codex quota exhausted' if _quota_exhausted(str(error), info) else 'Codex SDK request failed'
@@ -214,10 +222,17 @@ class _CodexSession:
                         error = turn.get('error')
             if isinstance(error, dict):
                 detail = str(error.get('message', ''))
-                info = error.get('codexErrorInfo')
+                data = error.get('data')
+                info = error.get('codexErrorInfo') or (
+                    data.get('codexErrorInfo') if isinstance(data, dict) else None)
+                # A quota error is terminal even inside a 503 or retryable event.
                 if _quota_exhausted(detail, info):
-                    # Quota is terminal even when wrapped as a retryable event or 503.
                     raise CodexRequestError(f'Codex quota exhausted: {detail}')
+            if 'method' in message and 'id' in message:
+                self.outgoing.put({'id': message['id'], 'error': {
+                    'code': -32601, 'message': 'Interactive tools are unavailable in translation/OCR.',
+                }})
+                raise CodexRequestError('Codex requested an interactive tool; translation stopped.')
             return message
 
     def call(self, method: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -225,6 +240,10 @@ class _CodexSession:
         while True:
             message = self.receive()
             if message.get('id') == request_id:
+                if 'error' in message:
+                    raise CodexRequestError(f'Codex {method}: {message["error"].get("message", "request failed")}')
+                if not isinstance(message.get('result'), dict):
+                    raise CodexRequestError(f'Invalid Codex {method} response.')
                 return message['result']
 
     def close(self) -> None:
@@ -260,19 +279,117 @@ class _CodexSession:
                     stream.close()
 
 
+class _CodexCLISession(_CodexSession):
+    """One disposable stdio session, with bounded and cancellable pipe IO.
+
+    >>> _CodexCLISession.__name__
+    '_CodexCLISession'
+    """
+
+    def __init__(self, executable: str, cwd: str, timeout: int,
+                 stop_event: Optional[threading.Event]) -> None:
+        self.stop_event = stop_event
+        self.deadline = time.monotonic() + timeout
+        self.incoming: queue.Queue = queue.Queue()
+        self.outgoing: queue.Queue = queue.Queue()
+        self.request_id = 0
+        self.thread_id = ''
+        self.turn_id = ''
+        self.login_id = ''
+        overrides = _codex_overrides()
+        command = [executable, 'app-server', '--listen', 'stdio://']
+        for key, value in overrides.items():
+            command.extend(['-c', f'{key}={value}'])
+        env = os.environ.copy()
+        for key in ('OPENAI_API_KEY', 'CODEX_API_KEY', 'OPENAI_BASE_URL'):
+            env.pop(key, None)
+        self.stderr = tempfile.TemporaryFile()
+        try:
+            self.process = subprocess.Popen(
+                command, cwd=cwd, env=env, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=self.stderr, text=True,
+                encoding='utf-8', bufsize=1,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                start_new_session=os.name != 'nt',
+            )
+        except OSError as error:
+            self.stderr.close()
+            raise CodexRequestError(f'Cannot start Codex: {error}') from error
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.writer = threading.Thread(target=self._write, daemon=True)
+        self.reader.start()
+        self.writer.start()
+
+    def _read(self) -> None:
+        try:
+            for line in self.process.stdout:
+                message = json.loads(line)
+                if not isinstance(message, dict):
+                    raise ValueError('Expected a JSON-RPC object.')
+                self.incoming.put(message)
+        except (OSError, ValueError) as error:
+            self.incoming.put(CodexRequestError(f'Invalid Codex response: {error}'))
+        finally:
+            self.incoming.put(CodexRequestError('Codex App Server exited before completion.'))
+
+    def _write(self) -> None:
+        try:
+            while True:
+                message = self.outgoing.get()
+                if message is None:
+                    break
+                self.process.stdin.write(json.dumps(message, ensure_ascii=False) + '\n')
+                self.process.stdin.flush()
+        except (OSError, ValueError) as error:
+            self.incoming.put(CodexRequestError(f'Codex connection closed: {error}'))
+        finally:
+            with suppress(OSError):
+                self.process.stdin.close()
+
+    def close(self) -> None:
+        if self.login_id and self.process.poll() is None:
+            self.send('account/login/cancel', {'loginId': self.login_id})
+        if self.thread_id and self.turn_id and self.process.poll() is None:
+            self.send('turn/interrupt', {'threadId': self.thread_id, 'turnId': self.turn_id})
+        # EOF normally shuts down Codex. npm launchers own a native child, so a
+        # stalled launcher must be terminated together with its process tree.
+        self.outgoing.put(None)
+        try:
+            self.process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            if os.name == 'nt':
+                subprocess.run(
+                    ['taskkill', '/PID', str(self.process.pid), '/T', '/F'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=subprocess.CREATE_NO_WINDOW, timeout=5,
+                )
+            else:
+                with suppress(ProcessLookupError):
+                    os.killpg(self.process.pid, signal.SIGKILL)
+            self.process.wait()
+        self.reader.join(timeout=1)
+        self.writer.join(timeout=1)
+        self.process.stdout.close()
+        self.stderr.close()
+
+
+
 def _start_codex_session(profile: LLMProfile, cwd: str,
                          stop_event: Optional[threading.Event]) -> _CodexSession:
     if stop_event is not None and stop_event.is_set():
         raise LLMRequestStopped()
     if type(profile.codex_timeout) is not int or not 1 <= profile.codex_timeout <= 86400:
         raise CodexRequestError('Codex Timeout must be between 1 and 86400 seconds.')
+    if profile.codex_execution not in CODEX_EXECUTION_OPTIONS:
+        raise CodexRequestError('Select Python SDK or CLI for Codex Execution.')
     configured_executable = profile.codex_executable.strip()
     executable = None
-    if configured_executable not in ('', 'codex'):
-        executable = shutil.which(configured_executable)
+    if profile.codex_execution == 'CLI' or configured_executable not in ('', 'codex'):
+        executable = shutil.which(configured_executable or 'codex')
         if not executable:
-            raise CodexRequestError('Codex Executable was not found. Use codex for the bundled SDK runtime.')
-    session = _CodexSession(executable, cwd, profile.codex_timeout, stop_event)
+            raise CodexRequestError('Codex Executable was not found. Install Codex CLI and set its executable path, or select Python SDK with codex for the bundled runtime.')
+    session_type = _CodexCLISession if profile.codex_execution == 'CLI' else _CodexSession
+    session = session_type(executable, cwd, profile.codex_timeout, stop_event)
     try:
         session.call('initialize', {
             'clientInfo': {'name': 'ballontranslator', 'version': '1.0'},
@@ -316,6 +433,16 @@ class CodexSessionPool:
 
     @contextmanager
     def session(self, profile: LLMProfile, stop_event: Optional[threading.Event]) -> Iterator[Tuple[_CodexSession, str]]:
+        # Preserve the original CLI lifecycle: one owned process per request.
+        # CLI sessions never enter the SDK pool, including after a mode switch.
+        if profile.codex_execution == 'CLI':
+            with tempfile.TemporaryDirectory(prefix='ballontranslator-codex-') as cwd:
+                session = _start_codex_session(profile, cwd, stop_event)
+                try:
+                    yield session, cwd
+                finally:
+                    session.close()
+            return
         key = (profile.codex_executable, os.environ.get('CODEX_HOME'))
         with self.lock:
             index = next((i for i, item in enumerate(self.idle) if item[0] == key), None)
@@ -386,11 +513,12 @@ def authenticate_codex(profile: LLMProfile, method: str = 'reuse', api_key: str 
                 started = session.call('account/login/start', params)
                 if method != 'apiKey':
                     session.login_id = started['loginId']
-                    session.client.register_login_notifications(session.login_id)
-                    session.reader = threading.Thread(
-                        target=session._notifications, args=(session.login_id, True), daemon=True,
-                    )
-                    session.reader.start()
+                    if profile.codex_execution == 'Python SDK':
+                        session.client.register_login_notifications(session.login_id)
+                        session.reader = threading.Thread(
+                            target=session._notifications, args=(session.login_id, True), daemon=True,
+                        )
+                        session.reader.start()
                     if on_challenge is not None:
                         on_challenge({
                             'url': started.get('authUrl') or started['verificationUrl'],

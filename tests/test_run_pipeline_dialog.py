@@ -195,6 +195,27 @@ class RunPipelineDialogTests(unittest.TestCase):
         ) = self._llm_ocr_settings
         self._save_config_patcher.stop()
 
+    def test_jev_provider_selection_persists_in_config(self) -> None:
+        with patch.object(pcfg.module, 'ocr_jev_provider', 'typesafe'):
+            dialog = RunPipelineDialog()
+            try:
+                self.assertEqual(dialog.jev_provider_combobox.currentData(), 'typesafe')
+                self.assertTrue(dialog.jev_provider_combobox.isEnabled())
+                for provider in ('openrouter', 'typesafe', 'openrouter'):
+                    dialog.jev_provider_combobox.setCurrentIndex(
+                        dialog.jev_provider_combobox.findData(provider)
+                    )
+                    self.assertEqual(pcfg.module.ocr_jev_provider, provider)
+                dialog.accept()
+                self.save_config_mock.assert_called()
+                reopened = RunPipelineDialog()
+                try:
+                    self.assertEqual(reopened.jev_provider_combobox.currentData(), 'openrouter')
+                finally:
+                    reopened.deleteLater()
+            finally:
+                dialog.deleteLater()
+
     def test_ocr_text_postprocess_radio_buttons_update_module_config(self):
         pcfg.module.ocr_text_postprocess = OCRTextPostprocess.CAPITALIZE
         dialog = RunPipelineDialog()

@@ -52,6 +52,7 @@ CODEX_MODEL_REASONING_EFFORTS = {
 }
 VISION_DETAIL_LEVEL_OPTIONS = ["None", "auto", "low", "high"]
 LLM_TRANSPORT_OPTIONS = ['OpenAI-compatible', 'Codex App Server']
+CODEX_EXECUTION_OPTIONS = ['Python SDK', 'CLI']
 PROVIDER_ALIASES = {
     "Google": "Gemini",
 }
@@ -213,8 +214,9 @@ class LLMProfile(Config):
     title_url: str = ""
     built_in: bool = False
     transport: str = 'OpenAI-compatible'
+    codex_execution: str = 'Python SDK'
     codex_executable: str = 'codex'
-    codex_timeout: int = 180
+    codex_timeout: int = 30
     codex_save_sessions: bool = False
     base_url: str = ""
     api_key: Any = ""
@@ -400,10 +402,11 @@ def profile_from_config(profile: Any) -> LLMProfile:
         raise TypeError(f"Unsupported LLM profile config: {type(profile)!r}")
     for key, valid, default in (
         ('transport', loaded.transport in LLM_TRANSPORT_OPTIONS, 'OpenAI-compatible'),
+        ('codex_execution', loaded.codex_execution in CODEX_EXECUTION_OPTIONS, 'Python SDK'),
         ('codex_executable', isinstance(loaded.codex_executable, str)
          and bool(loaded.codex_executable.strip()), 'codex'),
         ('codex_timeout', type(loaded.codex_timeout) is int
-         and 1 <= loaded.codex_timeout <= 86400, 180),
+         and 1 <= loaded.codex_timeout <= 86400, 30),
         ('codex_save_sessions', type(loaded.codex_save_sessions) is bool, False),
     ):
         if not valid:

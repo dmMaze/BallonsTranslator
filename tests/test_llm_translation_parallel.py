@@ -1,5 +1,11 @@
 import os
 import threading
+import tempfile
+import time
+from pathlib import Path
+from types import SimpleNamespace
+
+from PIL import Image
 import unittest
 from copy import deepcopy
 from unittest import mock
@@ -133,6 +139,7 @@ class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
     def test_capacity_cooldown_preserves_active_work_and_delays_new_pages(self) -> None:
         worker = self._worker()
         self.translator.set_param_value('retry attempts', 2)
+        self.translator.set_param_value('retry timeout', 7)
         first_started = threading.Event()
         cooldown_started = threading.Event()
         both_waiting = threading.Event()
@@ -148,7 +155,7 @@ class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
                 if len(waits) == 2:
                     both_waiting.set()
             self.assertTrue(both_waiting.wait(3), 'new page bypassed the shared cooldown')
-            clock[0] = 1060.0
+            clock[0] = 1007.0
 
         def request(_profile, args: dict, _stop) -> LLMChatResult:
             number = next(i for i in calls if f'source-{i}' in str(args['messages']))
@@ -160,16 +167,15 @@ class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
                 self.assertTrue(first_started.wait(3))
                 raise CodexBusyError('Selected model is at capacity', {'total_tokens': 2})
             else:
-                self.assertGreaterEqual(clock[0], 1060.0)
+                self.assertGreaterEqual(clock[0], 1007.0)
             return LLMChatResult('{"1":"translated-%d"}' % number, {'total_tokens': 3})
 
         with mock.patch('ballontranslator.modules.llm_chat.time.monotonic', side_effect=lambda: clock[0]), \
-                mock.patch('ballontranslator.modules.llm_chat.random.uniform', return_value=0), \
                 mock.patch.object(self.translator, '_wait', side_effect=wait), \
                 mock.patch('ballontranslator.modules.llm_codex.request_codex_completion', side_effect=request):
             worker._run_translate_pipeline()
 
-        self.assertEqual(waits, [60.0, 60.0])
+        self.assertEqual(waits, [7.0, 7.0])
         self.assertEqual(calls, {1: 1, 2: 2, 3: 1})
         self.assertEqual(worker.finished_counter, 3)
         self.assertFalse(worker.pipeline_stop_event.is_set())
@@ -309,6 +315,72 @@ class LLMParallelTranslationTest(LLMTranslationTestMixin, unittest.TestCase):
             self.assertFalse(pipeline.translate_finished())
             worker.finished_counter = 3
             self.assertTrue(pipeline.translate_finished())
+
+    def test_unreadable_image_stops_active_requests_and_finishes_pipeline(self) -> None:
+        for workers in ('1', '3'):
+            with self.subTest(workers=workers), tempfile.TemporaryDirectory() as directory:
+                self.translator.set_param_value('codex parallel requests', workers)
+                project = self._project(3)
+                project.directory = directory
+                Image.new('RGB', (8, 8)).save(Path(directory) / '001.png')
+                broken = Path(directory) / '002.png'
+                broken.write_bytes(b'error code: 522')
+                worker = module_manager.TranslateThread()
+                worker.translator = self.translator
+                pipeline = module_manager.ImgtransThread(
+                    SimpleNamespace(), SimpleNamespace(ocr=None), worker, SimpleNamespace(inpainter=None),
+                )
+                started, closed = threading.Event(), threading.Event()
+                stopped = mock.Mock()
+                pipeline.pipeline_stopped.connect(stopped)
+                read_img = project.read_img
+
+                def read(page_key):
+                    if page_key == '002.png':
+                        self.assertTrue(started.wait(3), 'first request did not start')
+                    return read_img(page_key)
+
+                def request(_profile, _args, stop, **kwargs):
+                    started.set()
+                    try:
+                        self.assertTrue(stop.wait(3), 'image failure did not cancel request')
+                        raise LLMRequestStopped()
+                    finally:
+                        closed.set()
+
+                with mock.patch.object(project, 'read_img', side_effect=read) as reader, \
+                        mock.patch.object(module_manager, 'create_error_dialog') as error, \
+                        mock.patch.object(pcfg.module, 'enable_detect', False), \
+                        mock.patch.object(pcfg.module, 'enable_ocr', False), \
+                        mock.patch.object(pcfg.module, 'enable_inpaint', False), \
+                        mock.patch.object(pcfg.module, 'enable_translate', True), \
+                        mock.patch('ballontranslator.modules.llm_codex.request_codex_completion', side_effect=request):
+                    try:
+                        pipeline.runImgtransPipeline(project)
+                        deadline = time.monotonic() + 3
+                        while not stopped.called and time.monotonic() < deadline:
+                            self.app.processEvents()
+                            time.sleep(.01)
+                        self.assertTrue(stopped.called, 'failed pipeline remained stuck')
+                        self.assertFalse(pipeline.isRunning())
+                        self.assertFalse(worker.isRunning())
+                        self.assertTrue(closed.is_set())
+                        self.assertTrue(pipeline.isStopRequested())
+                        self.assertFalse(any(
+                            info['finish_code'] & RunStatus.FIN_TRANSLATE
+                            for info in project._image_info.values()
+                        ))
+                        self.assertEqual(reader.call_args_list, [mock.call('001.png'), mock.call('002.png')])
+                        error.assert_called_once()
+                        self.assertIsInstance(error.call_args.args[0], OSError)
+                        self.assertIn(str(broken), str(error.call_args.args[0]))
+                        self.assertEqual(broken.read_bytes(), b'error code: 522')
+                    finally:
+                        pipeline.requestStop()
+                        pipeline.wait(4000)
+                        worker.wait(4000)
+                        self.app.processEvents()
+                stopped.assert_called_once_with()
 
 
 if __name__ == '__main__':
