@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import numpy as np
-from qtpy.QtCore import QCoreApplication, QEvent, QPointF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt
 from qtpy.QtGui import QColor, QKeySequence, QMouseEvent
 from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import QApplication, QHBoxLayout, QShortcut, QWidget
@@ -431,6 +431,76 @@ class ShapeFillTests(unittest.TestCase):
             self.assertEqual(config.shape_fill_shape, 'rectangle')
             self.assertEqual(config.shape_fill_color, '#ffffff')
             self.assertEqual(config.pentool_width, 42)
+
+    def test_border_draws_inside_shape_and_preview_matches(self) -> None:
+        shape_panel = self.panel.shapePanel
+        self.assertFalse(shape_panel.borderWidthSlider.isEnabled())
+        shape_panel.borderChecker.setChecked(True)
+        self.assertTrue(shape_panel.borderWidthSlider.isEnabled())
+        shape_panel.borderWidthSpinBox.setValue(4)
+        self.assertEqual(shape_panel.borderWidthSlider.value(), 4)
+        with patch('qtpy.QtWidgets.QColorDialog.getColor', return_value=QColor('#102030')):
+            QTest.mouseClick(shape_panel.borderColorPicker, Qt.MouseButton.LeftButton)
+        before = self.rendered()
+        self.drag(QPointF(20, 20), QPointF(80, 80), release=False)
+        border_preview = self.canvas.shape_border_preview
+        self.assertTrue(border_preview.isVisible())
+        self.assertEqual(border_preview.brush().color(), QColor('#102030'))
+        self.assertEqual(border_preview.path().boundingRect(), QRectF(20, 20, 60, 60))
+        np.testing.assert_array_equal(self.rendered(), before)
+        QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.LeftButton,
+                           pos=self.canvas.gv.mapFromScene(QPointF(80, 80)))
+        pixels = self.rendered()
+        np.testing.assert_array_equal(pixels[50, 21], (16, 32, 48, 255))
+        np.testing.assert_array_equal(pixels[23, 50], (16, 32, 48, 255))
+        np.testing.assert_array_equal(pixels[50, 25], (224, 40, 70, 255))
+        np.testing.assert_array_equal(pixels[50, 19], (180, 180, 180, 255))
+        self.assertEqual(self.canvas.draw_undo_stack.count(), 1)
+        self.canvas.undo()
+        np.testing.assert_array_equal(self.rendered(), before)
+
+    def test_border_without_fill_and_eraser_ignores_border(self) -> None:
+        self.panel.shapePanel.borderChecker.setChecked(True)
+        self.panel.shapePanel.alphaSlider.setValue(0)
+        self.drag(QPointF(20, 20), QPointF(80, 80))
+        pixels = self.rendered()
+        np.testing.assert_array_equal(pixels[50, 21], (0, 0, 0, 255))
+        np.testing.assert_array_equal(pixels[50, 50], (180, 180, 180, 255))
+        self.drag(QPointF(10, 10), QPointF(90, 90), release=False,
+                  button=Qt.MouseButton.RightButton)
+        self.assertFalse(self.canvas.shape_border_preview.isVisible())
+        QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.RightButton,
+                           pos=self.canvas.gv.mapFromScene(QPointF(90, 90)))
+        np.testing.assert_array_equal(self.rendered()[50, 21], (180, 180, 180, 255))
+
+    def test_border_settings_persist_and_invalid_values_are_discarded(self) -> None:
+        shape_panel = self.panel.shapePanel
+        shape_panel.borderChecker.setChecked(True)
+        shape_panel.borderWidthSpinBox.setValue(12)
+        config = DrawPanelConfig(**json.loads(json.dumps(asdict(pcfg.drawpanel))))
+        self.assertTrue(config.shape_border_enabled)
+        self.assertEqual(config.shape_border_width, 12)
+        shape_panel.borderChecker.setChecked(False)
+        shape_panel.borderWidthSpinBox.setValue(3)
+        self.panel.set_config(config)
+        self.assertTrue(shape_panel.borderChecker.isChecked())
+        self.assertEqual(shape_panel.borderWidthSlider.value(), 12)
+        self.assertEqual(shape_panel.borderWidthSpinBox.value(), 12)
+        old = DrawPanelConfig()
+        self.assertEqual(
+            (old.shape_border_enabled, old.shape_border_width, old.shape_border_color),
+            (False, 5, '#000000'),
+        )
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            config = DrawPanelConfig(
+                shape_border_enabled='yes', shape_border_width=0,
+                shape_border_color='black', pentool_width=42,
+            )
+        self.assertEqual(
+            (config.shape_border_enabled, config.shape_border_width, config.shape_border_color),
+            (False, 1, '#000000'),
+        )
+        self.assertEqual(config.pentool_width, 42)
 
 
 if __name__ == '__main__':

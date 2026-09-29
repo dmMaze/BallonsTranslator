@@ -4,7 +4,7 @@ import cv2
 
 from qtpy.QtCore import QRectF, Qt, QPointF, QSize
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsItem
-from qtpy.QtGui import QPen, QPainter, QPainterPath, QPixmap, QImage, QBrush, QPolygonF
+from qtpy.QtGui import QPen, QPainter, QPainterPath, QPainterPathStroker, QPixmap, QImage, QBrush, QPolygonF
 
 from .misc import pixmap2ndarray
 
@@ -33,6 +33,26 @@ def shape_fill_path(rect: QRectF, shape: str) -> QPainterPath:
     else:
         raise ValueError(f'Unknown fill shape: {shape!r}')
     return path
+
+
+def shape_border_path(rect: QRectF, shape: str, width: float) -> QPainterPath:
+    """Return the border ring drawn inside the shape outline.
+
+    The border stays inside the dragged rectangle, so enabling it never grows
+    the committed bounds and the preview matches the saved pixels.
+
+    >>> ring = shape_border_path(QRectF(0, 0, 20, 20), 'rectangle', 4)
+    >>> ring.contains(QPointF(1, 10)), ring.contains(QPointF(10, 10))
+    (True, False)
+    """
+    outline = shape_fill_path(rect, shape)
+    if width <= 0:
+        return QPainterPath()
+    stroker = QPainterPathStroker()
+    # The stroke is centred on the outline; keep only its inner half.
+    stroker.setWidth(width * 2)
+    stroker.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+    return stroker.createStroke(outline).intersected(outline)
 
 class PenShape:
     Circle = 0

@@ -25,7 +25,7 @@ from .text_engine.transforms.grid_control import TextGridTransformControl
 from .text_engine.transforms.projective_control import TextProjectiveTransformControl
 from .text_engine.effects.alpha_mask_edit_session import TextAlphaMaskEditSession
 from .custom_widget import ScrollBar, FadeLabel
-from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem, PenShape, shape_fill_path
+from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem, PenShape, shape_border_path, shape_fill_path
 from .page_search_widget import PageSearchWidget
 from .text_engine.editing.commands import MoveByKeyCommand
 from .text_engine.editing.move_session import TextItemMoveSession
@@ -359,6 +359,11 @@ class Canvas(QGraphicsScene):
         self.shape_fill_preview.setPen(QPen(Qt.PenStyle.NoPen))
         self.shape_fill_preview.setZValue(20)
         self.shape_fill_preview.hide()
+        # Child of the fill preview so it shares its visibility and lifetime.
+        self.shape_border_preview = QGraphicsPathItem(self.shape_fill_preview)
+        self.shape_border_preview.setData(CONTROL_ITEM_DATA_KEY, True)
+        self.shape_border_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.shape_border_preview.setPen(QPen(Qt.PenStyle.NoPen))
         self.brush_line_preview = QGraphicsLineItem(self.baseLayer)
         self.brush_line_preview.setData(CONTROL_ITEM_DATA_KEY, True)
         self.brush_line_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -1206,9 +1211,12 @@ class Canvas(QGraphicsScene):
             
         elif self._shape_fill_origin is not None:
             rect = QRectF(self._shape_fill_origin, self.baseLayer.mapFromScene(event.scenePos()))
-            self.shape_fill_preview.setPath(
-                shape_fill_path(rect, pcfg.drawpanel.shape_fill_shape)
-            )
+            config = pcfg.drawpanel
+            self.shape_fill_preview.setPath(shape_fill_path(rect, config.shape_fill_shape))
+            if self.shape_border_preview.isVisible():
+                self.shape_border_preview.setPath(
+                    shape_border_path(rect, config.shape_fill_shape, config.shape_border_width)
+                )
             event.accept()
             return
 
@@ -1371,6 +1379,11 @@ class Canvas(QGraphicsScene):
                     self.shape_fill_preview.setPen(pen if erasing else QPen(Qt.PenStyle.NoPen))
                     self.shape_fill_preview.setBrush(
                         QBrush(Qt.BrushStyle.NoBrush) if erasing else QBrush(color)
+                    )
+                    self.shape_border_preview.setPath(QPainterPath())
+                    self.shape_border_preview.setBrush(QColor(pcfg.drawpanel.shape_border_color))
+                    self.shape_border_preview.setVisible(
+                        not erasing and pcfg.drawpanel.shape_border_enabled
                     )
                     self.shape_fill_preview.show()
                 event.accept()

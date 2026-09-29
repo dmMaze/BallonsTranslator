@@ -6802,6 +6802,26 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <source>Alpha</source>
         <translation>Átlátszóság</translation>
     </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="497"/>
+        <source>Border</source>
+        <translation>Keret</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="498"/>
+        <source>Draw a border inside the shape outline</source>
+        <translation>Keret rajzolása az alakzat szélén belül</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="511"/>
+        <source>Border Width</source>
+        <translation>Keret szélessége</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="516"/>
+        <source>Border Color</source>
+        <translation>Keret színe</translation>
+    </message>
 </context>
 <context>
     <name>FloatingSuggestionLabel</name>

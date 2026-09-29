@@ -23,7 +23,7 @@ from .funcmaps import get_maskseg_method
 from .module_manager import ModuleManager
 from .module_tool_button import ModuleSelectionMenu, ModuleSelectionToolButton
 from .llm_modality import LLM_MODALITY_IMAGE
-from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_fill_path
+from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_border_path, shape_fill_path
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
 from .misc import ndarray2pixmap, themed_icon_path
@@ -493,7 +493,64 @@ class ShapeFillPanel(Widget):
         self.alphaSlider.valueChanged.connect(self.on_alpha_changed)
         layout.addWidget(ToolNameLabel(100, self.tr('Alpha')), 2, 0)
         layout.addWidget(self.alphaSlider, 2, 1)
+
+        self.borderChecker = QCheckBox(self.tr('Border'), self)
+        self.borderChecker.setToolTip(self.tr('Draw a border inside the shape outline'))
+        self.borderChecker.setChecked(pcfg.drawpanel.shape_border_enabled)
+        self.borderChecker.toggled.connect(self.on_border_enabled_changed)
+        layout.addWidget(self.borderChecker, 3, 0, 1, 2)
+        (
+            self.borderWidthSlider,
+            self.borderWidthSpinBox,
+            border_width_layout,
+        ) = _create_thickness_control(self)
+        self.borderWidthSlider.setValue(pcfg.drawpanel.shape_border_width)
+        self.borderWidthSpinBox.setValue(pcfg.drawpanel.shape_border_width)
+        self.borderWidthSlider.valueChanged.connect(self.on_border_width_changed)
+        self.borderWidthSpinBox.valueChanged.connect(self.on_border_width_changed)
+        self.borderWidthLabel = ToolNameLabel(100, self.tr('Border Width'))
+        layout.addWidget(self.borderWidthLabel, 4, 0)
+        layout.addLayout(border_width_layout, 4, 1)
+        self.borderColorPicker = ColorPickerLabel(self)
+        self.borderColorPicker.setPickerColor(QColor(pcfg.drawpanel.shape_border_color))
+        self.borderColorPicker.setToolTip(self.tr('Border Color'))
+        self.borderColorPicker.colorChanged.connect(self.on_border_color_changed)
+        self.borderColorLabel = ToolNameLabel(100, self.tr('Border Color'))
+        layout.addWidget(self.borderColorLabel, 5, 0)
+        layout.addWidget(self.borderColorPicker, 5, 1, Qt.AlignmentFlag.AlignLeft)
         layout.setVerticalSpacing(14)
+        self.sync_border_controls()
+
+    def sync_border_controls(self) -> None:
+        enabled = self.borderChecker.isChecked()
+        for widget in (
+            self.borderWidthLabel, self.borderWidthSlider, self.borderWidthSpinBox,
+            self.borderColorLabel, self.borderColorPicker,
+        ):
+            widget.setEnabled(enabled)
+
+    def on_border_enabled_changed(self, checked: bool) -> None:
+        pcfg.drawpanel.shape_border_enabled = checked
+        self.sync_border_controls()
+
+    def on_border_width_changed(self, value: int) -> None:
+        # Mirror the pen thickness pair: either editor updates the other.
+        if self.sender() is self.borderWidthSlider:
+            with QSignalBlocker(self.borderWidthSpinBox):
+                self.borderWidthSpinBox.setValue(value)
+        else:
+            with QSignalBlocker(self.borderWidthSlider):
+                self.borderWidthSlider.setValue(value)
+        pcfg.drawpanel.shape_border_width = value
+
+    def on_border_color_changed(self, valid: bool) -> None:
+        if valid:
+            pcfg.drawpanel.shape_border_color = self.borderColorPicker.color.name()
+
+    def set_border_width(self, value: int) -> None:
+        with QSignalBlocker(self.borderWidthSlider), QSignalBlocker(self.borderWidthSpinBox):
+            self.borderWidthSlider.setValue(value)
+            self.borderWidthSpinBox.setValue(value)
 
     def on_alpha_changed(self, value: int) -> None:
         pcfg.drawpanel.shape_fill_alpha = value
@@ -1103,6 +1160,9 @@ class DrawingPanel(Widget):
         )
         self.shapePanel.colorPicker.setPickerColor(QColor(config.shape_fill_color))
         self.shapePanel.alphaSlider.setValue(config.shape_fill_alpha)
+        self.shapePanel.borderChecker.setChecked(config.shape_border_enabled)
+        self.shapePanel.set_border_width(config.shape_border_width)
+        self.shapePanel.borderColorPicker.setPickerColor(QColor(config.shape_border_color))
         if config.current_tool == ImageEditMode.HandTool:
             self.handTool.setChecked(True)
         elif config.current_tool == ImageEditMode.InpaintTool:
@@ -1464,10 +1524,13 @@ class DrawingPanel(Widget):
         bounds = rect.intersected(self.canvas.baseLayer.rect()).toAlignedRect()
         if rect.isEmpty() or bounds.isEmpty():
             return
-        color = QColor(pcfg.drawpanel.shape_fill_color)
+        config = pcfg.drawpanel
+        color = QColor(config.shape_fill_color)
         # Match the pen eraser: fill opacity does not weaken erasing.
-        color.setAlpha(255 if erasing else pcfg.drawpanel.shape_fill_alpha)
-        if color.alpha() == 0:
+        color.setAlpha(255 if erasing else config.shape_fill_alpha)
+        # Erasing clears the whole shape, so the border only applies to fills.
+        border = not erasing and config.shape_border_enabled
+        if color.alpha() == 0 and not border:
             return
         image = QImage(bounds.size(), QImage.Format.Format_ARGB32_Premultiplied)
         image.fill(Qt.GlobalColor.transparent)
@@ -1476,10 +1539,14 @@ class DrawingPanel(Widget):
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.translate(-bounds.x(), -bounds.y())
             # Clip the raster, not the ellipse bounds, at page edges.
-            painter.fillPath(
-                shape_fill_path(rect, pcfg.drawpanel.shape_fill_shape),
-                color,
-            )
+            if color.alpha() > 0:
+                painter.fillPath(shape_fill_path(rect, config.shape_fill_shape), color)
+            if border:
+                # Paint over the fill to avoid antialiased seams between them.
+                painter.fillPath(
+                    shape_border_path(rect, config.shape_fill_shape, config.shape_border_width),
+                    QColor(config.shape_border_color),
+                )
         finally:
             painter.end()
         command = StrokeItemUndoCommand(
