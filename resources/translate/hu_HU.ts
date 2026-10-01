@@ -2,6 +2,158 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="hu_HU" sourcelanguage="en_US">
 <context>
+    <name>CodexSettingsPanel</name>
+    <message>
+        <source>Add image model</source>
+        <translation>Kép modell hozzáadása</translation>
+    </message>
+    <message>
+        <source>Image model name</source>
+        <translation>Kép modell neve</translation>
+    </message>
+    <message>
+        <source>Delete image model and its combinations</source>
+        <translation>Kép modell és kombinációinak törlése</translation>
+    </message>
+    <message>
+        <source>Choose an image model directly, or a GPT → GPT Image combination for assisted editing. Use + to add an image model ID. Availability is checked when used.</source>
+        <translation>Válassz ki közvetlenül egy képmodellt, vagy egy GPT → GPT Image kombinációt az automatizált szerkesztéshez. A + gombbal adhatsz hozzá képmodell ID-t. A használatkor a rendszer ellenőrzi a rendelkezésre állást.</translation>
+    </message>
+    <message>
+        <source>Invalid image model</source>
+        <translation>Érvénytelen képmodell</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID, or choose a GPT → GPT Image combination from the list.</source>
+        <translation>Írd be a képmodell azonosítóját, vagy válassz egy GPT → GPT Image kombinációt a listából.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="67"/>
+        <source>Sign in</source>
+        <translation>Belépés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="68"/>
+        <source>Sign out</source>
+        <translation>Kilépés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="69"/>
+        <source>Cancel</source>
+        <translation>Mégsem</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="79"/>
+        <source>Refresh models</source>
+        <translation>Modellek frissítése</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="80"/>
+        <source>Refresh models from your ChatGPT account.</source>
+        <translation>Modellek frissítése a te ChatGPT fiókodból.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="87"/>
+        <source>Text</source>
+        <translation>Szöveg</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="88"/>
+        <source>Vision</source>
+        <translation>Vision</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="89"/>
+        <source>Image</source>
+        <translation>Kép</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="136"/>
+        <source>Reasoning level</source>
+        <translation>Érvelési szint</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="137"/>
+        <source>Auto uses the provider default. Disabled requests no reasoning; explicit levels set the reasoning effort.</source>
+        <translation>Az „Auto” beállítás a szolgáltató alapértelmezett értékét használja. A „Letiltva” beállítás nem fog érvelni; a megadott szintek határozzák meg az érvelés mértékét.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="138"/>
+        <source>Vision detail level</source>
+        <translation>Vision részletességi szint</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="139"/>
+        <source>Image detail level sent to the vision model.</source>
+        <translation>A Vision modellnek továbbított kép részletességi szintje.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="140"/>
+        <source>Translation prompt</source>
+        <translation>Fordítás promptja</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="141"/>
+        <source>Additional translation instructions for style and wording.</source>
+        <translation>További fordítási útmutatások a stílushoz és a fogalmazáshoz.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="142"/>
+        <source>OCR prompt</source>
+        <translation>OCR prompt</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="143"/>
+        <source>Instructions sent to the vision model for OCR.</source>
+        <translation>Elküldött utasítások a Vision OCR modelljéhez.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="144"/>
+        <source>Inpainting prompt</source>
+        <translation>Belefestés prompt</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="145"/>
+        <source>Instructions sent to the image model for cleanup.</source>
+        <translation>Elküldött utasítások a tisztítás képmodelljéhez.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="172"/>
+        <source>Models</source>
+        <translation>Modellek</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="173"/>
+        <source>Request settings</source>
+        <translation>Kérés beállításai</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="199"/>
+        <source>Sign out of Codex</source>
+        <translation>Kilépés a Codex-ből</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="199"/>
+        <source>Sign out of your ChatGPT account?</source>
+        <translation>Kijelentkezel a ChatGPT fiókódból?</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="209"/>
+        <source>Connected: {account}</source>
+        <translation>Kapcsolódva: {account}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="240"/>
+        <source>Select a model</source>
+        <translation>Válassz modellt</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_settings.py" line="241"/>
+        <source>Using default models. Sign in and refresh for available account models.</source>
+        <translation>Alapértelmezett modellek használata. Lépj be, majd frissítsd az oldalt a rendelkezésre álló fiókmodellek listázáshoz.</translation>
+    </message>
+</context>
+<context>
     <name>AddWordItemWidget</name>
     <message>
         <location filename="../../ballontranslator/ui/spellcheck.py" line="643"/>
@@ -102,6 +254,11 @@
         <location filename="../../ballontranslator/ui/mainwindowbars.py" line="685"/>
         <source>Text layer opacity</source>
         <translation>Szöveg réteg átlátszóság</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="631"/>
+        <source>Editing layer opacity</source>
+        <translation>Réteg átlátszóság szerkesztése</translation>
     </message>
     <message>
         <source>Enable/disable ocr</source>
@@ -453,6 +610,31 @@
         <translation>Huggingface tükör szerverek</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="366"/>
+        <source>DL Module</source>
+        <translation>DL modul</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="369"/>
+        <source>Text Detection</source>
+        <translation>Szövegfelismerés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="371"/>
+        <source>Inpaint</source>
+        <translation>Belefestés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="373"/>
+        <source>Startup &amp; Updates</source>
+        <translation>Indítás és frissítés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="375"/>
+        <source>Save</source>
+        <translation>Mentés</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="473"/>
         <source>PyPI Mirrors</source>
         <translation>PyPI tükör szerverek</translation>
@@ -528,6 +710,11 @@
         <translation>A fordítás elosztása több sorra a kivont szövegbuborékrésznek megfelelően.</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="528"/>
+        <source>To uppercase</source>
+        <translation>Nagybetűsítés</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="531"/>
         <source>Independent text styles for each projects</source>
         <translation>Eltérő szövegstílus minden egyes projektnek</translation>
@@ -541,36 +728,6 @@
         <location filename="../../ballontranslator/ui/configpanel.py" line="906"/>
         <source>Hide Unused Fonts</source>
         <translation>Nem használt betűtípusok elrejtése</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="366"/>
-        <source>DL Module</source>
-        <translation>DL modul</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="369"/>
-        <source>Text Detection</source>
-        <translation>Szövegfelismerés</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="371"/>
-        <source>Inpaint</source>
-        <translation>Belefestés</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="373"/>
-        <source>Startup &amp; Updates</source>
-        <translation>Indítás és frissítés</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="375"/>
-        <source>Save</source>
-        <translation>Mentés</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/configpanel.py" line="528"/>
-        <source>To uppercase</source>
-        <translation>Nagybetűsítés</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/configpanel.py" line="909"/>
@@ -782,6 +939,11 @@
         <translation>Függőleges szövegelrendezés</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/configpanel.py" line="740"/>
+        <source>Codex</source>
+        <translation>Codex</translation>
+    </message>
+    <message>
         <source>Startup</source>
         <translation>Indulás</translation>
     </message>
@@ -874,6 +1036,32 @@
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="353"/>
         <source>Mask Opacity</source>
         <translation>Maszk átlátszatlanság</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="701"/>
+        <source>Shift-click to draw a straight line. Ctrl+Shift-click constrains it horizontally or vertically.</source>
+        <translation>A Shift billentyű plusz kattintással egyenes vonalat rajzolhatsz. A Ctrl+Shift billentyűkombinációval a vonalat vízszintesen vagy függőlegesen rajzolja.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="704"/>
+        <source>Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>Tartsd lenyomva a Ctrl billentyűt az ecsetvonások halmozásához; enged fel a Ctrl billentyűt a belefestéshez.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="709"/>
+        <source>Shape Fill: left-drag to fill, right-drag to erase</source>
+        <translation>Alakzat kitöltés: bal gombbal kitölt, jobbal töröl</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="710"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1488"/>
+        <source>Shape Fill</source>
+        <translation>Alakzat kitöltés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1488"/>
+        <source>Shape Erase</source>
+        <translation>Alakzat törlés</translation>
     </message>
     <message>
         <source>Mask Transparency</source>
@@ -1124,9 +1312,19 @@
 <context>
     <name>FontFormatPanel</name>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="817"/>
+        <source>Reload fonts</source>
+        <translation>Betűtípusok újratöltése</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_panel.py" line="262"/>
         <source>Font Family</source>
         <translation>Betűcsalád</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="884"/>
+        <source>Reload system fonts and fonts folder</source>
+        <translation>A rendszer betűtípusok és betűtípus könyvtárak újraolvasása</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_panel.py" line="267"/>
@@ -1286,6 +1484,94 @@
     <message>
         <source>Effect</source>
         <translation>Hatás</translation>
+    </message>
+</context>
+<context>
+    <name>FontRefreshController</name>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="118"/>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="216"/>
+        <source>Refreshing…</source>
+        <translation>Frissítés…</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="118"/>
+        <source>Refreshing fonts. Please wait.</source>
+        <translation>Betűtípusok frissítése. Kérem várjon.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="130"/>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="203"/>
+        <source>Failed</source>
+        <translation>Nem sikerült</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="130"/>
+        <source>The font registry is not initialized.</source>
+        <translation>A betűtípus nyilvántartó még nincs kész.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="193"/>
+        <source>Refreshed</source>
+        <translation>Frissítve</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="193"/>
+        <source>Check fonts</source>
+        <translation>Betűtípusok ellenőrzése</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="194"/>
+        <source>Font list refreshed: {count} families (+{added}, -{removed}) in {ms} ms.</source>
+        <translation>Betűtípus lista frissítve: {count} család (+{added}, -{removed}) {ms} ms alatt.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="203"/>
+        <source>Could not refresh fonts: {error}</source>
+        <translation>Nem lehet frissíteni a betűtípusokat: {error}</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="205"/>
+        <source>Could not refresh fonts. Please try again or restart the application.</source>
+        <translation>Nem lehet frissíteni a betűtípusokat. Próbáld meg újra vagy indítsd újra a programot.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="216"/>
+        <source>Another font refresh is pending.</source>
+        <translation>Egy másik betűtípus frissítés függőben van.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="221"/>
+        <source>Fontconfig could not reload its configuration. Check the font configuration and try again, or restart the application.</source>
+        <translation>A Fontconfig nem tudta újratölteni a beállításait. Ellenőrizzd a betűkészlet-beállításokat, majd próbáld újra, vagy indítsd újra a programot.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="223"/>
+        <source>Immediate system font refresh is unavailable and automatic rescanning is disabled. Restart the application to reload system fonts.</source>
+        <translation>A rendszerbetűkészletek azonnali frissítése nem elérhető, és az automatikus újraszkennelés le van tiltva. Indítsd újra a programot a rendszerbetűkészletek újratöltéséhez.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="225"/>
+        <source>Immediate system font refresh is unavailable. Try refreshing again after about {seconds} seconds; if fonts are still missing, restart the application.</source>
+        <translation>A rendszerbetűkészletek azonnali frissítése nem elérhető. Próbáld meg újra frissíteni körülbelül {seconds} másodperc múlva; ha a betűtípusok továbbra sem jelennek meg, indítsd újra a programot.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/font_refresh.py" line="227"/>
+        <source>Immediate system font refresh is unavailable. With the usual fontconfig settings, try again after about 30 seconds; if fonts are still missing, restart the application.</source>
+        <translation>A rendszerbetűkészletek azonnali frissítése nem elérhető. A szokásos fontconfig-beállítások mellett próbáld meg újra körülbelül 30 másodperc múlva; ha a betűtípusok továbbra sem jelennek meg, indítsd újra a programot.</translation>
+    </message>
+</context>
+<context>
+    <name>FontSizeDragLabel</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="463"/>
+        <source>Drag to resize text</source>
+        <translation>Ragadd meg a szöveg méretezéshez</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/formatting/panel.py" line="464"/>
+        <source>Resize text</source>
+        <translation>Szöveg méretezése</translation>
     </message>
 </context>
 <context>
@@ -1983,6 +2269,56 @@
         <translation>Belefestő</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="223"/>
+        <source>Tool Type</source>
+        <translation>Eszköz típus</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="226"/>
+        <source>Circle Brush</source>
+        <translation>Kör ecset</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="227"/>
+        <source>Rectangle Brush</source>
+        <translation>Négyzetes ecset</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="228"/>
+        <source>Magic Wand</source>
+        <translation>Varázspálca</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="239"/>
+        <source>Selection Mode</source>
+        <translation>Kiválasztás módja</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="242"/>
+        <source>Selection</source>
+        <translation>Kiválasztás</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243"/>
+        <source>Selection Interior</source>
+        <translation>Kijelölés belül</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="244"/>
+        <source>Selection + Interior</source>
+        <translation>Kijelölés + belső</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="251"/>
+        <source>Tolerance</source>
+        <translation>Tolerancia</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="259"/>
+        <source>Range</source>
+        <translation>Négyzet</translation>
+    </message>
+    <message>
         <source>pen thickness </source>
         <translation>ceruza vastagság</translation>
     </message>
@@ -1997,6 +2333,14 @@
 </context>
 <context>
     <name>InpainterSelectorRow</name>
+    <message>
+        <source>Prompt override</source>
+        <translation>Prompt felülírás</translation>
+    </message>
+    <message>
+        <source>Leave blank to use the selected profile’s inpainting prompt.</source>
+        <translation>Hagyd üresen a kiválasztott profil belefestés prompjának használatához.</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="74"/>
         <source>Inpainter</source>
@@ -2617,6 +2961,10 @@
 <context>
     <name>ModuleManager</name>
     <message>
+        <source>The drawing LLM profile is unavailable. Select a profile in the drawing panel.</source>
+        <translation>A rajzoló LLM profil nem elérhető. Válassz profilt a Rajzoló panelon.</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/module_manager.py" line="1188"/>
         <source>Preparing module: </source>
         <translation>Modul előkészítése.</translation>
@@ -2707,6 +3055,11 @@
         <translation>A kiválasztott modulok készen vannak.</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/module_manager.py" line="2382"/>
+        <source>Inpainting Failed.</source>
+        <translation>Belefestés nem sikerült.</translation>
+    </message>
+    <message>
         <source>Invalid</source>
         <translation>Érvénytelen</translation>
     </message>
@@ -2758,11 +3111,10 @@
         <translation>Max felbontás</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="35"/>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="110"/>
-        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="584"/>
-        <source>Proxy address used for the OpenAI-compatible client.</source>
-        <translation></translation>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="596"/>
+        <source>Proxy address used for LLM requests.</source>
+        <translation>Proxy cím felhasználása LLM kérésekhez.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="38"/>
@@ -3205,6 +3557,13 @@
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="35"/>
         <source>Proxy address used for the image request.</source>
         <translation>Proxy cím a képkérésekhez.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="35"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="110"/>
+        <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="584"/>
+        <source>Proxy address used for the OpenAI-compatible client.</source>
+        <translation></translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/_generated/module_param_dialog_i18n_catalog.py" line="41"/>
@@ -4221,7 +4580,7 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="410"/>
         <source>Image detail level sent to vision-capable providers.</source>
-        <translation></translation>
+        <translation>A kép részletességi szint elküldése a vision képes szolgáltatónak.</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="411"/>
@@ -4443,6 +4802,24 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <source>Required API key is missing.</source>
         <translation>Szükséges API kulcs hiányzik.</translation>
     </message>
+    <message>
+        <source>Delete current image model and all its reasoning combinations</source>
+        <translation>Az aktuális képmodell és az ahhoz tartozó összes következtető kombináció törlése</translation>
+    </message>
+    <message>
+        <source>Enter an image model ID. Reasoning combinations are added automatically from vision models.</source>
+        <translation>Add meg a képmodell ID-t. A következtető kombinációk automatikusan hozzáadódnak a vision modellekből.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="438"/>
+        <source>Use a plain name or [Name](https://example.com).</source>
+        <translation>Használj egyszerű nevet vagy [Name](https://example.com).</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/llm_profile_widgets.py" line="1001"/>
+        <source>Right click to edit the name or link.</source>
+        <translation>Jobb katintás a név vagy link szerkesztéséhez</translation>
+    </message>
 </context>
 <context>
     <name>ProgressMessageBox</name>
@@ -4476,6 +4853,18 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
 </context>
 <context>
     <name>RectPanel</name>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation>Jelöld be a „Maszk használata” jelölőnégyzetet a maszkolási módszer és a dilatáció módosításához.</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation>Maszk használata</translation>
+    </message>
+    <message>
+        <source>When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. Local inpainters treat the entire rectangle as masked.</source>
+        <translation>Ha ez a jelölőnégyzet nincs bejelölve, az LLM-alapú kitöltő algoritmusok nem kapnak maszkot, és a teljes téglalap tartalma kicserélődik. A lokális kitöltő algoritmusok a teljes téglalapot maszknak tekintik.</translation>
+    </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="197"/>
         <source>Dilate</source>
@@ -4756,11 +5145,6 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <translation>LLM kontextus</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="902"/>
-        <source>+history</source>
-        <translation>+történet</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="765"/>
         <source>Captialize</source>
         <translation>Kiskapitális</translation>
@@ -4769,6 +5153,11 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="766"/>
         <source>To Upper Case</source>
         <translation>Nagybetűsre</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="902"/>
+        <source>+history</source>
+        <translation>+történet</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="922"/>
@@ -5078,6 +5467,44 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="950"/>
         <source>Stroke Color</source>
         <translation>Körvonal szín</translation>
+    </message>
+</context>
+<context>
+    <name>SyntheticBoldEffectCard</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="693"/>
+        <source>Synthetic Bold</source>
+        <translation>Mesterséges félkövér</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="696"/>
+        <source>Expand glyphs before all other effects, without changing font weight or spacing. X and Y are percentages of font size.</source>
+        <translation>Az írásjeleket minden más effektus előtt bővítsd ki, anélkül, hogy megváltoztatnád a betűvastagságot vagy a betűközöket. Az X és Y értékek a betűméret százalékában vannak megadva.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="704"/>
+        <source>Synthetic Bold Shape</source>
+        <translation>Mesterséges félkövér alakzat</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="705"/>
+        <source>Rectangle</source>
+        <translation>Négyzet</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="706"/>
+        <source>Ellipse</source>
+        <translation>Elliptikus</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="724"/>
+        <source>X</source>
+        <translation>X</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="728"/>
+        <source>Y</source>
+        <translation>Y</translation>
     </message>
 </context>
 <context>
@@ -5415,6 +5842,11 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <translation>Efekt hozzáadása</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="184"/>
+        <source>Synthetic Bold</source>
+        <translation>Mesterséges félkövér</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/panel.py" line="193"/>
         <source>Stroke</source>
         <translation>Körvonal</translation>
@@ -5615,11 +6047,6 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <translation>Rákattintva globális formátum lesz. Kattintson duplán a név szerkesztéséhez. Húzza az elemeket a sorrend megváltoztatásához.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/text_style_presets.py" line="87"/>
-        <source>Click to set as Global format. Double click to edit name.</source>
-        <translation>Kattintson a gombra a Globális formátum beállításához. A név szerkesztéséhez kattintson duplán.</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/text_style_presets.py" line="99"/>
         <source>Apply Text Style</source>
         <translation>Szövegstílus alkalmazása</translation>
@@ -5633,6 +6060,11 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <location filename="../../ballontranslator/ui/text_style_presets.py" line="121"/>
         <source>Delete Style</source>
         <translation>Stílus törlése</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_style_presets.py" line="87"/>
+        <source>Click to set as Global format. Double click to edit name.</source>
+        <translation>Kattintson a gombra a Globális formátum beállításához. A név szerkesztéséhez kattintson duplán.</translation>
     </message>
 </context>
 <context>
@@ -6261,6 +6693,134 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="547"/>
         <source>Images (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</source>
         <translation>Képek (*.png *.jpg *.jpeg *.webp *.bmp *.jxl)</translation>
+    </message>
+</context>
+<context>
+    <name>CodexAccountController</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_account.py" line="124"/>
+        <source>Could not open the browser. Check your default browser settings and try signing in again.</source>
+        <translation>Nem tudom megnyitni a böngészőt. Ellenőrizd az alapértelmezett böngésző beállításaidat, és próbálj újra belépni.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_account.py" line="181"/>
+        <source>Codex</source>
+        <translation>Codex</translation>
+    </message>
+</context>
+<context>
+    <name>CodexAccountWorker</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_account.py" line="69"/>
+        <source>Codex could not connect. Check the network, then refresh or sign in again.</source>
+        <translation>A Codex nem kapcsolódik. Ellenőrizd a hálózatot és frissíts újra vagy jelentkezz be megint.</translation>
+    </message>
+</context>
+<context>
+    <name>CodexSignInButton</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="18"/>
+        <source>Sign in</source>
+        <translation>Belépés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="20"/>
+        <source>Sign in with ChatGPT</source>
+        <translation>Belépés ChatGPT-vel</translation>
+    </message>
+</context>
+<context>
+    <name>CodexSignInDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="37"/>
+        <source>Codex sign-in</source>
+        <translation>Codex belépés</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="57"/>
+        <source>Cancel</source>
+        <translation>Mégsem</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="61"/>
+        <source>Continue</source>
+        <translation>Folytatás</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="81"/>
+        <source>You are signed in to Codex.</source>
+        <translation>Beléptél a Codex-be.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="83"/>
+        <source>Your Codex sign-in is no longer valid. Please sign in again.</source>
+        <translation>A Codex belépésed már nem érvényes. Lépj be újra.</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/codex_sign_in.py" line="85"/>
+        <source>You need to sign in to use Codex.</source>
+        <translation>A Codex használatához be kell lépned.</translation>
+    </message>
+</context>
+<context>
+    <name>RefreshButton</name>
+    <message>
+        <location filename="../../ballontranslator/ui/custom_widget/push_button.py" line="29"/>
+        <source>Refresh</source>
+        <translation>Frissítés</translation>
+    </message>
+</context>
+<context>
+    <name>ShapeFillPanel</name>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="476"/>
+        <source>Rectangle</source>
+        <translation>Négyzet</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="477"/>
+        <source>Ellipse</source>
+        <translation>Elliptikus</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="481"/>
+        <source>Fill Color</source>
+        <translation>Kitöltő szín</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="486"/>
+        <source>Shape</source>
+        <translation>Alakzat</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="488"/>
+        <source>Color</source>
+        <translation>Szín</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="494"/>
+        <source>Alpha</source>
+        <translation>Átlátszóság</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="497"/>
+        <source>Border</source>
+        <translation>Keret</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="498"/>
+        <source>Draw a border inside the shape outline</source>
+        <translation>Keret rajzolása az alakzat szélén belül</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="511"/>
+        <source>Border Width</source>
+        <translation>Keret szélessége</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="516"/>
+        <source>Border Color</source>
+        <translation>Keret színe</translation>
     </message>
 </context>
 <context>
