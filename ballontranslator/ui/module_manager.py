@@ -1,6 +1,9 @@
 import threading
 import time
-from typing import Callable, List, Optional, Union
+from collections import deque
+from contextlib import ExitStack
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Callable, Dict, List, Optional, Union
 import os.path as osp
 
 import numpy as np
@@ -27,6 +30,8 @@ from ballontranslator.modules.exceptions import (
     ModuleRunError,
 )
 from ballontranslator.modules.base import BaseModule, soft_empty_cache
+from ballontranslator.modules.context.token_usage import LLMUsageTotals, format_run_token_usage
+from ballontranslator.modules.llm_chat import LLMChatRequester
 from ballontranslator.modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
     BaseTranslator, InpainterBase, TextDetectorBase, OCRBase, merge_config_module_params
@@ -47,7 +52,7 @@ from .configpanel import ConfigPanel
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.config import pcfg, RunStatus, save_config
 from ballontranslator.utils.llm_profiles import (
-    LLM_INPAINT_KEY, LLM_OCR_KEY, LLMProfile, profile_by_id, profile_from_config,
+    LLM_INPAINT_KEY, LLM_OCR_KEY, LLM_TRANSLATOR_KEY, LLMProfile, profile_by_id, profile_from_config,
 )
 from ballontranslator.utils.global_callbacks import register_global_callback
 cfg_module = pcfg.module
@@ -388,7 +393,10 @@ class ModuleThread(QThread):
     def run(self):
         try:
             if self.job is not None:
-                self.job()
+                with ExitStack() as clients:
+                    if isinstance(self.module, LLMChatRequester):
+                        clients.enter_context(self.module.codex_batch())
+                    self.job()
         except LLMUserActionRequiredError as e:
             _show_llm_user_action_required_dialog(
                 e,
@@ -641,21 +649,29 @@ class TranslateThread(ModuleThread):
         self,
         project: ProjImgTrans,
         page_key: str,
-    ):
+        future: Optional[Future] = None,
+    ) -> bool:
         page = project.pages[page_key]
         # A failed or partially completed full-page request must never leave the
         # old page eligible as history.
-        project.begin_full_page_translation(page_key)
+        if future is None:
+            project.begin_full_page_translation(page_key)
         success = True
         if hasattr(self.translator, 'set_stop_event'):
             self.translator.set_stop_event(self.pipeline_stop_event)
         try:
-            self.translator.translate_textblk_lst(
-                page,
-                project=project,
-                page_key=page_key,
-                full_page=True,
-            )
+            if future is None:
+                self.translator.translate_textblk_lst(
+                    page,
+                    project=project,
+                    page_key=page_key,
+                    full_page=True,
+                )
+            else:
+                # Only the queue owner commits context and emits page progress.
+                future.result()
+                if self.pipeline_stop_event.is_set():
+                    raise LLMRequestStopped()
             _mark_translation_finished(project, page_key, self.translator)
         except LLMUserActionRequiredError as e:
             success = False
@@ -691,7 +707,66 @@ class TranslateThread(ModuleThread):
         self.start()
 
 
-    def _run_translate_pipeline(self):
+    def _run_parallel_translate_pipeline(self, workers: int) -> None:
+        """Keep a bounded window of requests and finalize in submission order.
+
+        >>> callable(TranslateThread._run_parallel_translate_pipeline)
+        True
+        """
+        stop_event = self.pipeline_stop_event
+        pending = deque()
+        self.translator.set_stop_event(stop_event)
+        LOGGER.info('Experimental Codex translation queue: parallel_requests=%d', workers)
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='codex-translate') as executor:
+            try:
+                while not self.pipeline_finished() and not stop_event.is_set():
+                    # Inspect every slot: a later auth/timeout failure must also
+                    # cancel an earlier request that is still waiting on Codex.
+                    for page_key, future in pending:
+                        if future.done() and isinstance(
+                            future.exception(), (LLMUserActionRequiredError, LLMRequestStopped),
+                        ):
+                            self._translate_page(self.imgtrans_proj, page_key, future)
+                            stop_event.set()
+                            break
+                    if stop_event.is_set():
+                        break
+                    if pending and pending[0][1].done():
+                        page_key, future = pending.popleft()
+                        self._translate_page(self.imgtrans_proj, page_key, future)
+                        if stop_event.is_set():
+                            break
+                        self.finished_counter += 1
+                        self.progress_changed.emit(self.finished_counter)
+                        continue
+                    # ponytail: bound completed results too; a slow first page
+                    # holds a slot until page-aware unordered finalization exists.
+                    while len(pending) < workers and self.pipeline_pagekey_queue and not stop_event.is_set():
+                        page_key = self.pipeline_pagekey_queue.pop(0)
+                        project = self.imgtrans_proj
+                        project.begin_full_page_translation(page_key)
+                        future = executor.submit(
+                            self.translator.translate_textblk_lst,
+                            project.pages[page_key], project=project,
+                            page_key=page_key, full_page=True,
+                        )
+                        pending.append((page_key, future))
+                    stop_event.wait(0.05)
+            finally:
+                if pending:
+                    stop_event.set()
+                    for _, future in pending:
+                        future.cancel()
+        # shutdown waits for every owned session before Qt reports the run idle.
+        if stop_event.is_set():
+            self.module_thread_stopped.emit()
+
+    def _run_translate_pipeline(self) -> None:
+        worker_count = getattr(self.translator, 'parallel_request_workers', None)
+        workers = worker_count() if callable(worker_count) else 1
+        if workers > 1:
+            self._run_parallel_translate_pipeline(workers)
+            return
         delay = self.translator.delay()
         stop_event = self.pipeline_stop_event or threading.Event()
 
@@ -767,6 +842,7 @@ class ImgtransThread(QThread):
         self.translate_thread = translate_thread
         self.translate_thread.module_thread_stopped.connect(self.on_module_thread_stopped)
         self.translate_thread.finished.connect(self.on_module_thread_stopped)
+        self.finished.connect(self.on_module_thread_stopped)
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
@@ -1322,7 +1398,6 @@ class ImgtransThread(QThread):
 
     def translate_finished(self) -> bool:
         if self.imgtrans_proj is None \
-            or not cfg_module.enable_ocr \
             or not cfg_module.enable_translate:
             return True
         if self.parallel_trans:
@@ -1338,7 +1413,11 @@ class ImgtransThread(QThread):
     def run(self):
         try:
             if self.job is not None:
-                self.job()
+                with ExitStack() as clients:
+                    for module in (self.ocr, self.translator, self.inpainter):
+                        if isinstance(module, LLMChatRequester):
+                            clients.enter_context(module.codex_batch())
+                    self.job()
         except LLMUserActionRequiredError as e:
             _show_llm_user_action_required_dialog(
                 e,
@@ -1351,6 +1430,8 @@ class ImgtransThread(QThread):
             LOGGER.info('Image translation task stopped by user.')
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         except Exception as e:
+            # Wake the translation consumer when its producer fails before enqueueing all pages.
+            self.requestStop()
             create_error_dialog(e, self.tr('Image translation failed.'), 'ImageTranslationFailed')
         finally:
             self.job = None
@@ -1422,6 +1503,8 @@ class ModuleManager(QObject):
         self.package_install_thread: PackageInstallThread = None
         self.config_panel: ConfigPanel = None
         self.parent_widget = None
+        self._llm_usage_totals: Dict[str, LLMUsageTotals] = {}
+        self._jev_cleanup_totals: Optional[Dict[str, int]] = None
 
     def setupThread(
         self,
@@ -1467,6 +1550,8 @@ class ModuleManager(QObject):
         self.imgtrans_thread.finish_blktrans_stage.connect(self.on_finish_blktrans_stage)
         self.imgtrans_thread.finish_blktrans.connect(self.on_finish_blktrans)
         self.imgtrans_thread.pipeline_stopped.connect(self.on_imgtrans_thread_stopped)
+        self.imgtrans_thread.finished.connect(self._finish_llm_usage_when_idle)
+        self.translate_thread.finished.connect(self._finish_llm_usage_when_idle)
         self.imgtrans_thread.finished.connect(self._continue_canvas_inpaint)
 
         merge_config_module_params(
@@ -2133,6 +2218,7 @@ class ModuleManager(QObject):
         self.progress_msgbox.inpaint_bar.setVisible(cfg_module.enable_inpaint)
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show_fitted()
+        self._begin_llm_usage_run(cfg_module.enable_ocr, cfg_module.enable_translate)
         self.imgtrans_thread.runImgtransPipeline(
             self.imgtrans_proj,
             pages_to_process,
@@ -2189,12 +2275,44 @@ class ModuleManager(QObject):
             self.progress_msgbox.translate_bar.show()
         self.progress_msgbox.zero_progress()
         self.progress_msgbox.show_fitted()
+        self._begin_llm_usage_run(0 <= mode < 3, mode != 0 and mode < 3)
         self.imgtrans_thread.runBlktransPipeline(
             blk_list,
             mode,
             blk_ids,
             page_key=page_key,
         )
+
+    def _begin_llm_usage_run(self, ocr_enabled: bool, translate_enabled: bool) -> None:
+        self._llm_usage_totals = {}
+        self._jev_cleanup_totals = None
+        for stage, enabled, module in (('OCR', ocr_enabled, self.ocr),
+                                       ('translation', translate_enabled, self.translator)):
+            if enabled and isinstance(getattr(module, 'usage_totals', None), LLMUsageTotals):
+                module.usage_totals = LLMUsageTotals()
+                self._llm_usage_totals[stage] = module.usage_totals
+        if translate_enabled and hasattr(self.translator, 'jev_cleanup_totals'):
+            self.translator.jev_cleanup_totals = {}
+            self._jev_cleanup_totals = self.translator.jev_cleanup_totals
+
+    def _finish_llm_usage_when_idle(self) -> None:
+        # Selected-block completion signals also fire between stages. Wait for
+        # the actual workers; the full pipeline can finish via its final progress.
+        if not self.imgtrans_thread.isRunning() and not self.translate_thread.isRunning():
+            self._finish_llm_usage_run()
+
+    def _finish_llm_usage_run(self) -> None:
+        totals, self._llm_usage_totals = self._llm_usage_totals, {}
+        cleanup, self._jev_cleanup_totals = self._jev_cleanup_totals, None
+        if any(item.requests for item in totals.values()) or cleanup:
+            status = 'stopped' if self.imgtrans_thread.isStopRequested() else 'finished'
+            if cleanup:
+                from ballontranslator.modules.ocr.jev_filter import format_jev_cleanup_totals
+                LOGGER.info(f'Jev OCR cleanup run: status={status}, {format_jev_cleanup_totals(cleanup)}')
+            if any(item.requests for item in totals.values()):
+                for stage, usage in totals.items():
+                    LOGGER.info(f'LLM {stage} run usage: status={status}, {format_run_token_usage([usage])}')
+                LOGGER.info(f'LLM run usage: status={status}, {format_run_token_usage(list(totals.values()))}')
 
     def on_finish_blktrans_stage(self, stage: str, progress: int):
         if stage == 'ocr':
@@ -2258,12 +2376,14 @@ class ModuleManager(QObject):
     def finishImgtransPipeline(self) -> None:
         # Stopped runs finish through the worker shutdown path, not progress.
         if not self.imgtrans_thread.isStopRequested() and self.proj_finished():
+            self._finish_llm_usage_run()
             self.progress_msgbox.hide()
             self.imgtrans_pipeline_finished.emit()
     
     def on_imgtrans_thread_stopped(self):
         """线程完成时确保关闭进度对话框"""
         # 线程完成了，直接关闭窗口
+        self._finish_llm_usage_run()
         self.progress_msgbox.hide()
         self.imgtrans_pipeline_finished.emit()
 
@@ -2459,8 +2579,20 @@ class ModuleManager(QObject):
         if notify:
             self.canvas_inpaint_failed.emit()
     
-    def moduleParams(self, module_key: str, module_name: str) -> dict:
-        return cfg_module.get_params(module_key).get(module_name)
+    def moduleParams(self, module_key: str, module_name: str) -> Optional[dict]:
+        params = cfg_module.get_params(module_key).get(module_name)
+        if params and (module_key, module_name) in (
+            ('translator', LLM_TRANSLATOR_KEY), ('ocr', LLM_OCR_KEY),
+        ):
+            profiles = cfg_module.llm_profiles
+            profile = profile_by_id(profiles, getattr(cfg_module, f'{module_key}_llm_id'))
+            if profile is None and profiles:
+                profile = profiles[0]
+            codex = profile is not None and profile.transport == 'Codex App Server'
+            # Filter only the editor view; retain each backend's saved settings.
+            hidden = 'proxy' if codex else 'codex parallel requests'
+            return {key: value for key, value in params.items() if key != hidden}
+        return params
 
     def moduleRuntimeActionsEnabled(
         self,

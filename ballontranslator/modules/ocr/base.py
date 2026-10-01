@@ -68,8 +68,7 @@ class OCRBase(BaseModule):
                 img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
 
             if blk_list is None:
-                text = self.ocr_img(img)
-                return text
+                return self.ocr_img(img)
             elif isinstance(blk_list, TextBlock):
                 blk_list = [blk_list]
 

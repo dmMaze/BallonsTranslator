@@ -197,3 +197,39 @@ state in the project. Verify the boundaries affected by a change:
 
 Run relevant suites with `python -m pytest`; use `QT_QPA_PLATFORM=offscreen` for Qt
 checks and verify both PyQt5 and PyQt6 when changing UI or QObject lifetimes.
+
+## Codex App Server (SDK / CLI)
+
+The independent **Codex App Server** preset (`codex-app-server`) uses
+`transport="Codex App Server"` and is implemented by `llm_codex.py`. The upstream
+**Codex** profile (`codex`, `backend="codex"`) continues to use the direct HTTP
+backend, its own account/settings panel, model catalog, and image editing. Neither
+backend silently switches to the other. Loading an older App Server preset with
+ID `codex` migrates its ID and module selections without changing its settings.
+
+App Server profiles select **Python SDK** or **CLI**. SDK mode requires Python
+3.10+ and `python -m pip install -r requirements-codex.txt`; CLI mode uses an
+installed Codex CLI without the SDK. `codex` selects the bundled runtime in SDK
+mode or PATH in CLI mode. Login supports reuse, browser, device code, and API key;
+credentials remain with Codex. Saving sessions is opt-in and may include prompts
+and images. SDK clients are reused within a batch, with independent conversations
+per request; CLI processes are owned and closed per request.
+
+Only App Server full-page translation uses `codex parallel requests`; 1 disables
+parallelism and history mode remains sequential. Requests share RPM, delay, and
+retry cooldown; results and summaries are finalized in submission order. Quota,
+authentication, disconnection, and cancellation stop the batch. Capacity, HTTP
+503, and timeouts retry the same model within the attempt limit, using a fixed
+`retry timeout` (default 30 seconds). Request timeout also defaults to 30 seconds;
+existing saved values remain unchanged. Failed image reads cancel pending work.
+
+**Jev 處理異常字元 (Experimental)** is disabled by default. When enabled, the
+first full-page App Server translation timeout closes its request, cleans a
+copy of the OCR through Jev, and retries once with the same model. Saved OCR is
+preserved. Provider/key selection, decision audits, request/input-token counts,
+and USD costs are documented in [Jev OCR filter](jev_ocr_filter.md). HTTP Codex
+requests retain their upstream behavior and do not enter this rescue path.
+
+App Server checks: `test_llm_codex.py`, `test_codex_login_dialog.py`,
+`test_llm_translation_parallel.py`, `test_ocr_timeout_rescue.py`,
+`test_jev_ocr_filter.py`, and `test_llm_run_usage.py`.

@@ -1,0 +1,2 @@
+# Optional Codex translation/OCR backend (Python >=3.10). Includes the CLI runtime.
+openai-codex==0.156.1

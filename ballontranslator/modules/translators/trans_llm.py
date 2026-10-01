@@ -1,4 +1,6 @@
+import os.path as osp
 from dataclasses import replace
+import threading
 import traceback
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -112,9 +114,14 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
     dependencies = ['openai>=2.8.1', 'httpx[socks,brotli]', 'tiktoken>=0.7.0']
 
     concate_text = False
-    cht_require_convert = True
     params: Dict = {
         "description": "Translate using the selected text-capable LLM profile.",
+        "codex parallel requests": {
+            "type": "line_editor",
+            "value": "1",
+            "display_name": "Experimental Codex Parallel Requests",
+            "description": "Concurrent full-page Codex requests. Enter a positive integer, such as 6 or 8. 1 disables parallel requests. History mode stays sequential. Each request uses already committed summaries and memory; pages are finalized in order. RPM and delay still apply.",
+        },
         "max requests per minute": {
             "value": 20,
             "display_name": "Max Requests Per Minute",
@@ -131,9 +138,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             "description": "Retries for API or parsing failures.",
         },
         "retry timeout": {
-            "value": 7.0,
+            "value": 30.0,
             "display_name": "Retry Timeout",
             "description": "Delay between retries in seconds.",
+        },
+        "timeout rescue": {
+            "type": "checkbox",
+            "value": False,
+            "display_name": "Jev 處理異常字元 (Experimental)",
+            "description": "On the first full-page Codex translation timeout, close the request, check OCR text with Jev, then translate once more with the same model. Saved OCR is preserved. Configure the Jev provider in Run / Translation and its API key in LLM Profiles or the environment.",
         },
         "proxy": {
             "value": "",
@@ -168,6 +181,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         self.lang_map['Hindi'] = 'Hindi'
 
         self._history_window: Optional[HistoryWindow] = None
+        self._context_lock = threading.RLock()
+        self.jev_cleanup_totals: Dict[str, int] = {}
         self._pending_visual_summaries: Dict[
             str,
             Tuple[
@@ -175,6 +190,28 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 Dict[str, object],
             ],
         ] = {}
+
+    def parallel_request_workers(self) -> int:
+        """Opt into independent Codex pages; history needs the preceding result.
+
+        >>> LLMTranslator('日本語', 'English').get_param_value('codex parallel requests')
+        '1'
+        """
+        value = str(self.get_param_value('codex parallel requests')).strip()
+        try:
+            workers = int(value) if value.isdecimal() else 0
+        except ValueError:
+            workers = 0
+        if workers < 1:
+            self.logger.warning('Invalid Codex parallel requests %r; using 1.', value)
+            self.set_param_value('codex parallel requests', '1')
+            return 1
+        if workers == 1 or self.profile.transport != 'Codex App Server':
+            return 1
+        if pcfg.module.llm_translate_context == LLMTranslateContext.HISTORY:
+            self.logger.info('Codex parallel requests disabled for sequential +history context.')
+            return 1
+        return workers
 
     @property
     def profile(self) -> LLMProfile:
@@ -221,6 +258,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             f'profile_id={str(profile.id)!r}, '
             f'profile_name={str(profile.name)!r}, model={model!r}, '
             f'context={str(pcfg.module.llm_translate_context)!r}, '
+            f'parallel_requests={self.parallel_request_workers()}, '
             f'history_budget={int(pcfg.module.llm_prior_context_token_budget)}, '
             f'vision={vision_enabled}, '
             f'summary_memory={summary_memory_enabled}, '
@@ -304,10 +342,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 commit_history_window=True,
             )
         super().translate_textblk_lst(
-            textblk_lst,
-            project=project,
-            page_key=page_key,
-            full_page=full_page,
+            textblk_lst, project=project, page_key=page_key, full_page=full_page,
         )
 
     def translate(
@@ -375,7 +410,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             self.load_model()
         profile = self.profile
         model = self._text_model(profile)
-        array_response = profile.backend == 'codex' or gpt_model_version(model) is not None
+        array_response = profile.transport != 'Codex App Server' and (
+            profile.backend == 'codex' or gpt_model_version(model) is not None
+        )
         target_language_name = self._translated_lang(target_language)
         prompt_spec = TranslationPromptSpec(
             source_language=self._translated_lang(source_language),
@@ -402,22 +439,24 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 str(page_key),
                 profile,
             )
-        request_context = self._snapshot_request_context(
-            project,
-            page_key,
-            profile,
-            model=model,
-            prompt_spec=prompt_spec,
-            source_language=source_language,
-            target_language=target_language,
-            history_budget=history_budget,
-            glossary_path=glossary_path,
-            glossary_mode=glossary_mode,
-            memory_enabled=summary_memory_enabled,
-            ignore_current_summary=(
-                overwrite_existing_summary and existing_summary is not None
-            ),
-        )
+        # Snapshot/compaction and ordered summary commits share project state.
+        with self._context_lock:
+            request_context = self._snapshot_request_context(
+                project,
+                page_key,
+                profile,
+                model=model,
+                prompt_spec=prompt_spec,
+                source_language=source_language,
+                target_language=target_language,
+                history_budget=history_budget,
+                glossary_path=glossary_path,
+                glossary_mode=glossary_mode,
+                memory_enabled=summary_memory_enabled,
+                ignore_current_summary=(
+                    overwrite_existing_summary and existing_summary is not None
+                ),
+            )
         text_trans = self._translate(
             queries,
             profile=profile,
@@ -427,6 +466,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             commit_history_window=commit_history_window,
             vision_request=vision_request,
             summary_expected_record=existing_summary,
+            rescue_source=(
+                osp.join(project.directory or '', page_key)
+                if commit_history_window and project is not None
+                and page_key in project.pages else None
+            ),
         )
         if text_trans is None:
             text_trans = [''] * len(text) if is_list else ''
@@ -450,37 +494,38 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         page_key: str,
     ) -> None:
         """Commit generated context after a finalized full page."""
-        pending_summary = self._pending_visual_summaries.pop(
-            str(page_key),
-            None,
-        )
-        if page_key not in project.pages:
-            return
-        if pending_summary is not None:
-            expected_record, record = pending_summary
-            try:
-                # User edits made while the request was in flight always win.
-                if project.get_llm_visual_summary(page_key) == expected_record:
-                    project.set_llm_visual_summary(page_key, record)
-                    if expected_record is not None:
-                        logged_page_key = str(page_key).replace(
-                            '\r', ' '
-                        ).replace('\n', ' ')
-                        self.logger.info(
-                            'LLM page summary overwritten: page=%s',
-                            logged_page_key or '-',
-                        )
-            except Exception as error:
-                # Translation is already final; optional summary persistence
-                # must not turn a successful page into a failed pipeline stage.
-                self.logger.warning(
-                    'Unable to save LLM page summary for %s: %s',
-                    page_key,
-                    error,
-                )
+        with self._context_lock:
+            pending_summary = self._pending_visual_summaries.pop(
+                str(page_key),
+                None,
+            )
+            if page_key not in project.pages:
+                return
+            if pending_summary is not None:
+                expected_record, record = pending_summary
+                try:
+                    # User edits made while the request was in flight always win.
+                    if project.get_llm_visual_summary(page_key) == expected_record:
+                        project.set_llm_visual_summary(page_key, record)
+                        if expected_record is not None:
+                            logged_page_key = str(page_key).replace(
+                                '\r', ' '
+                            ).replace('\n', ' ')
+                            self.logger.info(
+                                'LLM page summary overwritten: page=%s',
+                                logged_page_key or '-',
+                            )
+                except Exception as error:
+                    # Translation is already final; optional summary persistence
+                    # must not turn a successful page into a failed pipeline stage.
+                    self.logger.warning(
+                        'Unable to save LLM page summary for %s: %s',
+                        page_key,
+                        error,
+                    )
 
-        if pcfg.module.llm_translate_summary_memory:
-            self._compact_last_page_memory(project, page_key)
+            if pcfg.module.llm_translate_summary_memory:
+                self._compact_last_page_memory(project, page_key)
 
     def delay(self) -> float:
         return self.get_param_value('delay')
@@ -1024,7 +1069,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 raise LLMRequestStopped()
             try:
                 result = self.request_chat_completion(profile, api_args)
-                self._log_token_usage(result, page_key='memory-compaction')
+                self._log_token_usage(result, profile=profile, page_key='memory-compaction')
                 memory_text = result.content.strip()
                 if not memory_text:
                     raise ValueError('Memory compaction returned no memory text.')
@@ -1102,7 +1147,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 translation_json_schema(
                     expected_translations,
                     summary_enabled=summary_enabled,
-                    array_response=profile.backend == 'codex' or gpt_version is not None,
+                    array_response=profile.transport != 'Codex App Server' and (
+                        profile.backend == 'codex' or gpt_version is not None
+                    ),
                 )
                 if profile.json_schema_response_format
                 else {}
@@ -1123,10 +1170,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         self,
         completion: LLMChatResult,
         *,
+        profile: LLMProfile,
         page_key: Optional[str] = None,
         attempt: Optional[int] = None,
     ) -> None:
-        summary = format_completion_token_usage(completion)
+        summary = format_completion_token_usage(completion) or 'usage=unavailable'
         diagnostics = format_prompt_cache_diagnostics(completion.prompt_cache_diagnostics)
         summary = ', '.join(part for part in (
             summary, f'prompt_cache_diagnostics={diagnostics}',
@@ -1135,10 +1183,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             '\r', ' '
         ).replace('\n', ' ')
         if finish_reason:
-            summary = ', '.join(
-                part for part in (summary, f'finish_reason={finish_reason}')
-                if part
-            )
+            summary += f', finish_reason={finish_reason}'
         details = []
         if page_key is not None:
             safe_page_key = str(page_key).replace('\r', ' ').replace('\n', ' ')
@@ -1146,7 +1191,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         if attempt is not None:
             details.append(f'attempt={attempt}')
         details.append(summary)
-        self.logger.debug(f'LLM token usage: {", ".join(details)}')
+        log = self.logger.info if profile.transport == 'Codex App Server' else self.logger.debug
+        log(f'LLM token usage: {", ".join(details)}')
 
     def _request_translation(
         self,
@@ -1157,6 +1203,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         usage_page_key=None,
         usage_attempt: Optional[int] = None,
         summary_enabled: bool = False,
+        retry_timeouts: bool = True,
+        attempts: Optional[int] = None,
     ) -> str:
         try:
             result = self.request_chat_completion(
@@ -1167,6 +1215,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     expected_translations,
                     summary_enabled=summary_enabled,
                 ),
+                **({'retry_timeouts': False} if not retry_timeouts else {}),
+                **({'attempts': attempts} if attempts is not None else {}),
             )
         except LLMChatRequestError as error:
             if is_context_length_error(error.provider_error):
@@ -1175,6 +1225,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
 
         self._log_token_usage(
             result,
+            profile=profile,
             page_key=usage_page_key,
             attempt=usage_attempt,
         )
@@ -1191,6 +1242,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         commit_history_window: bool = True,
         vision_request: Optional[EncodedChatImage] = None,
         summary_expected_record: Optional[Dict[str, object]] = None,
+        rescue_source: Optional[str] = None,
     ) -> List[str]:
         """Translate with ordinary retries and optional-context recovery.
 
@@ -1209,6 +1261,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             return []
         if profile is None:
             profile = self.profile
+        from ..llm_codex import CodexTimeoutError
         summary_enabled = prompt_spec.summary_enabled
         usage_page_key = (
             request_context.request_page_key
@@ -1227,6 +1280,11 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             ),
         )
         retry_attempt = 0
+        rescue_enabled = (
+            rescue_source is not None and profile.transport == 'Codex App Server'
+            and self.get_param_value('timeout rescue') is True
+        )
+        rescue_attempted = False
         provider_attempt = 0
         active_context = request_context
         has_optional_summaries = bool(
@@ -1253,6 +1311,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     'usage_page_key': usage_page_key,
                     'usage_attempt': provider_attempt,
                 }
+                if rescue_enabled:
+                    request_kwargs['retry_timeouts'] = False
+                if rescue_attempted:
+                    request_kwargs['attempts'] = 1
                 if summary_enabled:
                     request_kwargs['summary_enabled'] = summary_enabled
                 raw_response = self._request_translation(
@@ -1277,9 +1339,46 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     )
                     raise
                 translations = list(parsed.translations)
+                if rescue_attempted:
+                    # Keep original IDs aligned; cleared sources cannot regain invented text.
+                    translations = [value if source.strip() else ''
+                                    for source, value in zip(queries, translations)]
                 successful_context = active_context
                 break
+            except CodexTimeoutError as error:
+                if not rescue_enabled:
+                    raise
+                if rescue_attempted:
+                    raise RuntimeError(
+                        'Codex translation timed out again after Jev cleanup; original page retained.'
+                    ) from error
+                from ..ocr.jev_filter import filter_ocr_texts
+
+                # The Codex transport has already interrupted and closed this request.
+                # Clean only this request's sources, never the saved OCR or another page.
+                rescue_attempted = True
+                cleanup: Dict[str, int] = {}
+                try:
+                    queries = tuple(filter_ocr_texts(
+                        queries, self.stop_event, rescue_source, cleanup,
+                    ))
+                finally:
+                    # Parallel pages collect independently; only merge completed counters.
+                    with self._context_lock:
+                        for name, value in cleanup.items():
+                            self.jev_cleanup_totals[name] = self.jev_cleanup_totals.get(name, 0) + value
+                self.logger.info(
+                    'Codex timeout rescue: page=%s, Jev checks=1; retrying translation once.',
+                    usage_page_key,
+                )
+                messages, prompt = assemble_translation_request(
+                    queries, prompt_spec=prompt_spec, request_context=active_context,
+                    image_part=vision_request.image_part() if vision_request is not None else None,
+                )
+                continue
             except ContextLengthError as error:
+                if rescue_attempted:
+                    raise
                 # Provider tokenization can exceed our estimate; remove optional
                 # summaries, then whole history pages, without consuming retries.
                 if recovery_attempts >= recovery_limit:
@@ -1311,6 +1410,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
             except Exception as e:
+                if rescue_attempted:
+                    raise
                 if isinstance(e, InvalidNumTranslations):
                     self.logger.error(f"Failed to parse matching translation count for prompt:\n{prompt}\n{e}")
                 retry_attempt += 1

@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -17,6 +18,7 @@ from ballontranslator.utils.llm_profiles import (
     default_profile,
     default_profiles,
     profile_by_id,
+    profile_thinking_level_options,
     load_profiles,
     profile_to_dict,
     profile_to_export_dict,
@@ -139,9 +141,10 @@ class CodexProfileConfigTest(unittest.TestCase):
     def test_missing_codex_settings_use_canonical_defaults(self) -> None:
         for payload in ({}, {'codex_models': {}}, {'llm_profiles': []},
                         {'llm_profiles': [profile_to_dict(default_profile('Ollama'))], 'codex_models': {}}):
-            with self.subTest(payload=payload), tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+            with self.subTest(payload=payload), tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
                 json.dump({'module': payload}, temp)
-                temp.flush()
+                self.addCleanup(os.unlink, temp.name)
+                temp.close()
                 loaded = ProgramConfig.load(temp.name).module
                 codex_profiles = [profile for profile in loaded.llm_profiles if profile.backend == 'codex']
                 self.assertEqual(len(codex_profiles), 1)
@@ -166,9 +169,10 @@ class CodexProfileConfigTest(unittest.TestCase):
         }
         module = ModuleConfig(llm_profiles=[codex], codex_models=catalog, translator_llm_id='codex')
         serialized = json_dump_program_config(ProgramConfig(module=module))
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
             temp.write(serialized)
-            temp.flush()
+            self.addCleanup(os.unlink, temp.name)
+            temp.close()
             restarted = ProgramConfig.load(temp.name).module
         saved = profile_by_id(restarted.llm_profiles, 'codex')
         self.assertEqual({key: getattr(saved, key) for key in settings}, settings)
@@ -299,6 +303,37 @@ class CodexProfileConfigTest(unittest.TestCase):
 
 
 class LLMProfileConfigTest(unittest.TestCase):
+    def test_legacy_app_server_migration_preserves_both_backends_and_selections(self) -> None:
+        for execution in ('Python SDK', 'CLI'):
+            with self.subTest(execution=execution), tempfile.TemporaryDirectory() as directory:
+                legacy = default_profile('Codex')
+                legacy.id, legacy.name = 'codex', 'Codex'
+                legacy.codex_execution = execution
+                legacy.codex_timeout = 75
+                legacy.codex_executable = 'C:/custom/codex.exe'
+                legacy.model = 'gpt-6-luna'
+                legacy.prompt = 'Preserve this prompt'
+                existing = LLMProfile(id='codex-app-server', name='Existing custom API', api_key='keep-key')
+                path = os.path.join(directory, 'config.json')
+                with open(path, 'w', encoding='utf-8') as stream:
+                    json.dump({'module': {'llm_profiles': [legacy.to_dict(), existing.to_dict()],
+                        'translator_llm_id': 'codex', 'ocr_llm_id': 'codex', 'inpaint_llm_id': 'codex'}}, stream)
+                cfg = ProgramConfig.load(path)
+                app = profile_by_id(cfg.module.llm_profiles, 'codex-app-server-2')
+                self.assertEqual((app.name, app.transport, app.codex_execution),
+                                 ('Codex App Server', 'Codex App Server', execution))
+                self.assertEqual((app.codex_timeout, app.codex_executable, app.model, app.prompt),
+                                 (75, 'C:/custom/codex.exe', 'gpt-6-luna', 'Preserve this prompt'))
+                self.assertEqual(profile_by_id(cfg.module.llm_profiles, existing.id).api_key, 'keep-key')
+                self.assertEqual(profile_by_id(cfg.module.llm_profiles, 'codex').backend, 'codex')
+                self.assertEqual((cfg.module.translator_llm_id, cfg.module.ocr_llm_id, cfg.module.inpaint_llm_id),
+                                 (app.id,) * 3)
+                with open(path, 'w', encoding='utf-8') as stream:
+                    stream.write(json_dump_program_config(cfg))
+                restarted = ProgramConfig.load(path).module
+                self.assertEqual([p.id for p in restarted.llm_profiles], [p.id for p in cfg.module.llm_profiles])
+                self.assertEqual(restarted.translator_llm_id, app.id)
+
     def test_invalid_profile_list_recovers_defaults_without_losing_other_settings(self) -> None:
         expected_ids = [profile.id for profile in default_profiles()] + ['codex']
         for invalid in (None, {}, 'invalid', 42):
@@ -387,6 +422,24 @@ class LLMProfileConfigTest(unittest.TestCase):
         self.assertEqual(loaded.vision_model, 'saved-vision-model')
         self.assertEqual(loaded.image_model, 'saved-image-model')
 
+    def test_saved_codex_profile_receives_new_choices_without_changing_selections(self) -> None:
+        saved = default_profile('Codex')
+        saved.model_options = ['gpt-5.5', 'custom-model']
+        saved.vision_model_options = ['gpt-5.5']
+        saved.vision_model = 'gpt-5.5'
+        saved.model = 'custom-model'
+        loaded = load_profiles([saved.to_dict()])[0]
+
+        for model in ('gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'):
+            self.assertIn(model, loaded.model_options)
+            self.assertIn(model, loaded.vision_model_options)
+        self.assertNotIn('gpt-5.6', loaded.model_options)
+        self.assertNotIn('gpt-5.6', loaded.vision_model_options)
+        self.assertEqual(loaded.model, 'custom-model')
+        self.assertEqual(loaded.vision_model, 'gpt-5.5')
+        self.assertIn('custom-model', loaded.model_options)
+        self.assertEqual(profile_to_dict(load_profiles([loaded])[0]), profile_to_dict(loaded))
+
     def test_load_profiles_is_idempotent_and_preserves_builtin_fields(self):
         profile = default_profile('OpenAI')
         profile.name = 'Saved OpenAI'
@@ -403,6 +456,56 @@ class LLMProfileConfigTest(unittest.TestCase):
         self.assertEqual(first.base_url, 'https://saved.example/v1')
         self.assertEqual(first.image_base_url, 'https://saved.example/image-edit')
         self.assertEqual(first.api_key, 'saved-key')
+
+    def test_codex_saved_unsupported_thinking_falls_back_without_losing_settings(self) -> None:
+        for level in ('Auto', 'auto', 'None', '', 'Disabled', 'minimal', 'max', 'ultra', 'future-effort'):
+            with self.subTest(level=level):
+                saved = default_profile('Codex')
+                saved.model = 'gpt-5.5'
+                saved.thinking_level = level
+                saved.prompt = 'Keep my translation prompt'
+                with tempfile.TemporaryDirectory() as directory:
+                    path = os.path.join(directory, 'config.json')
+                    with open(path, 'w', encoding='utf-8') as stream:
+                        json.dump({'module': {'llm_profiles': [saved.to_dict()]}}, stream)
+                    loaded = ProgramConfig.load(path).module.llm_profiles[0]
+                self.assertEqual(loaded.thinking_level, 'none')
+                self.assertEqual(loaded.prompt, saved.prompt)
+                self.assertEqual(loaded.model, 'gpt-5.5')
+                self.assertEqual(profile_thinking_level_options(loaded),
+                                 ['none', 'low', 'medium', 'high', 'xhigh'])
+
+    def test_codex_none_defaults_and_independent_vision_effort_survive_reload(self) -> None:
+        profile = default_profile('Codex')
+        self.assertEqual((profile.model, profile.vision_model), ('gpt-5.6-sol', 'gpt-5.6-sol'))
+        self.assertEqual((profile.thinking_level, profile.vision_thinking_level), ('none', 'none'))
+        legacy = profile.to_dict()
+        legacy.pop('vision_thinking_level')
+        legacy['thinking_level'] = 'high'
+        loaded = load_profiles([legacy])[0]
+        self.assertEqual((loaded.thinking_level, loaded.vision_thinking_level), ('high', 'high'))
+        loaded.vision_thinking_level = 'none'
+        restored = load_profiles([profile_to_dict(loaded)])[0]
+        self.assertEqual((restored.thinking_level, restored.vision_thinking_level), ('high', 'none'))
+        self.assertEqual(profile_to_dict(restored), profile_to_dict(loaded))
+        malformed = restored.to_dict()
+        malformed['vision_thinking_level'] = ['invalid']
+        malformed['thinking_level_options'] = None
+        repaired = load_profiles([malformed])[0]
+        self.assertEqual((repaired.thinking_level, repaired.vision_thinking_level), ('high', 'none'))
+        self.assertIsInstance(repaired.thinking_level_options, list)
+
+    def test_codex_unknown_model_has_no_efforts_and_preserves_http_choices(self) -> None:
+        profile = default_profile('Codex')
+        for model in ('custom-model', [], {}, None):
+            with self.subTest(model=model):
+                profile.model = model
+                loaded = load_profiles([profile.to_dict()])[0]
+                self.assertEqual(profile_thinking_level_options(loaded), [])
+                self.assertEqual(loaded.thinking_level, '')
+        profile.transport = 'OpenAI-compatible'
+        profile.thinking_level_options = ['Auto', 'Disabled', 'minimal', 'custom']
+        self.assertEqual(profile_thinking_level_options(profile), profile.thinking_level_options)
 
     def test_load_profiles_migrates_legacy_none_thinking_to_auto(self):
         profile = default_profile('OpenAI')
@@ -437,10 +540,10 @@ class LLMProfileConfigTest(unittest.TestCase):
         raw = json.loads(json_dump_program_config(cfg))
         raw['module']['llm_profiles'][0]['model_options'] = ['legacy-model']
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             json.dump(raw, temp)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, 'openai')
         self.assertIn('legacy-model', selected.model_options)
@@ -689,10 +792,10 @@ class SecretStoreTest(unittest.TestCase):
         cfg = ProgramConfig(module=ModuleConfig(llm_profiles=[profile], translator_llm_id='openai'))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             temp.write(saved)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.translator_llm_id)
         self.assertIsNotNone(selected)
@@ -715,10 +818,10 @@ class SecretStoreTest(unittest.TestCase):
         ))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             temp.write(saved)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.ocr_llm_id)
         self.assertEqual(loaded.module.ocr_llm_id, 'openai')
@@ -756,10 +859,10 @@ class SecretStoreTest(unittest.TestCase):
         ))
         saved = json_dump_program_config(cfg)
 
-        with tempfile.NamedTemporaryFile('w+', encoding='utf8') as temp:
+        with tempfile.NamedTemporaryFile('w+', encoding='utf8', delete=False) as temp:
+            self.addCleanup(os.unlink, temp.name)
             temp.write(saved)
-            temp.flush()
-            loaded = ProgramConfig.load(temp.name)
+        loaded = ProgramConfig.load(temp.name)
 
         selected = profile_by_id(loaded.module.llm_profiles, loaded.module.inpaint_llm_id)
         self.assertEqual(loaded.module.inpaint_llm_id, 'openrouter')

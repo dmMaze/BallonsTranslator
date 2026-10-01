@@ -1037,6 +1037,8 @@ class ProjImgTrans:
             raise ImgnameNotInProjectException
         img_path = osp.join(self.directory, imgname)
         img = imread(img_path)
+        if img is None:
+            raise OSError(f'Unable to read image: {img_path}')
         h, w = img.shape[:2]
         self._image_info[imgname].update({'width': w, 'height': h})
         return img

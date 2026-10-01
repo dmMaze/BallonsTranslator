@@ -11,6 +11,7 @@ from ..llm_chat import (
     openai_json_response_format,
 )
 from ..llm_vision import encode_chat_image
+from ..context.token_usage import format_completion_token_usage
 from .base import OCRBase, register_OCR
 from ballontranslator.modules.exceptions import (
     LLMModelRequiredError,
@@ -107,7 +108,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             "description": "Retries for API failures.",
         },
         "retry timeout": {
-            "value": 7.0,
+            "value": 30.0,
             "display_name": "Retry Timeout",
             "description": "Delay between retries in seconds.",
         },
@@ -290,7 +291,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
             "model": model,
             "messages": messages,
         }
-        api_args.update(openai_chat_completion_args(profile, model))
+        api_args.update(openai_chat_completion_args(profile, model, vision=True))
         if response_schema is not None:
             api_args["response_format"] = openai_json_response_format(
                 profile,
@@ -321,8 +322,8 @@ class LLMOCR(LLMChatRequester, OCRBase):
                     self.token_count_last = completion.usage.total_tokens
                 else:
                     self.token_count_last = 0
-                if self.token_count_last:
-                    self.logger.info(f'Used {self.token_count_last} tokens (Total: {self.token_count})')
+                usage = format_completion_token_usage(completion) or 'usage=unavailable'
+                self.logger.info(f'LLM OCR token usage: {usage}, cumulative_total={self.token_count}')
                 return completion.content
             except (LLMUserActionRequiredError, LLMRequestStopped):
                 raise
@@ -415,31 +416,19 @@ class LLMOCR(LLMChatRequester, OCRBase):
         self.logger.info(f"Performing Page-level LLM OCR on {len(blk_list)} blocks...")
         mask_non_text = pcfg.module.ocr_llm_mask_non_text
         sort_reading_order = pcfg.module.ocr_llm_sort_reading_order
-        annotated_img = create_annotated_page(
-            img,
-            blk_list,
-            mask_non_text=mask_non_text,
-        )
 
         raw_response: Optional[str] = None
         try:
             profile = self.profile
             expected_count = len(blk_list)
-            messages = self._page_messages(
-                annotated_img,
-                profile,
-                expected_count,
-                mask_non_text,
-                sort_reading_order,
-            )
             raw_response = self._request_with_retries(
                 profile,
-                messages,
-                failure_label='Page-level LLM OCR request',
-                response_schema=self._page_response_schema(
-                    expected_count,
-                    sort_reading_order,
+                self._page_messages(
+                    create_annotated_page(img, blk_list, mask_non_text=mask_non_text),
+                    profile, expected_count, mask_non_text, sort_reading_order,
                 ),
+                failure_label='Page-level LLM OCR request',
+                response_schema=self._page_response_schema(expected_count, sort_reading_order),
             )
             texts, order = self._parse_page_ocr_response(
                 raw_response,
