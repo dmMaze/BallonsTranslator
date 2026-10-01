@@ -136,8 +136,11 @@ class CustomGV(QGraphicsView):
         if self.canvas is not None and event.key() in (QKEY.Key_Shift, QKEY.Key_Control):
             modifier = (Qt.KeyboardModifier.ShiftModifier if event.key() == QKEY.Key_Shift
                         else Qt.KeyboardModifier.ControlModifier)
+            modifiers = event.modifiers()
+            # Python 3.11.4 Flag inversion includes an unnamed Qt mask bit.
+            # Clear only a present flag; Qt may already omit the released key.
             self.canvas.update_brush_line_preview(
-                self.canvas.scene_cursor_pos(), event.modifiers() & ~modifier,
+                self.canvas.scene_cursor_pos(), modifiers ^ (modifiers & modifier),
             )
         return super().keyReleaseEvent(event)
 
