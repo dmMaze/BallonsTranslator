@@ -71,13 +71,16 @@ def _http_client(proxy: str = '') -> httpx.AsyncClient:
     return httpx.AsyncClient(**kwargs)
 
 
-def _run(operation: Coroutine, stop_event: Optional[threading.Event]) -> Any:
+def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generation: Optional[int] = None) -> Any:
     """Run HTTP work in the calling worker, cancelling socket waits promptly.
 
     >>> _run(asyncio.sleep(0, result='completed'), None)
     'completed'
     """
-    generation = account.generation
+    # Inference callers capture ownership before preparing the payload, which
+    # can take time when hashing images or retained encrypted reasoning.
+    if generation is None:
+        generation = account.generation
 
     async def run() -> Any:
         task = asyncio.create_task(operation)
@@ -618,9 +621,14 @@ def _headers(tokens: Dict, cache_key: str = '') -> Dict[str, str]:
     headers = {'Authorization': 'Bearer ' + tokens['access_token'], 'ChatGPT-Account-Id': tokens['account_id'],
                'originator': 'ballontranslator', 'User-Agent': 'BallonsTranslator', 'Accept': 'application/json'}
     if cache_key:
-        # ChatGPT routes Responses caches by this header, not just the JSON key.
+        # Match Codex's Responses client: our job is one session/thread, and
+        # x-client-request-id uses that identity too, unlike the public API.
         headers['session-id'] = cache_key
+        headers['thread-id'] = cache_key
+        headers['x-client-request-id'] = cache_key
         headers['Accept'] = 'text/event-stream'
+        headers['Content-Type'] = 'application/json'
+        headers['OpenAI-Beta'] = 'responses=experimental'
     return headers
 
 
@@ -706,7 +714,7 @@ def request_image(
                     account.reject_access_token(tokens['access_token'], generation)
                     raise
 
-    response = _run(request(), stop_event)
+    response = _run(request(), stop_event, generation=generation)
     if reasoning_model:
         result = image_generation.decode_responses_image(response)
     else:
@@ -718,7 +726,7 @@ def request_image(
     return result
 
 
-def _request_messages(messages: List[Dict]) -> Tuple[str, List[Dict]]:
+def _request_messages(messages: List[Dict], cache_key: str = '', generation: Optional[int] = None) -> Tuple[str, List[Dict]]:
     """Map only supplied messages to Responses roles; retain image order.
 
     >>> _request_messages([{'role': 'system', 'content': 'contract'},
@@ -735,6 +743,14 @@ def _request_messages(messages: List[Dict]) -> Tuple[str, List[Dict]]:
             continue
         if role not in ('user', 'assistant'):
             raise ValueError('Unsupported Codex message role.')
+        replay = message.get('codex_response')
+        if (role == 'assistant' and replay is not None and replay.codex_response_items
+                and replay.codex_cache_key == cache_key and replay.codex_account_generation == generation):
+            # Replay provider output verbatim, including encrypted reasoning and
+            # message IDs/phase. Validate ownership here: the account/job can
+            # change after the history snapshot, while request throttling waits.
+            inputs.extend(replay.codex_response_items)
+            continue
         parts = [{'type': 'text', 'text': content}] if isinstance(content, str) else content
         response_parts = []
         for part in parts:
@@ -830,13 +846,18 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
     effort = None if effort == THINKING_AUTO else 'none' if effort == THINKING_DISABLED else effort
     if effort is not None and effort not in entry['efforts']:
         raise LLMUserActionRequiredError('The selected Codex model does not support this thinking level. Choose Auto or a supported level.')
-    instructions, inputs = _request_messages(api_args['messages'])
-    if any(part['type'] == 'input_image' for item in inputs for part in item['content']) and 'image' not in entry['modalities']:
+    instructions, inputs = _request_messages(api_args['messages'], cache_key, generation)
+    if any(part['type'] == 'input_image' for item in inputs for part in (item.get('content') or [])) and 'image' not in entry['modalities']:
         raise LLMUserActionRequiredError('The selected Codex model does not support image input.')
     payload = {'model': model, 'instructions': instructions, 'input': inputs, 'tools': [],
-               'tool_choice': 'none', 'store': False, 'stream': True, 'prompt_cache_key': cache_key}
+               'tool_choice': 'none', 'store': False, 'stream': True, 'prompt_cache_key': cache_key,
+               'include': ['reasoning.encrypted_content']}
     if effort is not None:
         payload['reasoning'] = {'effort': effort}
+    if model == 'gpt-5.6' or model.startswith('gpt-5.6-'):
+        # This family defaults to rendering earlier reasoning. Keep the original
+        # output for replay while limiting rendered reasoning to the active turn.
+        payload.setdefault('reasoning', {})['context'] = 'current_turn'
     schema = api_args.get('response_format', {}).get('json_schema')
     if schema:
         payload['text'] = {'format': {'type': 'json_schema', **schema}}
@@ -848,7 +869,7 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
         _request_fingerprint({key: value for key, value in payload.items()
                               if key not in ('prompt_cache_key', 'instructions', 'input')}),
         _request_fingerprint(instructions),
-        [(item['role'], _request_fingerprint(item)) for item in inputs],
+        [(item.get('role', item['type']), _request_fingerprint(item)) for item in inputs],
     )
 
     async def request() -> LLMChatResult:
@@ -866,6 +887,12 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                         continue
                     account.reject_access_token(tokens['access_token'], generation)
                     raise
+                reasoning = result.get('reasoning')
+                LOGGER.debug(
+                    'Codex response context: model=%s, reasoning_context=%s',
+                    result.get('model', 'not_reported'),
+                    reasoning.get('context', 'not_reported') if isinstance(reasoning, dict) else 'not_reported',
+                )
                 messages = [item for item in result.get('output', [])
                             if item.get('type') == 'message' and item.get('role') == 'assistant'
                             and item.get('phase') in (None, 'final_answer')]
@@ -889,6 +916,14 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                 return LLMChatResult(
                     content=content, finish_reason='stop', usage=usage,
                     prompt_cache_diagnostics=result.get('prompt_cache_diagnostics'),
+                    codex_response_items=tuple(
+                        item for item in result.get('output', [])
+                        if (item.get('type') == 'message' and item.get('role') == 'assistant')
+                        or (item.get('type') == 'reasoning'
+                            and isinstance(item.get('encrypted_content'), str) and item['encrypted_content'])
+                    ),
+                    codex_cache_key=cache_key,
+                    codex_account_generation=generation,
                 )
 
-    return _run(request(), stop_event)
+    return _run(request(), stop_event, generation=generation)

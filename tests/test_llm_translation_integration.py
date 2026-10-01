@@ -1,5 +1,7 @@
 import os
+import json
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -11,6 +13,7 @@ from _llm_translation_test_support import (
 )
 from ballontranslator.utils.config import (
     LLMGlossaryMode,
+    LLMTranslateContext,
     pcfg,
 )
 
@@ -19,6 +22,70 @@ class LLMTranslationIntegrationTest(
     LLMTranslationTestMixin,
     unittest.TestCase,
 ):
+    def test_original_translation_history_survives_finalization_only_in_its_run(self) -> None:
+        project = self._project(4)
+        self.translator.lang_source = 'English'
+        self.translator.set_stop_event(threading.Event())
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+        pcfg.module.llm_prior_context_token_budget = 4096
+        captured = []
+        original = '你好世界。 Ａ!'
+
+        def translate(_profile, messages, **_usage) -> str:
+            captured.append(messages)
+            return json.dumps({'1': original}, ensure_ascii=False)
+
+        with mock.patch.object(type(self.translator), 'profile', new_callable=mock.PropertyMock,
+                               return_value=self.profile), \
+                mock.patch.object(self.translator, 'all_model_loaded', return_value=True), \
+                mock.patch.object(self.translator, '_request_translation', side_effect=translate), \
+                mock.patch.object(pcfg, 'pre_mt_sublist', []), \
+                mock.patch.object(pcfg, 'mt_sublist', []), \
+                mock.patch.object(pcfg, 'let_letter_case', 'none'):
+            with self.assertLogs(self.translator.logger, level='DEBUG') as logs:
+                for page_key in ('001.png', '002.png', '003.png'):
+                    self.translator.translate_textblk_lst(project.pages[page_key], project=project,
+                                                          page_key=page_key, full_page=True)
+                    self._complete(project, page_key)
+                    block = project.pages[page_key][0]
+                    self.assertEqual(block.translation, '你好世界.A!')
+                    block.translation = '你好\n世界.A!'
+            self.assertNotIn('reason=snapshot-changed', '\n'.join(logs.output))
+            self.assertEqual(self.translator._history_window.token_count, sum(
+                page.token_count for page in self.translator._history_window.history))
+            self.translator.set_stop_event(threading.Event())
+            self.translator.translate_textblk_lst(project.pages['004.png'], project=project,
+                                                  page_key='004.png', full_page=True)
+
+        for messages in captured[1:3]:
+            self.assertTrue(all(set(message) == {'role', 'content'} for message in messages))
+            for message in messages:
+                if message['role'] == 'assistant':
+                    self.assertEqual(json.loads(message['content'])['1'], original)
+        self.assertEqual(captured[1][1]['content'], captured[0][-1]['content'])
+        self.assertEqual(captured[2][:len(captured[1]) - 1], captured[1][:-1])
+        for message in captured[3]:
+            if message['role'] == 'assistant':
+                self.assertEqual(json.loads(message['content'])['1'], '你好\n世界.A!')
+
+    def test_original_response_keeps_the_run_that_started_its_request(self) -> None:
+        project = self._project(1)
+        original_run = threading.Event()
+        self.translator.set_stop_event(original_run)
+        pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
+
+        def translate(_profile, _messages, **_usage) -> str:
+            self.translator.set_stop_event(threading.Event())
+            return '{"1":"translated"}'
+
+        with mock.patch.object(type(self.translator), 'profile', new_callable=mock.PropertyMock,
+                               return_value=self.profile), \
+                mock.patch.object(self.translator, 'all_model_loaded', return_value=True), \
+                mock.patch.object(self.translator, '_request_translation', side_effect=translate):
+            self.translator.translate_textblk_lst(project.pages['001.png'], project=project,
+                                                  page_key='001.png', full_page=True)
+        self.assertIs(self.translator._history_window.last_response.response_run, original_run)
+
     def test_vision_is_a_suffix_and_keeps_selected_translation_model(self):
         self.profile.model = 'selected-translation-model'
         self.profile.vision_model = 'ignored-ocr-model'

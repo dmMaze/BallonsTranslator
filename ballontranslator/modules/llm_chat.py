@@ -169,6 +169,9 @@ class LLMChatResult:
     usage: Any = None
     finish_reason: str = ''
     prompt_cache_diagnostics: object = None
+    codex_response_items: Tuple[Dict[str, object], ...] = ()
+    codex_cache_key: str = ''
+    codex_account_generation: Optional[int] = None
 
 
 class LLMChatRequestError(RuntimeError):

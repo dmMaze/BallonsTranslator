@@ -306,8 +306,9 @@ class CodexAuthenticationTest(unittest.TestCase):
                     service_requests = [request for request in requests if not request.url.path.endswith('/oauth/token')]
                     self.assertEqual(service_requests[0].content, service_requests[1].content)
                     expected_key = {'chat': 'job-key', 'assisted-image': 'image-job'}.get(target)
-                    self.assertEqual([request.headers.get('session-id') for request in service_requests],
-                                     [expected_key, expected_key])
+                    for header in ('session-id', 'thread-id', 'x-client-request-id'):
+                        self.assertEqual([request.headers.get(header) for request in service_requests],
+                                         [expected_key, expected_key])
                     self.assertFalse(self.account.auth_invalid)
                     self.assertEqual(self.account.generation, generation)
 

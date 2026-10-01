@@ -1,4 +1,5 @@
 import copy
+from dataclasses import replace
 import json
 import unittest
 from unittest import mock
@@ -8,6 +9,7 @@ from ballontranslator.modules.context.glossary import (
     GlossaryEntry,
 )
 from ballontranslator.modules.context.history import HistoryPage
+from ballontranslator.modules.llm_chat import LLMChatResult
 from ballontranslator.modules.context.translation_context import (
     MemoryCheckpoint,
     PageSummary,
@@ -26,6 +28,26 @@ from ballontranslator.modules.translators.llm_translation_contract import (
 
 
 class LLMTranslationContractTest(unittest.TestCase):
+    def test_codex_replay_metadata_is_excluded_from_api_messages_and_budget(self) -> None:
+        spec = TranslationPromptSpec('Japanese', 'English', 'contract', False, True, True)
+        page = render_history_page(HistoryPage('old', ('source',), ('translated',)), 'test-model', spec)
+        response = LLMChatResult(
+            '{"translations":[{"id":1,"translation":"translated"}]}',
+            codex_response_items=({'type': 'reasoning', 'encrypted_content': 'opaque' * 2000},),
+            codex_cache_key='job', codex_account_generation=0,
+        )
+        replay_page = replace(page, codex_response=response)
+        context = RequestContext((replay_page,), history_budget=page.token_count)
+        canonical, _ = assemble_translation_request(('next',), prompt_spec=spec,
+                                                     request_context=RequestContext((page,)))
+        api, _ = assemble_translation_request(('next',), prompt_spec=spec, request_context=context)
+        codex, _ = assemble_translation_request(('next',), prompt_spec=spec,
+                                                request_context=context, codex_replay=True)
+        self.assertEqual(api, canonical)
+        self.assertEqual(context.history[0].token_count, page.token_count)
+        self.assertIs(codex[2]['codex_response'], response)
+        self.assertNotIn('opaque', json.dumps(api))
+
     def test_cache_boundaries_survive_growth_and_leave_volatile_input_unmarked(self) -> None:
         spec = TranslationPromptSpec('Japanese', 'English', 'contract', False, True, True)
         prefix = [

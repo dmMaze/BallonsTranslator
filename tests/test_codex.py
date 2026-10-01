@@ -128,9 +128,13 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(payload['reasoning'], {'effort': 'high'})
         self.assertEqual(payload['tools'], [])
         self.assertFalse(payload['store'])
-        self.assertEqual(payload['prompt_cache_key'], self.requests[0].headers['session-id'])
+        for header in ('session-id', 'thread-id', 'x-client-request-id'):
+            self.assertEqual(payload['prompt_cache_key'], self.requests[0].headers[header])
         self.assertNotIn('session_id', self.requests[0].headers)
         self.assertEqual(self.requests[0].headers['Authorization'], 'Bearer access')
+        self.assertEqual(self.requests[0].headers['OpenAI-Beta'], 'responses=experimental')
+        self.assertEqual(payload['include'], ['reasoning.encrypted_content'])
+        self.assertEqual(result.codex_response_items, tuple(self.events[-1]['response']['output']))
         self.assertNotIn('previous_response_id', payload)
         self.assertNotIn('prompt_cache_options', payload)
 
@@ -138,6 +142,7 @@ class CodexHTTPTest(unittest.TestCase):
         args = self.args()
         snapshots = []
         cache_key = 'job-cache-key'
+        self.events[-1]['response'].update(model=self.profile.model, reasoning={'context': 'all_turns'})
         with self.assertLogs(codex.LOGGER, level='DEBUG') as captured:
             for change in ('initial', 'repeat', 'text', 'image', 'instructions', 'schema', 'session'):
                 if change == 'text':
@@ -156,6 +161,9 @@ class CodexHTTPTest(unittest.TestCase):
         records = [record for record in captured.records if record.msg.startswith('Codex request fingerprints:')]
         fingerprints = [record.args for record in records]
         self.assertEqual(len(fingerprints), 7)
+        response_contexts = [record.args for record in captured.records
+                             if record.msg.startswith('Codex response context:')]
+        self.assertEqual(response_contexts, [(self.profile.model, 'all_turns')] * 7)
         self.assertEqual(fingerprints[0], fingerprints[1])
         for index, component in ((2, 3), (3, 3), (4, 2), (5, 1), (6, 0)):
             previous, current = fingerprints[index - 1], fingerprints[index]
@@ -212,6 +220,23 @@ class CodexHTTPTest(unittest.TestCase):
                                              'translator_llm_id': self.profile.id}):
             self.assertIn("prompt_cache='implicit'", translator.translation_run_description())
 
+    def test_gpt_56_limits_reasoning_context_without_changing_effort(self) -> None:
+        for model in ('gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra'):
+            with patch.dict(pcfg.module.codex_models, {model: {'modalities': ['text', 'image'],
+                                                            'efforts': ['none', 'high']}}):
+                for thinking, effort in ((codex.THINKING_AUTO, None), ('high', 'high'),
+                                         (codex.THINKING_DISABLED, 'none')):
+                    with self.subTest(model=model, thinking=thinking):
+                        self.profile.thinking_level = thinking
+                        args = self.args()
+                        args['model'] = model
+                        codex.request_chat_completion(self.profile, args, None, 'job-cache-key')
+                        reasoning = json.loads(self.requests[-1].content)['reasoning']
+                        expected = {'context': 'current_turn'}
+                        if effort is not None:
+                            expected['effort'] = effort
+                        self.assertEqual(reasoning, expected)
+
     def test_parameter_rejection_is_not_misclassified_as_model_unavailable(self) -> None:
         for parameter in ('prompt_cache_options', 'prompt_cache_breakpoint', 'private input with spaces'):
             for streamed in (False, True):
@@ -264,6 +289,9 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertEqual(image_request.headers['Authorization'], 'Bearer rotated')
         self.assertEqual(image_request.headers['ChatGPT-Account-Id'], 'account-one')
         self.assertEqual(image_request.headers['Accept'], 'application/json')
+        for header in ('session-id', 'thread-id', 'x-client-request-id'):
+            self.assertNotIn(header, image_request.headers)
+        self.assertNotIn('OpenAI-Beta', image_request.headers)
         self.assertEqual(image_request.extensions['timeout']['read'], 23.0)
         self.assertEqual(json.loads(image_request.content), {
             'model': 'gpt-image-2', 'prompt': 'Edit image 1 using mask image 2.',
@@ -303,10 +331,13 @@ class CodexHTTPTest(unittest.TestCase):
         factory.assert_called_once_with('socks5://proxy.example:1080')
         self.assertEqual(len(received), 3)
         self.assertEqual(received[0].content, received[2].content)
-        self.assertEqual(received[0].headers['session-id'], received[2].headers['session-id'])
+        for header in ('session-id', 'thread-id', 'x-client-request-id'):
+            self.assertEqual(received[0].headers[header], 'image-job-cache')
+            self.assertEqual(received[2].headers[header], 'image-job-cache')
         request = received[2]
         self.assertEqual(str(request.url), codex.API_URL + '/responses')
         self.assertEqual(request.headers['Accept'], 'text/event-stream')
+        self.assertEqual(request.headers['OpenAI-Beta'], 'responses=experimental')
         self.assertEqual(request.headers['Authorization'], 'Bearer rotated')
         self.assertEqual(request.extensions['timeout']['read'], 23.0)
         body = json.loads(request.content)
@@ -588,7 +619,8 @@ class CodexHTTPTest(unittest.TestCase):
             ocr.set_stop_event(threading.Event())
             ocr._request_with_retries(self.profile, self.args()['messages'], failure_label='OCR')
         keys = [json.loads(request.content)['prompt_cache_key'] for request in self.requests]
-        self.assertEqual([request.headers['session-id'] for request in self.requests], keys)
+        for header in ('session-id', 'thread-id', 'x-client-request-id'):
+            self.assertEqual([request.headers[header] for request in self.requests], keys)
         self.assertEqual(keys[0], keys[1])
         self.assertNotEqual(keys[1], keys[2])
         self.assertEqual((ocr.token_count, ocr.token_count_last), (45, 15))
@@ -733,12 +765,17 @@ class CodexHTTPTest(unittest.TestCase):
         self.responder = respond
         self.assertEqual(self.request().content, '{"1":"hello"}')
         self.assertEqual(received[0].content, received[2].content)
-        self.assertEqual(received[0].headers['session-id'], received[2].headers['session-id'])
+        for header in ('session-id', 'thread-id', 'x-client-request-id'):
+            self.assertEqual(received[0].headers[header], 'job-cache-key')
+            self.assertEqual(received[2].headers[header], 'job-cache-key')
         self.assertEqual(received[2].headers['Authorization'], 'Bearer rotated')
 
     def test_catalog_uses_subscription_visibility_and_explicit_modalities(self) -> None:
         def respond(request):
             self.assertEqual(request.headers['accept'], 'application/json')
+            self.assertNotIn('OpenAI-Beta', request.headers)
+            for header in ('session-id', 'thread-id', 'x-client-request-id'):
+                self.assertNotIn(header, request.headers)
             return httpx.Response(200, json={'models': [
                 None, {}, {'slug': 42},
                 {'slug': 'vision-model', 'visibility': 'list', 'supported_in_api': False,
@@ -896,47 +933,180 @@ class CodexHTTPTest(unittest.TestCase):
         project._pagename2idx = {key: index for index, key in enumerate(project.pages)}
         project._image_info = {page: {'finish_code': 0} for page in project.pages}
         translator = LLMTranslator('日本語', 'English')
+        self.profile.model = 'gpt-5.6-luna'
         translator.set_stop_event(threading.Event())
         translator.set_param_value('retry attempts', 1)
         received = []
+        outputs = []
 
         def respond(request):
             body = json.loads(request.content)
             received.append(body)
             current = body['input'][-1]['content'][0]['text'].split('INPUT:\n', 1)[1]
-            translations = [{'id': item['id'], 'translation': f'translated-{item["id"]}'} for item in json.loads(current)]
+            translations = [{'id': item['id'], 'translation': f'translated-{item["id"]}。'} for item in json.loads(current)]
             if len(received) == 4:
                 translations.append(translations[0])
-            return httpx.Response(200, text=sse(completion(json.dumps({'translations': translations}))))
+            event = completion(json.dumps({'translations': translations}, indent=2))
+            output = event['response']['output']
+            output[0].update(id=f'msg_{len(received)}', status='completed')
+            output[0]['content'][0]['annotations'] = []
+            output.insert(0, {'type': 'reasoning', 'id': f'rs_{len(received)}', 'summary': [],
+                              'content': None,
+                              'encrypted_content': f'opaque-reasoning-{len(received)}'})
+            outputs.append(copy.deepcopy(output))
+            return httpx.Response(200, text=sse(event))
 
         self.responder = respond
         settings = {'llm_profiles': [self.profile], 'translator_llm_id': self.profile.id,
                     'llm_translate_context': LLMTranslateContext.HISTORY, 'llm_prior_context_token_budget': 4096,
                     'llm_translate_vision': False, 'llm_translate_summary_memory': False, 'llm_glossary_path': ''}
-        with patch.dict(pcfg.module.__dict__, settings), patch.object(translator, '_respect_delay'):
+        with patch.dict(pcfg.module.__dict__, settings), patch.object(translator, '_respect_delay'), \
+                patch.dict(pcfg.module.codex_models, {self.profile.model: CATALOG['vision-model']}):
             for page in ('0', '1', '2'):
                 translator.translate_textblk_lst(project.pages[page], project=project, page_key=page, full_page=True)
                 project.mark_translation_finished(page, 'English')
+                for block in project.pages[page]:
+                    self.assertTrue(block.translation.endswith('.'))
+                    block.translation = block.translation.replace('translated-', 'trans\nlated-')
             previous_window = translator._history_window
             with self.assertRaises(InvalidNumTranslations):
                 translator.translate_textblk_lst(project.pages['3'], project=project, page_key='3', full_page=True)
         self.assertIs(translator._history_window, previous_window)
+        self.assertIsNone(translator._translation_codex_response)
         self.assertEqual(project.pages['3'][0].translation, 'previous')
         self.assertEqual(len({body['prompt_cache_key'] for body in received}), 1)
+        self.assertTrue(all(body['reasoning'] == {'context': 'current_turn'} for body in received))
         for page_index, (previous, current) in enumerate(zip(received, received[1:])):
             self.assertEqual(previous['text']['format'], current['text']['format'])
             self.assertEqual(previous['instructions'], current['instructions'])
             self.assertEqual(previous['input'][:-1], current['input'][:len(previous['input']) - 1])
+            baseline = previous['input'] + outputs[page_index]
+            self.assertEqual(current['input'][:len(baseline)], baseline)
             history = json.loads(current['input'][-2]['content'][0]['text'])
             self.assertEqual(current['input'][-2]['role'], 'assistant')
             self.assertEqual(current['input'][-2]['content'][0]['type'], 'output_text')
             self.assertEqual(history['translations'], [
-                {'id': i + 1, 'translation': f'translated-{i + 1}'}
+                {'id': i + 1, 'translation': f'translated-{i + 1}。'}
                 for i in range((1, 3, 2)[page_index])
             ])
             self.assertNotIn('prompt_cache_options', current)
             self.assertNotIn('prompt_cache_breakpoint', json.dumps(current['input']))
         self.assertIn('"translations":[{"id":1,"translation":"Translated text"}]', received[0]['instructions'])
+
+    def test_translation_replay_follows_page_edits_job_account_and_history_lifetime(self) -> None:
+        from ballontranslator.utils.config import LLMTranslateContext
+        from ballontranslator.utils.proj_imgtrans import ProjImgTrans
+        from ballontranslator.utils.textblock import TextBlock
+
+        for change in ('previous-edit', 'retained-edit', 'previous-source-edit', 'retained-source-edit',
+                       'previous-incomplete', 'new-job', 'account', 'account-before-send', 'reload', 'model', 'page-mode', 'eviction'):
+            with self.subTest(change=change):
+                project = ProjImgTrans()
+                project.pages = {str(i): [TextBlock(text=[f'source-{i}'])] for i in range(4)}
+                project._pagename2idx = {key: i for i, key in enumerate(project.pages)}
+                project._image_info = {key: {'finish_code': 0} for key in project.pages}
+                profile = copy.deepcopy(self.profile)
+                translator = LLMTranslator('日本語', 'English')
+                translator.set_stop_event(threading.Event())
+                received = []
+
+                def respond(request):
+                    received.append(json.loads(request.content))
+                    event = completion('{"translations":[{"id":1,"translation":"translated"}]}')
+                    event['response']['output'].insert(0, {
+                        'type': 'reasoning', 'id': f'rs_{len(received)}', 'summary': [],
+                        'encrypted_content': 'opaque' * 2000,
+                    })
+                    return httpx.Response(200, text=sse(event))
+
+                self.responder = respond
+                settings = {'llm_profiles': [profile], 'translator_llm_id': profile.id,
+                            'llm_translate_context': LLMTranslateContext.HISTORY,
+                            'llm_prior_context_token_budget': (8 if change == 'eviction' else
+                                                             12 if change in ('new-job', 'account', 'account-before-send') else 4096),
+                            'llm_translate_vision': False, 'llm_translate_summary_memory': False, 'llm_glossary_path': ''}
+                with patch.dict(pcfg.module.__dict__, settings), patch.object(translator, '_respect_delay') as delay, \
+                        patch('ballontranslator.modules.translators.llm_translation_contract.messages_token_count', return_value=3):
+                    for page in ('0', '1', '2'):
+                        translator.translate_textblk_lst(project.pages[page], project=project, page_key=page, full_page=True)
+                        project.mark_translation_finished(page, 'English')
+                    if change == 'previous-edit':
+                        project.pages['2'][0].translation = 'edited'
+                    elif change == 'retained-edit':
+                        project.pages['0'][0].translation = 'edited'
+                    elif change == 'previous-source-edit':
+                        project.pages['2'][0].text = ['edited-source']
+                    elif change == 'retained-source-edit':
+                        project.pages['0'][0].text = ['edited-source']
+                    elif change == 'previous-incomplete':
+                        project.begin_full_page_translation('2')
+                    elif change == 'new-job':
+                        translator.set_stop_event(threading.Event())
+                    elif change == 'account':
+                        self.account.invalidate()
+                    elif change == 'account-before-send':
+                        delay.side_effect = self.account.invalidate
+                    elif change == 'reload':
+                        reloaded = ProjImgTrans()
+                        reloaded.pages, reloaded._pagename2idx, reloaded._image_info = (
+                            project.pages, project._pagename2idx, project._image_info,
+                        )
+                        project = reloaded
+                    elif change == 'model':
+                        profile.model = 'text-model'
+                    elif change == 'page-mode':
+                        pcfg.module.llm_translate_context = LLMTranslateContext.PAGE
+                    translator.translate_textblk_lst(project.pages['3'], project=project, page_key='3', full_page=True)
+
+                self.assertEqual({item['id'] for item in received[2]['input'] if item['type'] == 'reasoning'},
+                                 {'rs_1', 'rs_2'})
+                expected = {
+                    'previous-edit': {'rs_1', 'rs_2', 'rs_3'},
+                    'retained-edit': {'rs_1', 'rs_2', 'rs_3'},
+                    'previous-source-edit': {'rs_1', 'rs_2'},
+                    'retained-source-edit': {'rs_2', 'rs_3'},
+                    'previous-incomplete': {'rs_1', 'rs_2'},
+                    'eviction': {'rs_3'},
+                }.get(change, set())
+                self.assertEqual({item['id'] for item in received[3]['input'] if item['type'] == 'reasoning'}, expected)
+                if change in ('previous-edit', 'retained-edit'):
+                    self.assertNotIn('edited', json.dumps(received[3]['input']))
+                if change in ('previous-source-edit', 'retained-source-edit'):
+                    self.assertIn('edited-source', json.dumps(received[3]['input']))
+                if change in ('new-job', 'account', 'account-before-send'):
+                    # A replay boundary must not trim otherwise reusable text history.
+                    self.assertEqual(len(received[3]['input']), 7)
+
+    def test_account_change_while_preparing_request_cancels_before_http(self) -> None:
+        fingerprint = codex._request_fingerprint
+        references = image_generation.image_references
+
+        def change_account(value):
+            self.account.invalidate()
+            return fingerprint(value)
+
+        def change_image_account(*args):
+            self.account.invalidate()
+            return references(*args)
+
+        for target in ('chat', 'image', 'assisted-image'):
+            with self.subTest(target=target), \
+                    patch.object(codex, '_request_fingerprint', side_effect=change_account), \
+                    patch.object(image_generation, 'image_references', side_effect=change_image_account), \
+                    self.assertRaises(LLMRequestStopped):
+                if target == 'chat':
+                    self.request()
+                else:
+                    codex.request_image('gpt-image-2', 'Edit.', PNG_BYTES, None, None,
+                                        reasoning_model='vision-model' if target == 'assisted-image' else '')
+        self.assertEqual(self.requests, [])
+
+    def test_replay_skips_reasoning_without_encrypted_content(self) -> None:
+        reasoning = {'type': 'reasoning', 'id': 'rs_unavailable', 'summary': []}
+        self.events[0]['response']['output'].insert(0, reasoning)
+        result = self.request()
+        self.assertEqual(result.content, '{"1":"hello"}')
+        self.assertNotIn(reasoning, result.codex_response_items)
 
     def test_summary_only_page_uses_same_codex_schema_and_persists_through_owner(self) -> None:
         import numpy as np

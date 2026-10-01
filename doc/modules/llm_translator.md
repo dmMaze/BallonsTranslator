@@ -116,12 +116,20 @@ saved summaries when Summary is enabled. Project filenames are not sent.
 
 History pairs are immutable and indivisible. The window grows only across
 contiguous successful requests with unchanged project identity and prompt-shaping
-settings; page jumps, reloads, edits, or setting changes rebuild it from project
-state. Full-page calls and selections covering every source-bearing block may
+settings; page jumps, reloads, source or summary edits, or setting changes rebuild
+the window. Full-page calls and selections covering every source-bearing block may
 advance the window after valid parsing. Partial selections may read history but
 cannot advance it or save generated summaries. Page completion follows successful
 postprocessing and assignment; full-page retries clear prior completion first.
 `+history` requests remain sequential.
+
+For every LLM backend, pages completed in the active run supply their original
+response translations to history rendering and validation. Postprocessing,
+layout line breaks, and translation edits do not rewrite those examples during
+that run. The existing pipeline stop event identifies the run; original responses
+remain only in the bounded history window. Other pages and new runs use saved
+translations. Project eligibility, source text, target language, and saved
+summaries are still validated.
 
 Summary is independent of history mode. Saved summaries through the current page
 can guide translation even for incomplete pages. Existing current summaries are
@@ -154,7 +162,20 @@ messages precede volatile input, and retained history pairs keep their rendering
 Eviction, memory changes, or response-contract changes can break prefix reuse.
 API cache policy belongs to the contract/requester; Codex uses a stable job cache
 identity that survives retries and token renewal but changes with a new job or
-account. Do not send API-only cache controls to the subscription transport.
+account. Codex Responses sends that identity in `prompt_cache_key`, `session-id`,
+`thread-id`, and `x-client-request-id`, matching the [official Codex client](https://github.com/openai/codex/blob/rust-v0.155.1/codex-rs/codex-api/src/endpoint/responses.rs).
+This subscription convention differs from the public API's per-request ID.
+SSE requests use `OpenAI-Beta: responses=experimental`. Completed Codex pages
+retain assistant output metadata and encrypted reasoning only in the runtime
+history window. GPT-5.6 chat requests use `reasoning.context: current_turn` so
+replayed older reasoning does not grow the model's rendered context; visible
+page history and the selected reasoning effort remain available.
+Replay requires the same job/account/model and matching eligible
+page sources and summaries; the transport rechecks ownership when sending.
+Account changes fall back to the run's text messages without rebuilding history.
+History rebuilds can reuse eligible responses from the same run. The existing budget
+counts canonical text history, excluding the extra response items.
+Do not send API-only cache controls to the subscription transport.
 Missing provider cache statistics do not establish a cache miss.
 
 ## Glossary
