@@ -115,6 +115,55 @@ def get_inpaint_bboxes(text_bbox_abs, full_image, logger_instance=None):
     ]
 
 
+def extract_text_pixel_mask(image_crop: np.ndarray) -> np.ndarray:
+    """Extract fine pixel-level text mask from image crop using adaptive CV binarization.
+    Returns binary uint8 mask of the same shape as crop where 255 = text pixels.
+    """
+    if image_crop is None or image_crop.size == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+
+    h, w = image_crop.shape[:2]
+    total_area = h * w
+    gray = cv2.cvtColor(image_crop, cv2.COLOR_BGR2GRAY) if image_crop.ndim == 3 else image_crop
+
+    # Otsu + Adaptive Gaussian threshold candidates
+    _, otsu_inv = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    _, otsu_bin = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    adapt_inv = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+    adapt_bin = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
+    candidates = [
+        cv2.bitwise_and(otsu_inv, adapt_inv),
+        cv2.bitwise_and(otsu_bin, adapt_bin),
+        adapt_inv,
+        otsu_inv,
+    ]
+
+    best_mask = None
+    best_score = -1
+    for cand in candidates:
+        cnt = cv2.countNonZero(cand)
+        density = cnt / total_area if total_area > 0 else 0
+        if 0.03 <= density <= 0.65:
+            score = 1.0 - abs(density - 0.22)
+            if score > best_score:
+                best_score = score
+                best_mask = cand
+
+    if best_mask is None:
+        best_mask = adapt_inv if cv2.countNonZero(adapt_inv) <= total_area * 0.7 else np.zeros_like(gray)
+
+    # Filter noise via connected components
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(best_mask, connectivity=8)
+    clean_mask = np.zeros_like(best_mask)
+    for i in range(1, num_labels):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area >= 3 and area <= total_area * 0.7:
+            clean_mask[labels == i] = 255
+
+    return clean_mask
+
+
 def create_unified_mask(input_mask: np.ndarray, method: str = "hull") -> np.ndarray:
     if not isinstance(input_mask, np.ndarray) or input_mask.ndim != 2:
         return np.zeros_like(input_mask)
@@ -712,20 +761,34 @@ class RTDetrV2TextDetector(TextDetectorBase):
 
             # Build the mask only after filtering so excluded text is not erased.
             local_block_mask = np.zeros(img.shape[:2], dtype=np.uint8)
-            inpaint_regions = get_inpaint_bboxes(current_tb_rect_list, img, self.logger)
-            for r_x1, r_y1, r_x2, r_y2 in inpaint_regions:
-                cv2.rectangle(local_block_mask, (r_x1, r_y1), (r_x2, r_y2), 255, -1)
+            crop_coords = adjust_text_line_coordinates(current_tb_rect_list, 2, 2, img.shape)
+            if crop_coords is not None:
+                cx1, cy1, cx2, cy2 = crop_coords
+                if cy2 > cy1 and cx2 > cx1:
+                    crop = img[cy1:cy2, cx1:cx2]
+                    px_mask = extract_text_pixel_mask(crop)
+                    if np.any(px_mask):
+                        local_block_mask[cy1:cy2, cx1:cx2] = px_mask
 
-            dilate_kernel_size = self.inpaint_mask_dilate
-            if dilate_kernel_size > 0:
-                kernel = np.ones((dilate_kernel_size, dilate_kernel_size), np.uint8)
-                local_block_mask = cv2.dilate(local_block_mask, kernel, iterations=1)
+            if not np.any(local_block_mask):
+                # Fallback to the detected text block bounding rectangle
+                cv2.rectangle(local_block_mask, (x1, y1), (x2, y2), 255, -1)
+
+            ksize = self.inpaint_mask_dilate
+            if ksize > 0:
+                element = cv2.getStructuringElement(
+                    cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1), (ksize, ksize)
+                )
+                local_block_mask = cv2.dilate(local_block_mask, element, iterations=1)
 
             unification_method = self.mask_unification_method
             if unification_method != "none":
                 local_block_mask = create_unified_mask(
                     local_block_mask, method=unification_method
                 )
+
+            if not np.any(local_block_mask):
+                cv2.rectangle(local_block_mask, (x1, y1), (x2, y2), 255, -1)
 
             final_inpaint_mask = cv2.bitwise_or(final_inpaint_mask, local_block_mask)
 

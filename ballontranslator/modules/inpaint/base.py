@@ -175,6 +175,20 @@ class InpainterBase(BaseModule):
                 xyxy_e = enlarge_window(xyxy, im_w, im_h, ratio=1.7)
                 im = inpainted[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
                 msk = mask[xyxy_e[1]:xyxy_e[3], xyxy_e[0]:xyxy_e[2]]
+                # enlarge_window() returns an empty rect for a degenerate or
+                # out-of-bounds block, which would reach OpenCV as an empty crop.
+                if im.size == 0 or msk.size == 0:
+                    continue
+                # A block the detector reported but did not mask would other-
+                # wise be skipped silently, leaving its text on the page.
+                if not np.any(msk):
+                    bx1 = max(0, xyxy[0] - xyxy_e[0])
+                    by1 = max(0, xyxy[1] - xyxy_e[1])
+                    bx2 = min(msk.shape[1], xyxy[2] - xyxy_e[0])
+                    by2 = min(msk.shape[0], xyxy[3] - xyxy_e[1])
+                    if bx2 > bx1 and by2 > by1:
+                        msk = msk.copy()
+                        cv2.rectangle(msk, (bx1, by1), (bx2, by2), 255, -1)
                 need_inpaint = True
                 if pcfg.module.check_need_inpaint or check_need_inpaint:
                     ballon_msk, non_text_msk = extract_ballon_mask(im, msk)
