@@ -13,11 +13,17 @@ from qtpy.QtGui import (
     QTextCursor,
     QTextDocument,
     QTextFrame,
+    QTextLayout,
 )
 
 from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, pt2px
-from .font_family import qfont_with_family
+from .font_family import qfont_with_family, rebind_qfont
 from .annotations import letter_spacing_value, line_spacing_values
+
+
+# Replace only our font-only layout ranges across consecutive reloads.
+# Ruby, stroke alignment, and other transient layout formats must survive.
+FONT_REBIND_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1242
 
 
 def selection_segments_excluding(
@@ -227,6 +233,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         self.foreground_pixmap: QPixmap = None
         self.relayout_on_changed = True
+        self._use_rebound_fonts = False
 
         # Effect padding is derived layout state, not rich-text content.
         # QTextDocument margins create undo entries in supported Qt bindings.
@@ -404,6 +411,9 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 metrics = format_metrics.get(format_index)
                 if metrics is None:
                     fcmt = fragment.charFormat()
+                    if self._use_rebound_fonts:
+                        fcmt = QTextCharFormat(fcmt)
+                        fcmt.setFont(rebind_qfont(fcmt.font()))
                     cfmt = CharFontFormat(fcmt, self.letter_spacing)
                     width = cfmt.br.width() if self.need_ideal_width else -1
                     height = (
@@ -440,6 +450,42 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             self._block_fragment_ends.append(fragment_ends)
             block = block.next()
         self.reLayout()
+
+    def refresh_native_fonts(self) -> None:
+        """Re-resolve document fonts without changing document formats."""
+        self._use_rebound_fonts = True
+        self.invalidate_native_metrics()
+
+    def _reset_block_layout(self, block: QTextBlock) -> QTextLayout:
+        """Clear one block and restore fresh transient font formats."""
+        if not self._use_rebound_fonts:
+            block.clearLayout()
+            return block.layout()
+
+        previous_formats = [
+            entry for entry in block.layout().formats()
+            if not bool(entry.format.property(
+                FONT_REBIND_LAYOUT_FORMAT_PROPERTY
+            ))
+        ]
+        block.clearLayout()
+        layout = block.layout()
+        layout.setFont(rebind_qfont(block.charFormat().font()))
+        formats = []
+        for start, end, char_format in self.fragment_format_ranges(
+            block.blockNumber(),
+            0,
+            max(0, block.length() - 1),
+        ):
+            entry = QTextLayout.FormatRange()
+            entry.start = start
+            entry.length = end - start
+            entry.format = QTextCharFormat()
+            entry.format.setFont(char_format.font())
+            entry.format.setProperty(FONT_REBIND_LAYOUT_FORMAT_PROPERTY, True)
+            formats.append(entry)
+        layout.setFormats([*formats, *previous_formats])
+        return layout
 
     def max_font_size(self, to_px=False) -> float:
         fs = self._max_font_size if self._max_font_size > 0 else self.document().defaultFont().pointSizeF()

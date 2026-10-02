@@ -19,6 +19,7 @@ _FONT_FAMILY_DECLARATION = re.compile(
     r'(?:&(?:#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]+);|[^;>])*',
     re.IGNORECASE,
 )
+_FONT_REBIND_SENTINEL = 'BalloonsTranslator Font Reload Sentinel'
 
 
 def _font_families_from_declaration(declaration: str) -> tuple[str, ...]:
@@ -156,6 +157,22 @@ def qfont_with_family(font: QFont, family: str) -> QFont:
     # renderer and the persisted/UI-facing accessor agree on one family.
     result.setFamilies([resolved])
     result.setFamily(resolved)
+    return result
+
+
+def rebind_qfont(font: QFont) -> QFont:
+    """Return an equal font whose native engine will be resolved again.
+
+    >>> original = QFont('Example Family', 12)
+    >>> rebind_qfont(original) == original
+    True
+    """
+    result = QFont(font)
+    families = list(result.families())
+    # Changing away and back detaches the implicitly shared QFont data. Merely
+    # copying or setting the same family can retain a pre-refresh native engine.
+    result.setFamily(_FONT_REBIND_SENTINEL)
+    result.setFamilies(families)
     return result
 
 

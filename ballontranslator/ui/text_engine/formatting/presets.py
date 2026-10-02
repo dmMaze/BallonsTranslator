@@ -2,7 +2,7 @@ from typing import Any, List, Optional
 
 from qtpy.QtWidgets import QApplication, QMenu, QMessageBox, QStackedLayout, QGraphicsDropShadowEffect, QLineEdit, QSizePolicy, QHBoxLayout, QVBoxLayout, QPushButton, QLabel
 from qtpy.QtCore import QEvent, QMimeData, QPoint, Signal, Qt, QRectF
-from qtpy.QtGui import QDrag, QFontMetrics, QColor, QPixmap, QPainter, QContextMenuEvent, QMouseEvent
+from qtpy.QtGui import QDrag, QFont, QFontMetrics, QColor, QPixmap, QPainter, QContextMenuEvent, QMouseEvent
 
 
 from ballontranslator.utils.fontformat import FontFormat
@@ -13,7 +13,7 @@ from ballontranslator.utils.text_effects import (
 )
 from ballontranslator.utils.config import save_text_styles, text_styles
 from ballontranslator.utils import config as C
-from ..font_family import qfont_with_family
+from ..font_family import qfont_with_family, rebind_qfont
 from ...custom_widget import PanelArea, Widget, FlowLayout
 from ...misc import themed_icon_url
 
@@ -216,12 +216,21 @@ class TextStyleLabel(Widget):
             return
         return super().mouseMoveEvent(event)
 
-    def updatePreview(self):
+    def refresh_font_preview(self) -> None:
         font = qfont_with_family(
-            self.stylelabel.font(),
+            rebind_qfont(self.stylelabel.font()),
             self.fontfmt.font_family,
         )
+        # QWidget ignores an equal-looking QFont assignment even if its native
+        # engine was detached. Make the synchronous transition observable.
+        placeholder = QFont(font)
+        placeholder.setStrikeOut(not placeholder.strikeOut())
+        self.stylelabel.setFont(placeholder)
         self.stylelabel.setFont(font)
+        self.stylelabel.resizeToContent()
+
+    def updatePreview(self) -> None:
+        self.refresh_font_preview()
 
         d = int(self.colorw.width() * 0.66)
         radius = d / 2
@@ -250,8 +259,6 @@ class TextStyleLabel(Widget):
         painter.drawRoundedRect(draw_rect, draw_radius, draw_radius)
         painter.end()
         self.colorw.setPixmap(pixmap)
-
-        self.stylelabel.resizeToContent()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         self._double_clicked = True
@@ -547,6 +554,13 @@ class TextStylePresetPanel(PanelArea):
         self.resizeToContent()
         if save_styles:
             save_text_styles()
+
+    def refresh_font_previews(self) -> None:
+        """Rebind preset labels after the Qt font database changes."""
+        for index in range(self.count()):
+            label: TextStyleLabel = self.flayout.itemAt(index).widget()
+            label.refresh_font_preview()
+        self.resizeToContent()
 
     def contextMenuEvent(self, e: QContextMenuEvent):
         menu = QMenu()

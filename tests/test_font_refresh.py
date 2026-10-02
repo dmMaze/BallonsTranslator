@@ -59,6 +59,42 @@ def test_non_linux_does_not_load_fontconfig():
         assert reinitialize_current_fontconfig().status == 'skipped'
 
 
+def test_refresh_updates_current_page_and_style_previews() -> None:
+    from ballontranslator.ui.mainwindow import MainWindow
+
+    items = [
+        SimpleNamespace(refresh_font_metrics=Mock()),
+        SimpleNamespace(refresh_font_metrics=Mock()),
+    ]
+    previews = Mock()
+    window = SimpleNamespace(
+        st_manager=SimpleNamespace(textblk_item_list=items),
+        textPanel=SimpleNamespace(formatpanel=SimpleNamespace(
+            textstyle_panel=SimpleNamespace(refresh_font_previews=previews),
+        )),
+        on_show_only_custom_font=Mock(),
+    )
+
+    MainWindow.on_fonts_refreshed(window)
+    MainWindow.on_fonts_refreshed(window)
+
+    assert [item.refresh_font_metrics.call_count for item in items] == [2, 2]
+    assert previews.call_count == 2
+
+
+def test_rebind_qfont_preserves_requested_values() -> None:
+    from qtpy.QtGui import QFont
+    from ballontranslator.ui.text_engine.font_family import rebind_qfont
+
+    font = QFont()
+    font.setFamilies(['Primary family', 'Fallback family'])
+    font.setPointSizeF(17.5)
+    rebound = rebind_qfont(font)
+
+    assert rebound == font
+    assert rebound.families() == font.families()
+
+
 def test_fontconfig_unavailable():
     with patch('ballontranslator.utils.font_refresh.sys.platform', 'linux'), patch(
         'ballontranslator.utils.font_refresh.ctypes.CDLL', side_effect=OSError('missing'),
@@ -271,6 +307,89 @@ def test_refreshed_text_matches_fresh_layout_and_export(
     finally:
         scene.clear()
         database.removeApplicationFont(font_id)
+
+
+@pytest.mark.parametrize('vertical', [False, True])
+def test_repeated_refresh_rebinds_every_mixed_font_run(
+    runtime_app: QApplication,
+    monkeypatch,
+    vertical: bool,
+) -> None:
+    from qtpy.QtGui import (
+        QFont, QTextCharFormat, QTextCursor, QTextLayout,
+    )
+    from qtpy.QtWidgets import QGraphicsScene
+    from ballontranslator.ui.text_engine import layout as layout_module
+    from ballontranslator.ui.text_engine.item import TextBlkItem
+    from ballontranslator.utils.textblock import TextBlock
+
+    block = TextBlock([0, 0, 300, 180])
+    block._bounding_rect = [0, 0, 300, 180]
+    block.translation = 'AlphaBravo'
+    block.vertical = vertical
+    item = TextBlkItem(block, 0)
+    scene = QGraphicsScene()
+    scene.addItem(item)
+    document = item.document()
+    families = ('Contract Family A', 'Contract Family B')
+    for start, end, family in ((0, 5, families[0]), (5, 10, families[1])):
+        cursor = QTextCursor(document)
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        char_format = QTextCharFormat(cursor.charFormat())
+        font = QFont(char_format.font())
+        font.setFamilies([family])
+        font.setFamily(family)
+        char_format.setFont(font)
+        cursor.setCharFormat(char_format)
+
+    cursor = QTextCursor(document)
+    cursor.setPosition(8)
+    cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+    item.setTextCursor(cursor)
+    overlay_property = 0x100000 + 1999
+    overlay = QTextLayout.FormatRange()
+    overlay.start = 0
+    overlay.length = 1
+    overlay.format = QTextCharFormat()
+    overlay.format.setProperty(overlay_property, True)
+    document.firstBlock().layout().setFormats([overlay])
+    before = (
+        document.toHtml(), document.availableUndoSteps(),
+        cursor.position(), cursor.anchor(),
+    )
+    generation = 0
+
+    def tagged_rebind(font: QFont) -> QFont:
+        rebound = QFont(font)
+        rebound.setFamilies([f'Rebound {generation}: {font.family()}'])
+        return rebound
+
+    monkeypatch.setattr(layout_module, 'rebind_qfont', tagged_rebind)
+    for generation in (1, 2):
+        item.refresh_font_metrics()
+        layout_formats = document.firstBlock().layout().formats()
+        rebound_ranges = sorted(
+            (
+                int(entry.start), int(entry.length),
+                entry.format.font().family(),
+            )
+            for entry in layout_formats
+            if entry.format.font().family().startswith('Rebound ')
+        )
+        assert any(bool(entry.format.property(overlay_property))
+                   for entry in layout_formats)
+        assert rebound_ranges == [
+            (0, 5, f'Rebound {generation}: {families[0]}'),
+            (5, 5, f'Rebound {generation}: {families[1]}'),
+        ]
+
+    cursor = item.textCursor()
+    assert (
+        document.toHtml(), document.availableUndoSteps(),
+        cursor.position(), cursor.anchor(),
+    ) == before
+    scene.clear()
 
 
 def wait_refresh(controller, expected, results):

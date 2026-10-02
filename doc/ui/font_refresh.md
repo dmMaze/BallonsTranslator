@@ -32,9 +32,11 @@ and removes a bundled seed font: an observed Qt side effect, not a public
 refresh guarantee. Never clear all application fonts.
 
 Publication preserves custom groups, exclusions, and missing selected families,
-updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. Reshape
-live text and refresh effects before publishing family/weight choices. Refresh
-must not rewrite document formatting, project data, or undo history.
+updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. The
+main window rebinds and reshapes every text block on the current page, refreshes
+style preset labels, then publishes family/weight choices. Transient layout
+formats prevent same-family replacements from retaining an old native font
+engine without changing rich text, project data, or undo history.
 Picker refresh discards unaccepted search text and restores the committed family
 without emitting a font-change action, even if that family is no longer listed.
 

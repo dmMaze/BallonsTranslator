@@ -1018,8 +1018,7 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         if self._reuse_plain_line(block, block_text, block_text_length):
             return 1
         self._plain_line_cache.pop(block.blockNumber(), None)
-        block.clearLayout()
-        tl = block.layout()
+        tl = self._reset_block_layout(block)
 
         ruby_metrics = prepare_horizontal_ruby_layout(block)
         self._ruby_metrics.append(ruby_metrics)

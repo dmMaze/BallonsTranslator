@@ -772,6 +772,7 @@ class MainWindow(mainwindow_cls):
     def on_fonts_refreshed(self) -> None:
         for item in self.st_manager.textblk_item_list:
             item.refresh_font_metrics()
+        self.textPanel.formatpanel.textstyle_panel.refresh_font_previews()
         self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
     def on_font_refresh_status(self, label: str, detail: str) -> None:
