@@ -8,17 +8,30 @@ from qtpy.QtCore import (
     QCoreApplication,
     QEvent,
     QMimeData,
+    QObject,
     QPoint,
     QPointF,
     QRect,
     Qt,
 )
+from qtpy.QtGui import QFont
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui.text_engine.formatting import presets
 from ballontranslator.utils import config, shared
 from ballontranslator.utils.fontformat import FontFormat
+
+
+class _FontChangeRecorder(QObject):
+    def __init__(self, parent: QObject) -> None:
+        super().__init__(parent)
+        self.fonts: list[QFont] = []
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.FontChange:
+            self.fonts.append(QFont(watched.font()))
+        return False
 
 
 class TextStylePresetReorderingTest(unittest.TestCase):
@@ -97,6 +110,39 @@ class TextStylePresetReorderingTest(unittest.TestCase):
         self.assertTrue(handled)
         drop_event.acceptProposedAction.assert_called_once_with()
         save_styles.assert_called_once_with()
+
+    def test_refresh_font_previews_forces_each_widget_to_accept_every_reload(
+        self,
+    ) -> None:
+        panel = self._make_panel('First', 'Second')
+        labels = self._labels(panel)
+        recorders = []
+        expected_fonts = []
+        for label in labels:
+            label.fontfmt.font_family = label.stylelabel.font().family()
+            label.refresh_font_preview()
+            expected_fonts.append(QFont(label.stylelabel.font()))
+            recorder = _FontChangeRecorder(label.stylelabel)
+            label.stylelabel.installEventFilter(recorder)
+            recorders.append(recorder)
+
+        with patch.object(
+            panel, 'resizeToContent', wraps=panel.resizeToContent,
+        ) as resize_panel:
+            panel.refresh_font_previews()
+            panel.refresh_font_previews()
+
+        self.assertEqual(resize_panel.call_count, 2)
+        for label, recorder, expected in zip(labels, recorders, expected_fonts):
+            self.assertEqual(len(recorder.fonts), 4)
+            for placeholder, applied in zip(
+                recorder.fonts[::2], recorder.fonts[1::2],
+            ):
+                self.assertNotEqual(
+                    placeholder.strikeOut(), expected.strikeOut()
+                )
+                self.assertEqual(applied, expected)
+            self.assertEqual(label.stylelabel.font(), expected)
 
     def test_drop_in_row_gap_uses_horizontal_insertion_point(self) -> None:
         panel = self._make_panel(*(f'Style {index}' for index in range(6)))

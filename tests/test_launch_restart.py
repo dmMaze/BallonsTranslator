@@ -171,5 +171,59 @@ class LaunchRestartTests(unittest.TestCase):
             self.assertEqual((root / 'resources' / 'stylesheet.css').read_text(encoding='utf8'), 'new css')
 
 
+    def test_font_backend_maps_to_platform_arguments(self):
+        self.assertEqual(
+            launch.qt_font_backend_platform_argument('gdi', 'win32', '6.8.0'),
+            'windows:fontengine=gdi',
+        )
+        self.assertEqual(
+            launch.qt_font_backend_platform_argument('gdi', 'win32', '6.7.3'),
+            'windows:nodirectwrite',
+        )
+        self.assertEqual(
+            launch.qt_font_backend_platform_argument(
+                'freetype', 'win32', '6.8.0'
+            ),
+            'windows:fontengine=freetype',
+        )
+        self.assertEqual(
+            launch.qt_font_backend_platform_argument(
+                'freetype', 'darwin', '6.8.0'
+            ),
+            'cocoa:fontengine=freetype',
+        )
+        self.assertIsNone(
+            launch.qt_font_backend_platform_argument(
+                'default', 'win32', '6.8.0'
+            )
+        )
+
+    def test_explicit_platform_argument_overrides_saved_font_backend(self):
+        argv = ['ballontranslator', '-platform', 'minimal']
+
+        result = launch.application_arguments(
+            argv,
+            headless=False,
+            platform_name='win32',
+            qt_version='6.8.0',
+            font_backend='gdi',
+        )
+
+        self.assertEqual(result, argv)
+
+    def test_headless_platform_overrides_saved_font_backend(self):
+        result = launch.application_arguments(
+            ['ballontranslator'],
+            headless=True,
+            platform_name='win32',
+            qt_version='6.8.0',
+            font_backend='gdi',
+        )
+
+        self.assertEqual(
+            result, ['ballontranslator', '-platform', 'offscreen']
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

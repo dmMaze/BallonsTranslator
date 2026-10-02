@@ -4,6 +4,13 @@ Runtime refresh is supported in GUI mode with Qt 6.4 or later. Qt 5, older Qt 6,
 and headless startup retain normal font registration without refresh hooks.
 This support boundary does not imply a public Qt database-refresh API.
 
+The native font backend is selected at process startup under **General →
+Typesetting → Advanced**. Windows offers Default, GDI, and FreeType; macOS
+offers Default and FreeType; Linux keeps the platform default because its Qt
+backends do not expose an equivalent supported choice here. A changed selection
+is saved immediately and requires restart. An explicit Qt ``-platform`` argument
+takes precedence, while headless mode always uses ``offscreen``.
+
 ## Ownership and ordering
 
 | Concern | Owner |
@@ -32,9 +39,11 @@ and removes a bundled seed font: an observed Qt side effect, not a public
 refresh guarantee. Never clear all application fonts.
 
 Publication preserves custom groups, exclusions, and missing selected families,
-updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. Reshape
-live text and refresh effects before publishing family/weight choices. Refresh
-must not rewrite document formatting, project data, or undo history.
+updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. The
+main window rebinds and reshapes every text block on the current page, refreshes
+style preset labels, then publishes family/weight choices. Transient layout
+formats prevent same-family replacements from retaining an old native font
+engine without changing rich text, project data, or undo history.
 Picker refresh discards unaccepted search text and restores the committed family
 without emitting a font-change action, even if that family is no longer listed.
 
