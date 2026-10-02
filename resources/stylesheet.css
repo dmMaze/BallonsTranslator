@@ -173,6 +173,49 @@ QWidget#DrawingPanel QComboBox::drop-down {
     border: none;
 }
 
+
+QToolButton#FontBackendHelpButton {
+    min-width: 16px;
+    max-width: 16px;
+    min-height: 16px;
+    max-height: 16px;
+    padding: 0px;
+    color: @titleBarColor;
+    background-color: transparent;
+    border: 1px solid @borderColor;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QToolButton#FontBackendHelpButton:hover,
+QToolButton#FontBackendHelpButton:focus {
+    color: rgb(30, 147, 229);
+    border-color: rgb(30, 147, 229);
+}
+
+QLabel#FontBackendRestartNotice {
+    color: rgb(30, 147, 229);
+    font-size: 11px;
+}
+
+QToolButton#FontBackendRestartButton {
+    min-width: 22px;
+    max-width: 22px;
+    min-height: 22px;
+    max-height: 22px;
+    padding: 0px;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+}
+
+QToolButton#FontBackendRestartButton:hover,
+QToolButton#FontBackendRestartButton:focus {
+    background-color: rgba(30, 147, 229, 20%);
+    border-color: rgb(30, 147, 229);
+}
+
 QWidget#ConfigContentScrollContent QSpinBox#SpellCheckDistanceSpin,
 QWidget#ConfigContentScrollContent QSpinBox#AutoTateChuYokoMaxLength {
     border: none;

@@ -383,6 +383,75 @@ class AutoTateChuYokoConfig(Config):
                 setattr(self, setting.name, setting.default)
 
 
+FONT_BACKEND_DEFAULT = 'default'
+WINDOWS_FONT_BACKENDS = (FONT_BACKEND_DEFAULT, 'gdi', 'freetype')
+MACOS_FONT_BACKENDS = (FONT_BACKEND_DEFAULT, 'freetype')
+
+
+def font_backend_options(platform_name: str) -> tuple[str, ...]:
+    """Return the font backends exposed for one operating system.
+
+    >>> font_backend_options('win32')
+    ('default', 'gdi', 'freetype')
+    >>> font_backend_options('linux')
+    ('default',)
+    """
+
+    if platform_name == 'win32':
+        return WINDOWS_FONT_BACKENDS
+    if platform_name == 'darwin':
+        return MACOS_FONT_BACKENDS
+    return (FONT_BACKEND_DEFAULT,)
+
+
+@nested_dataclass
+class FontBackendConfig(Config):
+    """Platform-specific Qt font backend choices.
+
+    Values for other platforms stay untouched so one shared config remains
+    portable between machines.
+
+    >>> FontBackendConfig(windows='gdi').for_platform('win32')
+    'gdi'
+    """
+
+    windows: str = FONT_BACKEND_DEFAULT
+    macos: str = FONT_BACKEND_DEFAULT
+
+    def __post_init__(self) -> None:
+        valid_options = {
+            'windows': WINDOWS_FONT_BACKENDS,
+            'macos': MACOS_FONT_BACKENDS,
+        }
+        for setting, options in valid_options.items():
+            value = getattr(self, setting)
+            if type(value) is str and value in options:
+                continue
+            LOGGER.warning(
+                'Discard invalid font_backend.%s config: %r.',
+                setting,
+                value,
+            )
+            setattr(self, setting, FONT_BACKEND_DEFAULT)
+
+    def for_platform(self, platform_name: str) -> str:
+        if platform_name == 'win32':
+            return self.windows
+        if platform_name == 'darwin':
+            return self.macos
+        return FONT_BACKEND_DEFAULT
+
+    def set_for_platform(self, platform_name: str, value: str) -> None:
+        if value not in font_backend_options(platform_name):
+            raise ValueError(
+                f'Unsupported font backend {value!r} on {platform_name!r}'
+            )
+        if platform_name == 'win32':
+            self.windows = value
+        elif platform_name == 'darwin':
+            self.macos = value
+
+
 @nested_dataclass
 class ProgramConfig(Config):
 
@@ -391,6 +460,7 @@ class ProgramConfig(Config):
     mirrors: NetworkMirrorsConfig = field(default_factory=lambda: NetworkMirrorsConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     auto_tate_chu_yoko: AutoTateChuYokoConfig = field(default_factory=AutoTateChuYokoConfig)
+    font_backend: FontBackendConfig = field(default_factory=FontBackendConfig)
     compact_vertical_punctuation_spacing: bool = True
     quick_insert_characters: str = '『』「」♥♡★☆※♩♬'
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
@@ -470,6 +540,26 @@ class ProgramConfig(Config):
         
         with open(cfg_path, 'r', encoding='utf8') as f:
             config_dict = json.loads(f.read())
+
+        if 'font_backend' in config_dict:
+            font_backend = config_dict['font_backend']
+            if not isinstance(font_backend, Mapping):
+                LOGGER.warning(
+                    'Discard invalid font_backend config: expected an object.'
+                )
+                config_dict.pop('font_backend')
+            else:
+                known_settings = {'windows', 'macos'}
+                unknown_settings = set(font_backend) - known_settings
+                for setting in sorted(unknown_settings):
+                    LOGGER.warning(
+                        'Discard unknown font_backend.%s config.', setting
+                    )
+                config_dict['font_backend'] = {
+                    key: value
+                    for key, value in font_backend.items()
+                    if key in known_settings
+                }
 
         if not isinstance(config_dict.get('quick_insert_characters', ''), str):
             LOGGER.warning(
