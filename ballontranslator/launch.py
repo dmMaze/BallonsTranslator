@@ -14,6 +14,65 @@ stored_commit_hash = None
 
 FONT_EXTS = {'.ttf','.otf','.ttc','.pfb'}
 
+
+def qt_font_backend_platform_argument(
+    font_backend: str,
+    platform_name: str,
+    qt_version: str,
+) -> str | None:
+    """Return the QPA platform value needed for a font backend.
+
+    >>> qt_font_backend_platform_argument('gdi', 'win32', '6.8.0')
+    'windows:fontengine=gdi'
+    >>> qt_font_backend_platform_argument('default', 'win32', '6.8.0') is None
+    True
+    """
+
+    if font_backend == 'default':
+        return None
+    if platform_name == 'win32':
+        if font_backend == 'gdi':
+            version_parts = qt_version.split('.')
+            major_minor = tuple(int(part) for part in version_parts[:2])
+            if major_minor >= (6, 8):
+                return 'windows:fontengine=gdi'
+            return 'windows:nodirectwrite'
+        if font_backend == 'freetype':
+            return 'windows:fontengine=freetype'
+    elif platform_name == 'darwin' and font_backend == 'freetype':
+        return 'cocoa:fontengine=freetype'
+    return None
+
+
+def application_arguments(
+    argv: list[str],
+    *,
+    headless: bool,
+    platform_name: str,
+    qt_version: str,
+    font_backend: str,
+) -> list[str]:
+    """Build QApplication arguments without overriding an explicit QPA choice.
+
+    Headless mode owns the platform selection and always appends ``offscreen``.
+    """
+
+    app_args = list(argv)
+    if headless:
+        return app_args + ['-platform', 'offscreen']
+    if any(
+        arg == '-platform' or arg.startswith('-platform=')
+        for arg in app_args[1:]
+    ):
+        return app_args
+    platform_argument = qt_font_backend_platform_argument(
+        font_backend, platform_name, qt_version
+    )
+    if platform_argument is not None:
+        app_args.extend(['-platform', platform_argument])
+    return app_args
+
+
 IS_WIN7 = "Windows-7" in platform()
 
 def disable_bundled_windows_user_site() -> list:
@@ -286,9 +345,13 @@ def main():
 
     os.chdir(shared.PROGRAM_PATH)
 
-    app_args = sys.argv
-    if args.headless:
-        app_args = sys.argv + ['-platform', 'offscreen']
+    app_args = application_arguments(
+        sys.argv,
+        headless=args.headless,
+        platform_name=sys.platform,
+        qt_version=QT_VERSION,
+        font_backend=config.font_backend.for_platform(sys.platform),
+    )
     app = QApplication(app_args)
     app.setApplicationName('BalloonsTranslator')
     app.setApplicationVersion(APP_VERSION)
