@@ -511,7 +511,7 @@ class TextBlkItem(QGraphicsTextItem):
         was_repainting = self.repainting
         self.repainting = True
         try:
-            self.layout.invalidate_native_metrics()
+            self.layout.refresh_native_fonts()
         finally:
             self.repainting = was_repainting
         self.repaint_background()
