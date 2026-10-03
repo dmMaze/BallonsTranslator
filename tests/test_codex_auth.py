@@ -36,6 +36,7 @@ class CodexAuthenticationTest(unittest.TestCase):
         self.respond = self.success
         for patcher in (
             patch.object(codex, 'account', self.account),
+            patch.object(codex, '_client_version_checked_at', time.monotonic()),
             patch.object(self.account, '_path', return_value=self.path),
             patch.object(codex, '_system_keyring', side_effect=ImportError),
             patch.object(codex, '_http_client', side_effect=self.client),
@@ -48,6 +49,95 @@ class CodexAuthenticationTest(unittest.TestCase):
 
     def client(self, proxy: str = '') -> httpx.AsyncClient:
         return httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+
+    def test_latest_stable_identity_is_shared_by_catalog_chat_and_images(self) -> None:
+        release_requests = []
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            if request.url.host == 'api.github.com':
+                release_requests.append(request)
+                self.assertNotIn('authorization', request.headers)
+                self.assertNotIn('chatgpt-account-id', request.headers)
+                self.assertNotIn('cookie', request.headers)
+                self.assertEqual(request.extensions['timeout']['read'], 5.0)
+                return httpx.Response(200, json={'tag_name': 'rust-v0.160.0'})
+            return self.success(request)
+
+        self.respond = respond
+        with patch.object(codex, '_client_version', '0.159.0'), \
+                patch.object(codex, '_client_version_checked_at', float('-inf')):
+            for target in ('catalog', 'chat', 'assisted-image', 'image'):
+                self.request(target)
+            self.assertEqual(len(release_requests), 1)
+            backend_requests = [r for r in self.requests if r.url.host == 'chatgpt.com']
+            self.assertEqual(len(backend_requests), 4)
+            for request in backend_requests:
+                self.assertEqual(request.headers['version'], '0.160.0')
+                self.assertEqual(request.headers['originator'], 'codex_cli_rs')
+                self.assertIn('codex_cli_rs/0.160.0', request.headers['user-agent'])
+                if request.url.path.endswith('/responses'):
+                    self.assertEqual(request.headers['x-codex-routing-hint'], 'model=test-model')
+                else:
+                    self.assertNotIn('x-codex-routing-hint', request.headers)
+            self.assertEqual(backend_requests[0].url.params['client_version'], '0.160.0')
+            # Expiration rechecks the public release, without waiting on wall time.
+            codex._client_version_checked_at -= 3601
+            self.request('chat')
+            self.assertEqual(len(release_requests), 2)
+
+    def test_version_lookup_failures_retain_identity_and_do_not_block_generation(self) -> None:
+        for release in (None, {}, [], {'tag_name': 'rust-v0.160.0-alpha.1'},
+                        {'tag_name': 'rust-v0.160.0', 'prerelease': True},
+                        {'tag_name': 'rust-v0.160.0', 'draft': True},
+                        {'tag_name': 'rust-v0.158.0'}):
+            with self.subTest(release=release), \
+                    patch.object(codex, '_client_version', '0.159.0'), \
+                    patch.object(codex, '_client_version_checked_at', float('-inf')):
+                self.requests.clear()
+
+                def respond(request: httpx.Request) -> httpx.Response:
+                    if request.url.host == 'api.github.com':
+                        if release is None:
+                            raise httpx.ConnectTimeout('unavailable', request=request)
+                        return httpx.Response(200, json=release)
+                    return self.success(request)
+
+                self.respond = respond
+                self.request('chat')
+                self.request('chat')
+                self.assertEqual(len(self.requests), 3)
+                self.assertEqual(self.requests[-1].headers['version'], '0.159.0')
+
+    def test_version_lookup_cancellation_releases_lock_without_caching_failure(self) -> None:
+        async def cancel(request: httpx.Request) -> httpx.Response:
+            raise asyncio.CancelledError()
+
+        with patch.object(codex, '_client_version_checked_at', float('-inf')), \
+                patch.object(codex, '_http_client', return_value=httpx.AsyncClient(
+                    transport=httpx.MockTransport(cancel))) as factory:
+            with self.assertRaises(asyncio.CancelledError):
+                asyncio.run(codex._latest_client_version('http://proxy.test'))
+            factory.assert_called_once_with('http://proxy.test')
+            self.assertFalse(codex._client_version_lock.locked())
+            self.assertEqual(codex._client_version_checked_at, float('-inf'))
+
+    def test_concurrent_version_lookups_share_one_fetch(self) -> None:
+        requests = []
+
+        async def respond(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            await asyncio.sleep(0.01)
+            return httpx.Response(200, json={'tag_name': 'rust-v0.160.0'})
+
+        async def lookup() -> list:
+            return await asyncio.gather(codex._latest_client_version(), codex._latest_client_version())
+
+        with patch.object(codex, '_client_version', '0.159.0'), \
+                patch.object(codex, '_client_version_checked_at', float('-inf')), \
+                patch.object(codex, '_http_client', side_effect=lambda proxy='': httpx.AsyncClient(
+                    transport=httpx.MockTransport(respond))):
+            self.assertEqual(asyncio.run(lookup()), ['0.160.0', '0.160.0'])
+            self.assertEqual(len(requests), 1)
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -306,8 +396,9 @@ class CodexAuthenticationTest(unittest.TestCase):
                     service_requests = [request for request in requests if not request.url.path.endswith('/oauth/token')]
                     self.assertEqual(service_requests[0].content, service_requests[1].content)
                     expected_key = {'chat': 'job-key', 'assisted-image': 'image-job'}.get(target)
-                    self.assertEqual([request.headers.get('session-id') for request in service_requests],
-                                     [expected_key, expected_key])
+                    for header in ('session-id', 'thread-id', 'x-client-request-id'):
+                        self.assertEqual([request.headers.get(header) for request in service_requests],
+                                         [expected_key, expected_key])
                     self.assertFalse(self.account.auth_invalid)
                     self.assertEqual(self.account.generation, generation)
 

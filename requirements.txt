@@ -14,6 +14,7 @@ opencv-python>=4.8.1.78
 pillow-jxl-plugin>=1.3.4
 requests>=2.32.4
 httpx[socks,brotli]
+websockets>=15 ; python_version > "3.8"
 keyring
 cryptography
 tqdm>=4.66.3

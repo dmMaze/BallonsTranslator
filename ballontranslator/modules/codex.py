@@ -16,9 +16,10 @@ import tempfile
 import threading
 import time
 from types import SimpleNamespace
-from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Mapping, Optional, Tuple, Union, TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from .responses_ws import ResponsesWebSocket, run_async
 from .context.errors import ContextLengthError, is_context_length_error
 from .exceptions import CodexSignInRequiredError, LLMRequestStopped, LLMUserActionRequiredError
 from . import image_generation
@@ -28,12 +29,17 @@ from ballontranslator.utils.logger import logger as LOGGER
 if TYPE_CHECKING:
     import httpx
     from keyring.backend import KeyringBackend
+    from websockets.datastructures import Headers as WebSocketHeaders
     from .llm_chat import LLMChatResult
 
 
 _KEYRING_SERVICE = 'BallonsTranslator Codex'
-# Backend catalog compatibility, independent of any installed CLI or SDK.
-CATALOG_VERSION = '0.155.1'
+# False keeps plain-text history, without provider output replay or WS continuation.
+CODEX_REPLAY_ENABLED = False
+# Shared catalog/generation identity; retain this compatible floor when offline.
+_client_version = '0.159.0'
+_client_version_checked_at = float('-inf')
+_client_version_lock = threading.Lock()
 API_URL = 'https://chatgpt.com/backend-api/codex'
 AUTH_URL = 'https://auth.openai.com'
 CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
@@ -71,36 +77,67 @@ def _http_client(proxy: str = '') -> httpx.AsyncClient:
     return httpx.AsyncClient(**kwargs)
 
 
-def _run(operation: Coroutine, stop_event: Optional[threading.Event]) -> Any:
+async def _latest_client_version(proxy: str = '') -> str:
+    """Resolve stable release metadata at most hourly across worker event loops.
+
+    >>> asyncio.run(_latest_client_version())  # doctest: +SKIP
+    '0.159.0'
+    """
+    global _client_version, _client_version_checked_at
+    import httpx
+
+    while not _client_version_lock.acquire(blocking=False):
+        await asyncio.sleep(0.05)
+    try:
+        if time.monotonic() - _client_version_checked_at < 3600:
+            return _client_version
+        try:
+            # Use a separate unauthenticated client: never forward backend
+            # credentials, cookies or routing headers to release discovery.
+            async with _http_client(proxy) as client:
+                response = await asyncio.wait_for(client.get(
+                    'https://api.github.com/repos/openai/codex/releases/latest',
+                    headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'BallonsTranslator'},
+                    timeout=5.0,
+                ), timeout=5.0)
+                response.raise_for_status()
+                release = response.json()
+            tag = release.get('tag_name') if isinstance(release, dict) else None
+            if (not isinstance(tag, str) or not re.fullmatch(r'rust-v[0-9]+\.[0-9]+\.[0-9]+', tag)
+                    or release.get('prerelease') or release.get('draft')):
+                raise ValueError('Invalid stable Codex release.')
+            version = tag[len('rust-v'):]
+            if tuple(map(int, version.split('.'))) >= tuple(map(int, _client_version.split('.'))):
+                _client_version = version
+        except (httpx.HTTPError, asyncio.TimeoutError, ValueError):
+            LOGGER.warning('Could not refresh the Codex client version; using %s.', _client_version)
+        _client_version_checked_at = time.monotonic()
+        return _client_version
+    finally:
+        _client_version_lock.release()
+
+
+def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generation: Optional[int] = None,
+         session: Optional[CodexChatSession] = None) -> Any:
     """Run HTTP work in the calling worker, cancelling socket waits promptly.
 
     >>> _run(asyncio.sleep(0, result='completed'), None)
     'completed'
     """
-    generation = account.generation
-
-    async def run() -> Any:
-        task = asyncio.create_task(operation)
-        try:
-            while True:
-                if (stop_event is not None and stop_event.is_set()) or generation != account.generation:
-                    raise LLMRequestStopped()
-                done, _ = await asyncio.wait((task,), timeout=0.05)
-                if done:
-                    if (stop_event is not None and stop_event.is_set()) or generation != account.generation:
-                        raise LLMRequestStopped()
-                    return task.result()
-        finally:
-            if not task.done():
-                task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+    # Inference callers capture ownership before preparing the payload, which
+    # can take time when hashing images or retained encrypted reasoning.
+    if generation is None:
+        generation = account.generation
 
     try:
-        return asyncio.run(run())
+        if session is not None:
+            return session.run(operation, stop_event)
+        return run_async(operation, stop_event, is_current=lambda: generation == account.generation)
     except (LLMRequestStopped, LLMUserActionRequiredError, ContextLengthError):
         raise
-    except Exception:
+    except Exception as error:
         # OAuth codes, tokens and request URLs must not reach provider tracebacks.
+        LOGGER.debug('Codex request failure: exception=%s', type(error).__name__)
         raise RuntimeError('Codex could not complete the request. Check the connection and retry.') from None
 
 
@@ -571,7 +608,8 @@ class CodexAccount:
                 for attempt in range(2):
                     tokens = await self.tokens(client, rejected)
                     try:
-                        response = await client.get(API_URL + '/models', params={'client_version': CATALOG_VERSION}, headers=_headers(tokens))
+                        headers = await _headers(tokens)
+                        response = await client.get(API_URL + '/models', params={'client_version': headers['version']}, headers=headers)
                         await _check_response(response)
                         payload = response.json()
                         if isinstance(payload, dict) and payload.get('error'):
@@ -614,13 +652,70 @@ class CodexAccount:
 account = CodexAccount()
 
 
-def _headers(tokens: Dict, cache_key: str = '') -> Dict[str, str]:
+class CodexTurnState:
+    """Keep the first routing token only for one feature owner's retry loop.
+
+    >>> turn = CodexTurnState()
+    >>> turn.capture({'X-Codex-Turn-State': 'opaque'})
+    >>> turn.capture({'x-codex-turn-state': 'replacement'})
+    >>> turn.value
+    'opaque'
+    """
+
+    def __init__(self) -> None:
+        self.value = ''
+        self._identity: Optional[Tuple[str, int]] = None
+
+    def bind(self, cache_key: str, generation: int) -> None:
+        identity = cache_key, generation
+        if self._identity != identity:
+            self._identity = identity
+            self.value = ''
+
+    def capture(self, headers: object) -> None:
+        if self.value or not isinstance(headers, Mapping):
+            return
+        # WebSocket Headers.items() raises for unrelated repeated headers such
+        # as Set-Cookie. Inspect names first and read only the routing header.
+        for name in headers:
+            if isinstance(name, str) and name.lower() == 'x-codex-turn-state':
+                value = headers.get_all(name) if hasattr(headers, 'get_all') else headers[name]
+                if isinstance(value, list) and value:
+                    value = value[0]
+                if isinstance(value, str) and value:
+                    self.value = value
+                    LOGGER.debug('Codex turn-state captured: %s', _request_fingerprint(value))
+                return
+
+
+async def _headers(tokens: Dict, cache_key: str = '', *, turn: Optional[CodexTurnState] = None,
+                   proxy: str = '', cookies: Optional[httpx.Cookies] = None, model: str = '') -> Dict[str, str]:
+    version = await _latest_client_version(proxy)
     headers = {'Authorization': 'Bearer ' + tokens['access_token'], 'ChatGPT-Account-Id': tokens['account_id'],
-               'originator': 'ballontranslator', 'User-Agent': 'BallonsTranslator', 'Accept': 'application/json'}
+               'originator': 'codex_cli_rs', 'version': version,
+               'User-Agent': f'codex_cli_rs/{version} (BallonsTranslator)', 'Accept': 'application/json'}
     if cache_key:
-        # ChatGPT routes Responses caches by this header, not just the JSON key.
+        # Match Codex's Responses client: our job is one session/thread, and
+        # x-client-request-id uses that identity too, unlike the public API.
         headers['session-id'] = cache_key
+        headers['thread-id'] = cache_key
+        headers['x-client-request-id'] = cache_key
         headers['Accept'] = 'text/event-stream'
+        headers['Content-Type'] = 'application/json'
+        headers['OpenAI-Beta'] = 'responses=experimental'
+    if turn is not None and turn.value:
+        headers['x-codex-turn-state'] = turn.value
+    # Official Codex provides the target model to the subscription router.
+    # Invalid header characters must not turn an optional hint into a failure.
+    if model and re.fullmatch(r'[\x20-\x7e]+', model):
+        headers['x-codex-routing-hint'] = 'model=' + model
+    if cookies is not None:
+        import httpx
+
+        request = httpx.Request('GET', API_URL + '/responses')
+        cookies.set_cookie_header(request)
+        if 'Cookie' in request.headers:
+            headers['Cookie'] = request.headers['Cookie']
     return headers
 
 
@@ -683,7 +778,7 @@ def request_image(
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
                 try:
-                    async with client.stream('POST', API_URL + endpoint, headers=_headers(tokens, session_key),
+                    async with client.stream('POST', API_URL + endpoint, headers=await _headers(tokens, session_key, proxy=proxy, model=reasoning_model),
                                              json=payload, timeout=timeout) as response:
                         await _check_response(response)
                         if reasoning_model:
@@ -706,7 +801,7 @@ def request_image(
                     account.reject_access_token(tokens['access_token'], generation)
                     raise
 
-    response = _run(request(), stop_event)
+    response = _run(request(), stop_event, generation=generation)
     if reasoning_model:
         result = image_generation.decode_responses_image(response)
     else:
@@ -718,7 +813,7 @@ def request_image(
     return result
 
 
-def _request_messages(messages: List[Dict]) -> Tuple[str, List[Dict]]:
+def _request_messages(messages: List[Dict], cache_key: str = '', generation: Optional[int] = None) -> Tuple[str, List[Dict]]:
     """Map only supplied messages to Responses roles; retain image order.
 
     >>> _request_messages([{'role': 'system', 'content': 'contract'},
@@ -735,6 +830,14 @@ def _request_messages(messages: List[Dict]) -> Tuple[str, List[Dict]]:
             continue
         if role not in ('user', 'assistant'):
             raise ValueError('Unsupported Codex message role.')
+        replay = message.get('codex_response')
+        if (CODEX_REPLAY_ENABLED and role == 'assistant' and replay is not None and replay.codex_response_items
+                and replay.codex_cache_key == cache_key and replay.codex_account_generation == generation):
+            # Replay provider output verbatim, including encrypted reasoning and
+            # message IDs/phase. Validate ownership here: the account/job can
+            # change after the history snapshot, while request throttling waits.
+            inputs.extend(replay.codex_response_items)
+            continue
         parts = [{'type': 'text', 'text': content}] if isinstance(content, str) else content
         response_parts = []
         for part in parts:
@@ -776,7 +879,31 @@ async def _bounded_response_lines(response: httpx.Response, limit: int) -> Async
         yield buffer.rstrip(b'\r').decode('utf-8')
 
 
-async def _read_completion(response: httpx.Response, *, max_response_bytes: Optional[int] = None) -> Dict:
+def _completed_response(event: Dict, completed_items: List[Dict],
+                        turn: Optional[CodexTurnState] = None) -> Optional[Dict]:
+    kind = event.get('type')
+    if kind == 'response.metadata' and turn is not None:
+        turn.capture(event.get('headers'))
+    elif kind == 'response.output_item.done':
+        completed_items.append(event['item'])
+    elif kind in ('response.completed', 'response.done'):
+        result = event['response']
+        if result.get('status') != 'completed':
+            raise RuntimeError('Codex response did not complete.')
+        if not result.get('output'):
+            result['output'] = completed_items
+        return result
+    elif kind == 'response.incomplete':
+        raise LLMUserActionRequiredError('Codex output was truncated. Reduce the current input or thinking level and retry.')
+    elif kind in ('response.failed', 'error'):
+        _raise_service_error(event.get('response', event), status=event.get('status', event.get('status_code')))
+    return None
+
+
+async def _read_completion(response: httpx.Response, *, max_response_bytes: Optional[int] = None,
+                           turn: Optional[CodexTurnState] = None) -> Dict:
+    if turn is not None:
+        turn.capture(response.headers)
     completed_items, data = [], []
     lines = response.aiter_lines() if max_response_bytes is None else _bounded_response_lines(response, max_response_bytes)
     async for line in lines:
@@ -786,22 +913,85 @@ async def _read_completion(response: httpx.Response, *, max_response_bytes: Opti
             raw, data = '\n'.join(data), []
             if raw == '[DONE]':
                 break
-            event = json.loads(raw)
-            kind = event.get('type')
-            if kind == 'response.output_item.done':
-                completed_items.append(event['item'])
-            elif kind == 'response.completed':
-                result = event['response']
-                if result.get('status') != 'completed':
-                    raise RuntimeError('Codex response did not complete.')
-                if not result.get('output'):
-                    result['output'] = completed_items
+            result = _completed_response(json.loads(raw), completed_items, turn)
+            if result is not None:
                 return result
-            elif kind == 'response.incomplete':
-                raise LLMUserActionRequiredError('Codex output was truncated. Reduce the current input or thinking level and retry.')
-            elif kind in ('response.failed', 'error'):
-                _raise_service_error(event.get('response', event))
     raise RuntimeError('Codex response stream ended before completion.')
+
+
+class CodexChatSession(ResponsesWebSocket):
+    """Keep subscription authentication and routing state out of the shared transport."""
+
+    def __init__(self, cache_key: str, proxy: str = '', *, account_generation: int,
+                 websocket: bool = True) -> None:
+        import httpx
+
+        super().__init__(API_URL + '/responses', cache_key, proxy, websocket=websocket)
+        self.account_generation = account_generation
+        self._cookies = httpx.Cookies()
+
+    def _is_current(self) -> bool:
+        return not self.closed and self.account_generation == account.generation
+
+    def _dispose(self) -> None:
+        if self.closed:
+            self._cookies.clear()
+        super()._dispose()
+
+    def capture_cookies(self, headers: Union[httpx.Headers, WebSocketHeaders]) -> None:
+        """Retain only infrastructure cookies, with standard scope/expiry rules."""
+        import httpx
+
+        if self.closed or self.account_generation != account.generation:
+            return
+        # HTTPX and websockets expose repeated Set-Cookie headers differently.
+        values = (headers.get_list('set-cookie') if isinstance(headers, httpx.Headers)
+                  else headers.get_all('set-cookie'))
+        allowed = []
+        for value in values:
+            name = value.partition('=')[0].strip()
+            # Match official Codex's infrastructure allowlist. Account/session
+            # cookies must never survive in this job's routing state.
+            if name in {'__cf_bm', '__cflb', '__cfruid', '__cfseq', '__cfwaitingroom',
+                        '__oailb', '_cfuvid', 'cf_clearance', 'cf_ob_info', 'cf_use_ob'} or name.startswith('cf_chl_'):
+                allowed.append(('set-cookie', value))
+        if allowed:
+            response = httpx.Response(200, headers=allowed,
+                                      request=httpx.Request('GET', API_URL + '/responses'))
+            self._cookies.extract_cookies(response)
+
+    async def request(self, payload: Dict, tokens: Dict, turn: CodexTurnState) -> Optional[Dict]:
+        if not CODEX_REPLAY_ENABLED:
+            self._previous = None
+        metadata = {}
+
+        async def headers() -> Dict[str, str]:
+            result = await _headers(tokens, self.cache_key, turn=turn, proxy=self.proxy,
+                                    cookies=self._cookies, model=payload['model'])
+            for name in ('Accept', 'Content-Type'):
+                result.pop(name, None)
+            result['OpenAI-Beta'] = 'responses_websockets=2026-02-06'
+            return result
+
+        def capture(response_headers: object) -> None:
+            self.capture_cookies(response_headers)
+            turn.capture(response_headers)
+            if turn.value:
+                metadata['x-codex-turn-state'] = turn.value
+
+        if turn.value:
+            metadata['x-codex-turn-state'] = turn.value
+        try:
+            return await super().request(
+                payload, headers, lambda event, items: _completed_response(event, items, turn),
+                on_headers=capture, client_metadata=metadata,
+            )
+        except Exception as error:
+            # Import only after the shared transport has checked availability.
+            from websockets.exceptions import InvalidStatus
+            if isinstance(error, InvalidStatus):
+                _raise_service_error({}, status=error.response.status_code)
+            raise
 
 
 def _request_fingerprint(value: object) -> str:
@@ -810,7 +1000,8 @@ def _request_fingerprint(value: object) -> str:
 
 
 def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Optional[threading.Event],
-                            cache_key: str, proxy: str = '') -> LLMChatResult:
+                            cache_key: str, proxy: str = '', *, session: Optional[CodexChatSession] = None,
+                            turn: Optional[CodexTurnState] = None) -> LLMChatResult:
     """Send stateless input with a cache identity owned by the current job.
 
     >>> _request_messages([{'role': 'user', 'content': 'page'}])[1][0]['role']
@@ -822,6 +1013,12 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
         raise LLMRequestStopped()
     account.require_sign_in(stop_event)
     generation = account.generation
+    if session is not None and session.account_generation != generation:
+        session.close()
+        raise LLMRequestStopped()
+    if turn is None:
+        turn = CodexTurnState()
+    turn.bind(cache_key, generation)
     model = api_args['model']
     entry = pcfg.module.codex_models.get(model)
     if not entry:
@@ -830,11 +1027,12 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
     effort = None if effort == THINKING_AUTO else 'none' if effort == THINKING_DISABLED else effort
     if effort is not None and effort not in entry['efforts']:
         raise LLMUserActionRequiredError('The selected Codex model does not support this thinking level. Choose Auto or a supported level.')
-    instructions, inputs = _request_messages(api_args['messages'])
-    if any(part['type'] == 'input_image' for item in inputs for part in item['content']) and 'image' not in entry['modalities']:
+    instructions, inputs = _request_messages(api_args['messages'], cache_key, generation)
+    if any(part['type'] == 'input_image' for item in inputs for part in (item.get('content') or [])) and 'image' not in entry['modalities']:
         raise LLMUserActionRequiredError('The selected Codex model does not support image input.')
     payload = {'model': model, 'instructions': instructions, 'input': inputs, 'tools': [],
-               'tool_choice': 'none', 'store': False, 'stream': True, 'prompt_cache_key': cache_key}
+               'tool_choice': 'none', 'store': False, 'stream': True, 'prompt_cache_key': cache_key,
+               'include': ['reasoning.encrypted_content']}
     if effort is not None:
         payload['reasoning'] = {'effort': effort}
     schema = api_args.get('response_format', {}).get('json_schema')
@@ -848,7 +1046,7 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
         _request_fingerprint({key: value for key, value in payload.items()
                               if key not in ('prompt_cache_key', 'instructions', 'input')}),
         _request_fingerprint(instructions),
-        [(item['role'], _request_fingerprint(item)) for item in inputs],
+        [(item.get('role', item['type']), _request_fingerprint(item)) for item in inputs],
     )
 
     async def request() -> LLMChatResult:
@@ -857,15 +1055,29 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
                 try:
-                    async with client.stream('POST', API_URL + '/responses', headers=_headers(tokens, cache_key), json=payload) as response:
-                        await _check_response(response)
-                        result = await _read_completion(response)
+                    result = await session.request(payload, tokens, turn) if session is not None else None
+                    if result is None:
+                        headers = await _headers(tokens, cache_key, turn=turn, proxy=proxy,
+                                                 cookies=session._cookies if session is not None else None, model=model)
+                        LOGGER.debug('Codex SSE request: turn_state=%s, routing_cookies=%s',
+                                     _request_fingerprint(turn.value) if turn.value else 'absent', 'Cookie' in headers)
+                        async with client.stream('POST', API_URL + '/responses', headers=headers, json=payload) as response:
+                            if session is not None:
+                                session.capture_cookies(response.headers)
+                            await _check_response(response)
+                            result = await _read_completion(response, turn=turn)
                 except CodexSignInRequiredError:
                     if attempt == 0:
                         rejected = tokens['access_token']
                         continue
                     account.reject_access_token(tokens['access_token'], generation)
                     raise
+                reasoning = result.get('reasoning')
+                LOGGER.debug(
+                    'Codex response context: model=%s, reasoning_context=%s',
+                    result.get('model', 'not_reported'),
+                    reasoning.get('context', 'not_reported') if isinstance(reasoning, dict) else 'not_reported',
+                )
                 messages = [item for item in result.get('output', [])
                             if item.get('type') == 'message' and item.get('role') == 'assistant'
                             and item.get('phase') in (None, 'final_answer')]
@@ -889,6 +1101,15 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                 return LLMChatResult(
                     content=content, finish_reason='stop', usage=usage,
                     prompt_cache_diagnostics=result.get('prompt_cache_diagnostics'),
+                    codex_response_items=tuple(
+                        item for item in result.get('output', [])
+                        if (item.get('type') == 'message' and item.get('role') == 'assistant')
+                        or (item.get('type') == 'reasoning'
+                            and isinstance(item.get('encrypted_content'), str) and item['encrypted_content'])
+                    ),
+                    codex_cache_key=cache_key,
+                    codex_account_generation=generation,
                 )
 
-    return _run(request(), stop_event)
+    return (_run(request(), stop_event, generation=generation) if session is None or not session.websocket
+            else _run(request(), stop_event, generation=generation, session=session))

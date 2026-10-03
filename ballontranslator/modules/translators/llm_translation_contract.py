@@ -240,6 +240,7 @@ def assemble_translation_request(
     prompt_spec: TranslationPromptSpec,
     request_context: Optional[RequestContext] = None,
     image_part: Optional[Dict] = None,
+    codex_replay: bool = False,
 ) -> Tuple[List[Dict], str]:
     """Assemble messages in cache-friendly prefix order.
 
@@ -273,10 +274,11 @@ def assemble_translation_request(
                 'content': memory_message_content(request_context.memory.text),
             })
         for page in request_context.history:
-            messages.extend(
-                {'role': role, 'content': content}
-                for role, content in page.messages
-            )
+            for role, content in page.messages:
+                message = {'role': role, 'content': content}
+                if codex_replay and role == 'assistant' and page.codex_response is not None:
+                    message['codex_response'] = page.codex_response
+                messages.append(message)
 
     current_glossary = ()
     if (

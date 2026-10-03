@@ -1,4 +1,5 @@
 import json
+import threading
 import unittest
 from unittest import mock
 
@@ -29,6 +30,7 @@ class LLMTranslationSummaryTest(
         self.addCleanup(last_page_compaction.stop)
 
     def test_empty_visual_pages_extend_normal_summary_history(self) -> None:
+        self.translator.set_stop_event(threading.Event())
         pcfg.module.llm_translate_context = LLMTranslateContext.HISTORY
         pcfg.module.llm_translate_vision = True
         pcfg.module.llm_translate_summary_memory = True
@@ -406,18 +408,20 @@ class LLMTranslationSummaryTest(
         self.profile.json_schema_response_format = True
         for backend, model in (('openai', 'test-model'), ('openai', 'gpt-6-test'), ('codex', 'test-model')):
             with self.subTest(backend=backend, model=model):
+                self.translator.set_stop_event(threading.Event())
                 self.profile.backend = backend
                 self.profile.model = model
                 explicit = backend == 'openai' and model == 'gpt-6-test'
-                project = self._project(3)
+                project = self._project(4)
                 project.set_llm_visual_summary_text('002.png', 'Saved summary.')
                 saved_record = project.get_llm_visual_summary('002.png')
                 requests, windows = [], []
 
-                def respond(profile, args):
+                def respond(profile, args, *, codex_turn=None):
+                    self.assertEqual(codex_turn is not None, backend == 'codex')
                     requests.append(args)
-                    translations = ([{'id': 1, 'translation': 'translated'}] if backend == 'codex' or explicit
-                                    else {'1': 'translated'})
+                    translations = ([{'id': 1, 'translation': 'trans\nlated'}] if backend == 'codex' or explicit
+                                    else {'1': 'trans\nlated'})
                     payload = {'translations': translations} if backend == 'codex' or explicit else translations
                     if len(requests) != 2:
                         payload = {'page_summary': 'Generated ' + str(len(requests)), 'translations': translations}
@@ -434,10 +438,13 @@ class LLMTranslationSummaryTest(
                         windows.append(self.translator._history_window)
                         self._complete(project, page_key)
                         self.translator.on_page_translation_finished(project, page_key)
+                        project.pages[page_key][0].translation = 'trans\nl\nated'
                 self.assertEqual(project.get_llm_visual_summary('002.png'), saved_record)
                 self.assertEqual(project.get_llm_visual_summary('001.png')['text'], 'Generated 1')
                 self.assertEqual(project.get_llm_visual_summary('003.png')['text'], 'Generated 3')
-                self.assertEqual([len(window.history) for window in windows], [0, 1, 2])
+                self.assertEqual([len(window.history) for window in windows], [0, 1, 2, 3])
+                self.assertTrue(all(page.response_run is self.translator.stop_event
+                                    for page in windows[-1].history))
                 self.assertEqual(requests[0]['response_format'], requests[2]['response_format'])
                 self.assertEqual(requests[0]['messages'][0], requests[2]['messages'][0])
                 self.assertNotEqual(requests[0]['messages'][0], requests[1]['messages'][0])
@@ -447,8 +454,8 @@ class LLMTranslationSummaryTest(
                 saved_history = json.loads(content)
                 self.assertEqual(saved_history['page_summary'], 'Saved summary.')
                 self.assertEqual(saved_history['translations'], (
-                    [{'id': 1, 'translation': 'translated'}] if backend == 'codex' or explicit
-                    else {'1': 'translated'}
+                    [{'id': 1, 'translation': 'trans\nlated'}] if backend == 'codex' or explicit
+                    else {'1': 'trans\nlated'}
                 ))
                 for index, request in enumerate(requests):
                     schema = request['response_format']['json_schema']['schema']

@@ -1283,7 +1283,7 @@ class SceneTextManager(QObject):
         cbl = self.imgtrans_proj.current_block_list()
         if cbl is None:
             return
-        cbl.clear()
+        updated_blocks: List[TextBlock] = []
         for blk_item, trans_pair in zip(self.textblk_item_list, self.pairwidget_list):
             if not blk_item.document().isEmpty():
                 blk_item.blk.rich_text = blk_item.toHtml()
@@ -1294,7 +1294,10 @@ class SceneTextManager(QObject):
             blk_item.blk.text = [trans_pair.e_source.toPlainText()]
             blk_item.blk._bounding_rect = blk_item.absBoundingRect()
             blk_item.updateBlkFormat()
-            cbl.append(blk_item.blk)
+            updated_blocks.append(blk_item.blk)
+        # Translation workers read this list while Qt exports the scene. Publish
+        # its complete membership at once, preserving existing list references.
+        cbl[:] = updated_blocks
 
     def showTextblkItemRect(self, draw_rect: bool):
         self.canvas.textblock_mode = bool(draw_rect)

@@ -43,6 +43,9 @@ Only committed `TextBlock` and `FontFormat` state belongs in project JSON.
 `QTextDocument`, cursor, selection, and IME belong to live editing. Layout records,
 padding, mappings, previews, pixmaps, and caches are derived and never persisted.
 Passive loading follows [AGENTS.md](../../AGENTS.md#changes-and-data-safety).
+Scene-to-project saves publish the complete block list in one slice assignment,
+preserving list identity. Translation workers snapshot that membership before
+reading sources and translations; they must never observe a partly rebuilt list.
 
 Use coordinate spaces explicitly:
 

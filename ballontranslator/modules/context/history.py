@@ -2,9 +2,11 @@
 
 from dataclasses import dataclass
 from enum import Enum
+from threading import Event
 from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 if TYPE_CHECKING:
+    from ..llm_chat import LLMChatResult
     from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 
 
@@ -73,6 +75,10 @@ class RenderedHistoryPage:
     snapshot: HistoryPage
     messages: Tuple[Tuple[str, str], ...]
     token_count: int
+    # Runtime-only output; the canonical messages still own budget accounting.
+    codex_response: Optional['LLMChatResult'] = None
+    # Only responses produced in this run supply original translation text.
+    response_run: Optional[Event] = None
 
     @property
     def page_key(self) -> str:
@@ -105,6 +111,8 @@ class HistoryWindow:
     request_page_key: str
     history: Tuple[RenderedHistoryPage, ...]
     token_count: int
+    # Original completed response, validated for eligibility before appending.
+    last_response: Optional[RenderedHistoryPage] = None
 
 
 @dataclass(frozen=True)

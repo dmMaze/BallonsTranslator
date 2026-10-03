@@ -1,8 +1,5 @@
 # LLMTranslator
 
-Maintainer guide to LLM translation and the shared profile/request boundaries.
-Implementation details and edge cases belong in the owning code and focused tests.
-
 ## Architecture
 
 | Concern | Owner |
@@ -12,6 +9,8 @@ Implementation details and edge cases belong in the owning code and focused test
 | API clients, throttling, provider compatibility, and completion normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
 | Profile loading, defaults, and model choices | [`llm_profiles.py`](../../ballontranslator/utils/llm_profiles.py), [`config.py`](../../ballontranslator/utils/config.py) |
 | Codex authentication, credential storage, and subscription transport | [`codex.py`](../../ballontranslator/modules/codex.py) |
+| Public OpenAI Responses mapping and errors | [`openai_responses.py`](../../ballontranslator/modules/openai_responses.py) |
+| Shared Responses WebSocket connection lifecycle and continuation | [`responses_ws.py`](../../ballontranslator/modules/responses_ws.py) |
 | Image dispatch and shared generation protocol | [`llm_image.py`](../../ballontranslator/modules/llm_image.py), [`image_generation.py`](../../ballontranslator/modules/image_generation.py) |
 | Image encoding | [`llm_vision.py`](../../ballontranslator/modules/llm_vision.py) |
 | History selection, saved-context packing, glossary parsing, and token estimates | [`context/`](../../ballontranslator/modules/context) |
@@ -33,6 +32,12 @@ ChatGPT subscription account. Neither transport falls back to the other's billin
 Feature owners define prompts and response contracts; transports handle service
 compatibility and authentication.
 
+Codex and supported direct OpenAI requests automatically use the shared Responses
+WebSocket transport. Other API endpoints and Chat Completions-only controls keep
+the HTTP path. Connections and continuation state are scoped to the active run,
+profile, model, credentials, and proxy. Changed context must be resent in full;
+connection reuse must never restore history the feature owner has removed.
+
 Codex has one canonical profile with ID `codex`, separate from editable API
 profiles and clipboard operations. Its saved public model catalog is
 `module.codex_models`; offline defaults and saved custom choices remain usable
@@ -42,15 +47,17 @@ owns asynchronous GUI account operations, while headless requests restore
 credentials on demand. [`codex_settings.py`](../../ballontranslator/ui/codex_settings.py)
 owns the dedicated settings panel.
 
+Codex refreshes its client identity from the latest stable release in the request
+worker. Lookup failures retain the last known identity and saved model choices.
+
 Credentials remain outside config/profile exports. Codex encrypts its credential
 file using a key in the native credential store; unavailable secure storage uses
 logged, reversible obfuscation on save. Reads preserve unreadable encrypted data
 without replacing keys or downgrading protection. Token rotation is serialized,
 and a failed save must succeed before the rotated credentials are reused.
 
-Codex requests are stateless, with no hidden conversation or agent loop. Missing
-sign-in and invalid authentication stop the run; authentication rejection permits
-one renewal/replay, while permission and quota failures remain separate. Signing
+Missing sign-in and invalid authentication stop Codex runs. Authentication rejection
+permits one renewal/replay, while permission and quota failures remain separate. Signing
 in does not replay interrupted work. Account state and model-catalog refresh are
 independent, so catalog failures cannot undo a committed account change.
 
@@ -116,12 +123,20 @@ saved summaries when Summary is enabled. Project filenames are not sent.
 
 History pairs are immutable and indivisible. The window grows only across
 contiguous successful requests with unchanged project identity and prompt-shaping
-settings; page jumps, reloads, edits, or setting changes rebuild it from project
-state. Full-page calls and selections covering every source-bearing block may
+settings; page jumps, reloads, source or summary edits, or setting changes rebuild
+the window. Full-page calls and selections covering every source-bearing block may
 advance the window after valid parsing. Partial selections may read history but
 cannot advance it or save generated summaries. Page completion follows successful
 postprocessing and assignment; full-page retries clear prior completion first.
 `+history` requests remain sequential.
+
+For every LLM backend, pages completed in the active run supply their original
+response translations to history rendering and validation. Postprocessing,
+layout line breaks, and translation edits do not rewrite those examples during
+that run. The existing pipeline stop event identifies the run; original responses
+remain only in the bounded history window. Other pages and new runs use saved
+translations. Project eligibility, source text, target language, and saved
+summaries are still validated.
 
 Summary is independent of history mode. Saved summaries through the current page
 can guide translation even for incomplete pages. Existing current summaries are
@@ -152,10 +167,16 @@ context limit still applies to the complete request.
 Provider cache reuse is an optimization, never a correctness condition. Stable
 messages precede volatile input, and retained history pairs keep their rendering.
 Eviction, memory changes, or response-contract changes can break prefix reuse.
-API cache policy belongs to the contract/requester; Codex uses a stable job cache
-identity that survives retries and token renewal but changes with a new job or
-account. Do not send API-only cache controls to the subscription transport.
-Missing provider cache statistics do not establish a cache miss.
+API cache policy belongs to the contract/requester. Codex routing state stays
+within its job and account; subscription credentials and routing metadata must
+never reach public API endpoints. Transport continuation and provider prompt
+caching are separate: a persistent connection does not guarantee cache hits.
+
+Original Codex output and encrypted reasoning remain in the bounded runtime
+history, never project files. Replay requires matching run, account, model, and
+eligible page content; otherwise requests use canonical text history. Reasoning
+context uses the provider default. History budgets count canonical text, so
+retained provider output can increase the actual input size.
 
 ## Glossary
 
@@ -175,9 +196,13 @@ current summary, memory, glossary, or image. Errors requiring user action bypass
 retries and stop the run. Only completed provider responses reach
 translation parsing.
 
-Cancellation prevents subsequent attempts and interrupts waits. Synchronous
-OpenAI-compatible chat calls cannot be interrupted in flight; Codex HTTP calls
-can. Workers must reject obsolete results regardless of transport cancellation.
+WebSocket setup failures fall back to the same backend's HTTP path for the run.
+A started response is never automatically replayed through HTTP. Authentication,
+permission, quota, and output-limit errors retain their normal handling.
+
+Cancellation interrupts WebSocket and Codex HTTP waits. Synchronous Chat
+Completions calls cannot be interrupted in flight; workers must reject obsolete
+results regardless of transport cancellation.
 Diagnostics belong to their owning layer; provider usage and request fingerprints
 are evidence, not proof of cache availability. Never log credentials, and treat
 debug response content as potentially containing project or glossary text.
@@ -191,7 +216,7 @@ state in the project. Verify the boundaries affected by a change:
 | Profiles, defaults, and persistence | `test_llm_profiles.py`, `test_proj_imgtrans_translation_context.py` |
 | Response contracts, context, and retries | `test_llm_translation_*.py`, `test_llm_translator.py`, `test_llm_chat.py` |
 | Glossary parsing and selection | `test_translator_glossary.py` |
-| Authentication and subscription requests | `test_codex*.py` |
+| Responses transport and authentication | `test_codex*.py`, `test_openai_responses.py` |
 | Image transport, masks, and obsolete canvas results | `test_llm_inpaint.py`, `test_canvas_inpaint_lifecycle.py` |
 | Profile and drawing selection | `test_llm_profile_widgets.py`, `test_module_selection_menu.py`, `test_drawing_inpainter.py` |
 
