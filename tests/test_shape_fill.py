@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import numpy as np
-from qtpy.QtCore import QCoreApplication, QEvent, QPointF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRect, Qt
 from qtpy.QtGui import QColor, QKeySequence, QMouseEvent
 from qtpy.QtTest import QSignalSpy, QTest
 from qtpy.QtWidgets import QApplication, QHBoxLayout, QShortcut, QWidget
@@ -109,6 +109,7 @@ class ShapeFillTests(unittest.TestCase):
         self.assertTrue(np.all(self.project.mask_array == 127))
 
     def test_ellipse_and_clipping_keep_original_shape(self) -> None:
+        self.panel.shapePanel.borderChecker.setChecked(True)
         self.panel.shapePanel.shapeCombobox.setCurrentIndex(1)
         self.drag(QPointF(20, 20), QPointF(80, 80))
         pixels = self.rendered()
@@ -431,6 +432,191 @@ class ShapeFillTests(unittest.TestCase):
             self.assertEqual(config.shape_fill_shape, 'rectangle')
             self.assertEqual(config.shape_fill_color, '#ffffff')
             self.assertEqual(config.pentool_width, 42)
+
+    def test_border_draws_inside_shape_and_preview_matches(self) -> None:
+        shape_panel = self.panel.shapePanel
+        self.assertFalse(shape_panel.borderWidthSlider.isEnabled())
+        shape_panel.borderChecker.setChecked(True)
+        self.assertTrue(shape_panel.borderWidthSlider.isEnabled())
+        shape_panel.borderWidthSpinBox.setValue(4)
+        self.assertEqual(shape_panel.borderWidthSlider.value(), 4)
+        with patch('qtpy.QtWidgets.QColorDialog.getColor', return_value=QColor('#102030')):
+            QTest.mouseClick(shape_panel.borderColorPicker, Qt.MouseButton.LeftButton)
+        before = self.rendered()
+        self.drag(QPointF(20, 20), QPointF(80, 80), release=False)
+        preview = self.canvas.shape_fill_composite_preview
+        self.assertTrue(preview.isVisible())
+        self.assertEqual(preview.pixmap().toImage().pixelColor(1, 30), QColor('#102030'))
+        np.testing.assert_array_equal(self.rendered(), before)
+        QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.LeftButton,
+                           pos=self.canvas.gv.mapFromScene(QPointF(80, 80)))
+        pixels = self.rendered()
+        np.testing.assert_array_equal(pixels[50, 21], (16, 32, 48, 255))
+        np.testing.assert_array_equal(pixels[23, 50], (16, 32, 48, 255))
+        np.testing.assert_array_equal(pixels[50, 25], (224, 40, 70, 255))
+        np.testing.assert_array_equal(pixels[50, 19], (180, 180, 180, 255))
+        self.assertEqual(self.canvas.draw_undo_stack.count(), 1)
+        self.canvas.undo()
+        np.testing.assert_array_equal(self.rendered(), before)
+
+    def test_border_without_fill_and_eraser_ignores_border(self) -> None:
+        self.panel.shapePanel.borderChecker.setChecked(True)
+        self.panel.shapePanel.alphaSlider.setValue(0)
+        self.drag(QPointF(20, 20), QPointF(80, 80))
+        pixels = self.rendered()
+        np.testing.assert_array_equal(pixels[50, 21], (0, 0, 0, 255))
+        np.testing.assert_array_equal(pixels[50, 50], (180, 180, 180, 255))
+        self.drag(QPointF(10, 10), QPointF(90, 90), release=False,
+                  button=Qt.MouseButton.RightButton)
+        self.assertFalse(self.canvas.shape_fill_composite_preview.isVisible())
+        QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.RightButton,
+                           pos=self.canvas.gv.mapFromScene(QPointF(90, 90)))
+        np.testing.assert_array_equal(self.rendered()[50, 21], (180, 180, 180, 255))
+
+    def test_border_consuming_shape_matches_solid_fill(self) -> None:
+        panel = self.panel.shapePanel
+        for shape in (0, 1):
+            panel.shapeCombobox.setCurrentIndex(shape)
+            for end in (QPointF(80, 80), QPointF(80, 40), QPointF(25, 25)):
+                panel.borderChecker.setChecked(False)
+                pcfg.drawpanel.shape_fill_color = '#000000'
+                panel.alphaSlider.setValue(255)
+                self.drag(QPointF(20, 20), end)
+                expected = self.rendered()
+                self.canvas.undo()
+                panel.borderChecker.setChecked(True)
+                panel.alphaSlider.setValue(0)
+                minimum_width = int(min(end.x() - 20, end.y() - 20) / 2 + 0.5)
+                for width in (minimum_width, minimum_width + 10, 1000):
+                    with self.subTest(shape=shape, end=end, width=width):
+                        panel.borderWidthSpinBox.setValue(width)
+                        self.drag(end, QPointF(20, 20))
+                        np.testing.assert_array_equal(self.rendered(), expected)
+                        self.canvas.undo()
+                        self.canvas.redo()
+                        np.testing.assert_array_equal(self.rendered(), expected)
+                        self.canvas.undo()
+
+    def test_border_preview_matches_commit_at_review_opacity(self) -> None:
+        panel = self.panel.shapePanel
+        panel.borderChecker.setChecked(True)
+        viewport = self.canvas.gv.viewport()
+        with patch.object(pcfg, 'original_transparency', 0), patch.object(pcfg, 'mask_transparency', 0):
+            self.canvas.updateLayers()
+            for shape in (0, 1):
+                panel.shapeCombobox.setCurrentIndex(shape)
+                if shape == 1:
+                    self.canvas.scaleImage(2)
+                for alpha in (0, 128, 255):
+                    panel.alphaSlider.setValue(alpha)
+                    for opacity in (0, 25, 50, 100):
+                        with self.subTest(shape=shape, alpha=alpha, opacity=opacity):
+                            self.drag(QPointF(20, 20), QPointF(80, 80), release=False)
+                            # Also exercise an opacity change during the gesture.
+                            self.canvas.setEditingLayerOpacityBySlider(opacity)
+                            self.app.processEvents()
+                            preview = viewport.grab().toImage()
+                            QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton,
+                                               pos=self.canvas.gv.mapFromScene(
+                                                   self.canvas.baseLayer.mapToScene(QPointF(80, 80))))
+                            self.app.processEvents()
+                            committed = viewport.grab().toImage()
+                            for point in (QPointF(22, 50), QPointF(50, 50)):
+                                pos = self.canvas.gv.mapFromScene(self.canvas.baseLayer.mapToScene(point))
+                                np.testing.assert_allclose(
+                                    preview.pixelColor(pos).getRgb(),
+                                    committed.pixelColor(pos).getRgb(), atol=1,
+                                )
+                            self.canvas.undo()
+
+    def test_border_preview_raster_is_page_bounded_and_released_on_cancel(self) -> None:
+        self.panel.shapePanel.borderChecker.setChecked(True)
+        self.canvas.setEditingLayerOpacityBySlider(50)
+        self.canvas.scaleImage(2)
+        self.drag(QPointF(20, 20), QPointF(3020, 3020), release=False)
+        preview = self.canvas.shape_fill_composite_preview
+        # Neither off-page geometry nor view zoom may enlarge the raster.
+        self.assertEqual(preview.pixmap().width(), 81)
+        self.assertEqual(preview.pixmap().height(), 81)
+        with patch.object(self.canvas, 'render', side_effect=RuntimeError('export failed')):
+            with self.assertRaisesRegex(RuntimeError, 'export failed'):
+                self.canvas.render_result_img()
+        self.assertTrue(preview.isVisible())
+        self.assertEqual(preview.effectiveOpacity(), 0.5)
+        self.canvas.cancel_shape_fill()
+        self.assertTrue(preview.pixmap().isNull())
+        QTest.mouseRelease(self.canvas.gv.viewport(), Qt.MouseButton.LeftButton)
+        self.assertEqual(self.canvas.draw_undo_stack.count(), 0)
+
+    def test_zoomed_ellipse_edges_stay_smooth_after_commit(self) -> None:
+        self.panel.shapePanel.borderChecker.setChecked(True)
+        self.panel.shapePanel.shapeCombobox.setCurrentIndex(1)
+        viewport = self.canvas.gv.viewport()
+        with patch.object(pcfg, 'original_transparency', 0), patch.object(pcfg, 'mask_transparency', 0):
+            self.canvas.updateLayers()
+            for zoom in (0.5, 0.75, 1, 1.25, 2, 3):
+                with self.subTest(zoom=zoom):
+                    self.canvas.scaleImage(zoom / self.canvas.scale_factor)
+                    self.canvas.scaleFactorLabel.hide()
+                    self.drag(QPointF(20, 20), QPointF(80, 80), release=False)
+                    origin = self.canvas.gv.mapFromScene(QPointF(0, 0))
+                    size = round(100 * zoom)
+                    page = QRect(origin.x(), origin.y(), size, size)
+                    preview = pixmap2ndarray(viewport.grab().toImage().copy(page))
+                    QTest.mouseRelease(
+                        viewport, Qt.MouseButton.LeftButton,
+                        pos=self.canvas.gv.mapFromScene(self.canvas.baseLayer.mapToScene(QPointF(80, 80))),
+                    )
+                    committed = pixmap2ndarray(viewport.grab().toImage().copy(page))
+                    # Include the curved edges and the crop boundary, not just
+                    # solid interior pixels; Qt sampling can round by one level.
+                    np.testing.assert_allclose(preview, committed, atol=1)
+                    if zoom == 3:
+                        expected = self.canvas.render_result_img().scaled(
+                            size, size, Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                        # Interpolating premultiplied alpha before composition
+                        # differs slightly from scaling the opaque export.
+                        np.testing.assert_allclose(
+                            committed[20:-20, 20:-20],
+                            pixmap2ndarray(expected)[20:-20, 20:-20], atol=3,
+                        )
+                        self.canvas.undo()
+                        self.canvas.redo()
+                        np.testing.assert_array_equal(
+                            pixmap2ndarray(viewport.grab().toImage().copy(page)), committed,
+                        )
+                    self.canvas.undo()
+
+    def test_border_settings_persist_and_invalid_values_are_discarded(self) -> None:
+        shape_panel = self.panel.shapePanel
+        shape_panel.borderChecker.setChecked(True)
+        shape_panel.borderWidthSpinBox.setValue(12)
+        config = DrawPanelConfig(**json.loads(json.dumps(asdict(pcfg.drawpanel))))
+        self.assertTrue(config.shape_border_enabled)
+        self.assertEqual(config.shape_border_width, 12)
+        shape_panel.borderChecker.setChecked(False)
+        shape_panel.borderWidthSpinBox.setValue(3)
+        self.panel.set_config(config)
+        self.assertTrue(shape_panel.borderChecker.isChecked())
+        self.assertEqual(shape_panel.borderWidthSlider.value(), 12)
+        self.assertEqual(shape_panel.borderWidthSpinBox.value(), 12)
+        old = DrawPanelConfig()
+        self.assertEqual(
+            (old.shape_border_enabled, old.shape_border_width, old.shape_border_color),
+            (False, 5, '#000000'),
+        )
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            config = DrawPanelConfig(
+                shape_border_enabled='yes', shape_border_width=0,
+                shape_border_color='black', pentool_width=42,
+            )
+        self.assertEqual(
+            (config.shape_border_enabled, config.shape_border_width, config.shape_border_color),
+            (False, 1, '#000000'),
+        )
+        self.assertEqual(config.pentool_width, 42)
 
 
 if __name__ == '__main__':

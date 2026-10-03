@@ -73,7 +73,12 @@ it even when an existing image is edited in place. Guides must be excluded from
 export, but hiding a guide does not cancel a gesture or remove its live pixels.
 
 Review opacity must not alter saved pixels; intrinsic stroke/fill alpha must
-survive saving. Check both the saved inpainted image and final result, and restore
+survive saving. Bordered shape previews use the same page-clipped rasterizer as
+committed shapes, composing fill and border before review opacity is applied.
+Preview and drawing-layer display use smooth raster sampling at canvas zoom;
+preview crops include a transparent sampling margin within the page. Saved
+pixels remain at page resolution.
+Check both the saved inpainted image and final result, and restore
 temporary render state even when export fails. Persist tool preferences, not
 anchors, pressed buttons, or previews.
 

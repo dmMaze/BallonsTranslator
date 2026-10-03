@@ -138,11 +138,13 @@ class EditingLayerOpacityTests(unittest.TestCase):
 
     def test_zero_review_opacity_keeps_saved_images_and_reload_at_full_strength(self) -> None:
         self.canvas.undo()
+        self.panel.shapePanel.borderChecker.setChecked(True)
         self.panel.shapePanel.alphaSlider.setValue(128)
         self.panel.fill_shape(QRectF(10, 60, 70, 40))
         self.panel.fill_shape(QRectF(20, 70, 10, 10), erasing=True)
         drawing = pixmap2ndarray(self.canvas.drawingLayer.get_drawed_pixmap())
         self.assertEqual(drawing[80, 40, 3], 128)
+        np.testing.assert_array_equal(drawing[62, 40], (0, 0, 0, 255))
         self.assertEqual(drawing[75, 25, 3], 0)
         with (
             tempfile.TemporaryDirectory() as directory,

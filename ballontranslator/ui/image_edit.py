@@ -2,9 +2,9 @@ from typing import Tuple, List, Union
 import numpy as np
 import cv2
 
-from qtpy.QtCore import QRectF, Qt, QPointF, QSize
+from qtpy.QtCore import QRect, QRectF, Qt, QPointF, QSize
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsItem
-from qtpy.QtGui import QPen, QPainter, QPainterPath, QPixmap, QImage, QBrush, QPolygonF
+from qtpy.QtGui import QColor, QPen, QPainter, QPainterPath, QPainterPathStroker, QPixmap, QImage, QBrush, QPolygonF
 
 from .misc import pixmap2ndarray
 
@@ -33,6 +33,61 @@ def shape_fill_path(rect: QRectF, shape: str) -> QPainterPath:
     else:
         raise ValueError(f'Unknown fill shape: {shape!r}')
     return path
+
+
+def shape_border_path(rect: QRectF, shape: str, width: float) -> QPainterPath:
+    """Return the border ring drawn inside the shape outline.
+
+    The border stays inside the dragged rectangle, so enabling it never grows
+    the committed bounds and the preview matches the saved pixels.
+
+    >>> ring = shape_border_path(QRectF(0, 0, 20, 20), 'rectangle', 4)
+    >>> ring.contains(QPointF(1, 10)), ring.contains(QPointF(10, 10))
+    (True, False)
+    """
+    outline = shape_fill_path(rect, shape)
+    if width <= 0:
+        return QPainterPath()
+    rect = rect.normalized()
+    # Once the border reaches the centre there is no interior left. Stroking
+    # beyond this point can invert the inner ellipse and reopen a hole.
+    if width * 2 >= min(rect.width(), rect.height()):
+        return outline
+    stroker = QPainterPathStroker()
+    # The stroke is centred on the outline; keep only its inner half.
+    stroker.setWidth(width * 2)
+    stroker.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
+    return stroker.createStroke(outline).intersected(outline)
+
+
+def shape_fill_image(
+    rect: QRectF, bounds: QRect, shape: str, color: QColor,
+    border_width: int = 0, border_color: QColor | None = None,
+) -> QImage:
+    """Composite a shape at page resolution inside its clipped raster bounds.
+
+    >>> shape_fill_image(QRectF(0, 0, 10, 10), QRect(0, 0, 5, 5),
+    ...                  'rectangle', QColor('white')).width()
+    5
+    """
+    image = QImage(bounds.size(), QImage.Format.Format_ARGB32_Premultiplied)
+    if image.isNull():
+        return image
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(-bounds.x(), -bounds.y())
+        # Clip the raster, not the ellipse geometry, at page edges.
+        if color.alpha() > 0:
+            painter.fillPath(shape_fill_path(rect, shape), color)
+        if border_width > 0 and border_color is not None:
+            # Compose before review opacity is applied to the preview item.
+            painter.fillPath(shape_border_path(rect, shape, border_width), border_color)
+    finally:
+        painter.end()
+    return image
+
 
 class PenShape:
     Circle = 0
@@ -164,6 +219,14 @@ class StrokeImgItem(QGraphicsItem):
         return rect
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
+        # Pen previews must use the same sampling as the committed composite.
+        # Inpaint masks are parented to the base layer and keep their own display.
+        parent = self.parentItem()
+        if isinstance(parent, DrawingLayer):
+            painter.setRenderHint(
+                QPainter.RenderHint.SmoothPixmapTransform,
+                parent.transformationMode() == Qt.TransformationMode.SmoothTransformation,
+            )
         painter.drawImage(0, 0, self._img)
 
 
@@ -212,6 +275,13 @@ class DrawingLayer(QGraphicsPixmapItem):
         super().setPixmap(pixmap)
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget) -> None:
+        # This custom paint bypasses QGraphicsPixmapItem.paint(), which normally
+        # applies transformationMode(). Geometry antialiasing alone does not
+        # interpolate raster pixels when the canvas is zoomed.
+        painter.setRenderHint(
+            QPainter.RenderHint.SmoothPixmapTransform,
+            self.transformationMode() == Qt.TransformationMode.SmoothTransformation,
+        )
         painter.drawPixmap(self.offset(), self.get_drawed_pixmap())
 
     def get_drawed_pixmap(self) -> QPixmap:

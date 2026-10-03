@@ -284,11 +284,17 @@ class DrawPanelConfig(Config):
     shape_fill_shape: str = 'rectangle'
     shape_fill_color: str = '#ffffff'
     shape_fill_alpha: int = 255
+    shape_border_enabled: bool = False
+    shape_border_width: int = 5
+    shape_border_color: str = '#000000'
 
     def __post_init__(self) -> None:
         if not isinstance(self.rectool_use_mask, bool):
             LOGGER.warning('Discard invalid drawpanel.rectool_use_mask config.')
             self.rectool_use_mask = True
+        if not isinstance(self.shape_border_enabled, bool):
+            LOGGER.warning('Discard invalid drawpanel.shape_border_enabled config.')
+            self.shape_border_enabled = False
         for name, default in (
             ('inpainter', 'lama_large_512px'),
             ('inpaint_llm_id', ''),
@@ -308,8 +314,15 @@ class DrawPanelConfig(Config):
         ):
             LOGGER.warning('Discard invalid drawpanel.shape_fill_color %r.', self.shape_fill_color)
             self.shape_fill_color = '#ffffff'
+        if (
+            not isinstance(self.shape_border_color, str)
+            or re.fullmatch(r'#[0-9a-fA-F]{6}', self.shape_border_color) is None
+        ):
+            LOGGER.warning('Discard invalid drawpanel.shape_border_color %r.', self.shape_border_color)
+            self.shape_border_color = '#000000'
         for name, default, minimum, maximum in (
             ('shape_fill_alpha', 255, 0, 255),
+            ('shape_border_width', 5, 1, 1000),
             ('inpainter_shape', 0, 0, 2),
             ('magicwand_tolerance', 32, 0, 255),
             ('magicwand_range', 0, -50, 50),
