@@ -47,8 +47,14 @@ PROVIDER_DEFAULTS = {
         "id": "deepseek",
         "base_url": "https://api.deepseek.com",
         "require_api_key": True,
-        "model": "deepseek-v4-flash",
-        "model_options": ["deepseek-v4-flash", "deepseek-v4-pro"],
+        "model": "deepseek-flash",
+        "model_options": ["deepseek-flash", "deepseek-v4-pro"],
+        "support_vision": True,
+        "vision_model": "deepseek-flash",
+        "vision_model_options": [
+            "deepseek-flash",
+        ],
+        "vision_detail_level": "auto",
     },
     "OpenAI": {
         "id": "openai",
