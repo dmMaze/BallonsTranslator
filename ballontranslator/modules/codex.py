@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from concurrent.futures import CancelledError as FutureCancelledError
 import hashlib
 import hmac
 import json
@@ -16,7 +17,7 @@ import tempfile
 import threading
 import time
 from types import SimpleNamespace
-from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Mapping, Optional, Tuple, Union, TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 from .context.errors import ContextLengthError, is_context_length_error
@@ -28,12 +29,16 @@ from ballontranslator.utils.logger import logger as LOGGER
 if TYPE_CHECKING:
     import httpx
     from keyring.backend import KeyringBackend
+    from websockets.asyncio.client import ClientConnection
+    from websockets.datastructures import Headers as WebSocketHeaders
     from .llm_chat import LLMChatResult
 
 
 _KEYRING_SERVICE = 'BallonsTranslator Codex'
-# Backend catalog compatibility, independent of any installed CLI or SDK.
-CATALOG_VERSION = '0.155.1'
+# Shared catalog/generation identity; retain this compatible floor when offline.
+_client_version = '0.159.0'
+_client_version_checked_at = float('-inf')
+_client_version_lock = threading.Lock()
 API_URL = 'https://chatgpt.com/backend-api/codex'
 AUTH_URL = 'https://auth.openai.com'
 CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
@@ -71,7 +76,48 @@ def _http_client(proxy: str = '') -> httpx.AsyncClient:
     return httpx.AsyncClient(**kwargs)
 
 
-def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generation: Optional[int] = None) -> Any:
+async def _latest_client_version(proxy: str = '') -> str:
+    """Resolve stable release metadata at most hourly across worker event loops.
+
+    >>> asyncio.run(_latest_client_version())  # doctest: +SKIP
+    '0.159.0'
+    """
+    global _client_version, _client_version_checked_at
+    import httpx
+
+    while not _client_version_lock.acquire(blocking=False):
+        await asyncio.sleep(0.05)
+    try:
+        if time.monotonic() - _client_version_checked_at < 3600:
+            return _client_version
+        try:
+            # Use a separate unauthenticated client: never forward backend
+            # credentials, cookies or routing headers to release discovery.
+            async with _http_client(proxy) as client:
+                response = await asyncio.wait_for(client.get(
+                    'https://api.github.com/repos/openai/codex/releases/latest',
+                    headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'BallonsTranslator'},
+                    timeout=5.0,
+                ), timeout=5.0)
+                response.raise_for_status()
+                release = response.json()
+            tag = release.get('tag_name') if isinstance(release, dict) else None
+            if (not isinstance(tag, str) or not re.fullmatch(r'rust-v[0-9]+\.[0-9]+\.[0-9]+', tag)
+                    or release.get('prerelease') or release.get('draft')):
+                raise ValueError('Invalid stable Codex release.')
+            version = tag[len('rust-v'):]
+            if tuple(map(int, version.split('.'))) >= tuple(map(int, _client_version.split('.'))):
+                _client_version = version
+        except (httpx.HTTPError, asyncio.TimeoutError, ValueError):
+            LOGGER.warning('Could not refresh the Codex client version; using %s.', _client_version)
+        _client_version_checked_at = time.monotonic()
+        return _client_version
+    finally:
+        _client_version_lock.release()
+
+
+def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generation: Optional[int] = None,
+         loop: Optional[asyncio.AbstractEventLoop] = None) -> Any:
     """Run HTTP work in the calling worker, cancelling socket waits promptly.
 
     >>> _run(asyncio.sleep(0, result='completed'), None)
@@ -99,11 +145,14 @@ def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generat
             await asyncio.gather(task, return_exceptions=True)
 
     try:
-        return asyncio.run(run())
+        return asyncio.run(run()) if loop is None else asyncio.run_coroutine_threadsafe(run(), loop).result()
+    except (asyncio.CancelledError, FutureCancelledError):
+        raise LLMRequestStopped() from None
     except (LLMRequestStopped, LLMUserActionRequiredError, ContextLengthError):
         raise
-    except Exception:
+    except Exception as error:
         # OAuth codes, tokens and request URLs must not reach provider tracebacks.
+        LOGGER.debug('Codex request failure: exception=%s', type(error).__name__)
         raise RuntimeError('Codex could not complete the request. Check the connection and retry.') from None
 
 
@@ -574,7 +623,8 @@ class CodexAccount:
                 for attempt in range(2):
                     tokens = await self.tokens(client, rejected)
                     try:
-                        response = await client.get(API_URL + '/models', params={'client_version': CATALOG_VERSION}, headers=_headers(tokens))
+                        headers = await _headers(tokens)
+                        response = await client.get(API_URL + '/models', params={'client_version': headers['version']}, headers=headers)
                         await _check_response(response)
                         payload = response.json()
                         if isinstance(payload, dict) and payload.get('error'):
@@ -617,9 +667,48 @@ class CodexAccount:
 account = CodexAccount()
 
 
-def _headers(tokens: Dict, cache_key: str = '') -> Dict[str, str]:
+class CodexTurnState:
+    """Keep the first routing token only for one feature owner's retry loop.
+
+    >>> turn = CodexTurnState()
+    >>> turn.capture({'X-Codex-Turn-State': 'opaque'})
+    >>> turn.capture({'x-codex-turn-state': 'replacement'})
+    >>> turn.value
+    'opaque'
+    """
+
+    def __init__(self) -> None:
+        self.value = ''
+        self._identity: Optional[Tuple[str, int]] = None
+
+    def bind(self, cache_key: str, generation: int) -> None:
+        identity = cache_key, generation
+        if self._identity != identity:
+            self._identity = identity
+            self.value = ''
+
+    def capture(self, headers: object) -> None:
+        if self.value or not isinstance(headers, Mapping):
+            return
+        # WebSocket Headers.items() raises for unrelated repeated headers such
+        # as Set-Cookie. Inspect names first and read only the routing header.
+        for name in headers:
+            if isinstance(name, str) and name.lower() == 'x-codex-turn-state':
+                value = headers.get_all(name) if hasattr(headers, 'get_all') else headers[name]
+                if isinstance(value, list) and value:
+                    value = value[0]
+                if isinstance(value, str) and value:
+                    self.value = value
+                    LOGGER.debug('Codex turn-state captured: %s', _request_fingerprint(value))
+                return
+
+
+async def _headers(tokens: Dict, cache_key: str = '', *, turn: Optional[CodexTurnState] = None,
+                   proxy: str = '', cookies: Optional[httpx.Cookies] = None, model: str = '') -> Dict[str, str]:
+    version = await _latest_client_version(proxy)
     headers = {'Authorization': 'Bearer ' + tokens['access_token'], 'ChatGPT-Account-Id': tokens['account_id'],
-               'originator': 'ballontranslator', 'User-Agent': 'BallonsTranslator', 'Accept': 'application/json'}
+               'originator': 'codex_cli_rs', 'version': version,
+               'User-Agent': f'codex_cli_rs/{version} (BallonsTranslator)', 'Accept': 'application/json'}
     if cache_key:
         # Match Codex's Responses client: our job is one session/thread, and
         # x-client-request-id uses that identity too, unlike the public API.
@@ -629,6 +718,19 @@ def _headers(tokens: Dict, cache_key: str = '') -> Dict[str, str]:
         headers['Accept'] = 'text/event-stream'
         headers['Content-Type'] = 'application/json'
         headers['OpenAI-Beta'] = 'responses=experimental'
+    if turn is not None and turn.value:
+        headers['x-codex-turn-state'] = turn.value
+    # Official Codex provides the target model to the subscription router.
+    # Invalid header characters must not turn an optional hint into a failure.
+    if model and re.fullmatch(r'[\x20-\x7e]+', model):
+        headers['x-codex-routing-hint'] = 'model=' + model
+    if cookies is not None:
+        import httpx
+
+        request = httpx.Request('GET', API_URL + '/responses')
+        cookies.set_cookie_header(request)
+        if 'Cookie' in request.headers:
+            headers['Cookie'] = request.headers['Cookie']
     return headers
 
 
@@ -691,7 +793,7 @@ def request_image(
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
                 try:
-                    async with client.stream('POST', API_URL + endpoint, headers=_headers(tokens, session_key),
+                    async with client.stream('POST', API_URL + endpoint, headers=await _headers(tokens, session_key, proxy=proxy, model=reasoning_model),
                                              json=payload, timeout=timeout) as response:
                         await _check_response(response)
                         if reasoning_model:
@@ -792,7 +894,31 @@ async def _bounded_response_lines(response: httpx.Response, limit: int) -> Async
         yield buffer.rstrip(b'\r').decode('utf-8')
 
 
-async def _read_completion(response: httpx.Response, *, max_response_bytes: Optional[int] = None) -> Dict:
+def _completed_response(event: Dict, completed_items: List[Dict],
+                        turn: Optional[CodexTurnState] = None) -> Optional[Dict]:
+    kind = event.get('type')
+    if kind == 'response.metadata' and turn is not None:
+        turn.capture(event.get('headers'))
+    elif kind == 'response.output_item.done':
+        completed_items.append(event['item'])
+    elif kind in ('response.completed', 'response.done'):
+        result = event['response']
+        if result.get('status') != 'completed':
+            raise RuntimeError('Codex response did not complete.')
+        if not result.get('output'):
+            result['output'] = completed_items
+        return result
+    elif kind == 'response.incomplete':
+        raise LLMUserActionRequiredError('Codex output was truncated. Reduce the current input or thinking level and retry.')
+    elif kind in ('response.failed', 'error'):
+        _raise_service_error(event.get('response', event), status=event.get('status', event.get('status_code')))
+    return None
+
+
+async def _read_completion(response: httpx.Response, *, max_response_bytes: Optional[int] = None,
+                           turn: Optional[CodexTurnState] = None) -> Dict:
+    if turn is not None:
+        turn.capture(response.headers)
     completed_items, data = [], []
     lines = response.aiter_lines() if max_response_bytes is None else _bounded_response_lines(response, max_response_bytes)
     async for line in lines:
@@ -802,22 +928,255 @@ async def _read_completion(response: httpx.Response, *, max_response_bytes: Opti
             raw, data = '\n'.join(data), []
             if raw == '[DONE]':
                 break
-            event = json.loads(raw)
-            kind = event.get('type')
-            if kind == 'response.output_item.done':
-                completed_items.append(event['item'])
-            elif kind == 'response.completed':
-                result = event['response']
-                if result.get('status') != 'completed':
-                    raise RuntimeError('Codex response did not complete.')
-                if not result.get('output'):
-                    result['output'] = completed_items
+            result = _completed_response(json.loads(raw), completed_items, turn)
+            if result is not None:
                 return result
-            elif kind == 'response.incomplete':
-                raise LLMUserActionRequiredError('Codex output was truncated. Reduce the current input or thinking level and retry.')
-            elif kind in ('response.failed', 'error'):
-                _raise_service_error(event.get('response', event))
     raise RuntimeError('Codex response stream ended before completion.')
+
+
+class CodexChatSession:
+    """Own a job's socket, event loop and connection-scoped continuation.
+
+    >>> CodexChatSession('job', account_generation=0).cache_key
+    'job'
+    """
+
+    def __init__(self, cache_key: str, proxy: str = '', *, account_generation: int,
+                 websocket: bool = True) -> None:
+        import httpx
+
+        self.cache_key = cache_key
+        self.proxy = proxy
+        self.account_generation = account_generation
+        self.websocket = websocket
+        self.closed = False
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._thread: Optional[threading.Thread] = None
+        self._lock = threading.Lock()
+        self._idle_timer: Optional[threading.Timer] = None
+        self._socket: Optional[ClientConnection] = None
+        self._connected_at = 0.0
+        self._last_used = 0.0
+        self._previous: Optional[Tuple[Dict, Dict]] = None
+        self._sse_only = not websocket
+        self._cookies = httpx.Cookies()
+
+    def capture_cookies(self, headers: Union[httpx.Headers, WebSocketHeaders]) -> None:
+        """Retain only infrastructure cookies, with standard scope/expiry rules."""
+        import httpx
+
+        if self.closed or self.account_generation != account.generation:
+            return
+        # HTTPX and websockets expose repeated Set-Cookie headers differently.
+        values = (headers.get_list('set-cookie') if isinstance(headers, httpx.Headers)
+                  else headers.get_all('set-cookie'))
+        allowed = []
+        for value in values:
+            name = value.partition('=')[0].strip()
+            # Match official Codex's infrastructure allowlist. Account/session
+            # cookies must never survive in this job's routing state.
+            if name in {'__cf_bm', '__cflb', '__cfruid', '__cfseq', '__cfwaitingroom',
+                        '__oailb', '_cfuvid', 'cf_clearance', 'cf_ob_info', 'cf_use_ob'} or name.startswith('cf_chl_'):
+                allowed.append(('set-cookie', value))
+        if allowed:
+            response = httpx.Response(200, headers=allowed,
+                                      request=httpx.Request('GET', API_URL + '/responses'))
+            self._cookies.extract_cookies(response)
+
+    def run(self, operation: Coroutine, stop_event: Optional[threading.Event], generation: int) -> Any:
+        with self._lock:
+            if self.closed:
+                operation.close()
+                raise LLMRequestStopped()
+            if self._idle_timer is not None:
+                self._idle_timer.cancel()
+            if self._loop is None:
+                self._loop = asyncio.new_event_loop()
+                # The socket must answer server pings while page workers are
+                # idle or replaced. Its event loop lives with this session.
+                self._thread = threading.Thread(target=self._loop.run_forever,
+                                                name='Codex WebSocket', daemon=True)
+                self._thread.start()
+            try:
+                return _run(operation, stop_event, generation=generation, loop=self._loop)
+            finally:
+                if self.closed or (stop_event is not None and stop_event.is_set()) or generation != account.generation:
+                    self.closed = True
+                    self._dispose()
+                elif self._socket is None:
+                    self._dispose()
+                else:
+                    self._last_used = time.monotonic()
+                    self._idle_timer = threading.Timer(300.0, self._expire)
+                    self._idle_timer.daemon = True
+                    self._idle_timer.start()
+
+    def close(self) -> None:
+        self.closed = True
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+        if self._lock.acquire(blocking=False):
+            try:
+                self._dispose()
+            finally:
+                self._lock.release()
+        else:
+            loop = self._loop
+            if loop is not None and loop.is_running():
+                try:
+                    loop.call_soon_threadsafe(self._cancel)
+                except RuntimeError:
+                    pass  # The worker already disposed the loop.
+
+    def _expire(self) -> None:
+        if self._lock.acquire(blocking=False):
+            try:
+                if time.monotonic() - self._last_used >= 300.0:
+                    self.closed = True
+                    self._dispose()
+            finally:
+                self._lock.release()
+
+    def _cancel(self) -> None:
+        if self._loop is None:
+            return  # Disposal owns cancellation once it detaches the loop.
+        if self._socket is not None:
+            self._socket.transport.abort()
+        current = asyncio.current_task(self._loop)
+        for task in asyncio.all_tasks(self._loop):
+            if task is not current:
+                task.cancel()
+
+    def _dispose(self) -> None:
+        if self.closed:
+            self._cookies.clear()
+        if self._loop is None:
+            return
+        loop, thread, socket = self._loop, self._thread, self._socket
+        # Repeated close calls must not cancel the cleanup coroutine itself.
+        self._loop = None
+        self._thread = None
+        self._socket = None
+        self._previous = None
+
+        async def shutdown() -> None:
+            if socket is not None:
+                socket.transport.abort()
+            pending = asyncio.all_tasks(loop) - {asyncio.current_task()}
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            await loop.shutdown_asyncgens()
+
+        asyncio.run_coroutine_threadsafe(shutdown(), loop).result()
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join()
+        loop.close()
+
+    async def _disconnect(self) -> None:
+        socket, self._socket = self._socket, None
+        self._previous = None
+        if socket is not None:
+            await socket.close()
+
+    async def request(self, payload: Dict, tokens: Dict, turn: CodexTurnState) -> Optional[Dict]:
+        if self._sse_only:
+            return None
+        try:
+            import websockets
+            from websockets.asyncio.client import connect
+            from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidProxy, InvalidStatus
+            if int(websockets.__version__.split('.', 1)[0]) < 15:
+                raise ImportError('WebSocket proxy support requires version 15.')
+        except ImportError:
+            self._sse_only = True
+            LOGGER.warning('Codex WebSocket requires Python>=3.9 and websockets>=15; using SSE for this job.')
+            return None
+        started = False
+        for attempt in range(2):
+            try:
+                if self._socket is not None and time.monotonic() - self._connected_at >= 55 * 60:
+                    await self._disconnect()
+                reused = self._socket is not None
+                if self._socket is None:
+                    headers = await _headers(tokens, self.cache_key, turn=turn, proxy=self.proxy,
+                                             cookies=self._cookies, model=payload['model'])
+                    for header in ('Accept', 'Content-Type'):
+                        headers.pop(header, None)
+                    headers['OpenAI-Beta'] = 'responses_websockets=2026-02-06'
+                    connection = connect(
+                        API_URL.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1) + '/responses',
+                        additional_headers=headers, proxy=self.proxy or True,
+                        open_timeout=15.0, close_timeout=1.0, ping_interval=None, max_size=None,
+                    )
+                    # Preserve HTTPX's fixed-endpoint policy for auth and routing headers.
+                    connection.process_redirect = lambda error: error
+                    self._socket = await connection
+                    self._connected_at = time.monotonic()
+                    self.capture_cookies(self._socket.response.headers)
+                    turn.capture(self._socket.response.headers)
+                wire = payload
+                if self._previous is not None:
+                    previous, result = self._previous
+                    baseline = previous['input'] + result.get('output', [])
+                    settings = {key: value for key, value in payload.items() if key != 'input'}
+                    old_settings = {key: value for key, value in previous.items() if key != 'input'}
+                    if settings == old_settings and payload['input'][:len(baseline)] == baseline and result.get('id'):
+                        wire = {**payload, 'previous_response_id': result['id'], 'input': payload['input'][len(baseline):]}
+                    else:
+                        self._previous = None
+                LOGGER.debug('Codex WebSocket request: reused=%s, continuation=%s, input_items=%d, turn_state=%s',
+                             reused, 'previous_response_id' in wire, len(wire['input']),
+                             _request_fingerprint(turn.value) if turn.value else 'absent')
+                # Routing belongs to this turn's wire envelope, outside the
+                # full-payload baseline used to decide incremental continuation.
+                frame = {'type': 'response.create', **wire}
+                if turn.value:
+                    frame['client_metadata'] = {'x-codex-turn-state': turn.value}
+                await self._socket.send(json.dumps(frame))
+                completed_items = []
+                while True:
+                    event = json.loads(await asyncio.wait_for(self._socket.recv(), timeout=300.0))
+                    error = event.get('error', {})
+                    if (event.get('type') == 'error' and isinstance(error, dict)
+                            and error.get('code') == 'websocket_connection_limit_reached' and not started):
+                        await self._disconnect()
+                        if attempt == 0:
+                            break
+                        self._sse_only = True
+                        return None
+                    if (event.get('type') == 'error' and isinstance(error, dict)
+                            and error.get('code') == 'previous_response_not_found'
+                            and 'previous_response_id' in wire and attempt == 0):
+                        await self._disconnect()
+                        break
+                    result = _completed_response(event, completed_items, turn)
+                    started = True
+                    if result is not None:
+                        self._previous = payload, result
+                        return result
+            except InvalidStatus as error:
+                self.capture_cookies(error.response.headers)
+                await self._disconnect()
+                if error.response.status_code == 401:
+                    raise CodexSignInRequiredError(invalid=True) from None
+                self._sse_only = True
+                LOGGER.debug('Codex WebSocket unavailable (HTTP %d); using SSE.', error.response.status_code)
+                return None
+            except (OSError, asyncio.TimeoutError, ConnectionClosed, InvalidHandshake, InvalidProxy, ImportError) as error:
+                await self._disconnect()
+                if started:
+                    raise
+                if attempt == 0 and reused:
+                    continue
+                self._sse_only = True
+                LOGGER.debug('Codex WebSocket unavailable (%s); using SSE.', type(error).__name__)
+                return None
+            except BaseException:
+                await self._disconnect()
+                raise
+        raise RuntimeError('Codex could not recover the WebSocket continuation.')
 
 
 def _request_fingerprint(value: object) -> str:
@@ -826,7 +1185,8 @@ def _request_fingerprint(value: object) -> str:
 
 
 def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Optional[threading.Event],
-                            cache_key: str, proxy: str = '') -> LLMChatResult:
+                            cache_key: str, proxy: str = '', *, session: Optional[CodexChatSession] = None,
+                            turn: Optional[CodexTurnState] = None) -> LLMChatResult:
     """Send stateless input with a cache identity owned by the current job.
 
     >>> _request_messages([{'role': 'user', 'content': 'page'}])[1][0]['role']
@@ -838,6 +1198,12 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
         raise LLMRequestStopped()
     account.require_sign_in(stop_event)
     generation = account.generation
+    if session is not None and session.account_generation != generation:
+        session.close()
+        raise LLMRequestStopped()
+    if turn is None:
+        turn = CodexTurnState()
+    turn.bind(cache_key, generation)
     model = api_args['model']
     entry = pcfg.module.codex_models.get(model)
     if not entry:
@@ -854,10 +1220,6 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                'include': ['reasoning.encrypted_content']}
     if effort is not None:
         payload['reasoning'] = {'effort': effort}
-    if model == 'gpt-5.6' or model.startswith('gpt-5.6-'):
-        # This family defaults to rendering earlier reasoning. Keep the original
-        # output for replay while limiting rendered reasoning to the active turn.
-        payload.setdefault('reasoning', {})['context'] = 'current_turn'
     schema = api_args.get('response_format', {}).get('json_schema')
     if schema:
         payload['text'] = {'format': {'type': 'json_schema', **schema}}
@@ -878,9 +1240,17 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
             for attempt in range(2):
                 tokens = await account.tokens(client, rejected)
                 try:
-                    async with client.stream('POST', API_URL + '/responses', headers=_headers(tokens, cache_key), json=payload) as response:
-                        await _check_response(response)
-                        result = await _read_completion(response)
+                    result = await session.request(payload, tokens, turn) if session is not None else None
+                    if result is None:
+                        headers = await _headers(tokens, cache_key, turn=turn, proxy=proxy,
+                                                 cookies=session._cookies if session is not None else None, model=model)
+                        LOGGER.debug('Codex SSE request: turn_state=%s, routing_cookies=%s',
+                                     _request_fingerprint(turn.value) if turn.value else 'absent', 'Cookie' in headers)
+                        async with client.stream('POST', API_URL + '/responses', headers=headers, json=payload) as response:
+                            if session is not None:
+                                session.capture_cookies(response.headers)
+                            await _check_response(response)
+                            result = await _read_completion(response, turn=turn)
                 except CodexSignInRequiredError:
                     if attempt == 0:
                         rejected = tokens['access_token']
@@ -926,4 +1296,5 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                     codex_account_generation=generation,
                 )
 
-    return _run(request(), stop_event, generation=generation)
+    return (_run(request(), stop_event, generation=generation) if session is None or not session.websocket
+            else session.run(request(), stop_event, generation))

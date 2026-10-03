@@ -12,7 +12,7 @@ import time
 import unittest
 import weakref
 from typing import Callable, TYPE_CHECKING
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
@@ -21,9 +21,11 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from ballontranslator.modules import codex, image_generation
 from ballontranslator.modules.context.errors import ContextLengthError
+from ballontranslator.modules.context.translation_context import PageSummary
 from ballontranslator.modules.exceptions import LLMRequestStopped, LLMUserActionRequiredError
 from ballontranslator.modules.llm_image import LLMImageRequester
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
+from ballontranslator.modules.translators.llm_translation_contract import TranslationPromptSpec
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
 from ballontranslator.utils.config import ModuleConfig, ProgramConfig, json_dump_program_config, pcfg
 from ballontranslator.utils.llm_profiles import default_codex_profile, default_profile, normalize_codex_models, profile_to_dict, sync_codex_profile
@@ -82,9 +84,11 @@ class CodexHTTPTest(unittest.TestCase):
         sync_codex_profile(self.profile, CATALOG)
         for patcher in (
             patch.object(codex, 'account', self.account),
+            patch.object(codex, '_client_version_checked_at', time.monotonic()),
             patch.object(self.account, '_path', return_value=self.path),
             patch.object(codex, '_system_keyring', side_effect=ImportError),
             patch.object(codex, '_http_client', side_effect=lambda proxy='': httpx.AsyncClient(transport=httpx.MockTransport(self.responder))),
+            patch.object(codex.CodexChatSession, 'request', new=AsyncMock(return_value=None)),
             patch.object(pcfg.module, 'codex_models', copy.deepcopy(CATALOG)),
             patch.object(LLMTranslator, 'params', copy.deepcopy(LLMTranslator.params)),
         ):
@@ -107,6 +111,117 @@ class CodexHTTPTest(unittest.TestCase):
 
     def request(self, stop: threading.Event = None):
         return codex.request_chat_completion(self.profile, self.args(), stop, 'job-cache-key')
+
+    def test_page_retries_replay_first_turn_state_and_identical_next_page_starts_fresh(self) -> None:
+        for source in ('response-header', 'metadata-event'):
+            with self.subTest(source=source):
+                self.requests.clear()
+                translator = LLMTranslator('日本語', 'English')
+                translator.set_stop_event(threading.Event())
+                self.addCleanup(translator.set_stop_event, None)
+                translator.set_param_value('retry attempts', 2)
+                spec = TranslationPromptSpec('Japanese', 'English', 'Translate.', False)
+
+                def respond(request: httpx.Request) -> httpx.Response:
+                    index = len(self.requests)
+                    self.requests.append(request)
+                    headers = {'x-codex-turn-state': f'private-route-{index}'} if source == 'response-header' else {}
+                    events = [
+                        {'type': 'response.metadata', 'headers': {'X-Codex-Turn-State': [f'private-metadata-{index}']}},
+                        completion('invalid JSON' if index % 2 == 0 else '{"1":"translated"}'),
+                    ]
+                    return httpx.Response(200, headers=headers, text=sse(*events))
+
+                self.responder = respond
+                with patch.object(translator, '_respect_delay'), patch.object(translator, '_wait'), \
+                        self.assertLogs(codex.LOGGER, level='DEBUG') as captured:
+                    for _page in range(2):
+                        self.assertEqual(translator._translate(['same source'], profile=self.profile,
+                                                              prompt_spec=spec), ['translated'])
+                prefix = 'private-route' if source == 'response-header' else 'private-metadata'
+                self.assertEqual([request.headers.get('x-codex-turn-state') for request in self.requests],
+                                 [None, f'{prefix}-0', None, f'{prefix}-2'])
+                identities = {request.headers['session-id'] for request in self.requests}
+                self.assertEqual(len(identities), 1)
+                self.assertTrue(all(request.content == self.requests[0].content for request in self.requests))
+                self.assertNotIn('private-route', '\n'.join(captured.output))
+                self.assertNotIn('private-metadata', '\n'.join(captured.output))
+
+    def test_turn_state_survives_stream_auth_retry_and_token_renewal(self) -> None:
+        def respond(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            if request.url.path.endswith('/oauth/token'):
+                return httpx.Response(200, json={'access_token': 'rotated', 'expires_in': 3600})
+            if request.headers['Authorization'] == 'Bearer access':
+                return httpx.Response(200, text=sse(
+                    {'type': 'response.metadata', 'headers': {'x-codex-turn-state': 'route-one'}},
+                    {'type': 'error', 'error': {'code': 'token_expired', 'message': 'Token expired.'}},
+                ))
+            return httpx.Response(200, text=sse(completion()), headers={'x-codex-turn-state': 'route-two'})
+
+        self.responder = respond
+        self.request()
+        self.assertEqual(len(self.requests), 3)
+        self.assertNotIn('x-codex-turn-state', self.requests[0].headers)
+        self.assertEqual(self.requests[-1].headers['x-codex-turn-state'], 'route-one')
+        self.assertEqual(self.requests[-1].headers['Authorization'], 'Bearer rotated')
+
+    def test_turn_state_clears_on_job_or_account_change(self) -> None:
+        self.events.insert(0, {'type': 'response.metadata', 'headers': {'x-codex-turn-state': 'route'}})
+        turn = codex.CodexTurnState()
+        for key, change_account in (('job-one', False), ('job-one', False),
+                                    ('job-two', False), ('job-two', True)):
+            if change_account:
+                self.account.invalidate()
+            codex.request_chat_completion(self.profile, self.args(), None, key, turn=turn)
+        self.assertEqual([request.headers.get('x-codex-turn-state') for request in self.requests],
+                         [None, 'route', None, None])
+
+    def test_ocr_retries_keep_turn_state_and_next_request_starts_fresh(self) -> None:
+        requester = LLMOCR()
+        requester.set_stop_event(threading.Event())
+        self.addCleanup(requester.set_stop_event, None)
+        requester.set_param_value('retry attempts', 2)
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            index = len(self.requests)
+            self.requests.append(request)
+            if index % 2 == 0:
+                return httpx.Response(200, headers={'x-codex-turn-state': 'ocr-route'}, text=sse(
+                    {'type': 'response.failed', 'response': {'error': {'code': 'server_error'}}},
+                ))
+            return httpx.Response(200, text=sse(completion('recognized text')))
+
+        self.responder = respond
+        with patch.object(requester, '_respect_delay'), patch.object(requester, '_wait'):
+            for _page in range(2):
+                self.assertEqual(requester._request_with_retries(
+                    self.profile, [{'role': 'user', 'content': 'Read.'}], failure_label='OCR'), 'recognized text')
+        self.assertEqual([request.headers.get('x-codex-turn-state') for request in self.requests],
+                         [None, 'ocr-route', None, 'ocr-route'])
+
+    def test_compaction_retries_keep_turn_state_and_next_batch_starts_fresh(self) -> None:
+        translator = LLMTranslator('日本語', 'English')
+        translator.set_stop_event(threading.Event())
+        self.addCleanup(translator.set_stop_event, None)
+        translator.set_param_value('retry attempts', 2)
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            index = len(self.requests)
+            self.requests.append(request)
+            return httpx.Response(200, headers={'x-codex-turn-state': 'memory-route'},
+                                  text=sse(completion('' if index % 2 == 0 else 'Compacted memory.')))
+
+        self.responder = respond
+        with patch.object(translator, '_respect_delay'), patch.object(translator, '_wait'):
+            for _batch in range(2):
+                memory = translator._compact_summary_batch(
+                    previous=None, summaries=(PageSummary('001.png', 'A fact.'),),
+                    profile=self.profile, model=self.profile.model, target_language='English',
+                )
+                self.assertEqual(memory.text, 'Compacted memory.')
+        self.assertEqual([request.headers.get('x-codex-turn-state') for request in self.requests],
+                         [None, 'memory-route', None, 'memory-route'])
 
     def test_stateless_payload_preserves_roles_images_schema_usage_and_omits_tools(self) -> None:
         self.profile.thinking_level = 'high'
@@ -219,8 +334,9 @@ class CodexHTTPTest(unittest.TestCase):
         with patch.dict(pcfg.module.__dict__, {'llm_profiles': [self.profile],
                                              'translator_llm_id': self.profile.id}):
             self.assertIn("prompt_cache='implicit'", translator.translation_run_description())
+            self.assertIn("transport='websocket'", translator.translation_run_description())
 
-    def test_gpt_56_limits_reasoning_context_without_changing_effort(self) -> None:
+    def test_gpt_56_omits_reasoning_context_without_changing_effort(self) -> None:
         for model in ('gpt-5.6', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra'):
             with patch.dict(pcfg.module.codex_models, {model: {'modalities': ['text', 'image'],
                                                             'efforts': ['none', 'high']}}):
@@ -231,11 +347,11 @@ class CodexHTTPTest(unittest.TestCase):
                         args = self.args()
                         args['model'] = model
                         codex.request_chat_completion(self.profile, args, None, 'job-cache-key')
-                        reasoning = json.loads(self.requests[-1].content)['reasoning']
-                        expected = {'context': 'current_turn'}
-                        if effort is not None:
-                            expected['effort'] = effort
-                        self.assertEqual(reasoning, expected)
+                        payload = json.loads(self.requests[-1].content)
+                        if effort is None:
+                            self.assertNotIn('reasoning', payload)
+                        else:
+                            self.assertEqual(payload['reasoning'], {'effort': effort})
 
     def test_parameter_rejection_is_not_misclassified_as_model_unavailable(self) -> None:
         for parameter in ('prompt_cache_options', 'prompt_cache_breakpoint', 'private input with spaces'):
@@ -975,7 +1091,7 @@ class CodexHTTPTest(unittest.TestCase):
         self.assertIsNone(translator._translation_codex_response)
         self.assertEqual(project.pages['3'][0].translation, 'previous')
         self.assertEqual(len({body['prompt_cache_key'] for body in received}), 1)
-        self.assertTrue(all(body['reasoning'] == {'context': 'current_turn'} for body in received))
+        self.assertTrue(all('reasoning' not in body for body in received))
         for page_index, (previous, current) in enumerate(zip(received, received[1:])):
             self.assertEqual(previous['text']['format'], current['text']['format'])
             self.assertEqual(previous['instructions'], current['instructions'])
@@ -1251,6 +1367,7 @@ class CodexSettingsAccountTest(unittest.TestCase):
         for patcher in (
             patch.object(codex, 'account', self.account),
             patch.object(codex_account, 'account', self.account),
+            patch.object(codex, '_client_version_checked_at', time.monotonic()),
             patch.object(self.account, '_path', return_value=Path(self.directory.name) / 'http-auth.json'),
             patch.object(codex, '_system_keyring', side_effect=ImportError),
             patch.object(pcfg.module, 'codex_models', copy.deepcopy(CATALOG)),

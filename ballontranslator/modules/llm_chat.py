@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 
 from .context.errors import provider_error_message
 from .context.token_usage import format_completion_token_usage
@@ -26,6 +27,8 @@ from ballontranslator.utils.llm_profiles import (
     resolve_api_key,
 )
 
+if TYPE_CHECKING:
+    from .codex import CodexChatSession, CodexTurnState
 
 OPENAI_MAX_TOKENS_MODELS = frozenset({
     "gpt-4.1",
@@ -204,14 +207,16 @@ class LLMChatRequester:
         self.request_count_minute = 0
         self.minute_start_time = time.time()
         self.stop_event: Optional[threading.Event] = None
-        self._codex_cache_keys: Dict[Tuple[str, str, int], str] = {}
+        self._codex_sessions: Dict[Tuple[str, str, int], CodexChatSession] = {}
 
     def set_stop_event(
         self,
         stop_event: Optional[threading.Event],
     ) -> None:
         if stop_event is not self.stop_event:
-            self._codex_cache_keys.clear()
+            for session in self._codex_sessions.values():
+                session.close()
+            self._codex_sessions.clear()
         self.stop_event = stop_event
 
     def _wait(self, seconds: float) -> None:
@@ -316,21 +321,38 @@ class LLMChatRequester:
         self.last_request_time = time.time()
         self.request_count_minute += 1
 
+    def _codex_websocket_enabled(self) -> bool:
+        override = os.environ.get('BALLOONTRANS_CODEX_WEBSOCKET')
+        return override == '1' if override in ('0', '1') else bool(self.get_param_value('codex websocket'))
+
     def request_chat_completion(
         self,
         profile: LLMProfile,
         api_args: Dict[str, Any],
+        *,
+        codex_turn: Optional[CodexTurnState] = None,
     ) -> LLMChatResult:
         """Perform one request; feature owners decide whether to retry it."""
         if profile.backend == 'codex':
-            from .codex import account, request_chat_completion
+            from .codex import CodexChatSession, account, request_chat_completion
             self._respect_delay()
             identity = (profile.id, str(api_args['model']), account.generation)
-            if identity not in self._codex_cache_keys:
-                self._codex_cache_keys[identity] = str(uuid.uuid4())
+            proxy = str(self.get_param_value('proxy') or '')
+            websocket = self._codex_websocket_enabled()
+            session = self._codex_sessions.get(identity)
+            if (session is None or session.closed or session.proxy != proxy
+                    or session.websocket != websocket):
+                for old_identity in tuple(self._codex_sessions):
+                    if old_identity[2] != identity[2]:
+                        self._codex_sessions.pop(old_identity).close()
+                cache_key = session.cache_key if session is not None else str(uuid.uuid4())
+                if session is not None:
+                    session.close()
+                session = self._codex_sessions[identity] = CodexChatSession(
+                    cache_key, proxy, account_generation=identity[2], websocket=websocket)
             return request_chat_completion(
                 profile, api_args, self.stop_event,
-                self._codex_cache_keys[identity], str(self.get_param_value('proxy') or ''),
+                session.cache_key, proxy, session=session, turn=codex_turn,
             )
         if profile.backend != 'openai':
             raise LLMUserActionRequiredError('This LLM profile backend is unavailable.')

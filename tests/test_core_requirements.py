@@ -38,7 +38,10 @@ class CoreRequirementsTests(unittest.TestCase):
 
     def test_missing_subscription_library_uses_core_startup_repair(self) -> None:
         repo_root = str(Path(__file__).resolve().parents[1])
-        for missing_name in ('httpx', 'keyring', 'cryptography'):
+        names = ('httpx', 'keyring', 'cryptography')
+        if core_requirements.sys.version_info >= (3, 9):
+            names += ('websockets',)
+        for missing_name in names:
             with self.subTest(package=missing_name), mock.patch(
                 'ballontranslator.utils.py_package_manager.PyPackageManager._requirement_satisfied',
                 side_effect=lambda requirement: requirement.name != missing_name,

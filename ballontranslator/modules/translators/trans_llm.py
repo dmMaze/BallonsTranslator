@@ -1,9 +1,12 @@
 from dataclasses import replace
 import traceback
-from typing import Dict, List, Optional, Sequence, Tuple, Union
+from typing import Dict, List, Optional, Sequence, Tuple, Union, TYPE_CHECKING
 
 import cv2
 import numpy as np
+
+if TYPE_CHECKING:
+    from ..codex import CodexTurnState
 
 from ..context.errors import (
     ContextLengthError,
@@ -141,6 +144,12 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             "display_name": "Proxy",
             "description": "Proxy address used for LLM requests.",
         },
+        "codex websocket": {
+            "type": "checkbox",
+            "value": True,
+            "display_name": "Codex WebSocket",
+            "description": "Use Codex WebSocket continuation with HTTP/SSE fallback. Disable to use HTTP/SSE only.",
+        },
     }
 
     def _setup_translator(self):
@@ -218,10 +227,15 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             else f'max_output_tokens={profile.max_tokens!r}, '
         )
         cache_mode = 'explicit' if _uses_explicit_cache(profile) else 'implicit'
+        transport = (
+            f"transport={'websocket' if self._codex_websocket_enabled() else 'sse'!r}, "
+            if profile.backend == 'codex' else ''
+        )
         return (
             'LLM translation run: '
             f'profile_id={str(profile.id)!r}, '
             f'profile_name={str(profile.name)!r}, model={model!r}, '
+            f'{transport}'
             f'context={str(pcfg.module.llm_translate_context)!r}, '
             f'history_budget={int(pcfg.module.llm_prior_context_token_budget)}, '
             f'vision={vision_enabled}, '
@@ -1056,12 +1070,16 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         # Compaction is always a text request, independently of Vision.
         api_args = self._api_args(profile, messages)
         api_args.pop('response_format')
+        request_kwargs = {}
+        if profile.backend == 'codex':
+            from ..codex import CodexTurnState
+            request_kwargs['codex_turn'] = CodexTurnState()
         attempts = max(1, int(self.get_param_value('retry attempts')))
         for attempt in range(1, attempts + 1):
             if self.stop_event is not None and self.stop_event.is_set():
                 raise LLMRequestStopped()
             try:
-                result = self.request_chat_completion(profile, api_args)
+                result = self.request_chat_completion(profile, api_args, **request_kwargs)
                 self._log_token_usage(result, page_key='memory-compaction')
                 memory_text = result.content.strip()
                 if not memory_text:
@@ -1195,7 +1213,9 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
         usage_page_key=None,
         usage_attempt: Optional[int] = None,
         summary_enabled: bool = False,
+        codex_turn: Optional['CodexTurnState'] = None,
     ) -> str:
+        request_kwargs = {'codex_turn': codex_turn} if codex_turn is not None else {}
         try:
             result = self.request_chat_completion(
                 profile,
@@ -1205,6 +1225,7 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                     expected_translations,
                     summary_enabled=summary_enabled,
                 ),
+                **request_kwargs,
             )
         except LLMChatRequestError as error:
             if is_context_length_error(error.provider_error):
@@ -1285,6 +1306,10 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
             else 0
         )
         recovery_attempts = 0
+        codex_turn = None
+        if profile.backend == 'codex':
+            from ..codex import CodexTurnState
+            codex_turn = CodexTurnState()
         while True:
             if self.stop_event is not None and self.stop_event.is_set():
                 raise LLMRequestStopped()
@@ -1297,6 +1322,8 @@ class LLMTranslator(LLMChatRequester, BaseTranslator):
                 }
                 if summary_enabled:
                     request_kwargs['summary_enabled'] = summary_enabled
+                if codex_turn is not None:
+                    request_kwargs['codex_turn'] = codex_turn
                 self._translation_codex_response = None
                 raw_response = self._request_translation(
                     profile,

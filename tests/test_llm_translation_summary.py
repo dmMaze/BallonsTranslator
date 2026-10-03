@@ -417,7 +417,8 @@ class LLMTranslationSummaryTest(
                 saved_record = project.get_llm_visual_summary('002.png')
                 requests, windows = [], []
 
-                def respond(profile, args):
+                def respond(profile, args, *, codex_turn=None):
+                    self.assertEqual(codex_turn is not None, backend == 'codex')
                     requests.append(args)
                     translations = ([{'id': 1, 'translation': 'trans\nlated'}] if backend == 'codex' or explicit
                                     else {'1': 'trans\nlated'})

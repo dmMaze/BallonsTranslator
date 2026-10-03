@@ -42,6 +42,16 @@ owns asynchronous GUI account operations, while headless requests restore
 credentials on demand. [`codex_settings.py`](../../ballontranslator/ui/codex_settings.py)
 owns the dedicated settings panel.
 
+Catalog and generation requests share a Codex client identity resolved from
+OpenAI's latest stable GitHub release. The first request and subsequent requests
+after one hour refresh it in the calling worker, including headless operation;
+no CLI installation is needed. Release lookup uses the request's proxy, sends no
+account credentials, and times out after five seconds. Failures retain the last
+known version (initially `0.159.0`) and retry after the same one-hour interval.
+The catalog query, `version` header, and versioned user agent stay aligned across
+HTTP and WebSocket connections. This follows stable client compatibility gates;
+it does not change the selected model or guarantee future protocol compatibility.
+
 Credentials remain outside config/profile exports. Codex encrypts its credential
 file using a key in the native credential store; unavailable secure storage uses
 logged, reversible obfuscation on save. Reads preserve unreadable encrypted data
@@ -163,13 +173,71 @@ Eviction, memory changes, or response-contract changes can break prefix reuse.
 API cache policy belongs to the contract/requester; Codex uses a stable job cache
 identity that survives retries and token renewal but changes with a new job or
 account. Codex Responses sends that identity in `prompt_cache_key`, `session-id`,
-`thread-id`, and `x-client-request-id`, matching the [official Codex client](https://github.com/openai/codex/blob/rust-v0.155.1/codex-rs/codex-api/src/endpoint/responses.rs).
+`thread-id`, and `x-client-request-id`, matching the
+[official Codex client](https://github.com/openai/codex/blob/rust-v0.155.1/codex-rs/codex-api/src/endpoint/responses.rs).
 This subscription convention differs from the public API's per-request ID.
-SSE requests use `OpenAI-Beta: responses=experimental`. Completed Codex pages
+Codex chat requests use WebSocket by default. The translator and OCR module
+parameter `codex websocket` can disable it in favor of HTTP/SSE; existing saved
+choices remain authoritative. Successful continuation does not establish better
+prompt-cache reuse.
+For a process-wide test, `BALLOONTRANS_CODEX_WEBSOCKET=1` selects WebSocket for
+Codex chat requests (translation, OCR, and memory compaction), overriding the
+module checkboxes without rewriting saved settings. `0` selects SSE; when unset,
+the existing module parameters apply. Image endpoints remain HTTP. Setup failures
+can still fall back to SSE; debug logs identify the transport actually used.
+The requester owns the connection, isolated by profile/model/account generation
+and proxy. Transport switches preserve the job identity and close the old
+connection. A session-owned thread keeps its event loop running between page
+workers so idle sockets can answer server heartbeat pings;
+new runs and obsolete account generations close their previous sessions. Idle
+connections expire after five minutes, and connections older than 55 minutes
+reconnect without changing the job's cache identity.
+
+The job session retains only the official Codex infrastructure-cookie allowlist,
+including the `__oailb` routing cookie. HTTP responses and WebSocket handshakes
+update the same in-memory jar, so later SSE calls, reconnects, and transport
+fallbacks retain routing cookies even when their HTTP client is replaced.
+Cookie domain, path, expiry, deletion, and Secure rules use HTTPX's standard jar.
+Account/session cookies are excluded; nothing is written to disk. New jobs,
+account changes, proxy changes, and closed sessions discard the jar. Separate
+catalog, OAuth, and release-discovery requests do not receive these cookies.
+SSE diagnostics report only whether a routing-cookie header was sent. Cookie
+retention supports routing affinity but does not establish cache-hit causality.
+Responses requests also send the official `x-codex-routing-hint: model=...`
+header on SSE calls and WebSocket handshakes, including assisted image requests.
+Catalog, OAuth, and direct-image endpoints do not receive that Responses hint.
+WebSocket error envelopes preserve `status`/`status_code` so HTTP-equivalent
+authentication rejection gets one token renewal and permissions remain actionable.
+
+Routing state has a shorter lifetime than the job or socket. Each translation,
+OCR request, and memory compaction owns one `CodexTurnState` across its retries.
+The first `x-codex-turn-state` from response/handshake headers or a
+`response.metadata` event is replayed unchanged in SSE request headers or
+WebSocket `client_metadata` (and reconnect headers). A new page/request starts
+fresh even when reusing the socket; job/account changes clear the token too.
+This follows the [official turn-state contract](https://github.com/openai/codex/blob/5fa5aaf0fffd6593ca60ed974af3e87e29f3be28/codex-rs/core/src/client.rs#L279).
+Routing metadata is excluded from continuation comparison and history budgets.
+Header lookup tolerates unrelated repeated headers. Debug logs record routing
+fingerprints and exception types without exposing routing tokens or transport
+exception messages.
+
+Following [Pi's continuation contract](https://github.com/earendil-works/pi/blob/6f1072cc081f06b86a673bd142f03720d17afe15/packages/ai/src/api/openai-codex-responses.ts#L1425),
+the transport sends `previous_response_id` and only appended input when settings
+match and the full input starts with the preceding input plus returned output.
+Eviction, changed history, or changed settings send full input on the same socket.
+Missing continuation state gets one reconnect with full input. Setup failures
+fall back to SSE for the run; a started stream is never automatically replayed
+through SSE. Server validation and authentication failures retain their existing
+handling. WebSocket support requires Python 3.9+ and the core `websockets>=15`
+dependency; older environments use SSE. SOCKS proxies without the optional
+`python-socks` transport also use the existing HTTPX/SSE path.
+
+WebSocket requests use `OpenAI-Beta: responses_websockets=2026-02-06`; SSE uses
+`OpenAI-Beta: responses=experimental`. Completed Codex pages
 retain assistant output metadata and encrypted reasoning only in the runtime
-history window. GPT-5.6 chat requests use `reasoning.context: current_turn` so
-replayed older reasoning does not grow the model's rendered context; visible
-page history and the selected reasoning effort remain available.
+history window. Chat requests omit `reasoning.context`, leaving reasoning-history
+behavior to the backend default. The response's effective `reasoning.context` is
+logged for verification; the selected reasoning effort is still sent when explicit.
 Replay requires the same job/account/model and matching eligible
 page sources and summaries; the transport rechecks ownership when sending.
 Account changes fall back to the run's text messages without rebuilding history.

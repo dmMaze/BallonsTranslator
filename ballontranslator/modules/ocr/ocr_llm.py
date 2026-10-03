@@ -116,6 +116,12 @@ class LLMOCR(LLMChatRequester, OCRBase):
             "display_name": "Proxy",
             "description": "Proxy address used for LLM requests.",
         },
+        "codex websocket": {
+            "type": "checkbox",
+            "value": True,
+            "display_name": "Codex WebSocket",
+            "description": "Use Codex WebSocket continuation with HTTP/SSE fallback. Disable to use HTTP/SSE only.",
+        },
         "description": "OCR using the selected vision-capable LLM profile.",
     }
 
@@ -308,6 +314,10 @@ class LLMOCR(LLMChatRequester, OCRBase):
         response_schema: Optional[Dict] = None,
     ) -> str:
         retry_attempt = 0
+        request_kwargs = {}
+        if profile.backend == 'codex':
+            from ..codex import CodexTurnState
+            request_kwargs['codex_turn'] = CodexTurnState()
         while True:
             if self.stop_event is not None and self.stop_event.is_set():
                 raise LLMRequestStopped()
@@ -315,6 +325,7 @@ class LLMOCR(LLMChatRequester, OCRBase):
                 completion = self.request_chat_completion(
                     profile,
                     self._api_args(profile, messages, response_schema),
+                    **request_kwargs,
                 )
                 if completion.usage is not None:
                     self.token_count += completion.usage.total_tokens

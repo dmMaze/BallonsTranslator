@@ -25,7 +25,7 @@ CORE_IMPORT_PROBES = (
     ('tqdm', ()),
     ('natsort', ()),
     ('cv2', ('IMREAD_COLOR', 'IMREAD_GRAYSCALE', 'cvtColor')),
-)
+) + ((('websockets.asyncio.client', ('connect',)),) if sys.version_info >= (3, 9) else ())
 
 
 def _platform_import_probes() -> Tuple[Tuple[str, Tuple[str, ...]], ...]:
