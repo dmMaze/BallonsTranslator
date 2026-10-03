@@ -23,7 +23,7 @@ from .funcmaps import get_maskseg_method
 from .module_manager import ModuleManager
 from .module_tool_button import ModuleSelectionMenu, ModuleSelectionToolButton
 from .llm_modality import LLM_MODALITY_IMAGE
-from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_border_path, shape_fill_path
+from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_fill_image
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
 from .misc import ndarray2pixmap, themed_icon_path
@@ -1532,23 +1532,10 @@ class DrawingPanel(Widget):
         border = not erasing and config.shape_border_enabled
         if color.alpha() == 0 and not border:
             return
-        image = QImage(bounds.size(), QImage.Format.Format_ARGB32_Premultiplied)
-        image.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(image)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.translate(-bounds.x(), -bounds.y())
-            # Clip the raster, not the ellipse bounds, at page edges.
-            if color.alpha() > 0:
-                painter.fillPath(shape_fill_path(rect, config.shape_fill_shape), color)
-            if border:
-                # Paint over the fill to avoid antialiased seams between them.
-                painter.fillPath(
-                    shape_border_path(rect, config.shape_fill_shape, config.shape_border_width),
-                    QColor(config.shape_border_color),
-                )
-        finally:
-            painter.end()
+        image = shape_fill_image(
+            rect, bounds, config.shape_fill_shape, color,
+            config.shape_border_width if border else 0, QColor(config.shape_border_color),
+        )
         command = StrokeItemUndoCommand(
             self.canvas.drawingLayer, bounds.getRect(), image, erasing,
         )

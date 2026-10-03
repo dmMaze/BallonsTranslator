@@ -25,7 +25,7 @@ from .text_engine.transforms.grid_control import TextGridTransformControl
 from .text_engine.transforms.projective_control import TextProjectiveTransformControl
 from .text_engine.effects.alpha_mask_edit_session import TextAlphaMaskEditSession
 from .custom_widget import ScrollBar, FadeLabel
-from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem, PenShape, shape_border_path, shape_fill_path
+from .image_edit import ImageEditMode, DrawingLayer, StrokeImgItem, PenShape, shape_fill_image, shape_fill_path
 from .page_search_widget import PageSearchWidget
 from .text_engine.editing.commands import MoveByKeyCommand
 from .text_engine.editing.move_session import TextItemMoveSession
@@ -333,7 +333,7 @@ class Canvas(QGraphicsScene):
         self.inpaintLayer = QGraphicsPixmapItem()
         self.inpaintLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self.drawingLayer = DrawingLayer()
-        self.drawingLayer.setTransformationMode(Qt.TransformationMode.FastTransformation)
+        self.drawingLayer.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
         self.textLayer = QGraphicsPixmapItem()
         self.orderBadgeLayer = QGraphicsRectItem()
         self.orderBadgeLayer.setZValue(100.0)
@@ -359,11 +359,13 @@ class Canvas(QGraphicsScene):
         self.shape_fill_preview.setPen(QPen(Qt.PenStyle.NoPen))
         self.shape_fill_preview.setZValue(20)
         self.shape_fill_preview.hide()
-        # Child of the fill preview so it shares its visibility and lifetime.
-        self.shape_border_preview = QGraphicsPathItem(self.shape_fill_preview)
-        self.shape_border_preview.setData(CONTROL_ITEM_DATA_KEY, True)
-        self.shape_border_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-        self.shape_border_preview.setPen(QPen(Qt.PenStyle.NoPen))
+        # Bordered fills share one raster so review opacity applies once.
+        # Keep page resolution even when zoomed; erasers and plain fills stay vector.
+        self.shape_fill_composite_preview = QGraphicsPixmapItem(self.shape_fill_preview)
+        self.shape_fill_composite_preview.setTransformationMode(Qt.TransformationMode.SmoothTransformation)
+        self.shape_fill_composite_preview.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
+        self.shape_fill_composite_preview.setData(CONTROL_ITEM_DATA_KEY, True)
+        self.shape_fill_composite_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.brush_line_preview = QGraphicsLineItem(self.baseLayer)
         self.brush_line_preview.setData(CONTROL_ITEM_DATA_KEY, True)
         self.brush_line_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -1014,6 +1016,7 @@ class Canvas(QGraphicsScene):
         self._shape_fill_origin = None
         self._shape_fill_button = Qt.MouseButton.NoButton
         self.shape_fill_preview.hide()
+        self.shape_fill_composite_preview.setPixmap(QPixmap())
         return True
 
     @property
@@ -1212,11 +1215,21 @@ class Canvas(QGraphicsScene):
         elif self._shape_fill_origin is not None:
             rect = QRectF(self._shape_fill_origin, self.baseLayer.mapFromScene(event.scenePos()))
             config = pcfg.drawpanel
-            self.shape_fill_preview.setPath(shape_fill_path(rect, config.shape_fill_shape))
-            if self.shape_border_preview.isVisible():
-                self.shape_border_preview.setPath(
-                    shape_border_path(rect, config.shape_fill_shape, config.shape_border_width)
+            if self.shape_fill_composite_preview.isVisible():
+                # Include the transparent neighbours used by smooth sampling.
+                # Otherwise the cropped preview clamps its outermost pixels,
+                # unlike the same shape inside the full drawing-layer raster.
+                bounds = rect.normalized().adjusted(-1, -1, 1, 1).intersected(
+                    self.baseLayer.rect()
+                ).toAlignedRect()
+                image = shape_fill_image(
+                    rect, bounds, config.shape_fill_shape, self.shape_fill_preview.brush().color(),
+                    config.shape_border_width, QColor(config.shape_border_color),
                 )
+                self.shape_fill_composite_preview.setPos(bounds.x(), bounds.y())
+                self.shape_fill_composite_preview.setPixmap(QPixmap.fromImage(image))
+            else:
+                self.shape_fill_preview.setPath(shape_fill_path(rect, config.shape_fill_shape))
             event.accept()
             return
 
@@ -1380,9 +1393,7 @@ class Canvas(QGraphicsScene):
                     self.shape_fill_preview.setBrush(
                         QBrush(Qt.BrushStyle.NoBrush) if erasing else QBrush(color)
                     )
-                    self.shape_border_preview.setPath(QPainterPath())
-                    self.shape_border_preview.setBrush(QColor(pcfg.drawpanel.shape_border_color))
-                    self.shape_border_preview.setVisible(
+                    self.shape_fill_composite_preview.setVisible(
                         not erasing and pcfg.drawpanel.shape_border_enabled
                     )
                     self.shape_fill_preview.show()

@@ -1,6 +1,6 @@
 import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
@@ -101,6 +101,24 @@ class BrushLineTests(unittest.TestCase):
         np.testing.assert_array_equal(self.pixels(), connected)
         self.click(90, 20)
         self.assertEqual(self.pixels()[50, 90, 3], 0)
+
+    def test_zoomed_pen_preview_matches_committed_drawing(self) -> None:
+        viewport = self.canvas.gv.viewport()
+        with patch.object(pcfg, 'original_transparency', 0), patch.object(pcfg, 'mask_transparency', 0):
+            self.canvas.updateLayers()
+            self.canvas.scaleImage(3)
+            self.canvas.scaleFactorLabel.hide()
+            QTest.mousePress(viewport, LEFT, pos=self.view_pos(30, 30))
+            self.move(65, 65, buttons=LEFT)
+            preview = pixmap2ndarray(viewport.grab())
+            QTest.mouseRelease(viewport, LEFT, pos=self.view_pos(65, 65))
+            committed = pixmap2ndarray(viewport.grab())
+            np.testing.assert_allclose(preview, committed, atol=1)
+            saved = self.pixels()
+            self.canvas.undo()
+            self.canvas.redo()
+            np.testing.assert_array_equal(self.pixels(), saved)
+            np.testing.assert_array_equal(pixmap2ndarray(viewport.grab()), committed)
 
     def test_ctrl_shift_chains_axis_aligned_square_at_zoom(self) -> None:
         self.canvas.scaleImage(2)
