@@ -495,7 +495,7 @@ class ShapeFillPanel(Widget):
         layout.addWidget(self.alphaSlider, 2, 1)
 
         self.borderChecker = QCheckBox(self.tr('Border'), self)
-        self.borderChecker.setToolTip(self.tr('Draw a border inside the shape outline'))
+        self.borderChecker.setToolTip(self.tr('Draw shape with border'))
         self.borderChecker.setChecked(pcfg.drawpanel.shape_border_enabled)
         self.borderChecker.toggled.connect(self.on_border_enabled_changed)
         layout.addWidget(self.borderChecker, 3, 0, 1, 2)

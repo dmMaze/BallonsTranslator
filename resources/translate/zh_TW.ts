@@ -168,77 +168,77 @@
 <context>
     <name>Canvas</name>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1690"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1710"/>
         <source>Copy</source>
         <translation>複製</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1692"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1712"/>
         <source>Paste</source>
         <translation>黏貼</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1694"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1714"/>
         <source>Delete</source>
         <translation>刪除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1696"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1716"/>
         <source>Copy source text</source>
         <translation>複製原文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1698"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1718"/>
         <source>Paste source text</source>
         <translation>黏貼原文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1700"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1720"/>
         <source>Delete and Recover removed text</source>
         <translation>刪除並恢復被抹除文字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1705"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1725"/>
         <source>Apply font formatting</source>
         <translation>應用字體格式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1706"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1726"/>
         <source>Auto layout</source>
         <translation>自動排版</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1707"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1727"/>
         <source>Reset Angle</source>
         <translation>角度復位</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1708"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1728"/>
         <source>Squeeze</source>
         <translation>收縮</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1710"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1730"/>
         <source>translate</source>
         <translation>翻譯</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1711"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1731"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1712"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1732"/>
         <source>OCR and translate</source>
         <translation>OCR並翻譯</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1713"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1733"/>
         <source>OCR, translate and inpaint</source>
         <translation>OCR，翻譯並抹字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/canvas.py" line="1714"/>
+        <location filename="../../ballontranslator/ui/canvas.py" line="1734"/>
         <source>inpaint</source>
         <translation>抹字</translation>
     </message>
@@ -1099,33 +1099,33 @@
 <context>
     <name>DrawingPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="701"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="758"/>
         <source>Shift-click to draw a straight line. Ctrl+Shift-click constrains it horizontally or vertically.</source>
         <translation>按住 Shift 單擊繪製直線；按住 Ctrl+Shift 單擊繪製水平或垂直直線。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="704"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="761"/>
         <source>Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
         <translation>按住 Ctrl 累積筆畫，鬆開後執行修復。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="709"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="766"/>
         <source>Shape Fill: left-drag to fill, right-drag to erase</source>
         <translation>形狀填充：左鍵拖動填充，右鍵拖動擦除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="710"/>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1488"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="767"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1542"/>
         <source>Shape Fill</source>
         <translation>形狀填充</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="741"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="798"/>
         <source>Mask Opacity</source>
         <translation>掩膜不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1488"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="1542"/>
         <source>Shape Erase</source>
         <translation>形狀擦除</translation>
     </message>
@@ -5174,67 +5174,67 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="575"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="632"/>
         <source>Enable Use mask to change the mask method and dilation.</source>
         <translation>勾選「使用遮罩」後即可變更遮罩擷取方法與膨脹程度。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="530"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="587"/>
         <source>Use mask</source>
         <translation>使用遮罩</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="532"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="589"/>
         <source>When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. Local inpainters treat the entire rectangle as masked.</source>
         <translation>取消勾選後，LLM 修復模型不接收遮罩，並取代整個矩形區域。本地修復模型則將整個矩形視為遮罩區域。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="517"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="574"/>
         <source>Dilate</source>
         <translation>膨脹</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="525"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="582"/>
         <source>method 1</source>
         <translation>方法1</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="526"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="583"/>
         <source>method 2</source>
         <translation>方法2</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="527"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="584"/>
         <source>Use Existing Mask</source>
         <translation>使用區域已有掩膜</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="538"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="595"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="539"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="596"/>
         <source>run inpainting automatically.</source>
         <translation>自動運行修復函數.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="541"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="598"/>
         <source>Inpaint</source>
         <translation>圖像修復</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="542"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="599"/>
         <source>Space</source>
         <translation>空格</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="544"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="601"/>
         <source>Delete</source>
         <translation>刪除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="545"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="602"/>
         <source>Ctrl+D</source>
         <translation></translation>
     </message>
@@ -5771,6 +5771,27 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="494"/>
         <source>Alpha</source>
         <translation>Alpha</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="497"/>
+        <source>Border</source>
+        <translation>描邊</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="498"/>
+        <source>Draw shape with border</source>
+        <translation>繪製帶描邊的形狀</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="511"/>
+        <source>Border Width</source>
+        <translation>描邊寬度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="516"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="518"/>
+        <source>Border Color</source>
+        <translation>描邊顏色</translation>
     </message>
 </context>
 <context>
