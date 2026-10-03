@@ -84,6 +84,7 @@ class CodexHTTPTest(unittest.TestCase):
         sync_codex_profile(self.profile, CATALOG)
         for patcher in (
             patch.object(codex, 'account', self.account),
+            patch.object(codex, 'CODEX_REPLAY_ENABLED', True),
             patch.object(codex, '_client_version_checked_at', time.monotonic()),
             patch.object(self.account, '_path', return_value=self.path),
             patch.object(codex, '_system_keyring', side_effect=ImportError),

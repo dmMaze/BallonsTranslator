@@ -116,12 +116,6 @@ class LLMOCR(LLMChatRequester, OCRBase):
             "display_name": "Proxy",
             "description": "Proxy address used for LLM requests.",
         },
-        "codex websocket": {
-            "type": "checkbox",
-            "value": True,
-            "display_name": "Codex WebSocket",
-            "description": "Use Codex WebSocket continuation with HTTP/SSE fallback. Disable to use HTTP/SSE only.",
-        },
         "description": "OCR using the selected vision-capable LLM profile.",
     }
 

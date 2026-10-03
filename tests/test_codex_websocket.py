@@ -91,6 +91,7 @@ class CodexWebSocketTest(unittest.TestCase):
                                      side_effect=lambda *args, **kwargs: ConnectAttempt(self.connect(*args, **kwargs)))
         for patcher in (
             patch.object(codex, 'account', self.account),
+            patch.object(codex, 'CODEX_REPLAY_ENABLED', True),
             patch.object(codex, '_client_version_checked_at', time.monotonic()),
             patch.dict(pcfg.module.codex_models, copy.deepcopy(CATALOG), clear=True),
             self.connect_patcher,
@@ -135,6 +136,16 @@ class CodexWebSocketTest(unittest.TestCase):
         self.assertEqual(headers['thread-id'], first.codex_cache_key)
         self.assertEqual(self.http_requests, [])
 
+        with patch.object(codex, 'CODEX_REPLAY_ENABLED', False):
+            self.call('third page')
+            self.call('fourth page')
+        self.assertEqual(self.connect.await_count, 1)
+        for body in self.socket.frames[2:]:
+            self.assertNotIn('previous_response_id', body)
+            self.assertTrue(all(item['type'] == 'message' and 'id' not in item for item in body['input']))
+            self.assertEqual(body['input'][1]['role'], 'assistant')
+            self.assertEqual(body['input'][1]['content'][0]['text'], first.content)
+
     def test_ocr_uses_websocket_by_default(self) -> None:
         with patch.object(LLMOCR, 'params', copy.deepcopy(LLMOCR.params)):
             requester = LLMOCR()
@@ -148,19 +159,19 @@ class CodexWebSocketTest(unittest.TestCase):
         self.assertEqual(self.connect.await_count, 1)
         self.assertEqual(self.http_requests, [])
 
-    def test_explicit_transport_switch_keeps_job_identity(self) -> None:
-        self.requester.set_param_value('codex websocket', False)
+    @patch.dict(os.environ, {'BALLOONTRANS_CODEX_WEBSOCKET': '0'})
+    def test_diagnostic_transport_switch_keeps_job_identity(self) -> None:
         first = self.call('first page')
         self.assertEqual(self.connect.await_count, 0)
         self.assertEqual(len(self.http_requests), 1)
         for header in ('session-id', 'thread-id', 'x-client-request-id'):
             self.assertEqual(self.http_requests[0].headers[header], first.codex_cache_key)
-        self.requester.set_param_value('codex websocket', True)
+        os.environ['BALLOONTRANS_CODEX_WEBSOCKET'] = '1'
         second = self.call('second page')
         self.assertEqual(second.codex_cache_key, first.codex_cache_key)
         self.assertEqual(self.connect.await_count, 1)
         self.assertNotIn('previous_response_id', self.socket.frames[0])
-        self.requester.set_param_value('codex websocket', False)
+        os.environ['BALLOONTRANS_CODEX_WEBSOCKET'] = '0'
         third = self.call('third page')
         self.assertEqual(third.codex_cache_key, first.codex_cache_key)
         self.socket.transport.abort.assert_called_once()
@@ -168,19 +179,25 @@ class CodexWebSocketTest(unittest.TestCase):
         self.assertEqual(self.connect.await_count, 1)
         self.assertNotIn('previous_response_id', json.loads(self.http_requests[-1].content))
 
-    def test_launch_override_selects_websocket_and_sse_without_changing_saved_parameter(self) -> None:
-        self.requester.set_param_value('codex websocket', False)
-        with patch.dict(os.environ, {'BALLOONTRANS_CODEX_WEBSOCKET': '1'}):
-            first = self.call()
-            self.assertFalse(self.requester.get_param_value('codex websocket'))
-            self.assertEqual(self.connect.await_count, 1)
-            self.assertEqual(self.http_requests, [])
-        self.requester.set_param_value('codex websocket', True)
-        with patch.dict(os.environ, {'BALLOONTRANS_CODEX_WEBSOCKET': '0'}):
-            second = self.call()
-            self.assertTrue(self.requester.get_param_value('codex websocket'))
-            self.assertEqual(len(self.http_requests), 1)
-            self.assertEqual(first.codex_cache_key, second.codex_cache_key)
+    @patch.dict(os.environ)
+    def test_obsolete_saved_checkbox_is_discarded_and_websocket_is_automatic(self) -> None:
+        os.environ.pop('BALLOONTRANS_CODEX_WEBSOCKET', None)
+        for module_type in (LLMTranslator, LLMOCR):
+            with self.subTest(module=module_type.__name__), \
+                    patch.object(module_type, 'params', copy.deepcopy(module_type.params)), \
+                    self.assertLogs(codex.LOGGER, level='WARNING') as captured:
+                args = ('日本語', 'English') if module_type is LLMTranslator else ()
+                requester = module_type(*args, **{'codex websocket': False})
+            self.assertIn('codex websocket', '\n'.join(captured.output))
+            self.assertNotIn('codex websocket', requester.params)
+            requester.set_stop_event(threading.Event())
+            self.addCleanup(requester.set_stop_event, None)
+            requester._respect_delay = Mock()
+            requester.request_chat_completion(self.profile, {
+                'model': self.profile.model, 'messages': [{'role': 'user', 'content': 'Read.'}],
+            })
+        self.assertEqual(self.connect.await_count, 2)
+        self.assertEqual(self.http_requests, [])
 
     def test_handshake_turn_state_replays_for_one_turn_without_breaking_continuation(self) -> None:
         self.socket.response.headers['X-Codex-Turn-State'] = 'handshake-route'
@@ -276,15 +293,17 @@ class CodexWebSocketTest(unittest.TestCase):
     def test_connect_failure_falls_back_once_per_job(self) -> None:
         self.connect.side_effect = OSError('unavailable')
         self.call()
-        self.call()
+        with patch('ballontranslator.modules.responses_ws.threading.Thread', wraps=threading.Thread) as worker:
+            self.call()
+        worker.assert_not_called()
         self.assertEqual(self.connect.await_count, 1)
         self.assertEqual(len(self.http_requests), 2)
         bodies = [json.loads(request.content) for request in self.http_requests]
         self.assertEqual(bodies[0]['prompt_cache_key'], bodies[1]['prompt_cache_key'])
         self.assertNotIn('previous_response_id', bodies[1])
 
+    @patch.dict(os.environ, {'BALLOONTRANS_CODEX_WEBSOCKET': '0'})
     def test_sse_retains_only_routing_cookies_and_honors_scope_rotation_and_deletion(self) -> None:
-        self.requester.set_param_value('codex websocket', False)
         headers = [
             [('set-cookie', '__oailb=route-one; Path=/; Secure'),
              ('set-cookie', 'account_session=private; Path=/; Secure'),
@@ -329,8 +348,8 @@ class CodexWebSocketTest(unittest.TestCase):
         self.assertEqual(self.http_requests[-1].headers['cookie'], '__oailb=fallback-route')
         self.assertEqual(self.connect.await_count, 2)
 
+    @patch.dict(os.environ, {'BALLOONTRANS_CODEX_WEBSOCKET': '0'})
     def test_routing_cookies_do_not_cross_job_account_or_proxy_changes(self) -> None:
-        self.requester.set_param_value('codex websocket', False)
         for boundary in ('job', 'account', 'proxy'):
             with self.subTest(boundary=boundary):
                 self.requester.set_stop_event(threading.Event())

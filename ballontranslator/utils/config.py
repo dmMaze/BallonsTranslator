@@ -114,7 +114,7 @@ class ModuleConfig(Config):
     translate_target: str = '简体中文'
     translate_context: str = TranslateContext.Page
     llm_translate_context: str = LLMTranslateContext.PAGE
-    llm_prior_context_token_budget: int = 4096
+    llm_prior_context_token_budget: int = 10000
     llm_glossary_path: str = ''
     llm_glossary_mode: str = LLMGlossaryMode.Matching
     llm_translate_vision: bool = False
@@ -228,7 +228,7 @@ class ModuleConfig(Config):
             or isinstance(self.llm_prior_context_token_budget, bool)
             or self.llm_prior_context_token_budget <= 0
         ):
-            self.llm_prior_context_token_budget = 4096
+            self.llm_prior_context_token_budget = 10000
         if not isinstance(self.llm_profiles, list):
             LOGGER.warning('Discard invalid LLM profile list.')
             self.llm_profiles = []

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from concurrent.futures import CancelledError as FutureCancelledError
 import hashlib
 import hmac
 import json
@@ -20,6 +19,7 @@ from types import SimpleNamespace
 from typing import Any, AsyncIterator, Callable, Coroutine, Dict, List, Mapping, Optional, Tuple, Union, TYPE_CHECKING
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from .responses_ws import ResponsesWebSocket, run_async
 from .context.errors import ContextLengthError, is_context_length_error
 from .exceptions import CodexSignInRequiredError, LLMRequestStopped, LLMUserActionRequiredError
 from . import image_generation
@@ -29,12 +29,13 @@ from ballontranslator.utils.logger import logger as LOGGER
 if TYPE_CHECKING:
     import httpx
     from keyring.backend import KeyringBackend
-    from websockets.asyncio.client import ClientConnection
     from websockets.datastructures import Headers as WebSocketHeaders
     from .llm_chat import LLMChatResult
 
 
 _KEYRING_SERVICE = 'BallonsTranslator Codex'
+# False keeps plain-text history, without provider output replay or WS continuation.
+CODEX_REPLAY_ENABLED = False
 # Shared catalog/generation identity; retain this compatible floor when offline.
 _client_version = '0.159.0'
 _client_version_checked_at = float('-inf')
@@ -117,7 +118,7 @@ async def _latest_client_version(proxy: str = '') -> str:
 
 
 def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generation: Optional[int] = None,
-         loop: Optional[asyncio.AbstractEventLoop] = None) -> Any:
+         session: Optional[CodexChatSession] = None) -> Any:
     """Run HTTP work in the calling worker, cancelling socket waits promptly.
 
     >>> _run(asyncio.sleep(0, result='completed'), None)
@@ -128,26 +129,10 @@ def _run(operation: Coroutine, stop_event: Optional[threading.Event], *, generat
     if generation is None:
         generation = account.generation
 
-    async def run() -> Any:
-        task = asyncio.create_task(operation)
-        try:
-            while True:
-                if (stop_event is not None and stop_event.is_set()) or generation != account.generation:
-                    raise LLMRequestStopped()
-                done, _ = await asyncio.wait((task,), timeout=0.05)
-                if done:
-                    if (stop_event is not None and stop_event.is_set()) or generation != account.generation:
-                        raise LLMRequestStopped()
-                    return task.result()
-        finally:
-            if not task.done():
-                task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-
     try:
-        return asyncio.run(run()) if loop is None else asyncio.run_coroutine_threadsafe(run(), loop).result()
-    except (asyncio.CancelledError, FutureCancelledError):
-        raise LLMRequestStopped() from None
+        if session is not None:
+            return session.run(operation, stop_event)
+        return run_async(operation, stop_event, is_current=lambda: generation == account.generation)
     except (LLMRequestStopped, LLMUserActionRequiredError, ContextLengthError):
         raise
     except Exception as error:
@@ -846,7 +831,7 @@ def _request_messages(messages: List[Dict], cache_key: str = '', generation: Opt
         if role not in ('user', 'assistant'):
             raise ValueError('Unsupported Codex message role.')
         replay = message.get('codex_response')
-        if (role == 'assistant' and replay is not None and replay.codex_response_items
+        if (CODEX_REPLAY_ENABLED and role == 'assistant' and replay is not None and replay.codex_response_items
                 and replay.codex_cache_key == cache_key and replay.codex_account_generation == generation):
             # Replay provider output verbatim, including encrypted reasoning and
             # message IDs/phase. Validate ownership here: the account/job can
@@ -934,32 +919,24 @@ async def _read_completion(response: httpx.Response, *, max_response_bytes: Opti
     raise RuntimeError('Codex response stream ended before completion.')
 
 
-class CodexChatSession:
-    """Own a job's socket, event loop and connection-scoped continuation.
-
-    >>> CodexChatSession('job', account_generation=0).cache_key
-    'job'
-    """
+class CodexChatSession(ResponsesWebSocket):
+    """Keep subscription authentication and routing state out of the shared transport."""
 
     def __init__(self, cache_key: str, proxy: str = '', *, account_generation: int,
                  websocket: bool = True) -> None:
         import httpx
 
-        self.cache_key = cache_key
-        self.proxy = proxy
+        super().__init__(API_URL + '/responses', cache_key, proxy, websocket=websocket)
         self.account_generation = account_generation
-        self.websocket = websocket
-        self.closed = False
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
-        self._lock = threading.Lock()
-        self._idle_timer: Optional[threading.Timer] = None
-        self._socket: Optional[ClientConnection] = None
-        self._connected_at = 0.0
-        self._last_used = 0.0
-        self._previous: Optional[Tuple[Dict, Dict]] = None
-        self._sse_only = not websocket
         self._cookies = httpx.Cookies()
+
+    def _is_current(self) -> bool:
+        return not self.closed and self.account_generation == account.generation
+
+    def _dispose(self) -> None:
+        if self.closed:
+            self._cookies.clear()
+        super()._dispose()
 
     def capture_cookies(self, headers: Union[httpx.Headers, WebSocketHeaders]) -> None:
         """Retain only infrastructure cookies, with standard scope/expiry rules."""
@@ -983,200 +960,38 @@ class CodexChatSession:
                                       request=httpx.Request('GET', API_URL + '/responses'))
             self._cookies.extract_cookies(response)
 
-    def run(self, operation: Coroutine, stop_event: Optional[threading.Event], generation: int) -> Any:
-        with self._lock:
-            if self.closed:
-                operation.close()
-                raise LLMRequestStopped()
-            if self._idle_timer is not None:
-                self._idle_timer.cancel()
-            if self._loop is None:
-                self._loop = asyncio.new_event_loop()
-                # The socket must answer server pings while page workers are
-                # idle or replaced. Its event loop lives with this session.
-                self._thread = threading.Thread(target=self._loop.run_forever,
-                                                name='Codex WebSocket', daemon=True)
-                self._thread.start()
-            try:
-                return _run(operation, stop_event, generation=generation, loop=self._loop)
-            finally:
-                if self.closed or (stop_event is not None and stop_event.is_set()) or generation != account.generation:
-                    self.closed = True
-                    self._dispose()
-                elif self._socket is None:
-                    self._dispose()
-                else:
-                    self._last_used = time.monotonic()
-                    self._idle_timer = threading.Timer(300.0, self._expire)
-                    self._idle_timer.daemon = True
-                    self._idle_timer.start()
-
-    def close(self) -> None:
-        self.closed = True
-        if self._idle_timer is not None:
-            self._idle_timer.cancel()
-        if self._lock.acquire(blocking=False):
-            try:
-                self._dispose()
-            finally:
-                self._lock.release()
-        else:
-            loop = self._loop
-            if loop is not None and loop.is_running():
-                try:
-                    loop.call_soon_threadsafe(self._cancel)
-                except RuntimeError:
-                    pass  # The worker already disposed the loop.
-
-    def _expire(self) -> None:
-        if self._lock.acquire(blocking=False):
-            try:
-                if time.monotonic() - self._last_used >= 300.0:
-                    self.closed = True
-                    self._dispose()
-            finally:
-                self._lock.release()
-
-    def _cancel(self) -> None:
-        if self._loop is None:
-            return  # Disposal owns cancellation once it detaches the loop.
-        if self._socket is not None:
-            self._socket.transport.abort()
-        current = asyncio.current_task(self._loop)
-        for task in asyncio.all_tasks(self._loop):
-            if task is not current:
-                task.cancel()
-
-    def _dispose(self) -> None:
-        if self.closed:
-            self._cookies.clear()
-        if self._loop is None:
-            return
-        loop, thread, socket = self._loop, self._thread, self._socket
-        # Repeated close calls must not cancel the cleanup coroutine itself.
-        self._loop = None
-        self._thread = None
-        self._socket = None
-        self._previous = None
-
-        async def shutdown() -> None:
-            if socket is not None:
-                socket.transport.abort()
-            pending = asyncio.all_tasks(loop) - {asyncio.current_task()}
-            for task in pending:
-                task.cancel()
-            if pending:
-                await asyncio.gather(*pending, return_exceptions=True)
-            await loop.shutdown_asyncgens()
-
-        asyncio.run_coroutine_threadsafe(shutdown(), loop).result()
-        loop.call_soon_threadsafe(loop.stop)
-        thread.join()
-        loop.close()
-
-    async def _disconnect(self) -> None:
-        socket, self._socket = self._socket, None
-        self._previous = None
-        if socket is not None:
-            await socket.close()
-
     async def request(self, payload: Dict, tokens: Dict, turn: CodexTurnState) -> Optional[Dict]:
-        if self._sse_only:
-            return None
+        if not CODEX_REPLAY_ENABLED:
+            self._previous = None
+        metadata = {}
+
+        async def headers() -> Dict[str, str]:
+            result = await _headers(tokens, self.cache_key, turn=turn, proxy=self.proxy,
+                                    cookies=self._cookies, model=payload['model'])
+            for name in ('Accept', 'Content-Type'):
+                result.pop(name, None)
+            result['OpenAI-Beta'] = 'responses_websockets=2026-02-06'
+            return result
+
+        def capture(response_headers: object) -> None:
+            self.capture_cookies(response_headers)
+            turn.capture(response_headers)
+            if turn.value:
+                metadata['x-codex-turn-state'] = turn.value
+
+        if turn.value:
+            metadata['x-codex-turn-state'] = turn.value
         try:
-            import websockets
-            from websockets.asyncio.client import connect
-            from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidProxy, InvalidStatus
-            if int(websockets.__version__.split('.', 1)[0]) < 15:
-                raise ImportError('WebSocket proxy support requires version 15.')
-        except ImportError:
-            self._sse_only = True
-            LOGGER.warning('Codex WebSocket requires Python>=3.9 and websockets>=15; using SSE for this job.')
-            return None
-        started = False
-        for attempt in range(2):
-            try:
-                if self._socket is not None and time.monotonic() - self._connected_at >= 55 * 60:
-                    await self._disconnect()
-                reused = self._socket is not None
-                if self._socket is None:
-                    headers = await _headers(tokens, self.cache_key, turn=turn, proxy=self.proxy,
-                                             cookies=self._cookies, model=payload['model'])
-                    for header in ('Accept', 'Content-Type'):
-                        headers.pop(header, None)
-                    headers['OpenAI-Beta'] = 'responses_websockets=2026-02-06'
-                    connection = connect(
-                        API_URL.replace('https://', 'wss://', 1).replace('http://', 'ws://', 1) + '/responses',
-                        additional_headers=headers, proxy=self.proxy or True,
-                        open_timeout=15.0, close_timeout=1.0, ping_interval=None, max_size=None,
-                    )
-                    # Preserve HTTPX's fixed-endpoint policy for auth and routing headers.
-                    connection.process_redirect = lambda error: error
-                    self._socket = await connection
-                    self._connected_at = time.monotonic()
-                    self.capture_cookies(self._socket.response.headers)
-                    turn.capture(self._socket.response.headers)
-                wire = payload
-                if self._previous is not None:
-                    previous, result = self._previous
-                    baseline = previous['input'] + result.get('output', [])
-                    settings = {key: value for key, value in payload.items() if key != 'input'}
-                    old_settings = {key: value for key, value in previous.items() if key != 'input'}
-                    if settings == old_settings and payload['input'][:len(baseline)] == baseline and result.get('id'):
-                        wire = {**payload, 'previous_response_id': result['id'], 'input': payload['input'][len(baseline):]}
-                    else:
-                        self._previous = None
-                LOGGER.debug('Codex WebSocket request: reused=%s, continuation=%s, input_items=%d, turn_state=%s',
-                             reused, 'previous_response_id' in wire, len(wire['input']),
-                             _request_fingerprint(turn.value) if turn.value else 'absent')
-                # Routing belongs to this turn's wire envelope, outside the
-                # full-payload baseline used to decide incremental continuation.
-                frame = {'type': 'response.create', **wire}
-                if turn.value:
-                    frame['client_metadata'] = {'x-codex-turn-state': turn.value}
-                await self._socket.send(json.dumps(frame))
-                completed_items = []
-                while True:
-                    event = json.loads(await asyncio.wait_for(self._socket.recv(), timeout=300.0))
-                    error = event.get('error', {})
-                    if (event.get('type') == 'error' and isinstance(error, dict)
-                            and error.get('code') == 'websocket_connection_limit_reached' and not started):
-                        await self._disconnect()
-                        if attempt == 0:
-                            break
-                        self._sse_only = True
-                        return None
-                    if (event.get('type') == 'error' and isinstance(error, dict)
-                            and error.get('code') == 'previous_response_not_found'
-                            and 'previous_response_id' in wire and attempt == 0):
-                        await self._disconnect()
-                        break
-                    result = _completed_response(event, completed_items, turn)
-                    started = True
-                    if result is not None:
-                        self._previous = payload, result
-                        return result
-            except InvalidStatus as error:
-                self.capture_cookies(error.response.headers)
-                await self._disconnect()
-                if error.response.status_code == 401:
-                    raise CodexSignInRequiredError(invalid=True) from None
-                self._sse_only = True
-                LOGGER.debug('Codex WebSocket unavailable (HTTP %d); using SSE.', error.response.status_code)
-                return None
-            except (OSError, asyncio.TimeoutError, ConnectionClosed, InvalidHandshake, InvalidProxy, ImportError) as error:
-                await self._disconnect()
-                if started:
-                    raise
-                if attempt == 0 and reused:
-                    continue
-                self._sse_only = True
-                LOGGER.debug('Codex WebSocket unavailable (%s); using SSE.', type(error).__name__)
-                return None
-            except BaseException:
-                await self._disconnect()
-                raise
-        raise RuntimeError('Codex could not recover the WebSocket continuation.')
+            return await super().request(
+                payload, headers, lambda event, items: _completed_response(event, items, turn),
+                on_headers=capture, client_metadata=metadata,
+            )
+        except Exception as error:
+            # Import only after the shared transport has checked availability.
+            from websockets.exceptions import InvalidStatus
+            if isinstance(error, InvalidStatus):
+                _raise_service_error({}, status=error.response.status_code)
+            raise
 
 
 def _request_fingerprint(value: object) -> str:
@@ -1297,4 +1112,4 @@ def request_chat_completion(profile: LLMProfile, api_args: Dict, stop_event: Opt
                 )
 
     return (_run(request(), stop_event, generation=generation) if session is None or not session.websocket
-            else session.run(request(), stop_event, generation))
+            else _run(request(), stop_event, generation=generation, session=session))
