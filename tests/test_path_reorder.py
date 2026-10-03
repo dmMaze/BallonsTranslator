@@ -11,7 +11,7 @@ from qtpy.QtGui import QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QGraphicsRectItem
 
-from ballontranslator.ui.canvas import Canvas
+from ballontranslator.ui.canvas import Canvas, QUndoCommand
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.utils.textblock import TextBlock
@@ -165,7 +165,7 @@ class PathReorderTest(unittest.TestCase):
             [(0, 20, 80, 60), (120, 20, 80, 60)]
         )
         self.assertTrue(canvas.start_path_reorder())
-        canvas.push_text_command(None, update_pushed_step=False)
+        canvas.push_text_command(QUndoCommand())
         self.assertFalse(canvas.path_reorder_active)
         self.assertTrue(
             all(item._order_number_override is None for item in items)

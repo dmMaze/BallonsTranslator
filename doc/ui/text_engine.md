@@ -107,6 +107,19 @@ before structural changes, save, undo/redo, target/page replacement, or teardown
 Commands must invoke the formatting panel's pending-edit resolver **before**
 capturing or mutating state; waiting until stack insertion is too late.
 
+`Canvas` owns save-state accounting through each `QUndoStack` clean marker.
+Replacing an undo branch must invalidate its saved state. Edits merged by
+`QTextDocument` into an existing command invalidate a clean marker at or beyond
+that command; source, translation, and canvas editors share this rule. A merge
+into an older document command below another canvas command conservatively
+invalidates the saved marker until the next save. History
+clearing preserves unsaved state unless the caller explicitly resets it for a
+page/project replacement. Document owners reset their undo-step baseline when
+Qt clears document history. Whole-style replay suppresses user-edit capture
+while keeping layout and painting live; it must not push nested commands.
+Text commands that also modify image pixels mark drawing dirty independently
+on undo and redo; they must not retain commands owned by the drawing stack.
+
 | Session | Specific boundary |
 | --- | --- |
 | [`move_session.py`](../../ballontranslator/ui/text_engine/editing/move_session.py) | Position-only movement; no transform stage. Cancel before zoom changes or competing geometry capture. |

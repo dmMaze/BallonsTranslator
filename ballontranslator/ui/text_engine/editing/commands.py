@@ -387,12 +387,20 @@ class ApplyFontformatCommand(QUndoCommand):
             self.old_fmt_lst.append(item.get_fontformat())
             self.old_rect_lst.append(item.absBoundingRect(qrect=True))
 
-    def redo(self):
+    def redo(self) -> None:
         for item, edit in zip(self.items, self.trans_widget_lst):
-            item.set_fontformat(self.new_fmt, set_char_format=True)
+            # This command owns the whole style transaction, even while the
+            # canvas item has focus. Nested document commands corrupt replay.
+            blocked = item.block_change_signal
+            item.block_change_signal = True
+            try:
+                item.set_fontformat(self.new_fmt, set_char_format=True)
+            finally:
+                item.block_change_signal = blocked
+                item.updateUndoSteps()
             edit.document().clearUndoRedoStacks()
 
-    def undo(self):
+    def undo(self) -> None:
         for rect, item, html, fmt, edit in zip(
             self.old_rect_lst,
             self.items,
@@ -400,9 +408,15 @@ class ApplyFontformatCommand(QUndoCommand):
             self.old_fmt_lst,
             self.trans_widget_lst,
         ):
-            item.load_rich_text_html(html)
-            item.set_fontformat(fmt)
-            item.setRect(rect)
+            blocked = item.block_change_signal
+            item.block_change_signal = True
+            try:
+                item.load_rich_text_html(html)
+                item.set_fontformat(fmt)
+                item.setRect(rect)
+            finally:
+                item.block_change_signal = blocked
+                item.updateUndoSteps()
             edit.document().clearUndoRedoStacks()
 
     

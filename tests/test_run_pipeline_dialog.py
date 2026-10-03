@@ -566,6 +566,48 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertFalse(hasattr(dialog, 'cancel_button'))
         dialog.close()
 
+    def test_typing_single_page_range_commits_before_run(self) -> None:
+        pages = [f'{index:03}.png' for index in range(1, 101)]
+        project = ProjImgTrans()
+        project.pages = {page: [] for page in pages}
+        project._image_info = {page: {'finish_code': 0} for page in pages}
+        dialog = RunPipelineDialog(project=project)
+        self.addCleanup(dialog.deleteLater)
+        dialog.show()
+        dialog.activateWindow()
+        dialog.range_start.setFocus()
+        self.app.processEvents()
+        dialog.range_start.selectAll()
+        QTest.keyClicks(dialog.range_start, '25')
+        dialog.range_end.setFocus()
+        self.app.processEvents()
+        self.assertEqual(dialog.range_start.value(), 25)
+        dialog.range_end.selectAll()
+        QTest.keyClicks(dialog.range_end, '2')
+        self.assertEqual(dialog.range_start.value(), 25)
+        QTest.keyClicks(dialog.range_end, '5')
+        QTest.mouseClick(dialog.run_button, Qt.MouseButton.LeftButton)
+        self.assertEqual(dialog.result(), RunPipelineDialog.RUN)
+        self.assertEqual(dialog.selected_pages(), ['025.png'])
+
+    def test_page_range_enter_steps_and_bar_keep_endpoints_ordered(self) -> None:
+        from ballontranslator.ui.page_range_progress import PageRangeProgressWidget
+
+        widget = PageRangeProgressWidget(range(100), start=25, end=25)
+        self.addCleanup(widget.deleteLater)
+        widget.show()
+        widget.range_end.setFocus()
+        widget.range_end.selectAll()
+        QTest.keyClicks(widget.range_end, '12')
+        self.assertEqual(widget.range_start.value(), 25)
+        QTest.keyClick(widget.range_end, Qt.Key.Key_Return)
+        self.assertEqual((widget.range_start.value(), widget.range_end.value()), (12, 12))
+        widget.range_start.stepUp()
+        self.assertEqual((widget.range_start.value(), widget.range_end.value()), (13, 13))
+        widget.range_bar.set_range(30, 40)
+        self.assertEqual((widget.range_start.value(), widget.range_end.value()), (30, 40))
+        widget.close()
+
     def test_action_buttons_return_the_pipeline_choice(self):
         dialog = RunPipelineDialog()
         dialog.run_button.click()

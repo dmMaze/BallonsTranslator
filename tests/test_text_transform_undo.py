@@ -1756,7 +1756,7 @@ class TextItemMoveTest(TextTransformTestBase):
         self._begin_move()
         QTest.keyClick(self.canvas.gv.viewport(), Qt.Key.Key_Return)
         self.assertEqual(self.canvas.text_undo_stack.count(), 0)
-        self.assertEqual(self.canvas.num_pushed_textstep, 0)
+        self.assertFalse(self.canvas.text_change_unsaved())
         self.assertFalse(self.canvas.projstate_unsaved)
         self.assertEqual(menus, [])
 

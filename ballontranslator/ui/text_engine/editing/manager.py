@@ -197,7 +197,8 @@ class DeleteBlkItemsCommand(QUndoCommand):
     def redo(self):
 
         if self.mode == 1:
-            self.canvas.saved_drawundo_step -= 1
+            # Restoring pixels is owned by this text command, outside draw history.
+            self.canvas.draw_undo_stack.resetClean()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for mskpnt, inpaint_rect, redo_img in zip(self.mask_pnts, self.inpaint_rect_lst, self.redo_img_list):
@@ -233,7 +234,7 @@ class DeleteBlkItemsCommand(QUndoCommand):
     def undo(self):
 
         if self.mode == 1:
-            self.canvas.saved_drawundo_step += 1
+            self.canvas.draw_undo_stack.resetClean()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for mskpnt, inpaint_rect, undo_img in zip(self.mask_pnts, self.inpaint_rect_lst, self.undo_img_list):
@@ -558,13 +559,14 @@ class SceneTextManager(QObject):
         pair_widget.e_source.focus_in.connect(self.on_transwidget_focus_in)
         pair_widget.e_source.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_source.push_undo_stack.connect(self.on_push_edit_stack)
+        pair_widget.e_source.propagate_user_edited.connect(self.on_propagate_textwidget_edit)
         pair_widget.e_source.redo_signal.connect(self.on_textedit_redo)
         pair_widget.e_source.undo_signal.connect(self.on_textedit_undo)
         pair_widget.e_source.focus_out.connect(self.on_pairw_focusout)
 
         pair_widget.e_trans.setPlainText(blk_item.toPlainText())
         pair_widget.e_trans.focus_in.connect(self.on_transwidget_focus_in)
-        pair_widget.e_trans.propagate_user_edited.connect(self.on_propagate_transwidget_edit)
+        pair_widget.e_trans.propagate_user_edited.connect(self.on_propagate_textwidget_edit)
         pair_widget.e_trans.ensure_scene_visible.connect(self.on_ensure_textitem_svisible)
         pair_widget.e_trans.push_undo_stack.connect(self.on_push_edit_stack)
         pair_widget.e_trans.redo_signal.connect(self.on_textedit_redo)
@@ -1144,16 +1146,42 @@ class SceneTextManager(QObject):
             blk_item = self.textblk_item_list[idx]
             blk_item.refresh_cache_policy()
 
-    def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool):
+    def on_push_textitem_undostack(self, num_steps: int, is_formatting: bool) -> None:
         blkitem: TextBlkItem = self.sender()
         e_trans = self.pairwidget_list[blkitem.idx].e_trans if not is_formatting else None
-        self.canvas.push_undo_command(TextItemEditCommand(blkitem, e_trans, num_steps, self.textpanel.formatpanel), update_pushed_step=is_formatting)
+        self.canvas.push_undo_command(TextItemEditCommand(
+            blkitem, e_trans, num_steps, self.textpanel.formatpanel,
+        ))
 
-    def on_push_edit_stack(self, num_steps: int):
+    def on_push_edit_stack(self, num_steps: int) -> None:
         edit: Union[TransTextEdit, SourceTextEdit] = self.sender()
         is_trans = type(edit) == TransTextEdit
         blkitem = self.textblk_item_list[edit.idx] if is_trans else None
-        self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem), update_pushed_step=not is_trans)
+        self.canvas.push_undo_command(TextEditCommand(edit, num_steps, blkitem))
+
+    def _on_merged_text_edit(
+        self, editor: Union[SourceTextEdit, TextBlkItem],
+    ) -> None:
+        """Account for document edits that do not push a canvas command.
+
+        >>> callable(SceneTextManager._on_merged_text_edit)
+        True
+        """
+        self.canvas.text_move_session.cancel()
+        self.canvas.cancel_path_reorder()
+        stack = self.canvas.text_undo_stack
+        index = stack.index()
+        command = stack.command(index - 1) if index else None
+        owns_edit = isinstance(command, (TextEditCommand, TextItemEditCommand)) and (
+            command.edit is editor or command.blkitem is editor
+        )
+        # Typing may merge into an older document command after an intervening
+        # canvas edit. Its saved state cannot be inferred from the top index;
+        # conservatively keep it dirty until saved again. For the current
+        # command, an earlier clean state is still reachable by undo.
+        if not owns_edit or stack.cleanIndex() >= index:
+            stack.resetClean()
+        self.canvas.on_textstack_changed()
 
     def on_propagate_textitem_edit(
         self,
@@ -1167,23 +1195,26 @@ class SceneTextManager(QObject):
         propagate_user_edit(
             edit, pos, removed, added_text, joint_previous
         )
-        self.canvas.push_text_command(command=None, update_pushed_step=True)
+        if joint_previous:
+            self._on_merged_text_edit(blk_item)
 
-    def on_propagate_transwidget_edit(
+    def on_propagate_textwidget_edit(
         self,
         pos: int,
         removed: int,
         added_text: str,
         joint_previous: bool,
     ) -> None:
-        edit: TransTextEdit = self.sender()
-        blk_item = self.textblk_item_list[edit.idx]
-        if blk_item.isEditing():
-            blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        propagate_user_edit(
-            blk_item, pos, removed, added_text, joint_previous
-        )
-        self.canvas.push_text_command(command=None, update_pushed_step=True)
+        edit: SourceTextEdit = self.sender()
+        if isinstance(edit, TransTextEdit):
+            blk_item = self.textblk_item_list[edit.idx]
+            if blk_item.isEditing():
+                blk_item.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+            propagate_user_edit(
+                blk_item, pos, removed, added_text, joint_previous
+            )
+        if joint_previous:
+            self._on_merged_text_edit(edit)
 
     def apply_fontformat(self, fontformat: FontFormat) -> None:
         """Apply one whole format after settling transient edit owners.

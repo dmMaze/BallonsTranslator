@@ -78,19 +78,9 @@ class InpaintUndoCommand(QUndoCommand):
         self.canvas.updateLayers()
 
 
-class EmptyCommand(QUndoCommand):
-    def __init__(self, parent=None):
-        super().__init__(parent=parent)
-    
-
 class RunBlkTransCommand(QUndoCommand):
-    def __init__(self, canvas: Canvas, blkitems: List[TextBlkItem], transpairw_list: List[TransPairWidget],  mode: int):
+    def __init__(self, canvas: Canvas, blkitems: List[TextBlkItem], transpairw_list: List[TransPairWidget], mode: int) -> None:
         super().__init__()
-
-        self.empty_command = None
-        if mode > 1:
-            self.empty_command = EmptyCommand()
-            canvas.push_draw_command(self.empty_command)
 
         self.op_counter = -1
         self.blkitems = blkitems
@@ -139,10 +129,10 @@ class RunBlkTransCommand(QUndoCommand):
 
     def redo(self) -> None:
 
-        if self.empty_command is not None:
-            self.empty_command.redo()
-
         if self.mode > 1 and self.num_inpainted > 0:
+            # This text-history command owns the pixels. A separate drawing
+            # command can be deleted independently and cannot track replay.
+            self.canvas.draw_undo_stack.resetClean()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for inpaint_rect, redo_img, redo_mask in zip(self.inpaint_rect_lst, self.redo_img_list, self.redo_mask_list):
@@ -168,10 +158,8 @@ class RunBlkTransCommand(QUndoCommand):
 
     def undo(self) -> None:
 
-        if self.empty_command is not None:
-            self.empty_command.undo()
-
         if self.mode > 1 and self.num_inpainted > 0:
+            self.canvas.draw_undo_stack.resetClean()
             img_array = self.canvas.imgtrans_proj.inpainted_array
             mask_array = self.canvas.imgtrans_proj.mask_array
             for inpaint_rect, undo_img, undo_mask in zip(self.inpaint_rect_lst, self.undo_img_list, self.undo_mask_list):

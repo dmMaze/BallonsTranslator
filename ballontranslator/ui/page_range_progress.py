@@ -479,6 +479,9 @@ class PageRangeProgressWidget(QWidget):
         start = max(1, min(int(start), maximum))
         saved_end = max(start, min(int(saved_end), maximum))
         for selector in (self.range_start, self.range_end):
+            # Reconcile endpoints only after a complete number is committed.
+            # The first digit of an end page such as 25 must not lower start.
+            selector.setKeyboardTracking(False)
             selector.setRange(1, maximum)
             selector.setEnabled(page_count > 0)
             selector.setFixedWidth(82)

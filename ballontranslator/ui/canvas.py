@@ -316,8 +316,6 @@ class Canvas(QGraphicsScene):
 
         self.draw_undo_stack = QUndoStack(self)
         self.text_undo_stack = QUndoStack(self)
-        self.saved_drawundo_step = 0
-        self.saved_textundo_step = 0
 
         self.scaleFactorLabel = FadeLabel(self.gv)
         self.scaleFactorLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -392,11 +390,6 @@ class Canvas(QGraphicsScene):
         self.editor_index = 0 # 0: drawing 1: text editor
         self.mid_btn_pressed = False
         self.pan_initial_pos = QPoint(0, 0)
-
-        self.saved_textundo_step = 0
-        self.saved_drawundo_step = 0
-        self.num_pushed_textstep = 0
-        self.num_pushed_drawstep = 0
 
         self.clipboard_blks: List[TextBlock] = []
 
@@ -1863,122 +1856,102 @@ class Canvas(QGraphicsScene):
             return self.draw_undo_stack
         return None
 
-    def push_undo_command(self, command: QUndoCommand, update_pushed_step=True):
+    def push_undo_command(self, command: QUndoCommand) -> None:
         if self.textEditMode():
-            self.push_text_command(command, update_pushed_step)
+            self.push_text_command(command)
         elif self.drawMode():
-            self.push_draw_command(command, update_pushed_step)
-        else:
-            return
+            self.push_draw_command(command)
 
-    def push_draw_command(self, command: QUndoCommand, update_pushed_step=True):
+    def push_draw_command(self, command: QUndoCommand) -> None:
         self.cancel_path_reorder()
-        if command is not None:
-            self.draw_undo_stack.push(command)
-        if update_pushed_step:
-            self.num_pushed_drawstep += 1
-            self.on_drawstack_changed()
+        self.draw_undo_stack.push(command)
+        self._update_history_save_state()
 
-    def push_text_command(self, command: QUndoCommand, update_pushed_step: bool = True) -> None:
+    def push_text_command(self, command: QUndoCommand) -> None:
         if self.text_move_session.active:
             self.text_move_session.cancel()
         self.cancel_path_reorder()
-        if command is not None:
-            self.text_undo_stack.push(command)
-        if update_pushed_step:
-            self.num_pushed_textstep += 1
-            self.on_textstack_changed()
+        self.text_undo_stack.push(command)
+        self.on_textstack_changed()
 
-    def on_drawstack_changed(self):
-        if self.num_pushed_drawstep != self.saved_drawundo_step or self.num_pushed_textstep != self.saved_textundo_step:
-            self.setProjSaveState(True)
-        else:
-            self.setProjSaveState(False)
+    def _update_history_save_state(self) -> None:
+        self.setProjSaveState(
+            self.text_change_unsaved() or self.draw_change_unsaved()
+        )
 
-    def on_textstack_changed(self):
-        if self.num_pushed_textstep != self.saved_textundo_step or self.num_pushed_drawstep != self.saved_drawundo_step:
-            self.setProjSaveState(True)
-        else:
-            self.setProjSaveState(False)
+    def on_textstack_changed(self) -> None:
+        self._update_history_save_state()
         self.textstack_changed.emit()
 
     def redo_textedit(self) -> None:
         self.text_move_session.cancel()
         self.cancel_path_reorder()
-        self.num_pushed_textstep += 1
-        self.text_undo_stack.redo()
+        if self.text_undo_stack.canRedo():
+            self.text_undo_stack.redo()
+            self.on_textstack_changed()
 
     def undo_textedit(self) -> None:
         self.text_move_session.cancel()
         self.cancel_path_reorder()
-        if self.num_pushed_textstep > 0:
-            self.num_pushed_textstep -= 1
-        self.text_undo_stack.undo()
+        if self.text_undo_stack.canUndo():
+            self.text_undo_stack.undo()
+            self.on_textstack_changed()
 
     def redo(self) -> None:
         self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
         self.cancel_path_reorder()
-        if self.textEditMode():
-            undo_stack = self.text_undo_stack
-            self.num_pushed_textstep += 1
-            self.on_textstack_changed()
-        elif self.drawMode():
-            undo_stack = self.draw_undo_stack
-            self.num_pushed_drawstep += 1
-            self.on_drawstack_changed()
-        else:
-            return
-        if undo_stack is not None:
-            undo_stack.redo()
+        stack = self.get_active_undostack()
+        if stack is not None and stack.canRedo():
+            stack.redo()
+            if stack is self.text_undo_stack:
+                self.on_textstack_changed()
+            else:
+                self._update_history_save_state()
 
     def undo(self) -> None:
         self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
         self.cancel_path_reorder()
-        if self.textEditMode():
-            undo_stack = self.text_undo_stack
-            if self.num_pushed_textstep > 0:
-                self.num_pushed_textstep -= 1
-            self.on_textstack_changed()
-        elif self.drawMode():
-            undo_stack = self.draw_undo_stack
-            if self.num_pushed_drawstep > 0:
-                self.num_pushed_drawstep -= 1
-            self.on_drawstack_changed()
-        else:
-            return
-        if undo_stack is not None:
-            undo_stack.undo()
+        stack = self.get_active_undostack()
+        if stack is not None and stack.canUndo():
+            stack.undo()
+            if stack is self.text_undo_stack:
+                self.on_textstack_changed()
+            else:
+                self._update_history_save_state()
 
-    def clear_undostack(self, update_saved_step=False):
+    def clear_undostack(self, update_saved_step: bool = False) -> None:
+        self.clear_draw_stack()
+        self.clear_text_stack()
         if update_saved_step:
-            self.saved_drawundo_step = 0
-            self.saved_textundo_step = 0
-            self.num_pushed_textstep = 0
-            self.num_pushed_drawstep = 0
-        self.draw_undo_stack.clear()
+            self.update_saved_undostep()
+
+    def clear_text_stack(self) -> None:
+        unsaved = self.text_change_unsaved()
         self.text_undo_stack.clear()
+        if unsaved:
+            self.text_undo_stack.resetClean()
 
-    def clear_text_stack(self):
-        self.num_pushed_textstep = 0
-        self.text_undo_stack.clear()
-
-    def clear_draw_stack(self):
-        self.num_pushed_drawstep = 0
+    def clear_draw_stack(self) -> None:
+        unsaved = self.draw_change_unsaved()
         self.draw_undo_stack.clear()
+        if unsaved:
+            self.draw_undo_stack.resetClean()
 
-    def update_saved_undostep(self):
-        self.saved_drawundo_step = self.num_pushed_drawstep
-        self.saved_textundo_step = self.num_pushed_textstep
+    def update_saved_undostep(self) -> None:
+        # QUndoStack invalidates this marker when an undo branch is replaced.
+        # Equal command counts alone do not identify the saved document.
+        self.draw_undo_stack.setClean()
+        self.text_undo_stack.setClean()
 
     def text_change_unsaved(self) -> bool:
-        return self.saved_textundo_step != self.num_pushed_textstep
+        return not self.text_undo_stack.isClean()
 
     def draw_change_unsaved(self) -> bool:
-        return self.saved_drawundo_step != self.num_pushed_drawstep
+        return not self.draw_undo_stack.isClean()
 
     def prepareClose(self):
         self.blockSignals(True)

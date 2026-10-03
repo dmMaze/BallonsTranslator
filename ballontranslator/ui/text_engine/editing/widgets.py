@@ -226,6 +226,7 @@ class SourceTextEdit(QTextEdit):
         self.setAcceptRichText(False)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.old_undo_steps = self.document().availableUndoSteps()
+        self.document().undoAvailable.connect(self._on_undo_available_changed)
         self.in_redo_undo = False
         self.change_from: int = 0
         self.change_removed: int = 0
@@ -387,7 +388,12 @@ class SourceTextEdit(QTextEdit):
         self.blockSignals(block)
         self.document().blockSignals(block)
 
-    def updateUndoSteps(self):
+    def _on_undo_available_changed(self, available: bool) -> None:
+        # Whole-style/layout commands can clear history outside undo()/redo().
+        if not available:
+            self.updateUndoSteps()
+
+    def updateUndoSteps(self) -> None:
         self.old_undo_steps = self.document().availableUndoSteps()
 
     def _capture_paste_selection(self) -> None:

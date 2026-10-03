@@ -882,6 +882,7 @@ class TextBlkItem(QGraphicsTextItem):
             effect_padding = 0.0
             doc.contentsChanged.connect(self.on_content_changed)
             doc.contentsChange.connect(self.on_content_changing)
+            doc.undoAvailable.connect(self._on_undo_available_changed)
 
         if valid_layout:
             rect = self.rect() if self.layout is not None else None
@@ -1047,7 +1048,13 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
         self.visual_geometry_changed.emit()
 
-    def updateUndoSteps(self):
+    def _on_undo_available_changed(self, available: bool) -> None:
+        # HTML/style replacement can clear history without calling undo().
+        # Reset the baseline before the next user edit is counted.
+        if not available:
+            self.updateUndoSteps()
+
+    def updateUndoSteps(self) -> None:
         self.old_undo_steps = self.document().availableUndoSteps()
 
     def on_content_changing(self, from_: int, removed: int, added: int):
