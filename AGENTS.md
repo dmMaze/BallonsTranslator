@@ -62,7 +62,7 @@ Use `rg` for repo search.
 ## Comments and Documentation
 
 - Comment non-obvious intent, invariants, compatibility, and ordering/failure constraints, especially around Qt, model loading, persistence, and IO. Explain subtle preserved behavior during refactors; omit boilerplate and narration. Include a standard Python `>>>` doctest example for core classes and complex functions.
-- Maintainer guides cover current ownership, stable contracts, failure modes, extension points, and verification. Omit UI walkthroughs, pixel measurements, temporary decisions, change history, and behavior already clear from code/tests. Keep each fact in one owning guide, link from overviews, and replace stale prose and nearby duplication when behavior changes.
+- Keep maintainer guides focused on ownership, stable contracts, failure modes, extension points, and verification. Update only missing or changed guidance; a bug fix alone does not justify an addition. Keep implementation details in code/tests and investigation history in PRs. Revise existing explanations, document each fact once, and check the whole document for redundancy.
 
 ## Verification
 

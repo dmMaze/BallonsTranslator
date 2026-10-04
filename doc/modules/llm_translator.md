@@ -1,241 +1,164 @@
 # LLMTranslator
 
-## Architecture
+## Ownership
 
 | Concern | Owner |
 | --- | --- |
-| Translation prompts, message order, response schema, and parsing | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
-| Request snapshots, retries, history orchestration, and compaction | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
-| API clients, throttling, provider compatibility, and completion normalization | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
-| Profile loading, defaults, and model choices | [`llm_profiles.py`](../../ballontranslator/utils/llm_profiles.py), [`config.py`](../../ballontranslator/utils/config.py) |
-| Codex authentication, credential storage, and subscription transport | [`codex.py`](../../ballontranslator/modules/codex.py) |
-| Public OpenAI Responses mapping and errors | [`openai_responses.py`](../../ballontranslator/modules/openai_responses.py) |
-| Shared Responses WebSocket connection lifecycle and continuation | [`responses_ws.py`](../../ballontranslator/modules/responses_ws.py) |
-| Image dispatch and shared generation protocol | [`llm_image.py`](../../ballontranslator/modules/llm_image.py), [`image_generation.py`](../../ballontranslator/modules/image_generation.py) |
-| Image encoding | [`llm_vision.py`](../../ballontranslator/modules/llm_vision.py) |
-| History selection, saved-context packing, glossary parsing, and token estimates | [`context/`](../../ballontranslator/modules/context) |
-| Text-block preprocessing, finalization, and page coverage | [`base.py`](../../ballontranslator/modules/translators/base.py) |
-| Worker lifecycle and canvas request validity | [`module_manager.py`](../../ballontranslator/ui/module_manager.py) |
-| Project completion, summaries, memory, and load identity | [`proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
-| User-owned context editing | [`llm_context_editor.py`](../../ballontranslator/ui/llm_context_editor.py) |
+| Prompts, message order, response schema, and parsing | [`llm_translation_contract.py`](../../ballontranslator/modules/translators/llm_translation_contract.py) |
+| Request snapshots, retries, history, and compaction | [`trans_llm.py`](../../ballontranslator/modules/translators/trans_llm.py) |
+| API clients, throttling, and provider compatibility | [`llm_chat.py`](../../ballontranslator/modules/llm_chat.py) |
+| Profiles and defaults | [`llm_profiles.py`](../../ballontranslator/utils/llm_profiles.py), [`config.py`](../../ballontranslator/utils/config.py) |
+| Codex account and subscription transport | [`codex.py`](../../ballontranslator/modules/codex.py) |
+| API Responses and shared WebSocket transport | [`openai_responses.py`](../../ballontranslator/modules/openai_responses.py), [`responses_ws.py`](../../ballontranslator/modules/responses_ws.py) |
+| Image dispatch and generation | [`llm_image.py`](../../ballontranslator/modules/llm_image.py), [`image_generation.py`](../../ballontranslator/modules/image_generation.py) |
+| History selection, glossary, and context budgeting | [`context/`](../../ballontranslator/modules/context) |
+| Workers and request validity | [`module_manager.py`](../../ballontranslator/ui/module_manager.py) |
+| Project completion and saved context | [`proj_imgtrans.py`](../../ballontranslator/utils/proj_imgtrans.py) |
+| Context editing | [`llm_context_editor.py`](../../ballontranslator/ui/llm_context_editor.py) |
 
-GUI and headless translation use the same lifecycle: preprocess source blocks,
-freeze request inputs, assemble and validate the response, finalize translations,
-then mark page completion and persist pending context updates. `ProjImgTrans` is
-authoritative; request snapshots and the reusable history window are disposable.
+GUI and headless translation share one lifecycle: preprocess blocks, freeze request
+inputs, validate and finalize translations, then mark completion and save pending
+context. `ProjImgTrans` owns saved state; request snapshots and history windows are
+disposable.
 
 ## Profiles and backends
 
-`backend="openai"` selects the API-key transport, including compatible gateways;
-the profile URLs determine the service. `backend="codex"` selects the app's
-ChatGPT subscription account. Neither transport falls back to the other's billing.
-Feature owners define prompts and response contracts; transports handle service
-compatibility and authentication.
+`backend="openai"` uses API keys and profile URLs, including compatible gateways.
+`backend="codex"` uses the app's ChatGPT subscription account. Neither backend falls
+back to the other's billing. Feature owners define prompts and response contracts;
+transports own authentication and service compatibility.
 
-Codex and supported direct OpenAI requests automatically use the shared Responses
-WebSocket transport. Other API endpoints and Chat Completions-only controls keep
-the HTTP path. Connections and continuation state are scoped to the active run,
-profile, model, credentials, and proxy. Changed context must be resent in full;
-connection reuse must never restore history the feature owner has removed.
-Idle expiry releases the connection and replay state while retaining job identity
-and routing cookies; an explicit close cancels the session.
+Codex and supported direct OpenAI requests automatically use Responses WebSockets;
+other API requests use HTTP. Connections and continuation state belong to the
+active run, profile, model, credentials, and proxy. Reuse must respect changed
+context and must never restore history removed by the feature owner.
 
-Codex has one canonical profile with ID `codex`, separate from editable API
-profiles and clipboard operations. Its saved public model catalog is
-`module.codex_models`; offline defaults and saved custom choices remain usable
+Codex has one canonical profile, `codex`, separate from editable API profiles and
+clipboard operations. Offline defaults and saved model choices remain usable
 without a catalog. Profile selection and settings construction perform no network
 or credential IO. [`codex_account.py`](../../ballontranslator/ui/codex_account.py)
-owns asynchronous GUI account operations, while headless requests restore
-credentials on demand. [`codex_settings.py`](../../ballontranslator/ui/codex_settings.py)
-owns the dedicated settings panel.
+owns asynchronous GUI account operations; headless requests restore credentials
+on demand. Account changes and catalog refresh are independent, and signing in
+does not replay interrupted work.
 
-Codex refreshes its client identity from the latest stable release in the request
-worker. Lookup failures retain the last known identity and saved model choices.
-
-Credentials remain outside config/profile exports. Codex encrypts its credential
-file using a key in the native credential store; unavailable secure storage uses
-logged, reversible obfuscation on save. Reads preserve unreadable encrypted data
-without replacing keys or downgrading protection. Token rotation is serialized,
-and a failed save must succeed before the rotated credentials are reused.
-
-Missing sign-in and invalid authentication stop Codex runs. Authentication rejection
-permits one renewal/replay, while permission and quota failures remain separate. Signing
-in does not replay interrupted work. Account state and model-catalog refresh are
-independent, so catalog failures cannot undo a committed account change.
+Codex credentials stay outside profile exports. Storage failures must preserve
+existing secrets, and rotated credentials must be saved before reuse.
 
 ## Image editing
 
 [`LLMInpaint`](../../ballontranslator/modules/inpaint/inpaint_llm.py) owns crop
 preparation and compositing; `LLMImageRequester` owns dispatch, throttling, and
-retries. Direct image models use their provider route. A reasoning/image model
-pair uses Responses with one forced image-generation call. Profile helpers derive
-these choices without network access; only the selected pair is saved, while
-image option lists retain base image IDs. Requests use the selected image service,
-credentials, proxy, and model rather than translation/OCR settings.
+retries. Direct image models use their provider route; reasoning/image model pairs
+use Responses image generation. Requests use the selected image profile,
+independently of translation and OCR settings.
 
-Source and mask references must stay aligned through resizing and padding. Local
-compositing enforces the requested mask boundary; empty masks need no request.
-Provider errors must retain their classification: missing models, permission
-failures, and invalid endpoints must not trigger API-key recovery.
-
-Drawing selections are independent of Run. Canvas requests snapshot the selected
-module, profile, prompt, and mask mode when submitted, and share the inpainter
-only while its worker is idle. Page reloads or edits to the request crop invalidate
-queued work and late results; unrelated edits outside that crop do not. Unmasked
-rectangle editing intentionally applies the full returned crop. Text-effect
-integration is owned by the [text effects guide](../ui/text_effects.md).
+Source and mask references must remain aligned through resizing and padding.
+Compositing honors the requested mask; an empty mask needs no request. Canvas
+request ownership and validity are covered by the [draw panel guide](../ui/draw_panel.md);
+text-effect integration belongs to the [text effects guide](../ui/text_effects.md).
 
 ## Request contract
 
-Each non-empty source block receives a one-based ID. Non-GPT API models return a
-numeric translation map; recognized GPT API models and all Codex models return an
-array of integer IDs and string translations. Contract selection happens before
-the request, and prompts, schemas, history examples, and parsing must agree.
-Strict schemas stay independent of the current block count. Accepted translations
-must cover exactly `1..N` once each; array IDs and translations are not coerced.
-Compatibility response shapes belong only in `parse_translation_response()`.
+Non-empty source blocks receive IDs `1..N`. Non-GPT API models return a numeric
+translation map; recognized GPT API models and Codex return an array of integer
+IDs and string translations. Prompts, schemas, history examples, and parsing must
+agree. Accepted translations cover every ID exactly once without coercion;
+compatibility shapes belong in `parse_translation_response()`.
 
-When requested, `page_summary` precedes translations in the generated contract;
-parsing accepts either field order. A malformed summary does not discard valid
-translations. Full-page Vision/Summary calls can summarize pages without source
-text, in which case only a usable summary is required.
+An optional `page_summary` is generated before translations, but parsing accepts
+either field order. A malformed summary does not discard valid translations.
+Full-page Vision/Summary requests for textless pages require only a usable summary.
 
 Messages keep stable context before current-page material:
 
 ```text
 system: translation contract + profile instructions
 system: complete glossary, then compact memory       # when enabled
-user/assistant: completed-page example pairs           # +history
+user/assistant: completed-page example pairs          # +history
 user: saved summaries + current input + matching glossary + image
 ```
 
-The contract owns language, IDs, count, and response shape; profile instructions
-control style and wording. Vision uses the Translator model and only the current
-page image. It must preserve ID-to-block mapping rather than reorder project
-blocks. Ordinary retries reuse the frozen messages, context, and encoded image.
+The contract owns language, IDs, and response shape; profile instructions control
+style and wording. Vision uses the Translator model and current page image while
+preserving block IDs. Ordinary retries reuse frozen inputs.
 
-## History and project context
+## History and saved context
 
 `page` mode sends no prior-page examples. `+history` adds chronological,
-glossary-free user/assistant pairs with IDs local to each page. A prior page must
-precede the current page, be marked translated, and have translations for every
-source-bearing block. Explicit target-language metadata must match; missing
-metadata remains compatible with older projects. Textless pages can contribute
-saved summaries when Summary is enabled. Project filenames are not sent.
+glossary-free pairs with page-local IDs. Eligible pages precede the current page,
+are marked translated, and have translations for every source block. Explicit
+target-language metadata must match; older projects without it remain compatible.
+Project filenames are not sent.
 
-History pairs are immutable and indivisible. The window grows only across
-contiguous successful requests with unchanged project identity and prompt-shaping
-settings; page jumps, reloads, source or summary edits, or setting changes rebuild
-the window. Full-page calls and selections covering every source-bearing block may
-advance the window after valid parsing. Partial selections may read history but
-cannot advance it or save generated summaries. Page completion follows successful
-postprocessing and assignment; full-page retries clear prior completion first.
-`+history` requests remain sequential.
+History advances sequentially after successful full-page translation, including
+selections covering every source block. Partial selections may read history but
+cannot advance it or save generated summaries. Completion follows postprocessing
+and assignment; full-page retries clear prior completion first. Page jumps,
+project reloads, or relevant source, summary, and setting changes rebuild history.
 
-For every LLM backend, pages completed in the active run supply their original
-response translations to history rendering and validation. Postprocessing,
-layout line breaks, and translation edits do not rewrite those examples during
-that run. The existing pipeline stop event identifies the run; original responses
-remain only in the bounded history window. Other pages and new runs use saved
-translations. Project eligibility, source text, target language, and saved
-summaries are still validated.
+Pages completed in the active run contribute their original response translations;
+postprocessing and translation edits do not rewrite those examples. New runs use
+saved translations. Page eligibility, source, language, and summaries remain
+subject to validation.
 
-Summary is independent of history mode. Saved summaries through the current page
-can guide translation even for incomplete pages. Existing current summaries are
-retained unless overwrite is enabled; a generated replacement stays pending until
-page completion. Summaries represented by history or compact memory are omitted
-from the request without deleting their project records.
+Summary is independent of history mode. Saved summaries through the current page,
+including incomplete or textless pages, can guide translation. Existing summaries
+are retained unless overwrite is enabled; generated replacements remain pending
+until page completion. Context already represented by history or compact memory
+is omitted from requests without deleting project records.
 
-Compact memory is a separate project record rendered before history. Automatic
-compaction uses the Translator model to merge existing memory with uncovered
-summaries before budget eviction and after the final project page. Coverage
-metadata prevents repeated compaction and is not sent to the model. Successful
-pre-translation compaction is persisted before assembling the translation request;
-exhausted failure stops the run.
+Compact memory is a separate project record rendered before history. Compaction
+uses the Translator model to merge uncovered summaries before budget eviction and
+after the final page. Coverage metadata prevents repeated compaction. Successful
+pre-translation compaction is saved before the next request; exhausted failure
+stops the run.
 
-Summary and memory writes compare their request-start records before committing.
-User edits or clears made in flight win. The two records are independently
-user-owned: editing one does not silently regenerate or invalidate the other.
+In-flight summary and memory writes must preserve concurrent user edits or clears.
+These records are independently owned: editing one does not regenerate or
+invalidate the other.
 
-## Context budget and caching
+## Budget, caching, and glossary
 
-The configured budget covers saved page summaries and bilingual history. The
-current summary is required; older summaries and whole history pages use the
-remaining allowance. Eviction leaves room for subsequent pages rather than
-shifting the prefix on every request. Compact memory, current input, glossary,
-image, system instructions, and output are outside this budget; the provider's
-context limit still applies to the complete request.
+The context budget covers saved summaries and bilingual history. The current
+summary is reserved; older summaries and whole history pages share the remainder.
+Memory, current input, glossary, image, instructions, and output are outside this
+budget, but still subject to the provider's complete-request context limit.
 
-Provider cache reuse is an optimization, never a correctness condition. Stable
-messages precede volatile input, and retained history pairs keep their rendering.
-Eviction, memory changes, or response-contract changes can break prefix reuse.
-API cache policy belongs to the contract/requester. Codex routing state stays
-within its job and account; subscription credentials and routing metadata must
-never reach public API endpoints. Transport continuation and provider prompt
-caching are separate: a persistent connection does not guarantee cache hits.
-
-Original Codex output and encrypted reasoning remain in the bounded runtime
-history, never project files. Replay requires matching run, account, model, and
-eligible page content; otherwise requests use canonical text history. Reasoning
-context uses the provider default. History budgets count canonical text, so
-retained provider output can increase the actual input size.
-
-## Glossary
+Provider caching is an optimization, never a correctness condition. Stable
+prefixes and connection reuse do not guarantee cache hits. Provider output and
+encrypted reasoning used for replay stay in runtime state, never project files,
+and may increase actual input beyond the text-based history budget.
 
 [`glossary.py`](../../ballontranslator/modules/context/glossary.py) owns UTF-8
-JSON/TSV/TXT parsing and deterministic selection. `Matching` uses case-insensitive
-literal matches against current sources; `All` supplies a stable system message.
-Entries retain file order, exact duplicates are removed, and conflicting targets
-are rejected. An empty path disables the glossary; a configured unreadable or
-malformed file fails explicitly. See the
-[parser tests](../../tests/test_translator_glossary.py) for format examples.
+JSON/TSV/TXT parsing. `Matching` uses case-insensitive literal source matches;
+`All` supplies a stable system message. An empty path disables the glossary;
+unreadable or malformed files and conflicting targets fail explicitly. See the
+[parser tests](../../tests/test_translator_glossary.py) for formats and ordering.
 
-## Failure behavior and verification
+## Failures and extension points
 
-Context-limit recovery removes optional older summaries, then oldest whole history
-pages, without spending ordinary retries. It never sacrifices current input,
-current summary, memory, glossary, or image. Errors requiring user action bypass
-retries and stop the run. Only completed provider responses reach
-translation parsing.
+Context-limit recovery drops optional older summaries, then oldest whole history
+pages, without consuming ordinary retries. Required current context is preserved.
+Errors requiring user action stop the run. Missing credentials, rejected
+authentication, permissions, quota, and output limits must remain distinguishable.
 
-Only an empty required API key triggers the missing-key setup dialog. Rejected
-request credentials raise a separate authentication error. WebSocket handshake
-rejections retain provider status and error details for the transport's normal
-error classification.
+WebSocket setup may fall back to the same backend's HTTP path. Once delivery is
+uncertain, the transport must not silently resend; feature owners control retries.
+Only completed final answers reach parsing. Cancelled or replaced runs cannot
+publish late results or errors, even when synchronous HTTP work cannot be
+interrupted. Never log credentials; debug responses may contain project text.
 
-WebSocket setup failures fall back to the same backend's HTTP path for the run.
-Once sending begins, a lost connection cannot establish whether the server
-accepted the request; the transport propagates the failure to the feature's
-retry policy instead of silently resending. Explicit connection-limit or missing
-continuation rejections allow bounded recovery. Closed sockets and renewed Codex
-credentials reconnect before sending, with full input on the new connection.
-WebSocket frames omit the HTTP-only `stream` flag. Only final assistant text is
-returned to feature parsers; commentary remains available for exact replay.
-Authentication, permission, quota, and output-limit errors retain their normal
-handling. The `response.done` alias is classified by its terminal status; an
-incomplete response is an output-limit error only when its reason says so.
-
-Cancellation interrupts WebSocket and Codex HTTP waits. Synchronous Chat
-Completions calls cannot be interrupted in flight; workers must reject obsolete
-results regardless of transport cancellation. Requests retain their originating
-run through throttling, session setup, and fallback, and discard late results
-after that run changes. Both WebSocket sends and receives have bounded waits;
-closing a session also releases requests cancelled before their coroutine starts.
-Diagnostics belong to their owning layer; provider usage and request fingerprints
-are evidence, not proof of cache availability. Never log credentials, and treat
-debug response content as potentially containing project or glossary text.
-
-When extending a contract, update its builder and parser together. Keep provider
-quirks in transports, context policy in `context/` and the translator, and saved
-state in the project. Verify the boundaries affected by a change:
+Update contract builders and parsers together. Keep provider quirks in transports,
+context policy in `context/` and the translator, and persistence in the project.
+Verify the affected boundaries:
 
 | Boundary | Focused tests |
 | --- | --- |
-| Profiles, defaults, and persistence | `test_llm_profiles.py`, `test_proj_imgtrans_translation_context.py` |
-| Response contracts, context, and retries | `test_llm_translation_*.py`, `test_llm_translator.py`, `test_llm_chat.py` |
-| Glossary parsing and selection | `test_translator_glossary.py` |
-| Responses transport and authentication | `test_codex*.py`, `test_openai_responses.py` |
-| Image transport, masks, and obsolete canvas results | `test_llm_inpaint.py`, `test_canvas_inpaint_lifecycle.py` |
+| Profiles and persistence | `test_llm_profiles.py`, `test_proj_imgtrans_translation_context.py` |
+| Contracts, context, and retries | `test_llm_translation_*.py`, `test_llm_translator.py`, `test_llm_chat.py` |
+| Glossary | `test_translator_glossary.py` |
+| Responses and authentication | `test_codex*.py`, `test_openai_responses.py` |
+| Images, masks, and canvas results | `test_llm_inpaint.py`, `test_canvas_inpaint_lifecycle.py` |
 | Profile and drawing selection | `test_llm_profile_widgets.py`, `test_module_selection_menu.py`, `test_drawing_inpainter.py` |
 
 Run relevant suites with `python -m pytest`; use `QT_QPA_PLATFORM=offscreen` for Qt
