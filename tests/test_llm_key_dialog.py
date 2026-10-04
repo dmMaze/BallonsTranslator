@@ -9,6 +9,7 @@ import numpy as np
 from ballontranslator.modules.ocr.base import OCRBase
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
+    LLMAuthenticationError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMOutputLimitError,
@@ -248,6 +249,13 @@ class LLMKeyDialogDedupTest(unittest.TestCase):
             self.calls,
             [('profile-1', 'Profile 1'), ('profile-1', 'Profile 1')],
         )
+
+    def test_rejected_credentials_show_authentication_error_not_missing_key_dialog(self) -> None:
+        error = LLMAuthenticationError('profile-1', 'Profile 1')
+        with mock.patch.object(shared, 'create_errdialog_in_mainthread') as show_error:
+            module_manager._show_llm_user_action_required_dialog(error, 'Translation failed.', 'LLMFailure')
+        self.assertEqual(self.calls, [])
+        self.assertIn('Authentication failed', show_error.call_args.args[0])
 
     def test_page_failure_message_includes_the_page(self):
         with mock.patch.object(

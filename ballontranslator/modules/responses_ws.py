@@ -39,6 +39,10 @@ def run_async(operation: Coroutine, stop_event: Optional[threading.Event], *,
         return asyncio.run(run()) if loop is None else asyncio.run_coroutine_threadsafe(run(), loop).result()
     except (asyncio.CancelledError, FutureCancelledError):
         raise LLMRequestStopped() from None
+    finally:
+        # close() can cancel the scheduled wrapper before it creates its task.
+        # In that case nobody has awaited or closed the supplied coroutine yet.
+        operation.close()
 
 
 class ResponsesWebSocket:
@@ -116,7 +120,8 @@ class ResponsesWebSocket:
         if self._lock.acquire(blocking=False):
             try:
                 if time.monotonic() - self._last_used >= 300.0:
-                    self.closed = True
+                    # Expire connection state, not the job. A caller may already
+                    # hold this session, and routing cookies still belong to it.
                     self._dispose()
             finally:
                 self._lock.release()
@@ -172,17 +177,19 @@ class ResponsesWebSocket:
             import websockets
             from websockets.asyncio.client import connect
             from websockets.exceptions import ConnectionClosed, InvalidHandshake, InvalidProxy, InvalidStatus
+            from websockets.protocol import State
             if int(websockets.__version__.split('.', 1)[0]) < 15:
                 raise ImportError('WebSocket proxy support requires version 15.')
         except ImportError:
             self._http_only = True
             LOGGER.warning('Responses WebSocket requires Python>=3.9 and websockets>=15; using HTTP for this job.')
             return None
-        started = False
         for attempt in range(2):
-            reused = self._socket is not None
+            sent = started = False
             try:
-                if self._socket is not None and time.monotonic() - self._connected_at >= 55 * 60:
+                if self._socket is not None and (
+                    self._socket.state is not State.OPEN or time.monotonic() - self._connected_at >= 55 * 60
+                ):
                     await self._disconnect()
                 reused = self._socket is not None
                 if self._socket is None:
@@ -210,9 +217,14 @@ class ResponsesWebSocket:
                 LOGGER.debug('Responses WebSocket request: reused=%s, continuation=%s, input_items=%d',
                              reused, 'previous_response_id' in wire, len(wire['input']))
                 frame = {'type': 'response.create', **wire}
+                # SSE needs this flag; WebSocket creation must omit it.
+                frame.pop('stream', None)
                 if client_metadata:
                     frame['client_metadata'] = dict(client_metadata)
-                await self._socket.send(json.dumps(frame))
+                # A failed send or a lost first event does not prove that the
+                # server rejected the request. Leave retries to the feature owner.
+                sent = True
+                await asyncio.wait_for(self._socket.send(json.dumps(frame)), timeout=300.0)
                 completed_items = []
                 while True:
                     event = json.loads(await asyncio.wait_for(self._socket.recv(), timeout=300.0))
@@ -231,7 +243,7 @@ class ResponsesWebSocket:
                         await self._disconnect()
                         break
                     result = on_event(event, completed_items)
-                    started = True
+                    started = started or event.get('type') != 'response.metadata'
                     if result is not None:
                         self._previous = payload, result
                         return result
@@ -247,10 +259,8 @@ class ResponsesWebSocket:
                 return None
             except (OSError, asyncio.TimeoutError, ConnectionClosed, InvalidHandshake, InvalidProxy, ImportError) as error:
                 await self._disconnect()
-                if started:
+                if sent:
                     raise
-                if attempt == 0 and reused:
-                    continue
                 self._http_only = True
                 LOGGER.debug('Responses WebSocket unavailable (%s); using HTTP.', type(error).__name__)
                 return None

@@ -13,6 +13,7 @@ from PIL import Image
 
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
+    LLMAuthenticationError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMRequestStopped,
@@ -368,7 +369,7 @@ class APIImageResponseDiagnosticsTest(unittest.TestCase):
         self.assertEqual(self.diagnostics(), [])
         self.response = httpx.Response(401, json={'error': {'message': 'Invalid token private-api-key'}})
         self.requests.clear()
-        with self.assertRaises(LLMApiKeyRequiredError):
+        with self.assertRaises(LLMAuthenticationError):
             self.request()
         self.assertEqual(len(self.requests), 1)
         self.assertIn('Invalid token <redacted>', self.diagnostics()[0])
@@ -382,7 +383,7 @@ class APIImageResponseDiagnosticsTest(unittest.TestCase):
                 self.requests.clear()
                 with self.assertRaises(LLMUserActionRequiredError) as caught:
                     self.request()
-                self.assertEqual(isinstance(caught.exception, LLMApiKeyRequiredError), is_auth)
+                self.assertEqual(isinstance(caught.exception, LLMAuthenticationError), is_auth)
                 if not is_auth:
                     self.assertIn('requested model is unavailable', str(caught.exception))
                 self.assertEqual(len(self.requests), 1)
@@ -403,7 +404,7 @@ class APIImageResponseDiagnosticsTest(unittest.TestCase):
         with self.assertRaisesRegex(LLMUserActionRequiredError, 'HTTP 301 redirect'):
             self.request()
         self.response = httpx.Response(401, json={'error': {'message': 'Invalid token'}})
-        with self.assertRaises(LLMApiKeyRequiredError):
+        with self.assertRaises(LLMAuthenticationError):
             self.request()
         original = RuntimeError('original image decoding error')
         self.response = httpx.Response(200, json={'data': []})
@@ -541,7 +542,7 @@ class AssistedAPIImageTest(unittest.TestCase):
             self.response = {'error': {'code': 'model_not_found', 'message': provider_message, 'type': 'new_api_error'}}
             with self.assertRaises(LLMUserActionRequiredError) as caught:
                 self.requester.request_image_with_retries(profile, image, 'Remove text.', 'gpt-6-luna → gpt-image-2')
-        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
         self.assertIn(provider_message, str(caught.exception))
         self.assertEqual(len(self.requests), 2)
         self.assertEqual([request.headers['Authorization'] for request in self.requests], ['Bearer same-valid-image-key'] * 2)
@@ -561,7 +562,7 @@ class AssistedAPIImageTest(unittest.TestCase):
             with self.subTest(status=status, payload=payload):
                 self.status, self.response = status, payload
                 self.requests.clear()
-                with patch.object(llm_image.LOGGER, 'warning') as warning, self.assertRaises(LLMApiKeyRequiredError):
+                with patch.object(llm_image.LOGGER, 'warning') as warning, self.assertRaises(LLMAuthenticationError):
                     self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
                 self.assertEqual(len(self.requests), 1)
                 diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
@@ -574,7 +575,7 @@ class AssistedAPIImageTest(unittest.TestCase):
         }}}
         with self.assertRaisesRegex(LLMUserActionRequiredError, 'selected model is unavailable') as caught:
             self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
-        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
         self.assertEqual(len(self.requests), 1)
 
     def test_assisted_generation_uses_explicit_pair_and_rotates_job_cache(self) -> None:
@@ -656,7 +657,7 @@ class AssistedAPIImageTest(unittest.TestCase):
                 self.assertEqual(len(self.requests), 1)
 
     def test_api_auth_and_unsupported_responses_errors_are_not_retried(self) -> None:
-        for status, expected in ((401, LLMApiKeyRequiredError), (403, LLMUserActionRequiredError),
+        for status, expected in ((401, LLMAuthenticationError), (403, LLMUserActionRequiredError),
                                   (400, LLMUserActionRequiredError), (404, LLMUserActionRequiredError),
                                   (422, LLMUserActionRequiredError)):
             with self.subTest(status=status):
@@ -666,7 +667,7 @@ class AssistedAPIImageTest(unittest.TestCase):
                 with self.assertRaises(expected) as caught:
                     self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
                 if status != 401:
-                    self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+                    self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
                     self.assertIn('Model access unavailable.', str(caught.exception))
                 self.assertEqual(len(self.requests), 1)
 
@@ -707,7 +708,7 @@ class AssistedAPIImageTest(unittest.TestCase):
                     patch.object(llm_image.LOGGER, 'warning') as warning, \
                     self.assertRaises(LLMUserActionRequiredError) as caught:
                 self.requester.request_image_with_retries(self.profile, None, prompt, self.profile.image_model)
-            self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+            self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
             self.assertEqual(len(requests), 1)
             self.assertTrue(closed.is_set())
             diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
@@ -725,7 +726,7 @@ class AssistedAPIImageTest(unittest.TestCase):
                 patch.object(llm_image.LOGGER, 'warning') as warning, \
                 self.assertRaises(LLMUserActionRequiredError) as caught:
             self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
-        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
         self.assertIn('Service access denied', str(caught.exception))
         diagnostic = warning.call_args.args[0] % warning.call_args.args[1:]
         self.assertIn('Service access denied', diagnostic)
@@ -747,7 +748,7 @@ class AssistedAPIImageTest(unittest.TestCase):
         with client, patch.object(self.requester, '_initialize_client', return_value=client), \
                 self.assertRaises(LLMUserActionRequiredError) as caught:
             self.requester.request_image_with_retries(self.profile, None, 'Draw.', self.profile.image_model)
-        self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+        self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
         self.assertFalse(read_past_cap.is_set())
         self.assertTrue(closed.is_set())
 
@@ -772,7 +773,7 @@ class AssistedAPIImageTest(unittest.TestCase):
                 return httpx.Response(status, headers={'Content-Type': 'application/json'}, stream=Broken())
 
             client = httpx.Client(transport=httpx.MockTransport(respond))
-            expected = (LLMRequestStopped if cancel else LLMApiKeyRequiredError if status == 401
+            expected = (LLMRequestStopped if cancel else LLMAuthenticationError if status == 401
                         else RuntimeError if status == 503 else LLMUserActionRequiredError)
             with self.subTest(status=status, cancel=cancel), client, \
                     patch.object(self.requester, '_initialize_client', return_value=client), \
@@ -784,7 +785,7 @@ class AssistedAPIImageTest(unittest.TestCase):
                 warning.assert_not_called()
             else:
                 if status == 403:
-                    self.assertNotIsInstance(caught.exception, LLMApiKeyRequiredError)
+                    self.assertNotIsInstance(caught.exception, (LLMApiKeyRequiredError, LLMAuthenticationError))
                 all_warnings = '\n'.join(call.args[0] % call.args[1:] for call in warning.call_args_list)
                 self.assertIn(f'status={status}', all_warnings)
                 self.assertIn('incomplete response body omitted', all_warnings)
@@ -1387,10 +1388,10 @@ class LLMInpaintTest(unittest.TestCase):
                 )
             request.assert_not_called()
 
-    def test_authentication_error_becomes_required_key_error(self):
+    def test_authentication_error_is_distinct_from_missing_key(self):
         inpainter = FakeInpaint(FakeResponse(status_code=401, json_data={'error': {'message': 'bad key'}}))
 
-        with self.assertRaises(LLMApiKeyRequiredError):
+        with self.assertRaises(LLMAuthenticationError):
             inpainter._request_inpaint(inpainter.profile, np.zeros((2, 2, 3), dtype=np.uint8))
 
     def test_status_error_extracts_provider_message(self):

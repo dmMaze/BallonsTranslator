@@ -37,6 +37,8 @@ WebSocket transport. Other API endpoints and Chat Completions-only controls keep
 the HTTP path. Connections and continuation state are scoped to the active run,
 profile, model, credentials, and proxy. Changed context must be resent in full;
 connection reuse must never restore history the feature owner has removed.
+Idle expiry releases the connection and replay state while retaining job identity
+and routing cookies; an explicit close cancels the session.
 
 Codex has one canonical profile with ID `codex`, separate from editable API
 profiles and clipboard operations. Its saved public model catalog is
@@ -196,13 +198,29 @@ current summary, memory, glossary, or image. Errors requiring user action bypass
 retries and stop the run. Only completed provider responses reach
 translation parsing.
 
+Only an empty required API key triggers the missing-key setup dialog. Rejected
+request credentials raise a separate authentication error. WebSocket handshake
+rejections retain provider status and error details for the transport's normal
+error classification.
+
 WebSocket setup failures fall back to the same backend's HTTP path for the run.
-A started response is never automatically replayed through HTTP. Authentication,
-permission, quota, and output-limit errors retain their normal handling.
+Once sending begins, a lost connection cannot establish whether the server
+accepted the request; the transport propagates the failure to the feature's
+retry policy instead of silently resending. Explicit connection-limit or missing
+continuation rejections allow bounded recovery. Closed sockets and renewed Codex
+credentials reconnect before sending, with full input on the new connection.
+WebSocket frames omit the HTTP-only `stream` flag. Only final assistant text is
+returned to feature parsers; commentary remains available for exact replay.
+Authentication, permission, quota, and output-limit errors retain their normal
+handling. The `response.done` alias is classified by its terminal status; an
+incomplete response is an output-limit error only when its reason says so.
 
 Cancellation interrupts WebSocket and Codex HTTP waits. Synchronous Chat
 Completions calls cannot be interrupted in flight; workers must reject obsolete
-results regardless of transport cancellation.
+results regardless of transport cancellation. Requests retain their originating
+run through throttling, session setup, and fallback, and discard late results
+after that run changes. Both WebSocket sends and receives have bounded waits;
+closing a session also releases requests cancelled before their coroutine starts.
 Diagnostics belong to their owning layer; provider usage and request fingerprints
 are evidence, not proof of cache availability. Never log credentials, and treat
 debug response content as potentially containing project or glossary text.

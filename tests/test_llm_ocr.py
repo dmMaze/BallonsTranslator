@@ -7,7 +7,7 @@ import numpy as np
 
 from ballontranslator.modules.ocr.ocr_llm import LLMOCR
 from ballontranslator.modules.exceptions import (
-    LLMApiKeyRequiredError,
+    LLMAuthenticationError,
     LLMModelRequiredError,
 )
 from ballontranslator.utils.config import pcfg
@@ -144,6 +144,7 @@ class LLMOCRTest(unittest.TestCase):
 
     def test_profile_rejects_a_non_vision_capability(self):
         profile = default_profile('DeepSeek')
+        profile.support_vision = False
         pcfg.module.llm_profiles = [profile]
         pcfg.module.ocr_llm_id = profile.id
 
@@ -281,7 +282,7 @@ class LLMOCRTest(unittest.TestCase):
         block = TextBlock(xyxy=[0, 0, 2, 2], text=['original'])
         pcfg.module.ocr_llm_page_level = True
 
-        with self.assertRaises(LLMApiKeyRequiredError):
+        with self.assertRaises(LLMAuthenticationError):
             ocr.run_ocr(
                 np.zeros((2, 2, 3), dtype=np.uint8),
                 [block],
@@ -289,5 +290,6 @@ class LLMOCRTest(unittest.TestCase):
             )
 
         self.assertEqual(block.text, ['original'])
+        self.assertEqual(len(ocr.completions.calls), 1)
 if __name__ == '__main__':
     unittest.main()

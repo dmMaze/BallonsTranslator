@@ -1,5 +1,6 @@
 import asyncio
 import copy
+import inspect
 import json
 import os
 import sys
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
+from websockets.protocol import State
 
 from ballontranslator.modules import codex
 from ballontranslator.modules.exceptions import LLMRequestStopped, LLMUserActionRequiredError
@@ -37,6 +39,7 @@ class Socket:
         self.loops = []
         self.events = deque()
         self.closed = False
+        self.state = State.OPEN
         self.transport = Mock()
         self.response = SimpleNamespace(headers=httpx.Headers())
         self.respond = self.complete
@@ -126,6 +129,8 @@ class CodexWebSocketTest(unittest.TestCase):
         self.assertEqual(second_body['input'], [{'type': 'message', 'role': 'user',
                                                 'content': [{'type': 'input_text', 'text': 'second page'}]}])
         self.assertFalse(second_body['store'])
+        self.assertNotIn('stream', first_body)
+        self.assertNotIn('stream', second_body)
         headers = self.connect.call_args.kwargs['additional_headers']
         self.assertEqual(headers['OpenAI-Beta'], 'responses_websockets=2026-02-06')
         self.assertEqual(headers['version'], codex._client_version)
@@ -223,7 +228,7 @@ class CodexWebSocketTest(unittest.TestCase):
         turn = codex.CodexTurnState()
         self.call(turn=turn)
         self.assertNotIn('client_metadata', self.socket.frames[0])
-        self.socket.respond = lambda body: [OSError('disconnected')]
+        self.socket.state = State.CLOSED
         replacement = Socket()
         replacement.response.headers['x-codex-turn-state'] = 'replacement-route'
         self.connect.return_value = replacement
@@ -252,8 +257,10 @@ class CodexWebSocketTest(unittest.TestCase):
 
     def test_connection_limit_sse_fallback_replays_turn_state(self) -> None:
         self.socket.response.headers['x-codex-turn-state'] = 'fallback-route'
-        self.socket.respond = lambda body: [{'type': 'error', 'error': {
-            'code': 'websocket_connection_limit_reached'}}]
+        self.socket.respond = lambda body: [
+            {'type': 'response.metadata', 'headers': {}},
+            {'type': 'error', 'error': {'code': 'websocket_connection_limit_reached'}},
+        ]
         self.call()
         self.assertEqual(self.http_requests[0].headers['x-codex-turn-state'], 'fallback-route')
         self.call()
@@ -337,7 +344,7 @@ class CodexWebSocketTest(unittest.TestCase):
             ('Set-Cookie', 'account_session=private; Path=/; Secure'),
         ])
         self.call()
-        self.socket.respond = lambda body: [OSError('disconnected')]
+        self.socket.state = State.CLOSED
         self.connect.side_effect = InvalidStatus(Response(503, 'Unavailable', Headers([
             ('Set-Cookie', '__oailb=fallback-route; Path=/; Secure'),
         ])))
@@ -376,15 +383,56 @@ class CodexWebSocketTest(unittest.TestCase):
                 old_session.capture_cookies(httpx.Headers({'set-cookie': '__oailb=late; Path=/; Secure'}))
                 self.assertEqual(len(old_session._cookies), 0)
 
-    def test_closed_connection_before_output_reconnects_without_sse(self) -> None:
+    def test_already_closed_connection_reconnects_before_sending(self) -> None:
         self.call()
-        self.socket.respond = lambda body: [OSError('disconnected')]
+        self.socket.state = State.CLOSED
         replacement = Socket()
         self.connect.return_value = replacement
         self.call()
         self.assertEqual(self.connect.await_count, 2)
         self.assertNotIn('previous_response_id', replacement.frames[0])
         self.assertEqual(self.http_requests, [])
+
+    def test_disconnect_after_send_without_events_does_not_replay(self) -> None:
+        self.socket.respond = lambda body: [OSError('disconnected')]
+        with self.assertRaises(RuntimeError):
+            self.call()
+        self.assertEqual(len(self.socket.frames), 1)
+        self.assertEqual(self.connect.await_count, 1)
+        self.assertEqual(self.http_requests, [])
+
+    def test_refreshed_credentials_reconnect_before_sending(self) -> None:
+        first = self.call()
+        self.account._credentials['access_token'] = 'refreshed-access'
+        replacement = Socket()
+        self.connect.return_value = replacement
+        second = self.call()
+        self.assertEqual(self.connect.await_count, 2)
+        self.assertTrue(self.socket.closed)
+        self.assertEqual(self.connect.call_args.kwargs['additional_headers']['Authorization'], 'Bearer refreshed-access')
+        self.assertEqual(second.codex_cache_key, first.codex_cache_key)
+        self.assertNotIn('previous_response_id', replacement.frames[0])
+        self.assertEqual(self.http_requests, [])
+
+    def test_replacing_run_during_throttle_does_not_send_old_request(self) -> None:
+        self.requester._respect_delay.side_effect = lambda: self.requester.set_stop_event(threading.Event())
+        with self.assertRaises(LLMRequestStopped):
+            self.call()
+        self.connect.assert_not_called()
+        self.assertEqual(self.http_requests, [])
+
+    def test_idle_expiry_preserves_job_routing_cookies(self) -> None:
+        self.socket.response.headers['set-cookie'] = '__oailb=job-route; Path=/; Secure'
+        first = self.call()
+        session = next(iter(self.requester._codex_sessions.values()))
+        session._last_used -= 301
+        session._expire()
+        replacement = Socket()
+        self.connect.return_value = replacement
+        second = self.call()
+        self.assertEqual(first.codex_cache_key, second.codex_cache_key)
+        self.assertEqual(self.connect.call_args.kwargs['additional_headers'].get('Cookie'), '__oailb=job-route')
+        self.assertNotIn('previous_response_id', replacement.frames[0])
 
     def test_failure_after_stream_start_never_replays_through_sse(self) -> None:
         self.socket.respond = lambda body: [{'type': 'response.created'}, OSError('private-request-url-with-token')]
@@ -492,6 +540,26 @@ class CodexWebSocketTest(unittest.TestCase):
         self.socket.respond = respond
         result = self.call()
         self.assertEqual(result.content, '{"1":"hello"}')
+
+    def test_done_failure_preserves_provider_error_classification(self) -> None:
+        self.socket.respond = lambda body: [{'type': 'response.done', 'response': {
+            'status': 'failed', 'error': {'code': 'usage_limit_reached', 'message': 'quota'},
+        }}]
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'usage limit'):
+            self.call()
+        self.assertEqual(self.http_requests, [])
+
+    def test_filtered_incomplete_response_is_not_called_token_truncation(self) -> None:
+        for kind in ('response.incomplete', 'response.done'):
+            for details in ({'reason': 'content_filter'}, None, {}):
+                with self.subTest(kind=kind, details=details):
+                    self.socket.respond = lambda body: [{'type': kind, 'response': {
+                        'status': 'incomplete', 'incomplete_details': details,
+                    }}]
+                    with self.assertRaisesRegex(LLMUserActionRequiredError, 'did not complete') as caught:
+                        self.call()
+                    self.assertNotIn('truncated', str(caught.exception))
+        self.assertEqual(self.http_requests, [])
         self.assertEqual(self.http_requests, [])
 
     def test_connection_limit_retries_once_then_falls_back(self) -> None:
@@ -501,6 +569,18 @@ class CodexWebSocketTest(unittest.TestCase):
         self.call()
         self.assertEqual(self.connect.await_count, 2)
         self.assertEqual(len(self.http_requests), 2)
+
+    def test_handshake_quota_error_is_not_reported_as_a_connection_problem(self) -> None:
+        from websockets.datastructures import Headers
+        from websockets.exceptions import InvalidStatus
+        from websockets.http11 import Response
+
+        body = json.dumps({'error': {'code': 'insufficient_quota', 'message': 'Quota exhausted.'}}).encode()
+        self.connect.side_effect = InvalidStatus(Response(429, 'Rejected', Headers(), body))
+        with self.assertRaisesRegex(LLMUserActionRequiredError, 'usage limit'):
+            self.call()
+        self.assertEqual(self.connect.await_count, 1)
+        self.assertEqual(self.http_requests, [])
 
     def test_new_job_closes_previous_connection_and_changes_identity(self) -> None:
         first = self.call()
@@ -623,6 +703,34 @@ class CodexWebSocketTest(unittest.TestCase):
         self.assertEqual(paths, ['/codex/responses'])
         self.assertEqual(len(self.http_requests), 1)
 
+    def test_real_disconnect_after_receiving_request_does_not_replay(self) -> None:
+        from websockets.sync.server import serve
+
+        self.connect_patcher.stop()
+        frames = []
+
+        def handle(connection) -> None:
+            frames.append(json.loads(connection.recv()))
+            connection.close()
+
+        with serve(handle, '127.0.0.1', 0, ping_interval=None) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            port = server.socket.getsockname()[1]
+            try:
+                with patch.object(codex, 'API_URL', f'http://127.0.0.1:{port}/codex'):
+                    with self.assertRaises(RuntimeError):
+                        self.call()
+                session = next(iter(self.requester._codex_sessions.values()))
+                self.assertIsNone(session._loop)
+                self.assertIsNone(session._thread)
+                self.assertEqual(len(frames), 1)
+                self.assertEqual(self.http_requests, [])
+            finally:
+                self.requester.set_stop_event(None)
+                server.shutdown()
+                thread.join(3)
+
     def test_real_socket_answers_server_ping_between_page_workers(self) -> None:
         from websockets.sync.server import serve
         from websockets.exceptions import ConnectionClosed
@@ -682,7 +790,7 @@ class CodexWebSocketTest(unittest.TestCase):
         session = next(iter(self.requester._codex_sessions.values()))
         session._last_used -= 301
         session._expire()
-        self.assertTrue(session.closed)
+        self.assertFalse(session.closed)
         replacement = Socket()
         self.connect.return_value = replacement
         second = self.call()
@@ -746,6 +854,53 @@ class CodexWebSocketTest(unittest.TestCase):
         finally:
             closer.join(2)
             session.close()
+
+    def test_close_before_scheduled_request_starts_releases_its_coroutine(self) -> None:
+        self.call()
+        session = next(iter(self.requester._codex_sessions.values()))
+        loop, loop_thread = session._loop, session._thread
+        blocked, release, queued = threading.Event(), threading.Event(), threading.Event()
+        errors = []
+        operation = asyncio.sleep(0)
+        submit = asyncio.run_coroutine_threadsafe
+
+        def block_loop() -> None:
+            blocked.set()
+            release.wait(3)
+
+        def enqueue(coroutine, target_loop):
+            future = submit(coroutine, target_loop)
+            queued.set()
+            return future
+
+        def request() -> None:
+            try:
+                session.run(operation, self.requester.stop_event)
+            except BaseException as error:
+                errors.append(error)
+
+        worker = threading.Thread(target=request, daemon=True)
+        loop.call_soon_threadsafe(block_loop)
+        try:
+            self.assertTrue(blocked.wait(1))
+            with patch('ballontranslator.modules.responses_ws.asyncio.run_coroutine_threadsafe', new=enqueue):
+                worker.start()
+                self.assertTrue(queued.wait(1))
+                session.close()
+                release.set()
+                worker.join(2)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(len(errors), 1)
+            self.assertIsInstance(errors[0], LLMRequestStopped)
+            self.assertEqual(inspect.getcoroutinestate(operation), inspect.CORO_CLOSED)
+            self.assertTrue(loop.is_closed())
+            self.assertFalse(loop_thread.is_alive())
+        finally:
+            release.set()
+            if worker.ident is not None:
+                worker.join(2)
+            session.close()
+            operation.close()
 
     def test_changing_runs_cancels_an_inflight_request(self) -> None:
         self.socket.respond = lambda body: [{'type': 'response.created'}]

@@ -14,6 +14,7 @@ from .context.errors import provider_error_message
 from .context.token_usage import format_completion_token_usage
 from .exceptions import (
     LLMApiKeyRequiredError,
+    LLMAuthenticationError,
     LLMOutputLimitError,
     LLMRequestStopped,
     LLMUserActionRequiredError,
@@ -333,6 +334,10 @@ class LLMChatRequester:
     def _codex_websocket_enabled(self) -> bool:
         return os.environ.get('BALLOONTRANS_CODEX_WEBSOCKET') != '0'
 
+    def _check_request_current(self, stop_event: Optional[threading.Event]) -> None:
+        if stop_event is not self.stop_event or (stop_event is not None and stop_event.is_set()):
+            raise LLMRequestStopped()
+
     def request_chat_completion(
         self,
         profile: LLMProfile,
@@ -341,12 +346,17 @@ class LLMChatRequester:
         codex_turn: Optional[CodexTurnState] = None,
     ) -> LLMChatResult:
         """Perform one request; feature owners decide whether to retry it."""
+        # Throttling and client/session setup can overlap a run change. Never
+        # adopt the replacement run's token for this request's existing inputs.
+        stop_event = self.stop_event
+        self._check_request_current(stop_event)
         if profile.backend == 'codex':
             if self._openai_session is not None:
                 self._openai_session.close()
                 self._openai_session = None
             from .codex import CodexChatSession, account, request_chat_completion
             self._respect_delay()
+            self._check_request_current(stop_event)
             identity = (profile.id, str(api_args['model']), account.generation)
             proxy = str(self.get_param_value('proxy') or '')
             websocket = self._codex_websocket_enabled()
@@ -361,15 +371,19 @@ class LLMChatRequester:
                     session.close()
                 session = self._codex_sessions[identity] = CodexChatSession(
                     cache_key, proxy, account_generation=identity[2], websocket=websocket)
-            return request_chat_completion(
-                profile, api_args, self.stop_event,
+            self._check_request_current(stop_event)
+            result = request_chat_completion(
+                profile, api_args, stop_event,
                 session.cache_key, proxy, session=session, turn=codex_turn,
             )
+            self._check_request_current(stop_event)
+            return result
         if profile.backend != 'openai':
             raise LLMUserActionRequiredError('This LLM profile backend is unavailable.')
         openai = self._openai_module()
         client = self._initialize_client(profile)
         self._respect_delay()
+        self._check_request_current(stop_event)
         # Only the direct OpenAI endpoint has a known Responses WS contract.
         # Check the SDK's resolved URL, including OPENAI_BASE_URL overrides.
         from .openai_responses import OpenAIResponsesSession
@@ -392,22 +406,30 @@ class LLMChatRequester:
             if session is None:
                 headers = {key: value for key, value in client.default_headers.items()
                            if isinstance(value, str) and key.lower() not in ('accept', 'content-type')}
+                # Newer SDKs add auth during HTTP request preparation, outside
+                # default_headers. Our WebSocket bypasses that preparation.
+                headers['Authorization'] = f'Bearer {client.api_key}'
                 self._openai_session = session = OpenAIResponsesSession(
                     base_url + '/responses', cache_key or str(uuid.uuid4()),
                     str(self.get_param_value('proxy') or ''), headers)
                 self._openai_session_identity = identity
-            result = session.request_chat(api_args, profile, self.stop_event)
+            self._check_request_current(stop_event)
+            result = session.request_chat(api_args, profile, stop_event)
             if result is not None:
+                self._check_request_current(stop_event)
                 return result
+        self._check_request_current(stop_event)
         try:
             completion = client.chat.completions.create(**api_args)
-        except getattr(openai, 'AuthenticationError') as error:
-            raise LLMApiKeyRequiredError(
-                profile.id, profile.name
-            ) from error
-        except getattr(openai, 'APIStatusError') as error:
-            raise LLMChatRequestError(error) from error
+        except Exception as error:
+            self._check_request_current(stop_event)
+            if isinstance(error, getattr(openai, 'AuthenticationError')):
+                raise LLMAuthenticationError(profile.id, profile.name) from error
+            if isinstance(error, getattr(openai, 'APIStatusError')):
+                raise LLMChatRequestError(error) from error
+            raise
 
+        self._check_request_current(stop_event)
         choice = next(iter(getattr(completion, 'choices', ())), None)
         message = getattr(choice, 'message', None)
         content = getattr(message, 'content', None)

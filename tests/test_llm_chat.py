@@ -6,7 +6,7 @@ from unittest import mock
 import httpx
 
 from ballontranslator.modules.exceptions import (
-    LLMApiKeyRequiredError,
+    LLMAuthenticationError,
     LLMOutputLimitError,
     LLMRequestStopped,
 )
@@ -271,7 +271,7 @@ class LLMChatRequesterTest(unittest.TestCase):
                 return_value=client_for(FakeAuthError('bad key')),
             ),
         ):
-            with self.assertRaises(LLMApiKeyRequiredError):
+            with self.assertRaisesRegex(LLMAuthenticationError, 'Authentication failed'):
                 self.requester.request_chat_completion(self.profile, {})
 
         provider_error = FakeStatusError()

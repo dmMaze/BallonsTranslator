@@ -19,6 +19,7 @@ from PIL import Image
 
 from ballontranslator.modules.exceptions import (
     LLMApiKeyRequiredError,
+    LLMAuthenticationError,
     LLMBaseURLRequiredError,
     LLMModelRequiredError,
     LLMRequestStopped,
@@ -665,7 +666,7 @@ class LLMImageRequester:
                 )
             )
             if status == 401 or auth_error:
-                raise LLMApiKeyRequiredError(profile.id, profile.name)
+                raise LLMAuthenticationError(profile.id, profile.name)
             if status >= 400 or (isinstance(error_data, dict) and error_data.get('error')):
                 message = next((error[key] for key in ('message', 'detail', 'code')
                                 if isinstance(error.get(key), str) and error[key]), '') if isinstance(error, dict) else error

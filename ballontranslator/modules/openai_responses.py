@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import copy
+import json
 import threading
 from types import SimpleNamespace
 from typing import Dict, List, Optional, TYPE_CHECKING
 
-from .exceptions import LLMApiKeyRequiredError, LLMOutputLimitError, LLMRequestStopped, LLMUserActionRequiredError
+from .exceptions import LLMAuthenticationError, LLMOutputLimitError, LLMRequestStopped, LLMUserActionRequiredError
 from .responses_ws import ResponsesWebSocket
 from ballontranslator.utils.llm_profiles import LLMProfile
 from ballontranslator.utils.logger import logger as LOGGER
@@ -104,7 +105,7 @@ class OpenAIResponsesSession(ResponsesWebSocket):
             error = body.get('error') or body
             code = error.get('code') if isinstance(error, dict) else None
             if status == 401 or code in ('invalid_api_key', 'token_expired'):
-                raise LLMApiKeyRequiredError(profile.id, profile.name)
+                raise LLMAuthenticationError(profile.id, profile.name)
             if not isinstance(status, int):
                 status = {'rate_limit_exceeded': 429, 'server_error': 500,
                           'permission_denied': 403}.get(code, 400)
@@ -114,13 +115,17 @@ class OpenAIResponsesSession(ResponsesWebSocket):
 
         def complete(event: Dict, items: List[Dict]) -> Optional[Dict]:
             kind = event.get('type')
+            if kind == 'response.done':
+                status = event['response'].get('status')
+                if status in ('completed', 'failed', 'incomplete'):
+                    kind = 'response.' + status
             if kind == 'response.output_item.done':
                 items.append(event['item'])
             elif kind in ('response.failed', 'error'):
                 reject(event.get('response', event), event.get('status', event.get('status_code')))
             elif kind == 'response.incomplete':
                 response = event['response']
-                if response.get('incomplete_details', {}).get('reason') == 'max_output_tokens':
+                if (response.get('incomplete_details') or {}).get('reason') == 'max_output_tokens':
                     raise LLMOutputLimitError(profile.id, profile.name, profile.max_tokens, profile.thinking_level)
                 raise LLMUserActionRequiredError('OpenAI did not complete the response. Review the input and retry.')
             elif kind in ('response.completed', 'response.done'):
@@ -150,7 +155,9 @@ class OpenAIResponsesSession(ResponsesWebSocket):
                 self._chat_prefix = []
                 return None
             messages = [item for item in result.get('output', [])
-                        if item.get('type') == 'message' and item.get('role') == 'assistant']
+                        if item.get('type') == 'message' and item.get('role') == 'assistant'
+                        and item.get('phase') in (None, 'final_answer')]
+            messages = [item for item in messages if item.get('phase') == 'final_answer'] or messages
             if not messages:
                 raise RuntimeError('OpenAI response contained no assistant message.')
             parts = [part for item in messages for part in item.get('content', [])]
@@ -181,6 +188,12 @@ class OpenAIResponsesSession(ResponsesWebSocket):
             self._previous = None
             from websockets.exceptions import InvalidStatus
             if isinstance(error, InvalidStatus):
-                reject({'error': {'message': 'OpenAI rejected the WebSocket connection.'}}, error.response.status_code)
+                try:
+                    body = json.loads(error.response.body)
+                except (ValueError, TypeError):
+                    body = None
+                reject(body if isinstance(body, dict) else {'error': {
+                    'message': f'OpenAI rejected the WebSocket connection (HTTP {error.response.status_code}).'
+                }}, error.response.status_code)
             LOGGER.debug('OpenAI Responses failure: exception=%s', type(error).__name__)
-            raise RuntimeError('OpenAI could not complete the request. Check the connection and retry.') from None
+            raise RuntimeError(f'OpenAI Responses WebSocket request failed ({type(error).__name__}).') from None

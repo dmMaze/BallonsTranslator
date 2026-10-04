@@ -882,6 +882,10 @@ async def _bounded_response_lines(response: httpx.Response, limit: int) -> Async
 def _completed_response(event: Dict, completed_items: List[Dict],
                         turn: Optional[CodexTurnState] = None) -> Optional[Dict]:
     kind = event.get('type')
+    if kind == 'response.done':
+        status = event['response'].get('status')
+        if status in ('completed', 'failed', 'incomplete'):
+            kind = 'response.' + status
     if kind == 'response.metadata' and turn is not None:
         turn.capture(event.get('headers'))
     elif kind == 'response.output_item.done':
@@ -894,7 +898,9 @@ def _completed_response(event: Dict, completed_items: List[Dict],
             result['output'] = completed_items
         return result
     elif kind == 'response.incomplete':
-        raise LLMUserActionRequiredError('Codex output was truncated. Reduce the current input or thinking level and retry.')
+        if (event['response'].get('incomplete_details') or {}).get('reason') == 'max_output_tokens':
+            raise LLMUserActionRequiredError('Codex output was truncated. Reduce the current input or thinking level and retry.')
+        raise LLMUserActionRequiredError('Codex did not complete the response. Review the input and retry.')
     elif kind in ('response.failed', 'error'):
         _raise_service_error(event.get('response', event), status=event.get('status', event.get('status_code')))
     return None
@@ -929,11 +935,13 @@ class CodexChatSession(ResponsesWebSocket):
         super().__init__(API_URL + '/responses', cache_key, proxy, websocket=websocket)
         self.account_generation = account_generation
         self._cookies = httpx.Cookies()
+        self._access_token = ''
 
     def _is_current(self) -> bool:
         return not self.closed and self.account_generation == account.generation
 
     def _dispose(self) -> None:
+        self._access_token = ''
         if self.closed:
             self._cookies.clear()
         super()._dispose()
@@ -961,6 +969,9 @@ class CodexChatSession(ResponsesWebSocket):
             self._cookies.extract_cookies(response)
 
     async def request(self, payload: Dict, tokens: Dict, turn: CodexTurnState) -> Optional[Dict]:
+        # Authentication belongs to the handshake, not individual frames.
+        if self._socket is not None and self._access_token != tokens['access_token']:
+            await self._disconnect()
         if not CODEX_REPLAY_ENABLED:
             self._previous = None
         metadata = {}
@@ -971,6 +982,7 @@ class CodexChatSession(ResponsesWebSocket):
             for name in ('Accept', 'Content-Type'):
                 result.pop(name, None)
             result['OpenAI-Beta'] = 'responses_websockets=2026-02-06'
+            self._access_token = tokens['access_token']
             return result
 
         def capture(response_headers: object) -> None:
@@ -990,7 +1002,11 @@ class CodexChatSession(ResponsesWebSocket):
             # Import only after the shared transport has checked availability.
             from websockets.exceptions import InvalidStatus
             if isinstance(error, InvalidStatus):
-                _raise_service_error({}, status=error.response.status_code)
+                try:
+                    body = json.loads(error.response.body)
+                except (ValueError, TypeError):
+                    body = None
+                _raise_service_error(body if isinstance(body, dict) else {}, status=error.response.status_code)
             raise
 
 
