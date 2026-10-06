@@ -39,11 +39,20 @@ and removes a bundled seed font: an observed Qt side effect, not a public
 refresh guarantee. Never clear all application fonts.
 
 Publication preserves custom groups, exclusions, and missing selected families,
-updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. The
-main window rebinds and reshapes every text block on the current page, refreshes
-style preset labels, then publishes family/weight choices. Transient layout
-formats prevent same-family replacements from retaining an old native font
-engine without changing rich text, project data, or undo history.
+updates `shared.FONT_FAMILIES` and font aliases, and clears metric caches. It
+also publishes a `FontChangeSet`. A manual scan with changed application-font
+fingerprints identifies the old and new family aliases for those registrations;
+the main window then rebinds only current-page text blocks whose live rich-text
+fragments request one of those families. System notifications, Qt database
+notifications, and manual refreshes without an identifiable custom-file change
+use full invalidation because Qt does not expose native face, alias, or fallback
+changes through a complete public dependency API. Style preset labels remain a
+small whole-panel refresh. Each published refresh shares one native-font cache
+generation across the affected text blocks and style previews. Their transient
+QFonts append a nonexistent generation fallback, giving Qt a new cache key even
+when the requested family is unchanged; this prevents Windows GDI from retaining
+a replaced or removed face until the QTextDocument is destroyed. The fallback
+never enters rich text, project data, or undo history.
 Picker refresh discards unaccepted search text and restores the committed family
 without emitting a font-change action, even if that family is no longer listed.
 

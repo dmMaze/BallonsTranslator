@@ -135,14 +135,19 @@ class TextStylePresetReorderingTest(unittest.TestCase):
         self.assertEqual(resize_panel.call_count, 2)
         for label, recorder, expected in zip(labels, recorders, expected_fonts):
             self.assertEqual(len(recorder.fonts), 4)
+            applied_fonts = recorder.fonts[1::2]
             for placeholder, applied in zip(
-                recorder.fonts[::2], recorder.fonts[1::2],
+                recorder.fonts[::2], applied_fonts,
             ):
                 self.assertNotEqual(
                     placeholder.strikeOut(), expected.strikeOut()
                 )
-                self.assertEqual(applied, expected)
-            self.assertEqual(label.stylelabel.font(), expected)
+                self.assertEqual(applied.family(), expected.family())
+                self.assertEqual(
+                    applied.families()[:-1], expected.families()[:-1]
+                )
+            self.assertNotEqual(applied_fonts[0], applied_fonts[1])
+            self.assertEqual(label.stylelabel.font(), applied_fonts[-1])
 
     def test_regular_preview_update_does_not_force_font_change(self) -> None:
         panel = self._make_panel('First')

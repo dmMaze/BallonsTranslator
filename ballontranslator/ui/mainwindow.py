@@ -23,6 +23,7 @@ from ballontranslator.utils.text_effects import (
 )
 from ballontranslator.utils import shared
 from ballontranslator.utils.message import create_error_dialog, create_info_dialog
+from ballontranslator.utils.font_refresh import FontChangeSet
 from ballontranslator.modules import GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_TRANSLATORS, GET_VALID_OCR
 from .misc import parse_stylesheet, set_html_family, QKEY
 from ballontranslator.utils.config import (
@@ -40,6 +41,7 @@ from .canvas import Canvas
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
 from .text_engine.editing.widgets import SourceTextEdit, TransTextEdit
+from .text_engine.font_family import next_font_rebind_generation
 from .drawingpanel import DrawingPanel
 from .text_engine.editing.manager import (
     PasteSrcItemsCommand,
@@ -770,10 +772,22 @@ class MainWindow(mainwindow_cls):
             pcfg.text_styles_path = text_style_path
             save_text_styles()
 
-    def on_fonts_refreshed(self) -> None:
+    def on_fonts_refreshed(self, changes: FontChangeSet) -> None:
+        rebind_generation = next_font_rebind_generation()
+        refreshed = 0
         for item in self.st_manager.textblk_item_list:
-            item.refresh_font_metrics()
-        self.textPanel.formatpanel.textstyle_panel.refresh_font_previews()
+            if changes.all_fonts or changes.affects(item.font_family_keys()):
+                item.refresh_font_metrics(rebind_generation)
+                refreshed += 1
+        LOGGER.info(
+            '[font-refresh][textblocks] refreshed=%d total=%d all=%s',
+            refreshed,
+            len(self.st_manager.textblk_item_list),
+            changes.all_fonts,
+        )
+        self.textPanel.formatpanel.textstyle_panel.refresh_font_previews(
+            rebind_generation
+        )
         self.on_show_only_custom_font(pcfg.let_show_only_custom_fonts_flag)
 
     def on_font_refresh_status(self, label: str, detail: str) -> None:

@@ -18,7 +18,9 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, pt2px
-from .font_family import qfont_with_family, rebind_qfont
+from .font_family import (
+    next_font_rebind_generation, qfont_with_family, rebind_qfont,
+)
 from .annotations import letter_spacing_value, line_spacing_values
 
 
@@ -279,6 +281,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.foreground_pixmap: QPixmap = None
         self.relayout_on_changed = True
         self._use_rebound_fonts = False
+        self._font_rebind_generation = 0
         # Reuse detached QFonts until the next database refresh. Document edits
         # can rebuild layout often, but unchanged fonts need rebinding only once
         # per refresh generation.
@@ -503,9 +506,13 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             block = block.next()
         self.reLayout()
 
-    def refresh_native_fonts(self) -> None:
+    def refresh_native_fonts(self, generation: Optional[int] = None) -> None:
         """Re-resolve document fonts without changing document formats."""
         self._use_rebound_fonts = True
+        self._font_rebind_generation = (
+            next_font_rebind_generation()
+            if generation is None else generation
+        )
         self._rebound_fonts.clear()
         self.invalidate_native_metrics()
 
@@ -514,7 +521,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         cached = self._rebound_fonts.get(font)
         if cached is None:
             key = QFont(font)
-            cached = rebind_qfont(key)
+            cached = rebind_qfont(key, self._font_rebind_generation)
             self._rebound_fonts[key] = cached
         return QFont(cached)
 

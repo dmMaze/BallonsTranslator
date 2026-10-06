@@ -6,12 +6,12 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
 from .font_registry import (
     FontRegistry, RegisteredCustomFont, _candidate_from_parsed_face,
     _system_entry, build_custom_entries, merge_system_alias_entries,
-    parse_font_name_data,
+    normalize_key, parse_font_name_data,
 )
 
 from ballontranslator.utils.logger import logger as LOGGER
@@ -40,6 +40,102 @@ class FontconfigRefresh:
     status: str
     interval: Optional[int] = None
     detail: str = ''
+
+
+@dataclass(frozen=True)
+class FontChangeSet:
+    """Describe which requested font families need a fresh native binding.
+
+    ``all_fonts`` is the safe fallback for system notifications whose native
+    face, alias, and fallback changes cannot be derived from Qt's public API.
+
+    >>> changes = FontChangeSet.for_families([' Example  Family '])
+    >>> changes.affects(['example family'])
+    True
+    >>> FontChangeSet.every_font().affects([])
+    True
+    """
+
+    affected_family_keys: FrozenSet[str] = frozenset()
+    all_fonts: bool = False
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            'affected_family_keys',
+            frozenset(
+                normalize_key(family)
+                for family in self.affected_family_keys
+                if family
+            ),
+        )
+
+    @classmethod
+    def for_families(cls, families: Iterable[str]) -> FontChangeSet:
+        return cls(frozenset(families))
+
+    @classmethod
+    def every_font(cls) -> FontChangeSet:
+        return cls(all_fonts=True)
+
+    def affects(self, family_keys: Iterable[str]) -> bool:
+        if self.all_fonts:
+            return True
+        return not self.affected_family_keys.isdisjoint(
+            normalize_key(family) for family in family_keys if family
+        )
+
+
+RegisteredFontSnapshot = Dict[
+    str,
+    Tuple[tuple[int, int], FrozenSet[str]],
+]
+
+
+def snapshot_registered_fonts(registry: FontRegistry) -> RegisteredFontSnapshot:
+    """Capture custom registration identity before the registry is mutated."""
+    snapshot = {}
+    for path, registration in registry.registrations.items():
+        keys = set()
+        for face in registration.faces:
+            names = {
+                face.canonical_family,
+                face.display_family,
+                face.qt_family,
+                face.original_family,
+                face.full_name,
+                face.postscript_name,
+                *face.aliases,
+            }
+            keys.update(normalize_key(name) for name in names if name)
+        snapshot[path] = registration.fingerprint, frozenset(keys)
+    return snapshot
+
+
+def build_font_change_set(
+    before: Mapping[str, Tuple[tuple[int, int], FrozenSet[str]]],
+    after: Mapping[str, Tuple[tuple[int, int], FrozenSet[str]]],
+    *,
+    unknown_database_change: bool,
+) -> FontChangeSet:
+    """Return exact custom-family changes or conservatively refresh all."""
+    if unknown_database_change:
+        return FontChangeSet.every_font()
+    affected = set()
+    for path in before.keys() | after.keys():
+        previous = before.get(path)
+        current = after.get(path)
+        if previous == current:
+            continue
+        if previous is not None:
+            affected.update(previous[1])
+        if current is not None:
+            affected.update(current[1])
+    return (
+        FontChangeSet.for_families(affected)
+        if affected
+        else FontChangeSet.every_font()
+    )
 
 
 def reinitialize_current_fontconfig() -> FontconfigRefresh:

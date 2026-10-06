@@ -13,7 +13,9 @@ from ballontranslator.utils.text_effects import (
 )
 from ballontranslator.utils.config import save_text_styles, text_styles
 from ballontranslator.utils import config as C
-from ..font_family import qfont_with_family, rebind_qfont
+from ..font_family import (
+    next_font_rebind_generation, qfont_with_family, rebind_qfont,
+)
 from ...custom_widget import PanelArea, Widget, FlowLayout
 from ...misc import themed_icon_url
 
@@ -216,11 +218,13 @@ class TextStyleLabel(Widget):
             return
         return super().mouseMoveEvent(event)
 
-    def refresh_font_preview(self) -> None:
+    def refresh_font_preview(self, generation: Optional[int] = None) -> None:
+        if generation is None:
+            generation = next_font_rebind_generation()
         font = rebind_qfont(qfont_with_family(
             self.stylelabel.font(),
             self.fontfmt.font_family,
-        ))
+        ), generation)
         # QWidget ignores an equal-looking QFont assignment even if its native
         # engine was detached. Make the synchronous transition observable.
         placeholder = QFont(font)
@@ -559,11 +563,13 @@ class TextStylePresetPanel(PanelArea):
         if save_styles:
             save_text_styles()
 
-    def refresh_font_previews(self) -> None:
+    def refresh_font_previews(self, generation: Optional[int] = None) -> None:
         """Rebind preset labels after the Qt font database changes."""
+        if generation is None:
+            generation = next_font_rebind_generation()
         for index in range(self.count()):
             label: TextStyleLabel = self.flayout.itemAt(index).widget()
-            label.refresh_font_preview()
+            label.refresh_font_preview(generation)
         self.resizeToContent()
 
     def contextMenuEvent(self, e: QContextMenuEvent):

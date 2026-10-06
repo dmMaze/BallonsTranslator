@@ -18,8 +18,10 @@ from qtpy.QtWidgets import QApplication
 from ballontranslator.utils import shared
 from ballontranslator.utils.font_registry import build_font_registry, load_custom_group_table
 from ballontranslator.utils.font_refresh import (
-    FontconfigRefresh, invalidate_qt_fonts, refresh_font_registry,
-    reinitialize_current_fontconfig, runtime_font_refresh_supported, scan_custom_fonts,
+    FontChangeSet, FontconfigRefresh, build_font_change_set,
+    invalidate_qt_fonts, refresh_font_registry, reinitialize_current_fontconfig,
+    runtime_font_refresh_supported, scan_custom_fonts,
+    snapshot_registered_fonts,
 )
 
 SEED = Path(__file__).resolve().parents[1] / 'ballontranslator/assets/font_refresh/Abel-Regular.ttf'
@@ -59,12 +61,22 @@ def test_non_linux_does_not_load_fontconfig():
         assert reinitialize_current_fontconfig().status == 'skipped'
 
 
-def test_refresh_updates_current_page_and_style_previews() -> None:
+def test_refresh_updates_affected_current_page_and_style_previews() -> None:
     from ballontranslator.ui.mainwindow import MainWindow
 
     items = [
-        SimpleNamespace(refresh_font_metrics=Mock()),
-        SimpleNamespace(refresh_font_metrics=Mock()),
+        SimpleNamespace(
+            font_family_keys=Mock(return_value={'family a'}),
+            refresh_font_metrics=Mock(),
+        ),
+        SimpleNamespace(
+            font_family_keys=Mock(return_value={'family b'}),
+            refresh_font_metrics=Mock(),
+        ),
+        SimpleNamespace(
+            font_family_keys=Mock(return_value={'family a', 'family b'}),
+            refresh_font_metrics=Mock(),
+        ),
     ]
     previews = Mock()
     window = SimpleNamespace(
@@ -75,11 +87,70 @@ def test_refresh_updates_current_page_and_style_previews() -> None:
         on_show_only_custom_font=Mock(),
     )
 
-    MainWindow.on_fonts_refreshed(window)
-    MainWindow.on_fonts_refreshed(window)
+    MainWindow.on_fonts_refreshed(
+        window,
+        FontChangeSet.for_families({'Family A'}),
+    )
+    MainWindow.on_fonts_refreshed(
+        window,
+        FontChangeSet.for_families({'Family B'}),
+    )
+    MainWindow.on_fonts_refreshed(window, FontChangeSet.every_font())
 
-    assert [item.refresh_font_metrics.call_count for item in items] == [2, 2]
-    assert previews.call_count == 2
+    assert [item.refresh_font_metrics.call_count for item in items] == [2, 2, 3]
+    assert [item.font_family_keys.call_count for item in items] == [2, 2, 2]
+    assert previews.call_count == 3
+    generations = [call.args[0] for call in previews.call_args_list]
+    assert len(set(generations)) == 3
+    assert [call.args[0] for call in items[0].refresh_font_metrics.call_args_list] == [
+        generations[0], generations[2],
+    ]
+    assert [call.args[0] for call in items[1].refresh_font_metrics.call_args_list] == [
+        generations[1], generations[2],
+    ]
+    assert [call.args[0] for call in items[2].refresh_font_metrics.call_args_list] == generations
+
+
+def test_font_change_set_tracks_changed_custom_registration() -> None:
+    from ballontranslator.utils.font_registry import (
+        FontFace,
+        FontRegistry,
+        RegisteredCustomFont,
+    )
+
+    family_a = FontFace('Family A', 'Display A', 'Qt Family A')
+    family_b = FontFace('Family B', 'Display B', 'Qt Family B')
+    before_registry = FontRegistry(registrations={
+        'a.ttf': RegisteredCustomFont(1, (10, 100), [family_a]),
+        'b.ttf': RegisteredCustomFont(2, (20, 200), [family_b]),
+    })
+    after_registry = FontRegistry(registrations={
+        'a.ttf': RegisteredCustomFont(3, (11, 101), [family_a]),
+        'b.ttf': RegisteredCustomFont(2, (20, 200), [family_b]),
+    })
+    before = snapshot_registered_fonts(before_registry)
+    after = snapshot_registered_fonts(after_registry)
+
+    changes = build_font_change_set(
+        before,
+        after,
+        unknown_database_change=False,
+    )
+
+    assert not changes.all_fonts
+    for family in ('family a', 'display a', 'qt family a'):
+        assert changes.affects({family})
+    assert not changes.affects({'family b'})
+    assert build_font_change_set(
+        after,
+        after,
+        unknown_database_change=False,
+    ).all_fonts
+    assert build_font_change_set(
+        before,
+        after,
+        unknown_database_change=True,
+    ).all_fonts
 
 
 @pytest.mark.parametrize('families', [
@@ -87,18 +158,24 @@ def test_refresh_updates_current_page_and_style_previews() -> None:
     ['Primary family'],
     ['Primary family', 'Fallback family'],
 ])
-def test_rebind_qfont_preserves_requested_values(families) -> None:
+def test_rebind_qfont_preserves_requested_values_and_changes_cache_key(
+    families,
+) -> None:
     from qtpy.QtGui import QFont
     from ballontranslator.ui.text_engine.font_family import rebind_qfont
 
     font = QFont()
     font.setFamilies(families)
     font.setPointSizeF(17.5)
-    rebound = rebind_qfont(font)
+    rebound = rebind_qfont(font, 41)
+    next_generation = rebind_qfont(font, 42)
 
-    assert rebound == font
-    assert rebound.family() == font.family()
-    assert rebound.families() == font.families()
+    assert rebound.families()[:-1] == font.families()
+    assert next_generation.families()[:-1] == font.families()
+    assert rebound.families()[-1] != next_generation.families()[-1]
+    assert rebound != next_generation
+    if families:
+        assert rebound.family() == font.family()
 
 
 def test_fontconfig_unavailable():
@@ -349,6 +426,10 @@ def test_repeated_refresh_rebinds_every_mixed_font_run(
         char_format.setFont(font)
         cursor.setCharFormat(char_format)
 
+    assert {family.casefold() for family in families}.issubset(
+        item.font_family_keys()
+    )
+
     cursor = QTextCursor(document)
     cursor.setPosition(8)
     cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
@@ -366,7 +447,7 @@ def test_repeated_refresh_rebinds_every_mixed_font_run(
     )
     generation = 0
 
-    def tagged_rebind(font: QFont) -> QFont:
+    def tagged_rebind(font: QFont, _rebind_generation: int) -> QFont:
         rebound = QFont(font)
         rebound.setFamilies([f'Rebound {generation}: {font.family()}'])
         return rebound
@@ -421,9 +502,9 @@ def test_repeated_layout_reuses_rebound_fonts_and_plain_cache(
     original_rebind = layout_module.rebind_qfont
     rebound_fonts = []
 
-    def counted_rebind(font: QFont) -> QFont:
+    def counted_rebind(font: QFont, rebind_generation: int) -> QFont:
         rebound_fonts.append(QFont(font))
-        return original_rebind(font)
+        return original_rebind(font, rebind_generation)
 
     monkeypatch.setattr(layout_module, 'rebind_qfont', counted_rebind)
     item.refresh_font_metrics()
@@ -530,7 +611,7 @@ def test_controller_coalesces_and_clears_metrics(runtime_app: QApplication, monk
     controller.status_changed.connect(lambda label, detail: statuses.append((label, detail)))
     controller.busy_changed.connect(lambda value: busy.append(value))
     # Use a pure Python callback that captures no QObject.
-    controller.refreshed.connect(lambda: results.append(True))
+    controller.refreshed.connect(lambda changes: results.append(changes))
     try:
         get_char_width('W', 'Missing Runtime Font', 18, QFont.Weight.Normal, False)
         get_punc_rect('.', 'Missing Runtime Font', 18, QFont.Weight.Normal, False)
@@ -539,6 +620,7 @@ def test_controller_coalesces_and_clears_metrics(runtime_app: QApplication, monk
         assert busy[-1] is True
         assert statuses[-1][0] == 'Refreshing…'
         wait_refresh(controller, 1, results)
+        assert results[-1].all_fonts
         assert statuses[-1][0] == 'Refreshed'
         assert 'families' in statuses[-1][1]
         assert busy[-1] is False
@@ -548,12 +630,111 @@ def test_controller_coalesces_and_clears_metrics(runtime_app: QApplication, monk
         assert len(results) == 1
         controller.request_manual_refresh()
         wait_refresh(controller, 2, results)
+        assert results[-1].all_fonts
     finally:
         detector.stop()
         controller.shutdown()
         controller.deleteLater()
         owner.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_manual_custom_font_change_emits_targeted_set(
+    runtime_app: QApplication,
+    database,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from ballontranslator.ui.font_refresh import FontRefreshController
+
+    fonts = tmp_path / 'fonts'
+    fonts.mkdir()
+    path = fonts / 'font.ttf'
+    path.write_bytes(SEED.read_bytes())
+    registry = build_font_registry(
+        database,
+        [str(path)],
+        database.families(),
+    )
+    monkeypatch.setattr(shared, 'PROGRAM_PATH', str(tmp_path))
+    monkeypatch.setattr(shared, 'HEADLESS', False)
+    monkeypatch.setattr(shared, 'FONT_REGISTRY', registry)
+    monkeypatch.setattr(shared, 'FONT_FAMILIES', set(database.families()))
+    owner = QObject()
+    controller = FontRefreshController(owner)
+    results = []
+    controller.refreshed.connect(lambda changes: results.append(changes))
+    try:
+        path.write_bytes(SEED.read_bytes() + b'\0')
+        controller.request_manual_refresh()
+        wait_refresh(controller, 1, results)
+
+        assert not results[0].all_fonts
+        assert results[0].affects({'Abel'})
+    finally:
+        controller.shutdown()
+        for registration in shared.FONT_REGISTRY.registrations.values():
+            database.removeApplicationFont(registration.font_id)
+        owner.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+def test_removed_font_is_released_by_existing_text_block(
+    runtime_app: QApplication,
+    database,
+    monkeypatch,
+) -> None:
+    from qtpy.QtGui import QFontInfo
+    from qtpy.QtWidgets import QGraphicsScene
+    from ballontranslator.ui.text_engine.item import TextBlkItem
+    from ballontranslator.ui.text_engine.layout import (
+        FONT_REBIND_LAYOUT_FORMAT_PROPERTY,
+    )
+    from ballontranslator.utils.font_registry import FontRegistry
+    from ballontranslator.utils.textblock import TextBlock
+
+    font_id = database.addApplicationFont(str(SEED))
+    assert font_id >= 0
+    family = database.applicationFontFamilies(font_id)[0]
+    block = TextBlock([0, 0, 500, 300])
+    block._bounding_rect = [0, 0, 500, 300]
+    block.translation = 'Removal contract'
+    block.fontformat.font_family = family
+    item = TextBlkItem(block, 0)
+    scene = QGraphicsScene()
+    scene.addItem(item)
+    source_font = item.layout.fragment_format_ranges(
+        0, 0, len(block.translation)
+    )[0][2].font()
+    assert QFontInfo(source_font).family() == family
+
+    assert database.removeApplicationFont(font_id)
+    monkeypatch.setattr(shared, 'FONT_REGISTRY', FontRegistry())
+    item.refresh_font_metrics()
+    refreshed_font = next(
+        entry.format.font()
+        for entry in item.document().firstBlock().layout().formats()
+        if entry.format.property(FONT_REBIND_LAYOUT_FORMAT_PROPERTY)
+    )
+    refreshed_family = QFontInfo(refreshed_font).family()
+
+    fresh_block = TextBlock([0, 0, 500, 300])
+    fresh_block._bounding_rect = [0, 0, 500, 300]
+    fresh_block.translation = block.translation
+    fresh_block.fontformat.font_family = family
+    fresh_item = TextBlkItem(fresh_block, 1)
+    fresh_scene = QGraphicsScene()
+    fresh_scene.addItem(fresh_item)
+    try:
+        fresh_font = fresh_item.layout.fragment_format_ranges(
+            0, 0, len(block.translation)
+        )[0][2].font()
+        fresh_family = QFontInfo(fresh_font).family()
+        assert refreshed_family == fresh_family
+        assert refreshed_family != family
+    finally:
+        scene.clear()
+        fresh_scene.clear()
 
 
 def test_headless_controller_never_starts_worker(app, monkeypatch):

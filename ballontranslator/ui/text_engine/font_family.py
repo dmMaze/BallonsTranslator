@@ -2,6 +2,7 @@
 
 from hashlib import sha1
 from html import escape, unescape
+from itertools import count
 import re
 from typing import Callable, Iterable, Sequence
 
@@ -20,6 +21,13 @@ _FONT_FAMILY_DECLARATION = re.compile(
     re.IGNORECASE,
 )
 _FONT_REBIND_SENTINEL = 'BalloonsTranslator Font Reload Sentinel'
+_FONT_REBIND_CACHE_PREFIX = 'BalloonsTranslator Font Reload Generation '
+_FONT_REBIND_GENERATIONS = count(1)
+
+
+def next_font_rebind_generation() -> int:
+    """Return one process-wide native-font cache generation."""
+    return next(_FONT_REBIND_GENERATIONS)
 
 
 def _font_families_from_declaration(declaration: str) -> tuple[str, ...]:
@@ -160,23 +168,31 @@ def qfont_with_family(font: QFont, family: str) -> QFont:
     return result
 
 
-def rebind_qfont(font: QFont) -> QFont:
-    """Return an equal font whose native engine will be resolved again.
+def rebind_qfont(font: QFont, generation: int) -> QFont:
+    """Return a semantically equivalent font with a fresh native cache key.
 
     >>> original = QFont('Example Family', 12)
-    >>> rebind_qfont(original) == original
+    >>> rebound = rebind_qfont(original, 1)
+    >>> rebound.family() == original.family()
     True
     """
     result = QFont(font)
     family = result.family()
-    families = list(result.families())
+    families = [
+        candidate for candidate in result.families()
+        if not candidate.startswith(_FONT_REBIND_CACHE_PREFIX)
+    ]
+    cache_family = f'{_FONT_REBIND_CACHE_PREFIX}{generation}'
     # Changing away and back detaches the implicitly shared QFont data. Merely
     # copying or setting the same family can retain a pre-refresh native engine.
+    # Keep a generation-specific nonexistent fallback in this transient QFont:
+    # Windows GDI can otherwise reuse a removed face until its QTextDocument is
+    # destroyed. The requested primary/fallback order remains unchanged.
     # Restore family() before setFamilies(): Qt 5 can update the fallback list
     # without updating the primary-family accessor.
     result.setFamily(_FONT_REBIND_SENTINEL)
     result.setFamily(family)
-    result.setFamilies(families)
+    result.setFamilies([*families, cache_family])
     return result
 
 
