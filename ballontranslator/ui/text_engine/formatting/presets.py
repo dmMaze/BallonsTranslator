@@ -217,10 +217,10 @@ class TextStyleLabel(Widget):
         return super().mouseMoveEvent(event)
 
     def refresh_font_preview(self) -> None:
-        font = qfont_with_family(
-            rebind_qfont(self.stylelabel.font()),
+        font = rebind_qfont(qfont_with_family(
+            self.stylelabel.font(),
             self.fontfmt.font_family,
-        )
+        ))
         # QWidget ignores an equal-looking QFont assignment even if its native
         # engine was detached. Make the synchronous transition observable.
         placeholder = QFont(font)
@@ -230,7 +230,10 @@ class TextStyleLabel(Widget):
         self.stylelabel.resizeToContent()
 
     def updatePreview(self) -> None:
-        self.refresh_font_preview()
+        self.stylelabel.setFont(qfont_with_family(
+            self.stylelabel.font(),
+            self.fontfmt.font_family,
+        ))
 
         d = int(self.colorw.width() * 0.66)
         radius = d / 2
@@ -259,6 +262,7 @@ class TextStyleLabel(Widget):
         painter.drawRoundedRect(draw_rect, draw_radius, draw_radius)
         painter.end()
         self.colorw.setPixmap(pixmap)
+        self.stylelabel.resizeToContent()
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         self._double_clicked = True

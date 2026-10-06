@@ -144,6 +144,19 @@ class TextStylePresetReorderingTest(unittest.TestCase):
                 self.assertEqual(applied, expected)
             self.assertEqual(label.stylelabel.font(), expected)
 
+    def test_regular_preview_update_does_not_force_font_change(self) -> None:
+        panel = self._make_panel('First')
+        label = self._labels(panel)[0]
+        label.fontfmt.font_family = label.stylelabel.font().family()
+        label.updatePreview()
+        recorder = _FontChangeRecorder(label.stylelabel)
+        label.stylelabel.installEventFilter(recorder)
+
+        label.fontfmt.frgb = (12, 34, 56)
+        label.updatePreview()
+
+        self.assertEqual(recorder.fonts, [])
+
     def test_drop_in_row_gap_uses_horizontal_insertion_point(self) -> None:
         panel = self._make_panel(*(f'Style {index}' for index in range(6)))
         panel.flayout.setGeometry(QRect(0, 0, 2000, 200))
