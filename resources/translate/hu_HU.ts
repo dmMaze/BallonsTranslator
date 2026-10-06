@@ -1007,6 +1007,42 @@
         <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
         <translation>A betűk közötti maximális eltérés. A magasabb értékeknél a keresés alaposabb, de lassabb.</translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Haladó</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>Alapértelmezett</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>Betűtípus-háttérrendszer</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>Alapértelmezett: a rendszer által ajánlott
+GDI: kompatibilis a NexusFonttal
+FreeType: a Qt betűtípusmotorja</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>A betűtípus-háttérrendszer súgója</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>A módosítások alkalmazásához újraindítás szükséges</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>Alkalmazás újraindítása most</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Újraindítás</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>

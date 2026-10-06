@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import List, Optional, Union, Tuple
 
 from qtpy.QtWidgets import (
@@ -7,14 +8,19 @@ from qtpy.QtWidgets import (
     QSplitter, QScrollArea, QLineEdit, QStackedWidget, QMessageBox,
     QListWidget, QSpinBox, QProgressDialog, QFileDialog, QListWidgetItem,
     QDialog, QAbstractItemView, QButtonGroup, QRadioButton,
-    QFrame,
+    QFrame, QToolButton,
 )
 from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
-from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIcon, QIntValidator, QValidator, QFocusEvent
 
 from .custom_widget import ConfigComboBox, NoBorderPushBtn, ScrollBar, Widget
 from ballontranslator.utils import shared
-from ballontranslator.utils.config import OCRTextPostprocess, pcfg
+from ballontranslator.utils.config import (
+    FONT_BACKEND_DEFAULT,
+    OCRTextPostprocess,
+    font_backend_options,
+    pcfg,
+)
 from ballontranslator.utils.version import APP_VERSION
 from ballontranslator.utils.network_mirrors import (
     HUGGINGFACE_MIRROR_OPTIONS,
@@ -40,6 +46,7 @@ from ballontranslator.utils.shared import (
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.modules.lazy_registry import probe_torch_package
 from .llm_profile_widgets import LLMProfilesWidget
+from .misc import themed_icon_path
 from .codex_settings import CodexSettingsPanel
 from .framelesswindow import (
     DialogCloseButton,
@@ -688,6 +695,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     """
 
     save_config = Signal()
+    restart_requested = Signal()
     unload_models = Signal()
     prepare_selected_modules = Signal()
     reinstall_torch = Signal()
@@ -1341,6 +1349,128 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         vertical_layout_block.layout().setContentsMargins(0, 0, 0, 0)
         vertical_layout_block.setContentsMargins(0, 0, 0, 0)
 
+        self.font_backend_combobox = None
+        self.font_backend_restart_row = None
+        self.font_backend_restart_button = None
+        self.font_backend_values = font_backend_options(sys.platform)
+        self._active_font_backend = pcfg.font_backend.for_platform(sys.platform)
+        if len(self.font_backend_values) > 1:
+            self.font_backend_advanced_group = Widget()
+            self.font_backend_advanced_group.setObjectName(
+                'FontBackendAdvancedGroup'
+            )
+            advanced_layout = QVBoxLayout(self.font_backend_advanced_group)
+            advanced_layout.setContentsMargins(0, 0, 0, 0)
+            advanced_layout.setSpacing(CONFIG_CONTENT_MARGIN)
+            advanced_title = ConfigTextLabel(
+                self.tr('Advanced'),
+                CONFIG_FONTSIZE_CONTENT,
+                QFont.Weight.Normal,
+            )
+            advanced_title.setObjectName('FontBackendAdvancedTitle')
+            advanced_layout.addWidget(advanced_title)
+
+            backend_labels = {
+                FONT_BACKEND_DEFAULT: self.tr('Default'),
+                'gdi': 'GDI',
+                'freetype': 'FreeType',
+            }
+            backend_row = Widget(self.font_backend_advanced_group)
+            backend_row.setObjectName('FontBackendSelectorRow')
+            backend_layout = QHBoxLayout(backend_row)
+            backend_layout.setContentsMargins(0, 0, 0, 0)
+            backend_layout.setSpacing(8)
+            backend_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            backend_label = ConfigTextLabel(
+                self.tr('Font backend'),
+                CONFIG_FONTSIZE_CONTENT,
+                QFont.Weight.Normal,
+            )
+            font = backend_label.font()
+            font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+            backend_label.setFont(font)
+            backend_layout.addWidget(backend_label)
+            self.font_backend_help_button = QToolButton(backend_row)
+            self.font_backend_help_button.setObjectName(
+                'FontBackendHelpButton'
+            )
+            self.font_backend_help_button.setText('?')
+            self.font_backend_help_button.setToolTip(
+                self.tr(
+                    'Default: system recommended\n'
+                    'GDI: compatible with NexusFont\n'
+                    'FreeType: Qt font engine'
+                )
+            )
+            self.font_backend_help_button.setAccessibleName(
+                self.tr('Font backend help')
+            )
+            backend_layout.addWidget(self.font_backend_help_button)
+            self.font_backend_combobox = ConfigComboBox(
+                fix_size=True,
+                scrollWidget=self,
+            )
+            self.font_backend_combobox.addItems(
+                [backend_labels[value] for value in self.font_backend_values]
+            )
+            self.font_backend_combobox.setObjectName('FontBackendComboBox')
+            self.font_backend_combobox.setCurrentIndex(
+                self.font_backend_values.index(self._active_font_backend)
+            )
+            backend_layout.addWidget(self.font_backend_combobox)
+            advanced_layout.addWidget(backend_row)
+
+            self.font_backend_restart_row = Widget(
+                self.font_backend_advanced_group
+            )
+            self.font_backend_restart_row.setObjectName(
+                'FontBackendRestartRow'
+            )
+            restart_layout = QHBoxLayout(self.font_backend_restart_row)
+            restart_layout.setContentsMargins(0, 0, 0, 0)
+            restart_layout.setSpacing(6)
+            restart_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self.font_backend_restart_notice = QLabel(
+                self.tr('Restart required to apply changes'),
+                self.font_backend_restart_row,
+            )
+            self.font_backend_restart_notice.setObjectName(
+                'FontBackendRestartNotice'
+            )
+            restart_layout.addWidget(self.font_backend_restart_notice)
+            self.font_backend_restart_button = QToolButton(
+                self.font_backend_restart_row
+            )
+            self.font_backend_restart_button.setIcon(
+                QIcon(themed_icon_path('fontfmt_reload.svg'))
+            )
+            self.font_backend_restart_button.setIconSize(QSize(16, 16))
+            self.font_backend_restart_button.setObjectName(
+                'FontBackendRestartButton'
+            )
+            self.font_backend_restart_button.setToolTip(
+                self.tr('Restart application now')
+            )
+            self.font_backend_restart_button.setAccessibleName(
+                self.tr('Restart')
+            )
+            self.font_backend_restart_button.clicked.connect(
+                self.restart_requested.emit
+            )
+            restart_layout.addWidget(self.font_backend_restart_button)
+            self.font_backend_restart_row.hide()
+            backend_layout.addWidget(self.font_backend_restart_row)
+            backend_layout.addStretch()
+            self.font_backend_combobox.currentIndexChanged.connect(
+                self.on_font_backend_changed
+            )
+
+            advanced_block = typesettingConfigPanel.addBlockWidget(
+                self.font_backend_advanced_group
+            )
+            advanced_block.layout().setContentsMargins(0, 0, 0, 0)
+            advanced_block.setContentsMargins(0, 0, 0, 0)
+
         self.rst_imgformat_combobox, imsave_sublock = applicationConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP', 'JXL'], self.tr('Result image format'))
         self.rst_imgformat_combobox.activated.connect(self.on_rst_imgformat_changed)
         self.rst_imgquality_edit = PercentageLineEdit('100')
@@ -1444,6 +1574,20 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         section_key = SECTION_ALIASES.get(section_key, section_key)
         self.configContent.showSection(section_key)
         self.configTable.setCurrentSection(section_key)
+
+    def on_font_backend_changed(self, index: int) -> None:
+        if not 0 <= index < len(self.font_backend_values):
+            return
+        selected_backend = self.font_backend_values[index]
+        pcfg.font_backend.set_for_platform(sys.platform, selected_backend)
+        self._update_font_backend_restart_prompt(selected_backend)
+        self.save_config.emit()
+
+    def _update_font_backend_restart_prompt(self, selected_backend: str) -> None:
+        if self.font_backend_restart_row is not None:
+            self.font_backend_restart_row.setVisible(
+                selected_backend != self._active_font_backend
+            )
 
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
@@ -1886,5 +2030,13 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
         self.package_auto_install_checker.setChecked(pcfg.package_manager.auto_install_missing_packages)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)
+        if self.font_backend_combobox is not None:
+            selected_backend = pcfg.font_backend.for_platform(sys.platform)
+            self.font_backend_combobox.blockSignals(True)
+            self.font_backend_combobox.setCurrentIndex(
+                self.font_backend_values.index(selected_backend)
+            )
+            self.font_backend_combobox.blockSignals(False)
+            self._update_font_backend_restart_prompt(selected_backend)
 
         self.blockSignals(False)

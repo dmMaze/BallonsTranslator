@@ -38,6 +38,7 @@ from ballontranslator.utils.fontformat import (
     font_weight_to_qt,
     pt2px,
 )
+from ballontranslator.utils.font_registry import normalize_key
 from .font_family import (
     font_family_for_project,
     qfont_with_family,
@@ -501,7 +502,26 @@ class TextBlkItem(QGraphicsTextItem):
     def repaint_background(self, render_scale: float = 1.0):
         return self.effect_renderer.repaint_background(render_scale)
 
-    def refresh_font_metrics(self) -> None:
+    def font_family_keys(self) -> set[str]:
+        """Return every requested family used by this live rich-text item."""
+        families = {self.fontformat.font_family}
+
+        def collect(font: QFont) -> None:
+            families.add(font.family())
+            families.update(font.families())
+
+        document = self.document()
+        collect(document.defaultFont())
+        block = document.firstBlock()
+        while block.isValid():
+            iterator = block.begin()
+            while not iterator.atEnd():
+                collect(iterator.fragment().charFormat().font())
+                iterator += 1
+            block = block.next()
+        return {normalize_key(family) for family in families if family}
+
+    def refresh_font_metrics(self, generation: Optional[int] = None) -> None:
         """Reshape live text without changing its formatting or undo history.
 
         >>> callable(TextBlkItem.refresh_font_metrics)
@@ -511,7 +531,7 @@ class TextBlkItem(QGraphicsTextItem):
         was_repainting = self.repainting
         self.repainting = True
         try:
-            self.layout.invalidate_native_metrics()
+            self.layout.refresh_native_fonts(generation)
         finally:
             self.repainting = was_repainting
         self.repaint_background()

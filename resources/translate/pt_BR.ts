@@ -295,7 +295,43 @@
       <source>Shortcut</source>
       <translation>Atalho</translation>
     </message>
-  </context>
+    <message>
+      <source>Advanced</source>
+      <translation>Avançado</translation>
+    </message>
+    <message>
+      <source>Default</source>
+      <translation>Padrão</translation>
+    </message>
+    <message>
+      <source>Font backend</source>
+      <translation>Backend de fontes</translation>
+    </message>
+    <message>
+      <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+      <translation>Padrão: recomendado pelo sistema
+GDI: compatível com o NexusFont
+FreeType: mecanismo de fontes do Qt</translation>
+    </message>
+    <message>
+      <source>Font backend help</source>
+      <translation>Ajuda sobre o backend de fontes</translation>
+    </message>
+    <message>
+      <source>Restart required to apply changes</source>
+      <translation>Reinicie para aplicar as alterações</translation>
+    </message>
+    <message>
+      <source>Restart application now</source>
+      <translation>Reiniciar o aplicativo agora</translation>
+    </message>
+    <message>
+      <source>Restart</source>
+      <translation>Reiniciar</translation>
+    </message>
+</context>
   <context>
     <name>DrawingPanel</name>
     <message>

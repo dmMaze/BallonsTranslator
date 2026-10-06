@@ -989,6 +989,42 @@
         <source>Show only custom fonts</source>
         <translation>커스텀 폰트만 표시</translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>고급</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>기본값</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>글꼴 백엔드</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>기본값: 시스템 권장
+GDI: NexusFont와 호환
+FreeType: Qt 글꼴 엔진</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>글꼴 백엔드 도움말</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>변경 사항을 적용하려면 다시 시작해야 합니다</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>지금 애플리케이션 다시 시작</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>다시 시작</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>

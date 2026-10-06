@@ -1085,6 +1085,42 @@
         <source>Codex</source>
         <translation>Codex</translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>高级</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>默认</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>字体后端</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>默认：系统推荐
+GDI：兼容 NexusFont
+FreeType：Qt 字体引擎</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>字体后端说明</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>需要重启应用更改</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>立即重启应用</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>重启</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>
