@@ -33,6 +33,7 @@ from .layout import (
     CharFontFormat,
     SceneTextLayout,
     _block_cursor_position,
+    layout_formats_without_font_rebind,
     paint_context_without_selection_ranges,
 )
 from .rendering.emphasis import (
@@ -338,7 +339,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._plain_column_stroke_format = stroke_alignment_format()
 
     def _plain_column_formats(self, layout: QTextLayout) -> Optional[tuple]:
-        formats = layout.formats()
+        formats = layout_formats_without_font_rebind(layout.formats())
         if not formats:
             return ()
         # The renderer's transparent alignment outline changes raster policy,

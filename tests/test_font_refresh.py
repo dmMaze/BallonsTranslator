@@ -392,6 +392,59 @@ def test_repeated_refresh_rebinds_every_mixed_font_run(
     scene.clear()
 
 
+@pytest.mark.parametrize('vertical', [False, True])
+def test_repeated_layout_reuses_rebound_fonts_and_plain_cache(
+    runtime_app: QApplication,
+    monkeypatch,
+    vertical: bool,
+) -> None:
+    from qtpy.QtGui import QFont
+    from qtpy.QtWidgets import QGraphicsScene
+    from ballontranslator.ui.text_engine import layout as layout_module
+    from ballontranslator.ui.text_engine.item import TextBlkItem
+    from ballontranslator.utils.textblock import TextBlock
+
+    block = TextBlock([0, 0, 1200, 1200])
+    block._bounding_rect = [0, 0, 1200, 1200]
+    block.translation = '\n'.join(['测试段落'] * 20)
+    block.vertical = vertical
+    item = TextBlkItem(block, 0)
+    scene = QGraphicsScene()
+    scene.addItem(item)
+    layout = item.layout
+    original_rebind = layout_module.rebind_qfont
+    rebound_fonts = []
+
+    def counted_rebind(font: QFont) -> QFont:
+        rebound_fonts.append(QFont(font))
+        return original_rebind(font)
+
+    monkeypatch.setattr(layout_module, 'rebind_qfont', counted_rebind)
+    item.refresh_font_metrics()
+    calls_after_refresh = len(rebound_fonts)
+    cache = (
+        layout._plain_column_cache if vertical
+        else layout._plain_line_cache
+    )
+    assert len(cache) == item.document().blockCount()
+
+    reuse_name = '_reuse_plain_column' if vertical else '_reuse_plain_line'
+    reuse = getattr(layout, reuse_name)
+    reused = []
+
+    def record_reuse(*args) -> bool:
+        result = reuse(*args)
+        reused.append(result)
+        return result
+
+    monkeypatch.setattr(layout, reuse_name, record_reuse)
+    layout.reLayoutEverything()
+
+    assert reused and all(reused)
+    assert len(rebound_fonts) == calls_after_refresh
+    scene.clear()
+
+
 def wait_refresh(controller, expected, results):
     for _ in range(100):
         QTest.qWait(25)

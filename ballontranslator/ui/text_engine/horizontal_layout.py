@@ -21,6 +21,7 @@ from .layout import (
     SceneTextLayout,
     _block_cursor_position,
     get_punc_rect,
+    layout_formats_without_font_rebind,
     paint_context_without_selection_ranges,
     selection_segments_excluding,
 )
@@ -104,7 +105,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
         layout = block.layout()
         if (
             layout.lineCount() != 1 or layout.preeditAreaText()
-            or layout.formats() or cached.key != self._plain_line_key(block, text)
+            or layout_formats_without_font_rebind(layout.formats())
+            or cached.key != self._plain_line_key(block, text)
         ):
             return False
         line = layout.lineAt(0)
@@ -1211,7 +1213,8 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             self.render_delegate is None and block_text
             and not block_text[-1].isspace()
             and tl.lineCount() == 1 and not tl.preeditAreaText()
-            and not tl.formats() and not ruby_metrics
+            and not layout_formats_without_font_rebind(tl.formats())
+            and not ruby_metrics
             and emphasis_over == 0.0 and emphasis_under == 0.0
             and not relocated_spaces
             and tl.lineAt(0).textStart() == 0

@@ -26,6 +26,25 @@ from .annotations import letter_spacing_value, line_spacing_values
 FONT_REBIND_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1242
 
 
+def is_font_rebind_layout_format(
+    format_range: QTextLayout.FormatRange,
+) -> bool:
+    """Return whether a transient range only refreshes native font binding."""
+    return bool(format_range.format.property(
+        FONT_REBIND_LAYOUT_FORMAT_PROPERTY
+    ))
+
+
+def layout_formats_without_font_rebind(
+    formats: Sequence[QTextLayout.FormatRange],
+) -> list[QTextLayout.FormatRange]:
+    """Return transient formats that can affect layout beyond font rebinding."""
+    return [
+        format_range for format_range in formats
+        if not is_font_rebind_layout_format(format_range)
+    ]
+
+
 def selection_segments_excluding(
     start: int,
     end: int,
@@ -234,6 +253,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.foreground_pixmap: QPixmap = None
         self.relayout_on_changed = True
         self._use_rebound_fonts = False
+        # Reuse detached QFonts until the next database refresh. Document edits
+        # can rebuild layout often, but unchanged fonts need rebinding only once
+        # per refresh generation.
+        self._rebound_fonts: dict[QFont, QFont] = {}
 
         # Effect padding is derived layout state, not rich-text content.
         # QTextDocument margins create undo entries in supported Qt bindings.
@@ -413,7 +436,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                     fcmt = fragment.charFormat()
                     if self._use_rebound_fonts:
                         fcmt = QTextCharFormat(fcmt)
-                        fcmt.setFont(rebind_qfont(fcmt.font()))
+                        fcmt.setFont(self._rebound_font(fcmt.font()))
                     cfmt = CharFontFormat(fcmt, self.letter_spacing)
                     width = cfmt.br.width() if self.need_ideal_width else -1
                     height = (
@@ -454,7 +477,17 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
     def refresh_native_fonts(self) -> None:
         """Re-resolve document fonts without changing document formats."""
         self._use_rebound_fonts = True
+        self._rebound_fonts.clear()
         self.invalidate_native_metrics()
+
+    def _rebound_font(self, font: QFont) -> QFont:
+        """Return one detached native-font binding per refresh generation."""
+        cached = self._rebound_fonts.get(font)
+        if cached is None:
+            key = QFont(font)
+            cached = rebind_qfont(key)
+            self._rebound_fonts[key] = cached
+        return QFont(cached)
 
     def _reset_block_layout(self, block: QTextBlock) -> QTextLayout:
         """Clear one block and restore fresh transient font formats."""
@@ -464,13 +497,11 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         previous_formats = [
             entry for entry in block.layout().formats()
-            if not bool(entry.format.property(
-                FONT_REBIND_LAYOUT_FORMAT_PROPERTY
-            ))
+            if not is_font_rebind_layout_format(entry)
         ]
         block.clearLayout()
         layout = block.layout()
-        layout.setFont(rebind_qfont(block.charFormat().font()))
+        layout.setFont(self._rebound_font(block.charFormat().font()))
         formats = []
         for start, end, char_format in self.fragment_format_ranges(
             block.blockNumber(),
