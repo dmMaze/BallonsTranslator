@@ -1024,6 +1024,7 @@ class MainWindow(mainwindow_cls):
         self.titleBar.font_exclusion_trigger.connect(
             self.configPanel.show_font_exclusion_dialog
         )
+        self.canvas.gv.undo_requested.connect(self.on_undo)
 
         shortcutA = QShortcut(QKeySequence("A"), self)
         shortcutA.activated.connect(self.shortcutBefore)
@@ -1041,6 +1042,8 @@ class MainWindow(mainwindow_cls):
         shortcutZoomIn.activated.connect(self.canvas.gv.scale_up_signal)
         shortcutZoomOut = QShortcut(QKeySequence.StandardKey.ZoomOut, self)
         shortcutZoomOut.activated.connect(self.canvas.gv.scale_down_signal)
+        shortcutZoomFit = QShortcut(QKeySequence("Ctrl+0"), self)
+        shortcutZoomFit.activated.connect(self.canvas.fit_to_screen)
         shortcutCtrlD = QShortcut(QKeySequence("Ctrl+D"), self)
         shortcutCtrlD.activated.connect(self.shortcutCtrlD)
         shortcutSpace = QShortcut(QKeySequence("Space"), self)
