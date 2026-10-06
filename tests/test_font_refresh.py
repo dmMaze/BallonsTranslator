@@ -445,6 +445,57 @@ def test_repeated_layout_reuses_rebound_fonts_and_plain_cache(
     scene.clear()
 
 
+@pytest.mark.parametrize('vertical', [False, True])
+def test_font_refresh_preserves_rich_underline_styles(
+    runtime_app: QApplication,
+    vertical: bool,
+) -> None:
+    from qtpy.QtGui import QTextCharFormat, QTextCursor, QTextFormat
+    from qtpy.QtWidgets import QGraphicsScene
+    from ballontranslator.ui.text_engine.item import TextBlkItem
+    from ballontranslator.ui.text_engine.layout import (
+        FONT_REBIND_LAYOUT_FORMAT_PROPERTY,
+    )
+    from ballontranslator.utils.textblock import TextBlock
+
+    block = TextBlock([0, 0, 500, 300])
+    block._bounding_rect = [0, 0, 500, 300]
+    block.translation = 'AlphaBravo'
+    block.vertical = vertical
+    item = TextBlkItem(block, 0)
+    scene = QGraphicsScene()
+    scene.addItem(item)
+    document = item.document()
+    expected = (
+        QTextCharFormat.UnderlineStyle.WaveUnderline,
+        QTextCharFormat.UnderlineStyle.DashUnderline,
+    )
+    for start, end, style in ((0, 5, expected[0]), (5, 10, expected[1])):
+        cursor = QTextCursor(document)
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        char_format = QTextCharFormat(cursor.charFormat())
+        char_format.setUnderlineStyle(style)
+        cursor.setCharFormat(char_format)
+
+    item.refresh_font_metrics()
+
+    refreshed_styles = tuple(
+        char_format.underlineStyle()
+        for _start, _end, char_format in item.layout.fragment_format_ranges(
+            0, 0, 10
+        )
+    )
+    assert refreshed_styles == expected
+    property_enum = getattr(QTextFormat, 'Property', QTextFormat)
+    for entry in document.firstBlock().layout().formats():
+        if not entry.format.property(FONT_REBIND_LAYOUT_FORMAT_PROPERTY):
+            continue
+        assert not entry.format.hasProperty(property_enum.FontUnderline)
+        assert not entry.format.hasProperty(property_enum.TextUnderlineStyle)
+    scene.clear()
+
+
 def wait_refresh(controller, expected, results):
     for _ in range(100):
         QTest.qWait(25)

@@ -12,6 +12,7 @@ from qtpy.QtGui import (
     QTextCharFormat,
     QTextCursor,
     QTextDocument,
+    QTextFormat,
     QTextFrame,
     QTextLayout,
 )
@@ -24,6 +25,9 @@ from .annotations import letter_spacing_value, line_spacing_values
 # Replace only our font-only layout ranges across consecutive reloads.
 # Ruby, stroke alignment, and other transient layout formats must survive.
 FONT_REBIND_LAYOUT_FORMAT_PROPERTY = 0x100000 + 1242
+_TEXT_FORMAT_PROPERTY = getattr(QTextFormat, 'Property', QTextFormat)
+_FONT_UNDERLINE_PROPERTY = _TEXT_FORMAT_PROPERTY.FontUnderline
+_TEXT_UNDERLINE_STYLE_PROPERTY = _TEXT_FORMAT_PROPERTY.TextUnderlineStyle
 
 
 def is_font_rebind_layout_format(
@@ -43,6 +47,28 @@ def layout_formats_without_font_rebind(
         format_range for format_range in formats
         if not is_font_rebind_layout_format(format_range)
     ]
+
+
+def set_rebound_font_preserving_underline(
+    char_format: QTextCharFormat,
+    font: QFont,
+) -> None:
+    """Replace a format's font without collapsing rich underline styles."""
+    underline_style = char_format.underlineStyle()
+    char_format.setFont(font)
+    char_format.setUnderlineStyle(underline_style)
+
+
+def font_rebind_layout_format(font: QFont) -> QTextCharFormat:
+    """Build a font-only override that leaves document decorations intact."""
+    char_format = QTextCharFormat()
+    char_format.setFont(font)
+    # QFont represents underline as a boolean. Keeping the properties written
+    # by setFont() would replace wave/dash document styles with NoUnderline.
+    char_format.clearProperty(_FONT_UNDERLINE_PROPERTY)
+    char_format.clearProperty(_TEXT_UNDERLINE_STYLE_PROPERTY)
+    char_format.setProperty(FONT_REBIND_LAYOUT_FORMAT_PROPERTY, True)
+    return char_format
 
 
 def selection_segments_excluding(
@@ -436,7 +462,10 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                     fcmt = fragment.charFormat()
                     if self._use_rebound_fonts:
                         fcmt = QTextCharFormat(fcmt)
-                        fcmt.setFont(self._rebound_font(fcmt.font()))
+                        set_rebound_font_preserving_underline(
+                            fcmt,
+                            self._rebound_font(fcmt.font()),
+                        )
                     cfmt = CharFontFormat(fcmt, self.letter_spacing)
                     width = cfmt.br.width() if self.need_ideal_width else -1
                     height = (
@@ -511,9 +540,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
             entry = QTextLayout.FormatRange()
             entry.start = start
             entry.length = end - start
-            entry.format = QTextCharFormat()
-            entry.format.setFont(char_format.font())
-            entry.format.setProperty(FONT_REBIND_LAYOUT_FORMAT_PROPERTY, True)
+            entry.format = font_rebind_layout_format(char_format.font())
             formats.append(entry)
         layout.setFormats([*formats, *previous_formats])
         return layout
