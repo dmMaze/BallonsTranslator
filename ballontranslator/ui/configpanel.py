@@ -1363,7 +1363,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             advanced_layout.setContentsMargins(0, 0, 0, 0)
             advanced_layout.setSpacing(CONFIG_CONTENT_MARGIN)
             advanced_title = ConfigTextLabel(
-                '高级',
+                self.tr('Advanced'),
                 CONFIG_FONTSIZE_CONTENT,
                 QFont.Weight.Normal,
             )
@@ -1371,7 +1371,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             advanced_layout.addWidget(advanced_title)
 
             backend_labels = {
-                FONT_BACKEND_DEFAULT: '默认',
+                FONT_BACKEND_DEFAULT: self.tr('Default'),
                 'gdi': 'GDI',
                 'freetype': 'FreeType',
             }
@@ -1382,10 +1382,13 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             backend_layout.setSpacing(8)
             backend_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             backend_label = ConfigTextLabel(
-                '字体后端',
-                CONFIG_FONTSIZE_CONTENT - 2,
+                self.tr('Font backend'),
+                CONFIG_FONTSIZE_CONTENT,
                 QFont.Weight.Normal,
             )
+            font = backend_label.font()
+            font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+            backend_label.setFont(font)
             backend_layout.addWidget(backend_label)
             self.font_backend_help_button = QToolButton(backend_row)
             self.font_backend_help_button.setObjectName(
@@ -1393,11 +1396,15 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             )
             self.font_backend_help_button.setText('?')
             self.font_backend_help_button.setToolTip(
-                '默认：系统推荐\n'
-                'GDI：兼容 NexusFont\n'
-                'FreeType：Qt 字体引擎'
+                self.tr(
+                    'Default: system recommended\n'
+                    'GDI: compatible with NexusFont\n'
+                    'FreeType: Qt font engine'
+                )
             )
-            self.font_backend_help_button.setAccessibleName('字体后端说明')
+            self.font_backend_help_button.setAccessibleName(
+                self.tr('Font backend help')
+            )
             backend_layout.addWidget(self.font_backend_help_button)
             self.font_backend_combobox = ConfigComboBox(
                 fix_size=True,
@@ -1424,7 +1431,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             restart_layout.setSpacing(6)
             restart_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
             self.font_backend_restart_notice = QLabel(
-                '需要重启应用更改',
+                self.tr('Restart required to apply changes'),
                 self.font_backend_restart_row,
             )
             self.font_backend_restart_notice.setObjectName(
@@ -1441,8 +1448,12 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             self.font_backend_restart_button.setObjectName(
                 'FontBackendRestartButton'
             )
-            self.font_backend_restart_button.setToolTip('立即重启应用')
-            self.font_backend_restart_button.setAccessibleName('重启')
+            self.font_backend_restart_button.setToolTip(
+                self.tr('Restart application now')
+            )
+            self.font_backend_restart_button.setAccessibleName(
+                self.tr('Restart')
+            )
             self.font_backend_restart_button.clicked.connect(
                 self.restart_requested.emit
             )

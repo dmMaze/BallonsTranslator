@@ -7,7 +7,7 @@ from unittest import mock
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QCoreApplication, QEvent
+from qtpy.QtCore import QCoreApplication, QEvent, QTranslator
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.modules import codex
@@ -103,7 +103,7 @@ class FontBackendConfigPanelTests(unittest.TestCase):
                 self.panel.font_backend_combobox.itemText(index)
                 for index in range(self.panel.font_backend_combobox.count())
             ],
-            ['默认', 'GDI', 'FreeType'],
+            ['Default', 'GDI', 'FreeType'],
         )
         self.assertEqual(
             self.panel.font_backend_advanced_group.objectName(),
@@ -117,7 +117,7 @@ class FontBackendConfigPanelTests(unittest.TestCase):
         self.assertFalse(self.panel.font_backend_restart_button.icon().isNull())
         self.assertEqual(
             self.panel.font_backend_restart_notice.text(),
-            '需要重启应用更改',
+            'Restart required to apply changes',
         )
         self.assertEqual(
             self.panel.font_backend_restart_row.parentWidget().objectName(),
@@ -141,6 +141,58 @@ class FontBackendConfigPanelTests(unittest.TestCase):
         self.assertEqual(pcfg.font_backend.windows, FONT_BACKEND_DEFAULT)
         self.assertTrue(self.panel.font_backend_restart_row.isHidden())
         self.assertEqual(saved.call_count, 2)
+
+    def test_font_backend_controls_use_config_panel_translations(self) -> None:
+        translations = {
+            'Default': 'Translated Default',
+            'Default: system recommended\n'
+            'GDI: compatible with NexusFont\n'
+            'FreeType: Qt font engine': 'Translated help',
+            'Font backend help': 'Translated accessible help',
+            'Restart required to apply changes': 'Translated restart notice',
+            'Restart application now': 'Translated restart action',
+            'Restart': 'Translated restart',
+        }
+
+        class BackendTranslator(QTranslator):
+            def translate(
+                self, context, source_text, disambiguation=None, n=-1,
+            ) -> str:
+                if context == 'ConfigPanel':
+                    return translations.get(source_text, '')
+                return ''
+
+        translator = BackendTranslator()
+        self.app.installTranslator(translator)
+        panel = ConfigPanel()
+        try:
+            self.assertEqual(
+                panel.font_backend_combobox.itemText(0),
+                'Translated Default',
+            )
+            self.assertEqual(
+                panel.font_backend_help_button.toolTip(),
+                'Translated help',
+            )
+            self.assertEqual(
+                panel.font_backend_help_button.accessibleName(),
+                'Translated accessible help',
+            )
+            self.assertEqual(
+                panel.font_backend_restart_notice.text(),
+                'Translated restart notice',
+            )
+            self.assertEqual(
+                panel.font_backend_restart_button.toolTip(),
+                'Translated restart action',
+            )
+            self.assertEqual(
+                panel.font_backend_restart_button.accessibleName(),
+                'Translated restart',
+            )
+        finally:
+            panel.deleteLater()
+            self.app.removeTranslator(translator)
 
 
 if __name__ == '__main__':

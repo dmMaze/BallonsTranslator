@@ -359,6 +359,42 @@
         <source>Intermediate image format</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Advanced</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>Default</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>Font backend</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>Font backend help</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>Restart required to apply changes</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>Restart application now</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Restart</translation>
+    </message>
 </context>
 <context>
     <name>FontExcludeDialog</name>

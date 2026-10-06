@@ -638,6 +638,42 @@
         <source>Letter Case</source>
         <translation>Регистр букв</translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Дополнительно</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>По умолчанию</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>Шрифтовый бэкенд</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>По умолчанию: рекомендуется системой
+GDI: совместим с NexusFont
+FreeType: шрифтовой движок Qt</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>Справка по шрифтовому бэкенду</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>Для применения изменений требуется перезапуск</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>Перезапустить приложение сейчас</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Перезапустить</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>

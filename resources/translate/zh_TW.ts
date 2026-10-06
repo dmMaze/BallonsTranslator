@@ -1073,6 +1073,42 @@
         <source>Max spelling difference in letters. Higher values search deeper but perform slower.</source>
         <translation type="vanished">允許的最大拼寫錯誤字元數。數值越大匹配範圍越廣，但搜索速度越慢。</translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>進階</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>預設</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>字型後端</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>預設：系統建議
+GDI：相容 NexusFont
+FreeType：Qt 字型引擎</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>字型後端說明</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>需要重新啟動才能套用變更</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>立即重新啟動應用程式</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>重新啟動</translation>
+    </message>
 </context>
 <context>
     <name>DialogCloseButton</name>

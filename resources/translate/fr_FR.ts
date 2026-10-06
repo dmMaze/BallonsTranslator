@@ -293,6 +293,42 @@
         <source>Shortcut</source>
         <translation>Raccourci</translation>
     </message>
+    <message>
+        <source>Advanced</source>
+        <translation>Avancé</translation>
+    </message>
+    <message>
+        <source>Default</source>
+        <translation>Par défaut</translation>
+    </message>
+    <message>
+        <source>Font backend</source>
+        <translation>Moteur de polices</translation>
+    </message>
+    <message>
+        <source>Default: system recommended
+GDI: compatible with NexusFont
+FreeType: Qt font engine</source>
+        <translation>Par défaut : recommandé par le système
+GDI : compatible avec NexusFont
+FreeType : moteur de polices de Qt</translation>
+    </message>
+    <message>
+        <source>Font backend help</source>
+        <translation>Aide sur le moteur de polices</translation>
+    </message>
+    <message>
+        <source>Restart required to apply changes</source>
+        <translation>Redémarrage requis pour appliquer les modifications</translation>
+    </message>
+    <message>
+        <source>Restart application now</source>
+        <translation>Redémarrer l’application maintenant</translation>
+    </message>
+    <message>
+        <source>Restart</source>
+        <translation>Redémarrer</translation>
+    </message>
 </context>
 <context>
     <name>DrawingPanel</name>
