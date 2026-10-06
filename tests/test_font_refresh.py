@@ -82,16 +82,22 @@ def test_refresh_updates_current_page_and_style_previews() -> None:
     assert previews.call_count == 2
 
 
-def test_rebind_qfont_preserves_requested_values() -> None:
+@pytest.mark.parametrize('families', [
+    [],
+    ['Primary family'],
+    ['Primary family', 'Fallback family'],
+])
+def test_rebind_qfont_preserves_requested_values(families) -> None:
     from qtpy.QtGui import QFont
     from ballontranslator.ui.text_engine.font_family import rebind_qfont
 
     font = QFont()
-    font.setFamilies(['Primary family', 'Fallback family'])
+    font.setFamilies(families)
     font.setPointSizeF(17.5)
     rebound = rebind_qfont(font)
 
     assert rebound == font
+    assert rebound.family() == font.family()
     assert rebound.families() == font.families()
 
 

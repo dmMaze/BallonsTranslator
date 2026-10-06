@@ -168,10 +168,14 @@ def rebind_qfont(font: QFont) -> QFont:
     True
     """
     result = QFont(font)
+    family = result.family()
     families = list(result.families())
     # Changing away and back detaches the implicitly shared QFont data. Merely
     # copying or setting the same family can retain a pre-refresh native engine.
+    # Restore family() before setFamilies(): Qt 5 can update the fallback list
+    # without updating the primary-family accessor.
     result.setFamily(_FONT_REBIND_SENTINEL)
+    result.setFamily(family)
     result.setFamilies(families)
     return result
 
