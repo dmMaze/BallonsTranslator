@@ -335,6 +335,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._proxy_drag_idx = None
         self._proxy_pointer_device_start = None
         self._proxy_actual_scene_start = None
+        self._contrast_outline = False
         self.ctrlblock_group = [ControlBlockItem(self, idx) for idx in range(8)]
 
         pen = QPen(QColor(69, 71, 87), 2, Qt.PenStyle.SolidLine)
@@ -364,6 +365,13 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.refreshDeviceGeometry()
             if self.isVisible():
                 self.updateControlBlocks()
+
+    def setContrastOutline(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if self._contrast_outline == enabled:
+            return
+        self._contrast_outline = enabled
+        self.update()
 
     def boundingRect(self) -> QRectF:
         outline_bounds = getattr(self, '_outline_bounds', QRectF())
@@ -808,6 +816,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def resetInteraction(self) -> None:
         """Clear transient state before the control crosses an item/page boundary."""
+        self.setContrastOutline(False)
         self.reshaping = False
         self.finishResize()
         self.finishProxyDrag()
@@ -952,11 +961,25 @@ class TextBlkShapeControl(QGraphicsRectItem):
         painter.save()
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         path = self._visual_path
-        painter.setPen(self.pen())
-        if path.isEmpty():
-            painter.drawRect(self.rect())
-        else:
-            painter.drawPath(path)
+        pens = (self.pen(),)
+        if self._contrast_outline:
+            # Alternating cosmetic dashes remain visible on light and dark pages.
+            pens = []
+            for color, offset in (
+                (QColor(255, 255, 255), 0.0),
+                (QColor(0, 0, 0), 3.0),
+            ):
+                pen = QPen(color, 2.0, Qt.PenStyle.CustomDashLine)
+                pen.setDashPattern([3.0, 3.0])
+                pen.setDashOffset(offset)
+                pen.setCosmetic(True)
+                pens.append(pen)
+        for pen in pens:
+            painter.setPen(pen)
+            if path.isEmpty():
+                painter.drawRect(self.rect())
+            else:
+                painter.drawPath(path)
         painter.restore()
 
     def hideControls(self):

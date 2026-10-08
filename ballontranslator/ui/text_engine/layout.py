@@ -8,6 +8,7 @@ from qtpy.QtGui import (
     QFont,
     QFontMetricsF,
     QPixmap,
+    QRawFont,
     QTextBlock,
     QTextCharFormat,
     QTextCursor,
@@ -94,24 +95,56 @@ def paint_context_without_selection_ranges(
     delegated.selections = selections
     return delegated
 
-def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
+def _metrics_font(ffamily: str, size: float, weight: int, italic: bool) -> QFont:
     # QFont's string constructor splits comma-bearing family names into a
     # fallback list. The shared boundary preserves one database family name.
     font = qfont_with_family(QFont(), ffamily)
     font.setPointSizeF(size)
     font.setWeight(weight)
     font.setItalic(italic)
-    return QFontMetricsF(font)
+    return font
 
 @lru_cache(maxsize=2048)
 def get_punc_rect(char: str, ffamily: str, size: float, weight: int, italic: bool) -> List[QRectF]:
-    fm = _font_metrics(ffamily, size, weight, italic)
-    br = [fm.tightBoundingRect(char), fm.boundingRect(char)]
-    return br
+    """Return representative ink metrics with a full-metric fallback.
+
+    Some legacy or narrowly scoped fonts do not contain the representative
+    CJK/Latin glyphs used by the layout. Qt can return an empty tight box,
+    synthetic-bold ink, or another font's fallback ink. Check the selected
+    face directly and use its ascent/descent when no reference glyph exists.
+    Other empty tight boxes retain the ordinary bounding-box fallback.
+
+    >>> len(get_punc_rect('A', 'Sans Serif', 12, QFont.Weight.Normal, False))
+    2
+    """
+    font = _metrics_font(ffamily, size, weight, italic)
+    fm = QFontMetricsF(font)
+    tight = fm.tightBoundingRect(char)
+    bounds = fm.boundingRect(char)
+    raw_font = QRawFont.fromFont(font)
+    if raw_font.isValid() and not any(
+        raw_font.supportsCharacter(ord(character)) for character in char
+    ):
+        # Windows metrics include fallback glyphs; keep the selected face's
+        # line metrics instead of fallback ink or synthetic missing-glyph ink.
+        tight = QRectF(
+            bounds.left(), -fm.ascent(), max(0.0, bounds.width()),
+            max(0.0, fm.ascent() + fm.descent()),
+        )
+    elif tight.width() <= 0 or tight.height() <= 0:
+        tight = QRectF(bounds)
+    if tight.width() <= 0 or tight.height() <= 0:
+        tight = QRectF(
+            0.0,
+            -fm.ascent(),
+            max(0.0, fm.horizontalAdvance(char)),
+            max(0.0, fm.ascent() + fm.descent()),
+        )
+    return [tight, bounds]
 
 @lru_cache(maxsize=2048)
 def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bool) -> int:
-    fm = _font_metrics(ffamily, size, weight, italic)
+    fm = QFontMetricsF(_metrics_font(ffamily, size, weight, italic))
     return fm.horizontalAdvance(char)
 
 

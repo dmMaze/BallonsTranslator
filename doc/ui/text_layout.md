@@ -56,6 +56,11 @@ left unset when common ligatures should remain available because an explicit Qt
 spacing property may suppress optional ligatures. Version-specific feature-tag
 handling stays inside the layout/annotation boundary.
 
+Representative ink bounds define row and cell metrics when available from the
+selected font. Missing or empty reference ink falls back to that font's line
+metrics without moving valid text above the logical box. Vertical glyph
+placement retains its shaped ink as the authoritative geometry.
+
 ### Vertical
 
 `VerticalTextDocumentLayout` normally creates one cell per grapheme and places
@@ -63,11 +68,35 @@ columns from right to left. Punctuation orientation and alignment are semantic
 classes near the top of `vertical_layout.py`; extend those classes instead of
 adding paint-time glyph exceptions.
 
+Hangul placement preserves font side bearings by centering the advance rather
+than each syllable's ink bounds. Within each block, Hangul in a column
+shares a top correction without changing flow advances. Any remaining ink
+overflow contributes to painting and interaction bounds.
+
 Standard Roman mode keeps proportional Roman glyphs upright and centered. The
 alternate mode rotates them clockwise and uses the Chinese mixed-layout
 punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
+
+Japanese punctuation classes follow [JLREQ](https://www.w3.org/TR/jlreq/)
+and [Unicode vertical orientation](https://www.unicode.org/reports/tr50/).
+Fullwidth stops `、。，．` anchor to the upper-right of the base character
+frame independently of Roman orientation. ASCII punctuation retains its
+mode-specific behavior.
+Standard mode rotates fullwidth colons and semicolons; alternate mode retains
+the existing CLREQ placement. Compact opening brackets must not lose more
+leading space than their actual font bearing permits.
+Character membership belongs in the semantic sets in
+`vertical_layout.py` and their focused tests.
+
+The engine rotates and translates Qt horizontal glyphs; it does not implement
+full vertical shaping with `vert`/`vrt2` substitutions. Rotated curly quotes
+preserve authored input as a fallback, not a recommendation for Japanese
+vertical quotation style. No characters are automatically replaced, and these
+rotation rules do not apply inside tate-chu-yoko. Line-start/end prohibitions,
+contextual punctuation spacing, hanging punctuation, and vertical shaping of
+Ruby readings require separate support.
 
 Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Multi-character
 runs shape explicit full-width forms as their narrow equivalents, preserving the
@@ -86,6 +115,11 @@ width; the alternate mode horizontally scales any remaining excess to one em.
 The resulting visible ink is centered without changing the stored text. Glyph
 ink may overhang the column, but that overhang affects only painting and
 interaction bounds, never neighboring columns.
+
+Qt may include trailing spaces beyond the authored tate-chu-yoko range in the
+same line. Those spaces remain separate vertical cells so flow advance, caret,
+selection, and hit testing agree at the group boundary. Spaces authored inside
+the group remain horizontal.
 
 Ruby/furigana is attached layout content, not a detached overlay. Group Ruby is
 indivisible; mono Ruby may wrap only between base/reading pairs. Each unit uses
