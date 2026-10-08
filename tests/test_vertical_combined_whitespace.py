@@ -42,6 +42,9 @@ class CombinedWhitespaceTest(unittest.TestCase):
                     spaces = [c for c in item.layout._vertical_line_cells(block, 0) if c[4]]
                     self.assertEqual(len(spaces), count)
                     combined = item.layout.tate_chu_yoko_cell_rect(block, 0)
+                    self.assertTrue(item.layout.is_tate_chu_yoko_line(
+                        block, block.layout().lineForTextPosition(3).lineNumber(),
+                    ))
                     self.assertAlmostEqual(spaces[0][2], combined.bottom())
                     for start, end, top, bottom, _ in spaces:
                         self.assertGreater(bottom, top)

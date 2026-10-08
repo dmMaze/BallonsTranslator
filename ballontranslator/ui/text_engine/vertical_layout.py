@@ -2306,9 +2306,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 )
                 columns = max(1, _grapheme_count(combined_text))
                 line.setNumColumns(columns)
-                # A ligature can consume multiple characters as one column.
-                # Do not let it pull the following character into TCY.
-                while columns > 1 and line.textLength() > text_combine_length:
+                # Qt includes trailing spaces in textLength without consuming
+                # extra columns. Only visible overflow indicates that a
+                # ligature pulled a following character into the combined run.
+                while (
+                    columns > 1 and line.textLength() > text_combine_length
+                    and _utf16_slice(
+                        blk_text, char_idx + text_combine_length,
+                        line.textLength() - text_combine_length,
+                    ).strip()
+                ):
                     columns -= 1
                     line.setNumColumns(columns)
             else:
