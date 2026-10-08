@@ -574,7 +574,22 @@ class RectPanel(Widget):
         self.dilate_label = ToolNameLabel(100, self.tr('Dilate'))
         self.dilate_slider = PaintQSlider()
         self.dilate_slider.setRange(0, 100)
+        self.dilate_slider.show_hover_value = False
         self.dilate_slider.valueChanged.connect(self.dilate_ksize_changed)
+        self.dilateSpinBox = QSpinBox(self)
+        self.dilateSpinBox.setProperty('paintSliderValueEditor', True)
+        self.dilateSpinBox.setRange(0, 100)
+        self.dilateSpinBox.setValue(self.dilate_slider.value())
+        self.dilateSpinBox.setSuffix(' px')
+        self.dilateSpinBox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        button_symbols = getattr(
+            QAbstractSpinBox, 'ButtonSymbols', QAbstractSpinBox
+        )
+        self.dilateSpinBox.setButtonSymbols(button_symbols.NoButtons)
+        self.dilateSpinBox.setKeyboardTracking(False)
+        self.dilateSpinBox.setFixedSize(60, 22)
+        self.dilate_slider.valueChanged.connect(self.dilateSpinBox.setValue)
+        self.dilateSpinBox.valueChanged.connect(self.dilate_slider.setValue)
         self.methodComboBox = QComboBox()
         self.methodComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
         self.methodComboBox.setFixedWidth(CONFIG_COMBOBOX_SHORT)
@@ -607,9 +622,15 @@ class RectPanel(Widget):
 
         self.inpainter_selector = InpainterSelectorRow(self)
 
+        dilate_control_layout = QHBoxLayout()
+        dilate_control_layout.setContentsMargins(0, 0, 0, 0)
+        dilate_control_layout.setSpacing(8)
+        dilate_control_layout.addWidget(self.dilate_slider, 1)
+        dilate_control_layout.addWidget(self.dilateSpinBox)
+
         glayout = QGridLayout()
         glayout.addWidget(self.dilate_label, 0, 0)
-        glayout.addWidget(self.dilate_slider, 0, 1)
+        glayout.addLayout(dilate_control_layout, 0, 1)
         glayout.addWidget(self.autoChecker, 1, 0)
         glayout.addWidget(self.methodComboBox, 1, 1)
         glayout.addWidget(self.use_mask_checker, 2, 0, 1, 2)
