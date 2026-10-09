@@ -210,6 +210,7 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
   
 ## Text detection
  * Support English and Japanese text detection, training code and more details can be found at [comic-text-detector](https://github.com/dmMaze/comic-text-detector)
+ * CTD supports optional [detection box padding](doc/modules/ctd_padding.md) with page-edge and neighboring-box limits; it is disabled by default and does not expand the inpainting mask.
  * Support using text detection from [Starriver Cloud (Tuanzi Manga OCR)](https://cloud.stariver.org.cn/). Username and password need to be filled in, and automatic login will be performed each time the program is launched.
 
    * For detailed instructions, see **Tuanzi OCR Instructions**: ([Chinese](doc/团子OCR说明.md) & [Brazilian Portuguese](doc/Manual_TuanziOCR_pt-BR.md) only)

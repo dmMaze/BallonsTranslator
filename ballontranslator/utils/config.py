@@ -547,6 +547,24 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
+                ctd_params = params.get('ctd') if isinstance(params, dict) else None
+                padding_key = 'Detect box padding (px)'
+                if isinstance(ctd_params, dict) and padding_key in ctd_params:
+                    saved_padding = ctd_params[padding_key]
+                    padding = saved_padding.get('value') if isinstance(saved_padding, dict) else saved_padding
+                    # Recover only this optional saved value. Keep validation
+                    # pure here: importing the detector would load heavy code.
+                    valid_padding = type(padding) is int or (
+                        isinstance(padding, str) and re.fullmatch(r'[0-9]{1,2}', padding.strip())
+                    )
+                    if not valid_padding or not 0 <= int(padding) <= 64:
+                        LOGGER.warning(
+                            'Discard invalid saved CTD %s value %r; using 0.', padding_key, padding,
+                        )
+                        if isinstance(saved_padding, dict):
+                            saved_padding['value'] = 0
+                        else:
+                            ctd_params[padding_key] = 0
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:
