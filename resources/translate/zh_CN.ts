@@ -1145,6 +1145,10 @@
         <source>Shape Erase</source>
         <translation>形状擦除</translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>按 Shift 切换掩膜区域模式。按住 Ctrl 累积笔画，松开后执行修复。</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -2532,6 +2536,20 @@
     <message>
         <source>pen thickness </source>
         <translation type="vanished">画笔大小 </translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>掩膜区域模式</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>填充或清除掩膜连通区域。
+切换：Shift
+填充：左键拖动；清除：右键拖动。
+触及图像边缘的区域无法填充。</translation>
     </message>
 </context>
 <context>

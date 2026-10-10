@@ -1133,6 +1133,10 @@
         <source>Mask Transparency</source>
         <translation type="vanished">掩膜透明度</translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>按 Shift 切換掩膜區域模式。按住 Ctrl 累積筆畫，鬆開後執行修復。</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -2436,6 +2440,20 @@
     <message>
         <source>pen thickness </source>
         <translation type="vanished">畫筆大小 </translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>掩膜區域模式</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>填充或清除掩膜連通區域。
+切換：Shift
+填充：左鍵拖動；清除：右鍵拖動。
+觸及圖像邊緣的區域無法填充。</translation>
     </message>
 </context>
 <context>

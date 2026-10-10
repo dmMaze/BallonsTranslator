@@ -94,6 +94,7 @@ class PenShape:
     Rectangle = 1
     MagicWand = 2
     Triangle = 3
+    FloodFill = 3  # Legacy inpainter value; shape-fill Triangle keeps its saved key.
 
 class StrokeImgItem(QGraphicsItem):
     def __init__(self, pen: QPen, point: QPointF, size: QSize, format: QImage.Format = QImage.Format.Format_ARGB32, shape=PenShape.Circle):
@@ -110,7 +111,12 @@ class StrokeImgItem(QGraphicsItem):
         self._r = d / 2
         self.clipped_rect = None
         self.shape = shape
-        self._line_to = [self._line_to_circle, self._line_to_rectangle][shape]
+        if shape == PenShape.Circle:
+            self._line_to = self._line_to_circle
+        elif shape == PenShape.Rectangle:
+            self._line_to = self._line_to_rectangle
+        else:
+            raise ValueError(f'Unsupported stroke shape: {shape}')
 
         self.painter = QPainter(self._img)
         self.painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -151,13 +157,20 @@ class StrokeImgItem(QGraphicsItem):
             img_array[img_array > 0] = 255
         return ar, img_array, self._img.copy(*ar).convertToFormat(format)
 
-    def startNewPoint(self, pos: QPointF):
+    def startNewPoint(self, pos: QPointF) -> None:
         self.is_painting = True
         self.painter.begin(self._img)
-        self.painter.setPen(self.pen)
+        pen = QPen(self.pen)
+        if self.shape == PenShape.Rectangle:
+            pen.setWidthF(0)
+        self.painter.setPen(pen)
+        # begin() resets painter state, and a zero-length lineTo() does not
+        # stamp a point. Ctrl accumulation must include each new brush press.
+        self.painter.setBrush(self.pen.color())
         self.painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
         self.cur_point = pos
-        self.lineTo(pos)
+        self._line_to(pos, None)
+        self.update(QRectF(pos.x() - self._r, pos.y() - self._r, self._d, self._d))
 
     def boundingRect(self) -> QRectF:
         return self._br

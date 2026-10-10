@@ -1004,6 +1004,9 @@ class MainWindow(mainwindow_cls):
         self.titleBar.prevpage_trigger.connect(self.shortcutBefore)
         self.titleBar.textedit_trigger.connect(self.shortcutTextedit)
         self.titleBar.drawboard_trigger.connect(self.shortcutDrawboard)
+        self.titleBar.mask_region_toggle_requested.connect(
+            self.drawingPanel.toggle_mask_region_mode
+        )
         self.titleBar.redo_trigger.connect(self.on_redo)
         self.titleBar.undo_trigger.connect(self.on_undo)
         self.titleBar.page_search_trigger.connect(self.on_page_search)
@@ -1560,6 +1563,9 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self) -> None:
+        if self.canvas.mask_region_mode:
+            self.canvas.reset_brush_line()
+            return
         if self.canvas.cancel_shape_fill():
             return
         if self.canvas.reset_brush_line():

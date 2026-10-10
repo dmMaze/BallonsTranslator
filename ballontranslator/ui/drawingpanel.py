@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer, QThread
 from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
 from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Optional, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from math import log
+from math import ceil, log
 import numpy as np
 import cv2
 
@@ -15,6 +15,7 @@ from ballontranslator.utils.imgproc_utils import (
     magic_wand_mask,
     magic_wand_preview_overlay,
     MagicWandFillMode,
+    MAGIC_WAND_PREVIEW_RGBA,
 )
 from ballontranslator.utils.textblock_mask import canny_flood, connected_canny_flood, region_mask
 from ballontranslator.utils.logger import logger
@@ -26,7 +27,8 @@ from .llm_modality import LLM_MODALITY_IMAGE
 from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_fill_image
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
-from .misc import ndarray2pixmap, themed_icon_path
+from .misc import ndarray2pixmap, pixmap2ndarray, themed_icon_path
+from .icon_rendering import render_svg_pixmap
 from ballontranslator.utils.config import DrawPanelConfig, pcfg
 from ballontranslator.utils.llm_profiles import LLMProfile, LLM_INPAINT_KEY, profile_by_id
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
@@ -40,6 +42,254 @@ MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
 MAGICWAND_TOLERANCE_MAX = 255
 MAGICWAND_RANGE_LIMIT = 50
+REGION_ADD_COLOR = MAGIC_WAND_PREVIEW_RGBA
+REGION_CLEAR_COLOR = (255, 180, 40, 110)
+REGION_REJECT_COLOR = (245, 85, 110, 110)
+
+
+class MaskRegionIndex:
+    """Index four-connected on/off components for one immutable mask snapshot.
+
+    Built in the preview worker and reused until the page/mask changes. Component
+    statistics bound overlay work; pointer movement only reads a label by index.
+
+    >>> index = MaskRegionIndex(np.pad(np.zeros((2, 2), np.uint8), 1, constant_values=255))
+    >>> index.at(1, 1)
+    (False, 1)
+    """
+
+    def __init__(self, mask: np.ndarray) -> None:
+        self.mask = mask
+        binary = (mask > 0).astype(np.uint8)
+        _, self.on_labels, self.on_stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=4)
+        _, self.off_labels, self.off_stats, _ = cv2.connectedComponentsWithStats(1 - binary, connectivity=4)
+        self.edge_labels = frozenset(int(label) for label in np.unique(np.concatenate((
+            self.off_labels[0], self.off_labels[-1],
+            self.off_labels[:, 0], self.off_labels[:, -1],
+        ))) if label)
+
+    def at(self, x: int, y: int) -> tuple[bool, int] | None:
+        height, width = self.mask.shape
+        if not (0 <= x < width and 0 <= y < height):
+            return None
+        erasing = bool(self.mask[y, x])
+        return erasing, int((self.on_labels if erasing else self.off_labels)[y, x])
+
+    def touched(self, rect: List[int], brush_mask: np.ndarray, erasing: bool) -> frozenset[int]:
+        x, y = rect[:2]
+        height, width = self.mask.shape
+        brush_height, brush_width = brush_mask.shape
+        x1, y1 = max(x, 0), max(y, 0)
+        x2, y2 = min(x + brush_width, width), min(y + brush_height, height)
+        if x1 >= x2 or y1 >= y2:
+            return frozenset()
+        brush = brush_mask[y1 - y:y2 - y, x1 - x:x2 - x] > 0
+        labels = (self.on_labels if erasing else self.off_labels)[y1:y2, x1:x2]
+        return frozenset(int(label) for label in np.unique(labels[brush]) if label)
+
+    def crop(self, selected: frozenset[int], erasing: bool) -> tuple[np.ndarray, int, int] | None:
+        if not selected:
+            return None
+        stats = (self.on_stats if erasing else self.off_stats)[list(selected)]
+        x1, y1 = stats[:, :2].min(axis=0)
+        x2, y2 = (stats[:, :2] + stats[:, 2:4]).max(axis=0)
+        labels = (self.on_labels if erasing else self.off_labels)[y1:y2, x1:x2]
+        return np.isin(labels, tuple(selected)), int(x1), int(y1)
+
+    def preview(
+        self, selected: frozenset[int], erasing: bool,
+    ) -> tuple[np.ndarray, int, int, str] | None:
+        rejected = frozenset() if erasing else selected & self.edge_labels
+        crop = self.crop(rejected or selected, erasing)
+        if crop is None:
+            return None
+        region, x, y = crop
+        status = 'clear' if erasing else ('reject' if rejected else 'add')
+        color = REGION_CLEAR_COLOR if erasing else (REGION_REJECT_COLOR if rejected else REGION_ADD_COLOR)
+        rgba = np.zeros((*region.shape, 4), np.uint8)
+        rgba[region] = color
+        if rejected:
+            # Show the actual page edges that caused rejection, even when the
+            # rejected region spans the whole image and surrounds valid holes.
+            height, width = self.mask.shape
+            for edge, touches in (
+                (rgba[:3], y == 0), (rgba[-3:], y + region.shape[0] == height),
+                (rgba[:, :3], x == 0), (rgba[:, -3:], x + region.shape[1] == width),
+            ):
+                if touches:
+                    edge[edge[..., 3] > 0] = (*REGION_REJECT_COLOR[:3], 255)
+        return rgba, x, y, status
+
+
+def _mask_region_preview(
+    index: MaskRegionIndex, selected: frozenset[int], erasing: bool,
+    samples: list[tuple[List[int], np.ndarray]],
+) -> tuple[frozenset[int], tuple[np.ndarray, int, int, str] | None]:
+    for rect, brush in samples:
+        selected |= index.touched(rect, brush, erasing)
+    return selected, index.preview(selected, erasing)
+
+
+def _expanded_inpaint_payload(
+    image: np.ndarray,
+    region_mask: np.ndarray,
+) -> Optional[dict]:
+    ys, xs = np.where(region_mask > 0)
+    if len(ys) == 0:
+        return None
+    y1, y2 = int(ys.min()), int(ys.max()) + 1
+    x1, x2 = int(xs.min()), int(xs.max()) + 1
+    image_height, image_width = image.shape[:2]
+    inpaint_rect = [x1, y1, x2, y2]
+    expanded = enlarge_window(inpaint_rect, image_width, image_height)
+    local_mask = region_mask[y1:y2, x1:x2]
+    local_mask = cv2.copyMakeBorder(
+        local_mask,
+        y1 - expanded[1],
+        expanded[3] - y2,
+        x1 - expanded[0],
+        expanded[2] - x2,
+        cv2.BORDER_CONSTANT,
+        value=0,
+    )
+    image_crop = image[expanded[1]:expanded[3], expanded[0]:expanded[2]]
+    return {
+        'img': np.copy(image_crop),
+        'mask': local_mask,
+        'inpaint_rect': expanded,
+    }
+
+
+def compute_forward_flood_fill(
+    rect: List[int],
+    brush_mask: np.ndarray,
+    full_mask: np.ndarray,
+    image: np.ndarray,
+    region_index: MaskRegionIndex | None = None,
+) -> Optional[dict]:
+    """Expand the project mask from brush-touched background components.
+
+    The brush supplies seeds. Existing mask pixels provide the boundaries,
+    so an unbounded background component is rejected instead of filling the
+    rest of the page.
+
+    >>> mask = np.full((5, 5), 255, np.uint8); mask[1:4, 1:4] = 0
+    >>> result = compute_forward_flood_fill([2, 2, 3, 3], np.ones((1, 1), np.uint8) * 255, mask, np.zeros((5, 5, 3), np.uint8))
+    >>> result is not None and bool(result['mask'].any())
+    True
+    """
+    mask_x, mask_y = rect[0], rect[1]
+    mask_height, mask_width = brush_mask.shape[:2]
+    image_height, image_width = full_mask.shape[:2]
+    x1, y1 = max(mask_x, 0), max(mask_y, 0)
+    x2 = min(mask_x + mask_width, image_width)
+    y2 = min(mask_y + mask_height, image_height)
+    if x1 >= x2 or y1 >= y2:
+        return None
+    brush_roi = brush_mask[
+        y1 - mask_y:y2 - mask_y,
+        x1 - mask_x:x2 - mask_x,
+    ]
+    current_roi = full_mask[y1:y2, x1:x2]
+    seed = ((brush_roi > 0) & (current_roi == 0)).astype(np.uint8) * 255
+    if not np.any(seed):
+        return None
+
+    index = region_index or MaskRegionIndex(full_mask)
+    seed_labels = index.touched(rect, brush_mask, False)
+    if not seed_labels or seed_labels & index.edge_labels:
+        return None
+    crop, cx, cy = index.crop(seed_labels, False)
+    new_region = np.zeros_like(full_mask)
+    new_region[cy:cy + crop.shape[0], cx:cx + crop.shape[1]] = crop.astype(np.uint8) * 255
+
+    updated_mask = cv2.bitwise_or(full_mask, new_region)
+    _, updated_labels = cv2.connectedComponents(
+        (updated_mask > 0).astype(np.uint8), connectivity=4
+    )
+    updated_roi = updated_labels[y1:y2, x1:x2]
+    inpaint_labels = set(np.unique(updated_roi[seed > 0])) - {0}
+    brush_on_mask = cv2.bitwise_and(brush_roi, current_roi)
+    if np.any(brush_on_mask):
+        inpaint_labels |= set(np.unique(updated_roi[brush_on_mask > 0])) - {0}
+    if not inpaint_labels:
+        return None
+    region = np.isin(updated_labels, tuple(inpaint_labels)).astype(np.uint8) * 255
+    return _expanded_inpaint_payload(image, region)
+
+
+def compute_reverse_flood_fill(
+    rect: List[int],
+    brush_mask: np.ndarray,
+    full_mask: np.ndarray,
+    original_image: np.ndarray,
+    inpainted_image: np.ndarray,
+    region_index: MaskRegionIndex | None = None,
+) -> Optional[Tuple[np.ndarray, np.ndarray, List[int]]]:
+    """Restore every connected mask component touched by the brush.
+
+    >>> mask = np.zeros((3, 3), np.uint8); mask[1, 1] = 255
+    >>> result = compute_reverse_flood_fill([1, 1, 2, 2], np.array([[255]], np.uint8), mask, np.zeros((3, 3, 3), np.uint8), np.ones((3, 3, 3), np.uint8))
+    >>> result[2]
+    [1, 1, 2, 2]
+    """
+    index = region_index or MaskRegionIndex(full_mask)
+    seed_labels = index.touched(rect, brush_mask, True)
+    crop = index.crop(seed_labels, True)
+    if crop is None:
+        return None
+    region, ex1, ey1 = crop
+    ex2, ey2 = ex1 + region.shape[1], ey1 + region.shape[0]
+    erase_rect = [ex1, ey1, ex2, ey2]
+    local_region = region.astype(np.uint8) * 255
+    original_crop = original_image[ey1:ey2, ex1:ex2]
+    inpainted_crop = inpainted_image[ey1:ey2, ex1:ex2]
+    selector = local_region > 0
+    erased_image = np.copy(inpainted_crop)
+    erased_image[selector] = original_crop[selector]
+    new_mask = cv2.bitwise_and(
+        full_mask[ey1:ey2, ex1:ex2], cv2.bitwise_not(local_region)
+    )
+    return erased_image, new_mask, erase_rect
+
+
+class FloodFillThread(QThread):
+    """Run mask connected-component calculations outside the Qt main thread."""
+
+    result_ready = Signal(str, object)
+    failed = Signal(str)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._mode = ''
+        self._operation: Optional[Callable] = None
+        self._arguments: tuple = ()
+
+    def configure(
+        self,
+        mode: str,
+        operation: Callable,
+        arguments: tuple,
+    ) -> None:
+        if self.isRunning():
+            raise RuntimeError('flood-fill calculation is already running')
+        self._mode = mode
+        self._operation = operation
+        self._arguments = arguments
+
+    def run(self) -> None:
+        mode = self._mode
+        operation = self._operation
+        arguments = self._arguments
+        try:
+            result = operation(*arguments)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+            return
+        finally:
+            self._operation = None
+            self._arguments = ()
+        self.result_ready.emit(mode, result)
 
 
 def _magic_wand_preview(
@@ -342,6 +592,23 @@ class InpaintPanel(Widget):
         )
         self.rangeSlider.valueChanged.connect(self.rangeChanged)
 
+        self.region_mode_row = Widget(self)
+        region_layout = QHBoxLayout(self.region_mode_row)
+        region_layout.setContentsMargins(0, 0, 0, 0)
+        region_label = ToolNameLabel(None, self.tr('Mask Region Mode'))
+        region_layout.addWidget(region_label)
+        self.regionModeCheckBox = QCheckBox(self.region_mode_row)
+        region_layout.addWidget(self.regionModeCheckBox)
+        region_layout.addStretch(1)
+        region_tip = self.tr(
+            'Fill or clear connected mask regions.\n'
+            'Toggle: Shift\n'
+            'Fill: left-drag; clear: right-drag.\n'
+            'Regions touching an image edge cannot be filled.'
+        )
+        self.region_mode_row.setToolTip(region_tip)
+        region_label.setToolTip(region_tip)
+        self.regionModeCheckBox.setToolTip(region_tip)
         self.inpainter_selector = InpainterSelectorRow(self)
 
         layout = QVBoxLayout(self)
@@ -350,6 +617,7 @@ class InpaintPanel(Widget):
         layout.addLayout(shape_layout)
         layout.addWidget(self.inpainter_selector.prompt_panel)
         layout.addWidget(self.thickness_row)
+        layout.addWidget(self.region_mode_row)
         layout.addWidget(self.fill_mode_row)
         layout.addWidget(self.tolerance_row)
         layout.addWidget(self.range_row)
@@ -384,6 +652,7 @@ class InpaintPanel(Widget):
     def sync_shape_controls(self) -> None:
         wand = self.is_magic_wand()
         self.thickness_row.setVisible(not wand)
+        self.region_mode_row.setVisible(not wand)
         self.tolerance_row.setVisible(wand)
         self.range_row.setVisible(wand)
         self.fill_mode_row.setVisible(wand)
@@ -672,6 +941,13 @@ class DrawingPanel(Widget):
         self.rect_inpaint_dict: dict = None
         self.inpaint_mask_array: np.ndarray = None
         self.extracted_imask_array: np.ndarray = None
+        self._flood_fill_page = None
+        self._flood_fill_active = False
+        self._flood_fill_mask_snapshot: np.ndarray | None = None
+        self._flood_fill_image_snapshot: np.ndarray | None = None
+        self.flood_fill_thread = FloodFillThread(self)
+        self.flood_fill_thread.result_ready.connect(self.on_flood_fill_result)
+        self.flood_fill_thread.failed.connect(self.on_flood_fill_failed)
 
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
         self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
@@ -701,6 +977,34 @@ class DrawingPanel(Widget):
         self._magic_wand_hover_timer.setInterval(40)
         self._magic_wand_hover_timer.timeout.connect(self._apply_magic_wand_hover_preview)
         
+        self.region_preview_item = QGraphicsPixmapItem()
+        self.region_preview_item.setData(CONTROL_ITEM_DATA_KEY, True)
+        self.region_preview_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.region_preview_item.setAcceptHoverEvents(False)
+        self.region_preview_item.setZValue(20)
+        self.region_preview_item.hide()
+        self._region_index: MaskRegionIndex | None = None
+        self._region_index_future: Future[MaskRegionIndex] | None = None
+        self._region_preview_future: Future[tuple[frozenset[int], tuple[np.ndarray, int, int, str] | None]] | None = None
+        self._region_generation = 0
+        self._region_request: tuple[int, bool | None, bool, frozenset[int]] | None = None
+        self._region_hover_pos: QPointF | None = None
+        self._region_direction: bool | None = None
+        self._region_selected: frozenset[int] = frozenset()
+        self._region_samples: list[tuple[List[int], np.ndarray]] = []
+        self._region_display_key: tuple[bool, frozenset[int]] | None = None
+        self._region_cursor_status = 'base'
+        self._region_preview_timer = QTimer(self)
+        self._region_preview_timer.setSingleShot(True)
+        self._region_preview_timer.setInterval(20)
+        self._region_preview_timer.timeout.connect(self._apply_mask_region_preview)
+        canvas.mask_region_hover.connect(self.on_mask_region_hover)
+        canvas.mask_region_hover_left.connect(self.hide_mask_region_preview)
+        canvas.mask_region_stroke_started.connect(self.on_mask_region_stroke_started)
+        canvas.mask_region_stroke_updated.connect(self.on_mask_region_stroke_updated)
+        canvas.brush_gesture_cancelled.connect(self.on_brush_gesture_cancelled)
+        canvas.image_layers_updated.connect(self.invalidate_mask_regions)
+
         canvas.finish_painting.connect(self.on_finish_painting)
         canvas.finish_erasing.connect(self.on_finish_erasing)
         canvas.ctrl_relesed.connect(self.on_canvasctrl_released)
@@ -727,6 +1031,7 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel = InpaintPanel()
         self.inpaintConfigPanel.thicknessChanged.connect(self.setInpaintToolWidth)
         self.inpaintConfigPanel.shapeChanged.connect(self.setInpaintShape)
+        self.inpaintConfigPanel.regionModeCheckBox.toggled.connect(self.set_mask_region_mode)
         self.inpaintConfigPanel.toleranceChanged.connect(self.on_magicwand_tolerance_changed)
         self.inpaintConfigPanel.rangeChanged.connect(self.on_magicwand_range_changed)
         self.inpaintConfigPanel.fillModeChanged.connect(self.on_magicwand_fill_mode_changed)
@@ -758,7 +1063,7 @@ class DrawingPanel(Widget):
         brush_tip = self.tr('Shift-click to draw a straight line. Ctrl+Shift-click constrains it horizontally or vertically.')
         self.penConfigPanel.setToolTip(brush_tip)
         self.inpaintConfigPanel.thickness_row.setToolTip(
-            brush_tip + '\n' + self.tr('Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.')
+            self.tr('Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.')
         )
 
         self.shapeTool = DrawToolCheckBox()
@@ -859,8 +1164,15 @@ class DrawingPanel(Widget):
         if self.currentTool is self.inpaintTool:
             if self.canvas.painting_shape != shape:
                 self.canvas.reset_brush_line()
-            if shape == PenShape.MagicWand and self.canvas.painting_shape != shape:
-                # An accumulated Ctrl-brush stroke is not a wand selection.
+            if (
+                self.canvas.painting_shape != shape
+                and (
+                    shape == PenShape.MagicWand
+                    or self.canvas.painting_shape == PenShape.MagicWand
+                    or pcfg.drawpanel.mask_region_mode
+                )
+            ):
+                # An accumulated stroke belongs to the brush type that made it.
                 self.clearInpaintItems()
             self.canvas.painting_shape = shape
         pcfg.drawpanel.inpainter_shape = shape
@@ -869,6 +1181,229 @@ class DrawingPanel(Widget):
             self.setInpaintCursor()
         self._sync_magic_wand_hover_tracking()
         self._refresh_magic_wand_preview()
+
+    def set_mask_region_mode(self, enabled: bool) -> None:
+        if pcfg.drawpanel.mask_region_mode == enabled:
+            return
+        if self.currentTool is self.inpaintTool and self.canvas.image_edit_mode == ImageEditMode.NONE:
+            with QSignalBlocker(self.inpaintConfigPanel.regionModeCheckBox):
+                self.inpaintConfigPanel.regionModeCheckBox.setChecked(pcfg.drawpanel.mask_region_mode)
+            return
+        pcfg.drawpanel.mask_region_mode = enabled
+        with QSignalBlocker(self.inpaintConfigPanel.regionModeCheckBox):
+            self.inpaintConfigPanel.regionModeCheckBox.setChecked(enabled)
+        self.canvas.reset_brush_line()
+        self.clearInpaintItems()
+        # This slider represents displayed mask opacity, not saved mask alpha.
+        self.maskTransperancySlider.setValue(20)
+        self._sync_mask_region_tracking()
+        self.setInpaintCursor()
+        if self.canvas._mask_region_hover_enabled:
+            self.on_mask_region_hover(self.canvas.scene_cursor_pos())
+
+    def toggle_mask_region_mode(self) -> None:
+        if self.isVisible() and self.canvas.mask_region_available:
+            self.set_mask_region_mode(not pcfg.drawpanel.mask_region_mode)
+
+    def _sync_mask_region_tracking(self) -> None:
+        self.inpaintConfigPanel.regionModeCheckBox.setEnabled(
+            self.currentTool is not self.inpaintTool or self.canvas.image_edit_mode != ImageEditMode.NONE)
+        enabled = (self.isVisible() and self.currentTool is self.inpaintTool
+                   and self.canvas.mask_region_mode)
+        if self.canvas._mask_region_hover_enabled == enabled:
+            return
+        self.canvas.set_mask_region_hover_tracking(enabled)
+        if enabled:
+            self._region_hover_pos = self.canvas.scene_cursor_pos()
+            self._region_preview_timer.start()
+        else:
+            self.canvas._restore_viewport_cursor()
+            self.invalidate_mask_regions()
+
+    def _set_mask_region_cursor(self, status: str) -> None:
+        if status != self._region_cursor_status:
+            self._region_cursor_status = status
+            self.setInpaintCursor()
+
+    def _update_mask_region_cursor(self) -> None:
+        hover = self._mask_region_hover_selection()
+        if self._region_index is None:
+            # The current mask pixel is cheap to inspect before the async index
+            # is ready. Component boundaries still wait for the worker.
+            status = 'base'
+            if self._region_hover_pos is not None:
+                pos = self.canvas.inpaintLayer.mapFromScene(self._region_hover_pos)
+                x, y = int(round(pos.x())), int(round(pos.y()))
+                mask = self.canvas.imgtrans_proj.mask_array
+                if mask is not None and 0 <= y < mask.shape[0] and 0 <= x < mask.shape[1]:
+                    on_mask = bool(mask[y, x])
+                    if self._region_direction is not None and self._region_direction != on_mask:
+                        status = 'none'
+                    elif on_mask:
+                        status = 'clear'
+        elif hover is None:
+            status = 'none'
+        else:
+            on_mask, selected = hover
+            erasing = self._region_direction
+            if erasing is not None and erasing != on_mask:
+                status = 'none'
+            elif on_mask:
+                status = 'clear'
+            else:
+                rejected = (selected | self._region_selected) & self._region_index.edge_labels
+                status = 'reject' if rejected else 'add'
+        self._set_mask_region_cursor(status)
+
+    def on_mask_region_hover(self, scene_pos: QPointF) -> None:
+        if not self.canvas._mask_region_hover_enabled:
+            return
+        self._region_hover_pos = QPointF(scene_pos)
+        self._update_mask_region_cursor()
+        if not self._region_preview_timer.isActive():
+            self._region_preview_timer.start()
+
+    def hide_mask_region_preview(self) -> None:
+        self._region_hover_pos = None
+        self.region_preview_item.hide()
+        self._region_display_key = None
+        if self._region_direction is None:
+            self._region_preview_timer.stop()
+
+    def on_brush_gesture_cancelled(self) -> None:
+        if self.inpaint_stroke is not None:
+            if self.inpaint_stroke.scene() is self.canvas:
+                self.canvas.removeItem(self.inpaint_stroke)
+            self.inpaint_stroke = None
+        self.clear_mask_region_gesture()
+
+    def clear_mask_region_gesture(self) -> None:
+        self._region_hover_pos = None
+        self._region_direction = None
+        self._region_selected = frozenset()
+        self._region_samples.clear()
+        self._region_display_key = None
+        self.region_preview_item.hide()
+        self._region_preview_timer.stop()
+        if self._region_preview_future is not None:
+            self._region_preview_future.cancel()
+            self._region_preview_future = None
+
+    def invalidate_mask_regions(self) -> None:
+        hover_pos = self._region_hover_pos
+        self._region_generation += 1
+        self._region_index = None
+        if self._region_index_future is not None:
+            self._region_index_future.cancel()
+            self._region_index_future = None
+        self.clear_mask_region_gesture()
+        self._region_hover_pos = hover_pos
+        if self.canvas._mask_region_hover_enabled and hover_pos is not None:
+            self._region_preview_timer.start()
+
+    def on_mask_region_stroke_started(self, erasing: bool) -> None:
+        hover_pos = self._region_hover_pos
+        if self._region_direction != erasing:
+            # An accumulated add stroke cannot become an erase stroke.
+            self.clearInpaintItems()
+        self._region_direction = erasing
+        self._region_hover_pos = hover_pos
+        self.region_preview_item.hide()
+        self._update_mask_region_cursor()
+
+    def on_mask_region_stroke_updated(self, rect: QRectF) -> None:
+        stroke = self.canvas.stroke_img_item
+        if stroke is None or not self.canvas.mask_region_mode:
+            return
+        bounds = rect.toAlignedRect().intersected(stroke._img.rect())
+        if bounds.isEmpty():
+            return
+        # Copy only the dirty brush rectangle; workers never see a live QImage
+        # or scan/copy the full page on every mouse movement.
+        rgba = pixmap2ndarray(stroke._img.copy(bounds), True)
+        brush = np.ascontiguousarray(rgba[..., -1])
+        self._region_samples.append(([bounds.x(), bounds.y()], brush))
+        if not self._region_preview_timer.isActive():
+            self._region_preview_timer.start()
+
+    def _mask_region_hover_selection(self) -> tuple[bool, frozenset[int]] | None:
+        if self._region_hover_pos is None or self._region_index is None:
+            return None
+        pos = self.canvas.inpaintLayer.mapFromScene(self._region_hover_pos)
+        region = self._region_index.at(int(round(pos.x())), int(round(pos.y())))
+        if region is None:
+            return None
+        erasing, label = region
+        return erasing, frozenset((label,))
+
+    def _apply_mask_region_preview(self) -> None:
+        if not self.canvas._mask_region_hover_enabled or not self.canvas.mask_region_mode:
+            return
+        project = self.canvas.imgtrans_proj
+        if project is None or not project.img_valid or project.mask_array is None:
+            self.hide_mask_region_preview()
+            return
+        if self._region_index is None:
+            if self._region_index_future is None:
+                self._region_index_future = self._magic_wand_executor.submit(
+                    MaskRegionIndex, np.copy(project.mask_array),
+                )
+            elif self._region_index_future.done():
+                future = self._region_index_future
+                self._region_index_future = None
+                try:
+                    self._region_index = future.result()
+                except Exception:
+                    LOGGER.exception('Failed to index mask regions.')
+                    return
+            if self._region_index is None:
+                self._region_preview_timer.start()
+                return
+        if self._region_preview_future is not None:
+            if not self._region_preview_future.done():
+                self._region_preview_timer.start()
+                return
+            future = self._region_preview_future
+            self._region_preview_future = None
+            generation, direction, erasing, requested = self._region_request
+            try:
+                selected, overlay = future.result()
+            except Exception:
+                LOGGER.exception('Failed to preview mask regions.')
+                return
+            if generation == self._region_generation and direction == self._region_direction:
+                if direction is not None:
+                    self._region_selected = selected
+                if direction is not None or self._mask_region_hover_selection() == (erasing, requested):
+                    if overlay is not None:
+                        rgba, x, y, status = overlay
+                        self.region_preview_item.setPixmap(ndarray2pixmap(rgba))
+                        self.region_preview_item.setPos(x, y)
+                        self.region_preview_item.setParentItem(self.canvas.baseLayer)
+                        self.region_preview_item.show()
+                    else:
+                        self.region_preview_item.hide()
+                    self._region_display_key = (erasing, selected)
+        self._update_mask_region_cursor()
+        if self._region_direction is None:
+            hover = self._mask_region_hover_selection()
+            if hover is None:
+                self.region_preview_item.hide()
+                self._region_display_key = None
+                return
+            erasing, selected = hover
+            if self._region_display_key != (erasing, selected):
+                self.region_preview_item.hide()
+        else:
+            erasing, selected = self._region_direction, self._region_selected
+        if not self._region_samples and self._region_display_key == (erasing, selected):
+            return
+        samples, self._region_samples = self._region_samples, []
+        self._region_request = (self._region_generation, self._region_direction, erasing, selected)
+        self._region_preview_future = self._magic_wand_executor.submit(
+            _mask_region_preview, self._region_index, selected, erasing, samples,
+        )
+        self._region_preview_timer.start()
 
     def on_magicwand_tolerance_changed(self, value: int) -> None:
         pcfg.drawpanel.magicwand_tolerance = int(value)
@@ -960,6 +1495,7 @@ class DrawingPanel(Widget):
         self.canvas.set_magic_wand_hover_tracking(enabled)
         if not enabled:
             self.clear_magic_wand_preview()
+        self._sync_mask_region_tracking()
 
     def on_magic_wand_hover(self, scene_pos: QPointF) -> None:
         if not self.inpaintConfigPanel.is_magic_wand() or self.currentTool is not self.inpaintTool:
@@ -1150,6 +1686,8 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel.toleranceSlider.setValue(config.magicwand_tolerance)
         self.inpaintConfigPanel.rangeSlider.setValue(config.magicwand_range)
         self.inpaintConfigPanel.set_fill_mode(config.magicwand_fill_mode)
+        with QSignalBlocker(self.inpaintConfigPanel.regionModeCheckBox):
+            self.inpaintConfigPanel.regionModeCheckBox.setChecked(config.mask_region_mode)
         
         self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
@@ -1174,7 +1712,7 @@ class DrawingPanel(Widget):
         elif config.current_tool == ImageEditMode.ShapeFillTool:
             self.shapeTool.setChecked(True)
 
-    def get_pen_cursor(self, pen_color: QColor = None, pen_size = None, draw_shape=True, shape=PenShape.Circle) -> QCursor:
+    def get_pen_cursor(self, pen_color: QColor = None, pen_size: float | None = None, draw_shape: bool = True, shape: int = PenShape.Circle, region_action: str | None = None) -> QCursor:
         cross_size = 31
         cross_len = cross_size // 4
         thickness = 3
@@ -1186,6 +1724,11 @@ class DrawingPanel(Widget):
         map_size = max(cross_size+7, pen_size) if draw_shape else cross_size+7
         cursor_center = map_size // 2
         pen_radius = pen_size // 2
+        if region_action is not None:
+            # Extend only the bottom/right: the brush center stays the hotspot.
+            icon_left = cursor_center + pen_radius + 4
+            icon_top = icon_left
+            map_size = max(map_size, ceil(icon_left + 37))
         pen_color.setAlpha(127)
         pen = QPen(pen_color, thickness, Qt.PenStyle.DotLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         pen.setDashPattern([3, 6])
@@ -1212,21 +1755,45 @@ class DrawingPanel(Widget):
                 raise NotImplementedError
             # elif shape == PenShape.Triangle:
                 # painter.drawPolygon
-        cross_left = (map_size  - 1 - cross_size) // 2 
-        cross_right = map_size - cross_left
+        if region_action is not None:
+            if region_action == 'reject':
+                # A dedicated prohibition sign replaces the add marker.
+                center = QPointF(icon_left + 14, icon_top + 14)
+                for color, width in ((QColor(Qt.GlobalColor.white), 5),
+                                     (QColor(*REGION_REJECT_COLOR[:3]), 3)):
+                    painter.setPen(QPen(color, width, Qt.PenStyle.SolidLine))
+                    painter.drawEllipse(center, 10, 10)
+                    painter.drawLine(QLineF(center + QPointF(-7, 7), center + QPointF(7, -7)))
+            elif region_action != 'none':
+                bucket = render_svg_pixmap(themed_icon_path('cursor_mask_region.svg'), 28, 28, 1.0)
+                painter.drawPixmap(int(icon_left), int(icon_top), bucket)
+                if region_action in ('add', 'clear'):
+                    color = REGION_CLEAR_COLOR if region_action == 'clear' else REGION_ADD_COLOR
+                    badge_x, badge_y = icon_left + 25, icon_top + 25
+                    lines = [QLineF(badge_x - 4, badge_y, badge_x + 4, badge_y)]
+                    if region_action == 'add':
+                        lines.append(QLineF(badge_x, badge_y - 4, badge_x, badge_y + 4))
+                    for stroke_color, width in ((QColor(Qt.GlobalColor.white), 5), (QColor(*color[:3]), 3)):
+                        painter.setPen(QPen(stroke_color, width, Qt.PenStyle.SolidLine))
+                        painter.drawLines(lines)
+        else:
+            cross_left = (map_size  - 1 - cross_size) // 2
+            cross_right = map_size - cross_left
 
-        pen = QPen(Qt.GlobalColor.white, 5, Qt.PenStyle.SolidLine)
-        painter.setPen(pen)
-        cross_hline0 = QLineF(cross_left, cursor_center, cross_left+cross_len, cursor_center)
-        cross_hline1 = QLineF(cross_right-cross_len, cursor_center, cross_right, cursor_center)
-        cross_vline0 = QLineF(cursor_center, cross_left, cursor_center, cross_left+cross_len)
-        cross_vline1 = QLineF(cursor_center, cross_right-cross_len, cursor_center, cross_right)
-        painter.drawLines([cross_hline0, cross_hline1, cross_vline0, cross_vline1])
-        pen.setWidth(3)
-        pen.setColor(Qt.GlobalColor.black)
-        painter.setPen(pen)
-        painter.drawLines([cross_hline0, cross_hline1, cross_vline0, cross_vline1])
+            pen = QPen(Qt.GlobalColor.white, 5, Qt.PenStyle.SolidLine)
+            painter.setPen(pen)
+            cross_hline0 = QLineF(cross_left, cursor_center, cross_left+cross_len, cursor_center)
+            cross_hline1 = QLineF(cross_right-cross_len, cursor_center, cross_right, cursor_center)
+            cross_vline0 = QLineF(cursor_center, cross_left, cursor_center, cross_left+cross_len)
+            cross_vline1 = QLineF(cursor_center, cross_right-cross_len, cursor_center, cross_right)
+            painter.drawLines([cross_hline0, cross_hline1, cross_vline0, cross_vline1])
+            pen.setWidth(3)
+            pen.setColor(Qt.GlobalColor.black)
+            painter.setPen(pen)
+            painter.drawLines([cross_hline0, cross_hline1, cross_vline0, cross_vline1])
         painter.end()
+        if region_action is not None:
+            return QCursor(cur_pixmap, int(cursor_center), int(cursor_center))
         return QCursor(cur_pixmap)
 
     def on_incre_pensize(self):
@@ -1266,7 +1833,7 @@ class DrawingPanel(Widget):
             self.currentTool.setChecked(True)
         self._sync_magic_wand_hover_tracking()
 
-    def on_finish_painting(self, stroke_item: StrokeImgItem):
+    def on_finish_painting(self, stroke_item: StrokeImgItem) -> None:
         stroke_item.finishPainting()
         if not self.canvas.imgtrans_proj.img_valid:
             self.canvas.removeItem(stroke_item)
@@ -1280,13 +1847,19 @@ class DrawingPanel(Widget):
             self.inpaint_stroke = stroke_item
             if self.canvas.gv.ctrl_pressed:
                 return
+            if self.canvas.mask_region_mode:
+                self._flood_fill_forward(stroke_item)
             else:
                 self.runInpaint()
 
-    def on_finish_erasing(self, stroke_item: StrokeImgItem):
+    def on_finish_erasing(self, stroke_item: StrokeImgItem) -> None:
         stroke_item.finishPainting()
         # inpainted-erasing logic is essentially the same as inpainting
         if self.currentTool == self.inpaintTool:
+            if self.canvas.mask_region_mode:
+                self.inpaint_stroke = stroke_item
+                self._flood_fill_reverse(stroke_item)
+                return
             rect, mask, _ = stroke_item.clip(mask_only=True)
             if mask is None:
                 self.canvas.removeItem(stroke_item)
@@ -1390,7 +1963,11 @@ class DrawingPanel(Widget):
             # Releasing Ctrl during a held segment must wait for mouse release.
             if self.canvas.stroke_img_item is not None and self.canvas.stroke_img_item.is_painting:
                 return
-            self.runInpaint()
+            if self.canvas.mask_region_mode:
+                if self.inpaint_stroke is not None:
+                    self._flood_fill_forward(self.inpaint_stroke)
+            else:
+                self.runInpaint()
 
     def on_begin_scale_tool(self, pos: QPointF):
         if self.currentTool == self.inpaintTool and self.inpaintConfigPanel.is_magic_wand():
@@ -1469,13 +2046,17 @@ class DrawingPanel(Widget):
         if self.inpaintConfigPanel.is_magic_wand():
             self.canvas.set_canvas_cursor(magic_wand_cursor())
             return
-        self.canvas.set_canvas_cursor(
-            self.get_pen_cursor(
-                INPAINT_BRUSH_COLOR,
-                self.inpaint_pen.width(),
-                shape=self.inpaintConfigPanel.shape,
-            )
+        cursor = self.get_pen_cursor(
+            INPAINT_BRUSH_COLOR,
+            self.inpaint_pen.width(),
+            shape=self.inpaintConfigPanel.shape,
+            region_action=self._region_cursor_status if self.canvas.mask_region_mode else None,
         )
+        self.canvas.set_canvas_cursor(cursor)
+        if self.canvas.mask_region_mode:
+            # Qt may defer applying a scene item's new cursor until another
+            # mouse move. Button presses must change the operation immediately.
+            self.canvas.gv.viewport().setCursor(cursor)
 
     def on_handchecker_changed(self):
         if self.handTool.isChecked():
@@ -1606,6 +2187,107 @@ class DrawingPanel(Widget):
         user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
         self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_preview_mask))
 
+    def _start_flood_fill(
+        self,
+        mode: str,
+        operation: Callable,
+        arguments: tuple,
+    ) -> None:
+        if self.flood_fill_thread.isRunning():
+            LOGGER.info('Ignoring flood fill while another fill is running.')
+            self.clearInpaintItems()
+            return
+        self._flood_fill_page = self.canvas.imgtrans_proj.current_img
+        self._flood_fill_active = True
+        self._flood_fill_mask_snapshot = arguments[2]
+        self._flood_fill_image_snapshot = arguments[4] if mode == 'reverse' else arguments[3]
+        self.flood_fill_thread.configure(mode, operation, arguments)
+        # Disable editing until the snapshot result is accepted or discarded.
+        self.canvas.image_edit_mode = ImageEditMode.NONE
+        self.canvas.set_canvas_cursor(Qt.CursorShape.WaitCursor)
+        self._sync_mask_region_tracking()
+        self.flood_fill_thread.start()
+
+    def on_flood_fill_result(self, mode: str, result: object) -> None:
+        project = self.canvas.imgtrans_proj
+        same_page = (
+            self._flood_fill_active
+            and self._flood_fill_page == project.current_img
+        )
+        source_matches = (
+            same_page
+            and np.array_equal(self._flood_fill_mask_snapshot, project.mask_array)
+            and np.array_equal(self._flood_fill_image_snapshot, project.inpainted_array)
+        )
+        if not source_matches:
+            LOGGER.info('Discarding flood fill because its page or source changed.')
+            if same_page:
+                self._finish_inpaint()
+            return
+        if result is None:
+            LOGGER.info('%s flood fill produced no bounded mask region.', mode)
+            self._finish_inpaint()
+            return
+        if mode == 'reverse':
+            erased_image, new_mask, erase_rect = result
+            self.canvas.push_undo_command(InpaintUndoCommand(
+                self.canvas,
+                erased_image,
+                new_mask,
+                erase_rect,
+            ))
+            self._finish_inpaint()
+            return
+        self.clearInpaintItems()
+        self.module_manager.canvas_inpaint(result)
+
+    def on_flood_fill_failed(self, message: str) -> None:
+        LOGGER.warning('Flood fill failed: %s', message)
+        if (
+            self._flood_fill_active
+            and self._flood_fill_page == self.canvas.imgtrans_proj.current_img
+        ):
+            self._finish_inpaint()
+
+    def _flood_fill_forward(self, stroke_item: StrokeImgItem) -> None:
+        """Queue expansion of background regions touched by the brush."""
+        rect, brush_mask, _ = stroke_item.clip(mask_only=True)
+        if brush_mask is None:
+            self.clearInpaintItems()
+            return
+        project = self.canvas.imgtrans_proj
+        self._start_flood_fill(
+            'forward',
+            compute_forward_flood_fill,
+            (
+                list(rect),
+                np.copy(brush_mask),
+                np.copy(project.mask_array),
+                np.copy(project.inpainted_array),
+                self._region_index,
+            ),
+        )
+
+    def _flood_fill_reverse(self, stroke_item: StrokeImgItem) -> None:
+        """Queue restoration of mask components touched by the brush."""
+        rect, brush_mask, _ = stroke_item.clip(mask_only=True)
+        if brush_mask is None:
+            self.clearInpaintItems()
+            return
+        project = self.canvas.imgtrans_proj
+        self._start_flood_fill(
+            'reverse',
+            compute_reverse_flood_fill,
+            (
+                list(rect),
+                np.copy(brush_mask),
+                np.copy(project.mask_array),
+                np.copy(project.img_array),
+                np.copy(project.inpainted_array),
+                self._region_index,
+            ),
+        )
+
     def on_rectchecker_changed(self):
         if not self.rectTool.isChecked():
             self.clearInpaintItems()
@@ -1614,12 +2296,20 @@ class DrawingPanel(Widget):
         self.canvas.reset_brush_line()
         self.canvas.cancel_shape_fill()
         self.canvas.set_magic_wand_hover_tracking(False)
+        self.canvas.set_mask_region_hover_tracking(False)
+        self.invalidate_mask_regions()
         self.clear_magic_wand_preview()
         self.clearInpaintItems()
         return super().hideEvent(e)
 
     def clearInpaintItems(self) -> None:
+        if self.module_manager is not None:
+            self.module_manager.cancel_canvas_inpaint()
 
+        self.clear_mask_region_gesture()
+        self._flood_fill_active = False
+        self._flood_fill_mask_snapshot = None
+        self._flood_fill_image_snapshot = None
         self.rect_inpaint_dict = None
         self.inpaint_mask_array = None
         if self.inpaint_mask_item is not None:
@@ -1634,4 +2324,5 @@ class DrawingPanel(Widget):
 
     def handle_page_changed(self) -> None:
         self.clear_magic_wand_preview()
+        self.invalidate_mask_regions()
         self._finish_inpaint()

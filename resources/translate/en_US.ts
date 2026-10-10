@@ -427,6 +427,10 @@
         <source>Mask Opacity</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</translation>
+    </message>
 </context>
 <context>
     <name>ExportDocThread</name>
@@ -680,6 +684,20 @@
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="92"/>
         <source>Inpainter</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>Mask Region Mode</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</translation>
     </message>
 </context>
 <context>

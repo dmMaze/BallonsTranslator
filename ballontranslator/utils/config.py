@@ -273,6 +273,7 @@ class DrawPanelConfig(Config):
     inpaint_prompt_override: str = ''
     inpainter_width: float = 30.
     inpainter_shape: int = 0
+    mask_region_mode: bool = False
     magicwand_tolerance: int = 32
     magicwand_range: int = 0
     magicwand_fill_mode: int = 0
@@ -289,6 +290,13 @@ class DrawPanelConfig(Config):
     shape_border_color: str = '#000000'
 
     def __post_init__(self) -> None:
+        if self.inpainter_shape == 3:
+            LOGGER.warning('Migrate drawpanel Flood Fill to Circle Brush with Mask Region Mode.')
+            self.inpainter_shape = 0
+            self.mask_region_mode = True
+        if type(self.mask_region_mode) is not bool:
+            LOGGER.warning('Discard invalid drawpanel.mask_region_mode config.')
+            self.mask_region_mode = False
         if not isinstance(self.rectool_use_mask, bool):
             LOGGER.warning('Discard invalid drawpanel.rectool_use_mask config.')
             self.rectool_use_mask = True

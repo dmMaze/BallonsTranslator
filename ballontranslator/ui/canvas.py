@@ -86,6 +86,8 @@ class CustomGV(QGraphicsView):
     ctrl_released = Signal()
     magic_wand_hover = Signal(QPointF)
     magic_wand_hover_left = Signal()
+    mask_region_hover = Signal(QPointF)
+    mask_region_hover_left = Signal()
     canvas: Optional["Canvas"] = None
 
     def __init__(self, parent=None):
@@ -101,11 +103,12 @@ class CustomGV(QGraphicsView):
         canvas = self.canvas
         if canvas is not None and canvas._brush_anchor is not None and event.type() == QEvent.Type.Leave:
             canvas.brush_line_preview.hide()
-        if canvas is not None and canvas._magic_wand_hover_enabled:
+        if canvas is not None and (canvas._magic_wand_hover_enabled or canvas._mask_region_hover_enabled):
             etype = event.type()
             if etype in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
                 if (
-                    not isinstance(event, QMouseEvent)
+                    canvas._mask_region_hover_enabled
+                    or not isinstance(event, QMouseEvent)
                     or event.buttons() == Qt.MouseButton.NoButton
                 ):
                     pos = (
@@ -113,9 +116,11 @@ class CustomGV(QGraphicsView):
                         if hasattr(event, 'position')
                         else event.pos()
                     )
-                    self.magic_wand_hover.emit(self.mapToScene(pos))
+                    hover = self.mask_region_hover if canvas._mask_region_hover_enabled else self.magic_wand_hover
+                    hover.emit(self.mapToScene(pos))
             elif etype == QEvent.Type.Leave:
                 self.magic_wand_hover_left.emit()
+                self.mask_region_hover_left.emit()
         return super().viewportEvent(event)
 
     def wheelEvent(self, event : QWheelEvent) -> None:
@@ -228,6 +233,9 @@ class Canvas(QGraphicsScene):
     scale_tool = Signal(QPointF)
     end_scale_tool = Signal()
     magic_wand_clicked = Signal(QPointF, bool)
+    mask_region_stroke_started = Signal(bool)
+    mask_region_stroke_updated = Signal(QRectF)
+    brush_gesture_cancelled = Signal()
     image_layers_updated = Signal()
     canvas_undostack_changed = Signal()
     
@@ -282,6 +290,9 @@ class Canvas(QGraphicsScene):
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.gv.canvas = self
         self._magic_wand_hover_enabled = False
+        self._mask_region_hover_enabled = False
+        self.mask_region_hover = self.gv.mask_region_hover
+        self.mask_region_hover_left = self.gv.mask_region_hover_left
         self.magic_wand_hover = self.gv.magic_wand_hover
         self.magic_wand_hover_left = self.gv.magic_wand_hover_left
         self.gv.setAcceptDrops(True)
@@ -916,7 +927,18 @@ class Canvas(QGraphicsScene):
         self._brush_stroke_button = Qt.MouseButton.NoButton
         self._brush_line_drawing = False
         self.brush_line_preview.hide()
+        self.brush_gesture_cancelled.emit()
         return active
+
+    @property
+    def mask_region_available(self) -> bool:
+        return (self.drawMode() and self.gv.isVisible()
+                and self.image_edit_mode == ImageEditMode.InpaintTool
+                and self.painting_shape in (PenShape.Circle, PenShape.Rectangle))
+
+    @property
+    def mask_region_mode(self) -> bool:
+        return self.mask_region_available and pcfg.drawpanel.mask_region_mode
 
     def brush_line_endpoint(self, pos: QPointF, modifiers: Qt.KeyboardModifier) -> QPointF:
         """Constrain a Shift segment to the nearest page axis when Ctrl is held.
@@ -936,7 +958,7 @@ class Canvas(QGraphicsScene):
     def update_brush_line_preview(self, scene_pos: QPointF, modifiers: Qt.KeyboardModifier) -> None:
         if (
             self._brush_anchor is None or not self.drawMode() or not self.painting
-            or self.painting_shape == PenShape.MagicWand
+            or self.painting_shape == PenShape.MagicWand or self.mask_region_mode
             or self._brush_stroke_button != Qt.MouseButton.NoButton
             or not modifiers & Qt.KeyboardModifier.ShiftModifier
             or modifiers & Qt.KeyboardModifier.AltModifier
@@ -953,10 +975,14 @@ class Canvas(QGraphicsScene):
         self.brush_line_preview.show()
 
     def _start_brush_stroke(self, event: QGraphicsSceneMouseEvent, pen: QPen, erasing: bool = False) -> None:
+        region_mode = self.mask_region_mode
+        if region_mode:
+            self.mask_region_hover.emit(event.scenePos())
+            self.mask_region_stroke_started.emit(event.button() == Qt.MouseButton.RightButton)
         pos = self.inpaintLayer.mapFromScene(event.scenePos())
         self._brush_stroke_button = event.button()
         self._brush_line_drawing = bool(
-            self._brush_anchor is not None
+            not region_mode and self._brush_anchor is not None
             and self._brush_anchor_button == event.button()
             and event.modifiers() & Qt.KeyboardModifier.ShiftModifier
             and not event.modifiers() & Qt.KeyboardModifier.AltModifier
@@ -970,6 +996,16 @@ class Canvas(QGraphicsScene):
                 self.drawingLayer.updateDrawing()
         else:
             self.addStrokeImageItem(pos, pen, erasing)
+        if region_mode:
+            # Show the live brush above the component overlay, but omit this
+            # temporary guide from exports just like the region preview.
+            self.stroke_img_item.setData(CONTROL_ITEM_DATA_KEY, True)
+            self.stroke_img_item.setZValue(21)
+            self.stroke_img_item.show()
+            radius = pen.widthF() / 2
+            self.mask_region_stroke_updated.emit(QRectF(
+                pos.x() - radius, pos.y() - radius, pen.widthF(), pen.widthF(),
+            ))
 
     def startCreateTextblock(
         self,
@@ -1242,7 +1278,9 @@ class Canvas(QGraphicsScene):
                 pos = self.inpaintLayer.mapFromScene(event.scenePos())
                 if self.erase_img_key is None:
                     # painting
-                    self.stroke_img_item.lineTo(pos)
+                    dirty = self.stroke_img_item.lineTo(pos, straight=self.mask_region_mode)
+                    if self.mask_region_mode and dirty is not None:
+                        self.mask_region_stroke_updated.emit(dirty)
                 else:
                     rect = self.stroke_img_item.lineTo(pos, update=False)
                     if rect is not None:
@@ -1656,6 +1694,14 @@ class Canvas(QGraphicsScene):
                 viewport.setMouseTracking(True)
         else:
             self.gv.magic_wand_hover_left.emit()
+
+    def set_mask_region_hover_tracking(self, enabled: bool) -> None:
+        self._mask_region_hover_enabled = bool(enabled)
+        if enabled:
+            self.gv.setMouseTracking(True)
+            self.gv.viewport().setMouseTracking(True)
+        else:
+            self.mask_region_hover_left.emit()
 
     def setPaintMode(self, painting: bool) -> None:
         self.reset_brush_line()

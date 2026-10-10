@@ -668,6 +668,10 @@
         <source>Mask Opacity</source>
         <translation>Непрозрачность маски</translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>Нажмите Shift для переключения режима областей маски. Удерживайте Ctrl для накопления мазков кисти; отпустите Ctrl для запуска восстановления изображения.</translation>
+    </message>
 </context>
 <context>
     <name>EmphasisToolButton</name>
@@ -1233,6 +1237,20 @@
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="126" />
         <source>Rectangle</source>
         <translation>Прямоугольник</translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>Режим областей маски</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>Заполнение или очистка связных областей маски.
+Переключение: Shift
+Заполнение: перетаскивание левой кнопкой; очистка: перетаскивание правой кнопкой.
+Области, касающиеся края изображения, нельзя заполнить.</translation>
     </message>
 </context>
 <context>

@@ -2,24 +2,29 @@ import os.path as osp
 from typing import List, Union
 
 from qtpy.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QSpacerItem,
     QToolButton,
+    QTextEdit,
     QVBoxLayout,
 )
-from qtpy.QtCore import QEvent, QPoint, QSize, Qt, QUrl, Signal
+from qtpy.QtCore import QEvent, QObject, QPoint, QSize, Qt, QUrl, Signal
 from qtpy.QtGui import (
     QActionGroup,
     QDesktopServices,
     QIcon,
     QKeySequence,
+    QKeyEvent,
     QMouseEvent,
 )
 
@@ -287,6 +292,7 @@ class LeftBar(Widget):
 class TitleBar(Widget):
 
     closebtn_clicked = Signal()
+    mask_region_toggle_requested = Signal()
     display_lang_changed = Signal(str)
     show_module = Signal(int, bool)
 
@@ -501,8 +507,21 @@ class TitleBar(Widget):
             hlayout.setContentsMargins(0, 0, 0, 0)
             hlayout.setSpacing(0)
 
-    def eventFilter(self, obj, e):
+    def eventFilter(self, obj: QObject, e: QEvent) -> bool:
         if obj == self.mainwindow:
+            # Modifier-only keys do not activate QShortcut. Use the existing
+            # window hook so bare Shift has the same scope as P and T.
+            if (isinstance(e, QKeyEvent) and e.type() == QEvent.Type.KeyPress
+                    and e.key() == Qt.Key.Key_Shift
+                    and not e.modifiers() & (Qt.KeyboardModifier.ControlModifier
+                                            | Qt.KeyboardModifier.AltModifier
+                                            | Qt.KeyboardModifier.MetaModifier)
+                    and not isinstance(QApplication.focusWidget(),
+                                       (QLineEdit, QTextEdit, QPlainTextEdit))):
+                if not e.isAutoRepeat():
+                    self.mask_region_toggle_requested.emit()
+                e.accept()
+                return True
             if e.type() == QEvent.Type.WindowStateChange and not shared.ON_MACOS:
                 self.maxBtn.setChecked(self.mainwindow.isMaximized())
                 return False
