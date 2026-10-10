@@ -180,6 +180,28 @@ class DrawingInpainterTest(unittest.TestCase):
         self.panel.on_end_create_rect(QRectF(1, 1, 5, 5), 0)
         np.testing.assert_array_equal(self.panel.rect_inpaint_dict['mask'], expected)
 
+    def test_rectangle_method_keeps_dilation_and_aligns_slider_after_range_changes(self) -> None:
+        self.panel.rectTool.click()
+        self.panel.show()
+        self.app.processEvents()
+        controls = self.panel.rectPanel
+        slider = controls.dilate_slider
+        slider.setValue(20)
+
+        for method, expected in ((2, 20), (0, 20), (2, 20), (1, 0), (2, 0)):
+            with self.subTest(method=method, expected=expected):
+                if method == 1:
+                    slider.setValue(-10)
+                controls.methodComboBox.setCurrentIndex(method)
+                controls.methodComboBox.activated.emit(method)
+                self.assertEqual(slider.value(), expected)
+                self.assertEqual(pcfg.drawpanel.recttool_dilate_ksize, expected)
+                # Clicking the displayed thumb must select its displayed value.
+                QTest.mouseClick(slider, Qt.MouseButton.LeftButton,
+                                 pos=slider.handle.geometry().center())
+                self.assertLessEqual(abs(slider.value() - expected), 1)
+                slider.setValue(expected)
+
     def test_disabled_rectangle_method_explains_how_to_enable_it(self) -> None:
         pcfg.drawpanel.rectool_use_mask = False
         pcfg.drawpanel.rectool_method = 1

@@ -41,6 +41,30 @@ TOOLNAME_POINT_SIZE = 13
 MAGICWAND_TOLERANCE_MAX = 255
 MAGICWAND_RANGE_LIMIT = 50
 
+RECT_MASK_MORPH_MIN = -25
+RECT_MASK_MORPH_MAX = 100
+
+
+def _morph_rectangle_mask(mask: np.ndarray, radius: int) -> np.ndarray:
+    """Dilate for positive radii and erode for negative radii.
+
+    >>> mask = np.zeros((5, 5), np.uint8); mask[1:4, 1:4] = 255
+    >>> int(_morph_rectangle_mask(mask, -1).sum())
+    255
+    >>> bool(_morph_rectangle_mask(mask, -2).any())
+    False
+    """
+    if radius == 0:
+        return mask
+    kernel_radius = abs(radius)
+    element = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (2 * kernel_radius + 1, 2 * kernel_radius + 1),
+        (kernel_radius, kernel_radius),
+    )
+    operation = cv2.dilate if radius > 0 else cv2.erode
+    return operation(mask, element)
+
 
 def _magic_wand_preview(
     img: np.ndarray, seed: tuple[int, int, int, int, int],
@@ -573,7 +597,7 @@ class RectPanel(Widget):
 
         self.dilate_label = ToolNameLabel(100, self.tr('Dilate'))
         self.dilate_slider = PaintQSlider()
-        self.dilate_slider.setRange(0, 100)
+        self.dilate_slider.setRange(0, RECT_MASK_MORPH_MAX)
         self.dilate_slider.valueChanged.connect(self.dilate_ksize_changed)
         self.methodComboBox = QComboBox()
         self.methodComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
@@ -623,8 +647,17 @@ class RectPanel(Widget):
         layout.setSpacing(14)
 
     def on_inpaint_seg_method_changed(self) -> None:
+        self.sync_dilate_range()
         pcfg.drawpanel.rectool_method = self.methodComboBox.currentIndex()
         self.mask_changed.emit()
+
+    def sync_dilate_range(self) -> None:
+        existing_mask = self.methodComboBox.currentIndex() == 2
+        self.dilate_slider.setMinimum(RECT_MASK_MORPH_MIN if existing_mask else 0)
+        if self.use_mask_checker.isChecked():
+            tooltip = self.tr('Negative values shrink the mask; positive values expand it.') if existing_mask else self.tr('Positive values expand the mask.')
+            self.dilate_label.setToolTip(tooltip)
+            self.dilate_slider.setToolTip(tooltip)
 
     def on_use_mask_changed(self) -> None:
         use_mask = self.use_mask_checker.isChecked()
@@ -633,6 +666,7 @@ class RectPanel(Widget):
         for control in (self.dilate_label, self.dilate_slider, self.methodComboBox):
             control.setEnabled(use_mask)
             control.setToolTip(hint)
+        self.sync_dilate_range()
         self.mask_changed.emit()
 
     def on_auto_changed(self):
@@ -648,14 +682,11 @@ class RectPanel(Widget):
     def auto(self) -> bool:
         return self.autoChecker.isChecked()
 
-    def post_process_mask(self, mask: np.ndarray) -> np.ndarray:
+    def post_process_mask(self, mask: np.ndarray) -> np.ndarray | None:
+        """Expand or shrink the selected mask by the configured radius."""
         if mask is None:
             return None
-        ksize = self.dilate_slider.value()
-        if ksize == 0:
-            return mask
-        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1),(ksize, ksize))
-        return cv2.dilate(mask, element)
+        return _morph_rectangle_mask(mask, self.dilate_slider.value())
 
 
 class DrawingPanel(Widget):
@@ -1151,9 +1182,10 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel.rangeSlider.setValue(config.magicwand_range)
         self.inpaintConfigPanel.set_fill_mode(config.magicwand_fill_mode)
         
-        self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
         self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
+        self.rectPanel.sync_dilate_range()
+        self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.use_mask_checker.setChecked(config.rectool_use_mask)
         self.shapePanel.shapeCombobox.setCurrentIndex(
             self.shapePanel.shapeCombobox.findData(config.shape_fill_shape)
