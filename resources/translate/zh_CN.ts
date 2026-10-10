@@ -1145,6 +1145,10 @@
         <source>Shape Erase</source>
         <translation>形状擦除</translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>选区工具</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -5214,12 +5218,10 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="632"/>
         <source>Enable Use mask to change the mask method and dilation.</source>
         <translation>勾选“使用掩膜”后即可更改掩膜提取方法和膨胀程度。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="587"/>
         <source>Use mask</source>
         <translation>使用掩膜</translation>
     </message>
@@ -5229,52 +5231,42 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>取消勾选后，LLM 修复模型不接收掩膜，并替换整个矩形区域。本地修复模型则将整个矩形视为掩膜区域。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="574"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="301"/>
         <source>Dilate</source>
         <translation>膨胀</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="582"/>
-        <source>method 1</source>
-        <translation>方法1</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="583"/>
-        <source>method 2</source>
-        <translation>方法2</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="584"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="311"/>
         <source>Use Existing Mask</source>
         <translation>使用区域已有掩膜</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="595"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="314"/>
         <source>Auto</source>
         <translation>自动</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="596"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="315"/>
         <source>run inpainting automatically.</source>
         <translation>自动运行修复函数.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="598"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="317"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="599"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="318"/>
         <source>Space</source>
         <translation>空格</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="601"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="320"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="602"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="412"/>
         <source>Ctrl+D</source>
         <translation></translation>
     </message>
@@ -5285,6 +5277,68 @@ Then restart Photoshop. Explorer will now open the source file and destination l
     <message>
         <source>kernel size: </source>
         <translation type="vanished">核大小: </translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>负值收缩掩膜，正值膨胀掩膜。</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>正值膨胀掩膜。</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>矩形</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>套索</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>多边形</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>选区帮助</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>拖动创建矩形选区（右键恢复原图）
+取消：Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>拖动创建套索选区（右键恢复原图）
+取消：Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>逐点点击创建多边形选区（右键恢复原图）
+取消：Esc
+撤销顶点：Backspace
+提交：双击、点击起始顶点或按 Enter</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>取消勾选后，直接替换整个选区，不提取掩膜。</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>选区</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>方法1：边缘提取</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>方法2：阈值分割</translation>
     </message>
 </context>
 <context>

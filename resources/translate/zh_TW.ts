@@ -1133,6 +1133,10 @@
         <source>Mask Transparency</source>
         <translation type="vanished">掩膜透明度</translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>選取工具</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -5174,12 +5178,12 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="632"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="472"/>
         <source>Enable Use mask to change the mask method and dilation.</source>
         <translation>勾選「使用遮罩」後即可變更遮罩擷取方法與膨脹程度。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="587"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="397"/>
         <source>Use mask</source>
         <translation>使用遮罩</translation>
     </message>
@@ -5189,52 +5193,42 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>取消勾選後，LLM 修復模型不接收遮罩，並取代整個矩形區域。本地修復模型則將整個矩形視為遮罩區域。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="574"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="301"/>
         <source>Dilate</source>
         <translation>膨脹</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="582"/>
-        <source>method 1</source>
-        <translation>方法1</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="583"/>
-        <source>method 2</source>
-        <translation>方法2</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="584"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="311"/>
         <source>Use Existing Mask</source>
         <translation>使用區域已有掩膜</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="595"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="314"/>
         <source>Auto</source>
         <translation>自動</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="596"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="315"/>
         <source>run inpainting automatically.</source>
         <translation>自動運行修復函數.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="598"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="317"/>
         <source>Inpaint</source>
         <translation>圖像修復</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="599"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="318"/>
         <source>Space</source>
         <translation>空格</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="601"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="320"/>
         <source>Delete</source>
         <translation>刪除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="602"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="412"/>
         <source>Ctrl+D</source>
         <translation></translation>
     </message>
@@ -5245,6 +5239,68 @@ Then restart Photoshop. Explorer will now open the source file and destination l
     <message>
         <source>kernel size: </source>
         <translation type="vanished">核大小: </translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>負值縮小遮罩，正值擴大遮罩。</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>正值擴大遮罩。</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>矩形</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>套索</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>多邊形</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>選區說明</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>拖曳建立矩形選區（右鍵還原原圖）
+取消：Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>拖曳建立套索選區（右鍵還原原圖）
+取消：Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>逐點點選建立多邊形選區（右鍵還原原圖）
+取消：Esc
+撤銷頂點：Backspace
+提交：按兩下、點選起始頂點或按 Enter</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>取消勾選後，直接替換整個選區，不擷取遮罩。</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>選區</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>方法1：邊緣擷取</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>方法2：閾值分割</translation>
     </message>
 </context>
 <context>

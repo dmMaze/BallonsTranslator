@@ -130,6 +130,39 @@ class CanvasInpaintLifecycleTests(unittest.TestCase):
             self.wait_until(lambda: len(self.completed) == 1)
         np.testing.assert_array_equal(self.completed[0][0]['inpainted'], 11)
 
+    def test_selection_boundary_is_frozen_until_worker_completion(self) -> None:
+        request = self.request()
+        boundary = np.tri(8, 8, dtype=np.uint8) * 255
+        request['selection_mask'] = boundary.copy()
+        self.manager.canvas_inpaint(request)
+        request['selection_mask'].fill(0)
+        self.wait_until(lambda: len(self.completed) == 1)
+        np.testing.assert_array_equal(self.completed[0][0]['selection_mask'], boundary)
+
+    def test_cancelled_draw_result_does_not_finish_the_next_request(self) -> None:
+        self.model.release.clear()
+        self.manager.canvas_inpaint(self.request())
+        self.wait_until(self.model.started.is_set)
+        self.manager.cancel_canvas_inpaint()
+        self.project.inpainted_array = np.full((8, 8, 3), 30, np.uint8)
+        self.manager.canvas_inpaint(self.request())
+        self.model.release.set()
+        self.wait_until(lambda: len(self.completed) == 1)
+        self.wait_until(lambda: not self.manager.inpaint_thread.isRunning())
+        np.testing.assert_array_equal(self.completed[0][0]['inpainted'], 31)
+        self.assertFalse(self.failed)
+
+    def test_mask_change_during_inference_discards_result(self) -> None:
+        self.project.mask_array = np.zeros((8, 8), np.uint8)
+        self.model.release.clear()
+        self.manager.canvas_inpaint(self.request())
+        self.wait_until(self.model.started.is_set)
+        self.project.mask_array[3, 3] = 255
+        self.model.release.set()
+        self.wait_until(lambda: len(self.failed) == 1)
+        self.assertFalse(self.completed)
+        np.testing.assert_array_equal(self.project.inpainted_array, 10)
+
     def test_page_change_discards_old_result_and_runs_new_page(self) -> None:
         self.model.release.clear()
         with self.assertLogs(M.LOGGER, level='INFO') as logs:

@@ -202,6 +202,59 @@ class DrawingInpainterTest(unittest.TestCase):
                 self.assertLessEqual(abs(slider.value() - expected), 1)
                 slider.setValue(expected)
 
+    def test_rectangle_mask_erosion_updates_project_and_history(self) -> None:
+        controls = self.panel.rectPanel
+        controls.methodComboBox.setCurrentIndex(2)
+        controls.methodComboBox.activated.emit(2)
+        mask = np.zeros((9, 9), np.uint8)
+        mask[2:7, 2:7] = 255
+
+        project = self.canvas.imgtrans_proj
+        project.img_array = np.full((9, 9, 3), 10, np.uint8)
+        original_inpainted = np.full((9, 9, 3), 80, np.uint8)
+        project.inpainted_array = original_inpainted.copy()
+        project.mask_array = mask.copy()
+        self.panel.rectTool.click()
+        controls.dilate_slider.setValue(1)
+        self.panel.on_end_create_rect(QRectF(0, 0, 9, 9), 0)
+        self.assertGreater(np.count_nonzero(self.panel.rect_inpaint_dict['mask']), np.count_nonzero(mask))
+        self.panel.module_manager = Mock()
+
+        for radius in (-3, -1):
+            with self.subTest(radius=radius), patch.object(self.canvas, 'updateLayers'):
+                self.panel._finish_inpaint()
+                self.panel.module_manager.canvas_inpaint.reset_mock()
+                self.canvas.draw_undo_stack.clear()
+                project.mask_array = mask.copy()
+                project.inpainted_array = original_inpainted.copy()
+                controls.dilate_slider.setValue(radius)
+                self.panel.on_end_create_rect(QRectF(0, 0, 9, 9), 0)
+                request = self.panel.rect_inpaint_dict
+                expected_mask = np.zeros_like(mask)
+                if radius == -1:
+                    expected_mask[3:6, 3:6] = 255
+                np.testing.assert_array_equal(request['mask'], expected_mask[:8, :8])
+                expected_image = original_inpainted.copy()
+                expected_image[(mask > 0) & (expected_mask == 0)] = 10
+                expected_image[expected_mask > 0] = 120
+
+                self.panel.inpaintRect(request)
+                if radius == -3:
+                    self.panel.module_manager.canvas_inpaint.assert_not_called()
+                else:
+                    self.panel.module_manager.canvas_inpaint.assert_called_once()
+                    model_result = request['img'].copy()
+                    model_result[request['mask'] > 0] = 120
+                    self.panel.on_inpaint_finished({**request, 'inpainted': model_result})
+                np.testing.assert_array_equal(project.mask_array, expected_mask)
+                np.testing.assert_array_equal(project.inpainted_array, expected_image)
+                self.canvas.draw_undo_stack.undo()
+                np.testing.assert_array_equal(project.mask_array, mask)
+                np.testing.assert_array_equal(project.inpainted_array, original_inpainted)
+                self.canvas.draw_undo_stack.redo()
+                np.testing.assert_array_equal(project.mask_array, expected_mask)
+                np.testing.assert_array_equal(project.inpainted_array, expected_image)
+
     def test_disabled_rectangle_method_explains_how_to_enable_it(self) -> None:
         pcfg.drawpanel.rectool_use_mask = False
         pcfg.drawpanel.rectool_method = 1
