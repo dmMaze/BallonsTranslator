@@ -29,7 +29,8 @@ from ballontranslator.modules.exceptions import (
 from ballontranslator.modules.base import BaseModule, soft_empty_cache
 from ballontranslator.modules import INPAINTERS, TRANSLATORS, TEXTDETECTORS, OCR, \
     GET_VALID_TRANSLATORS, GET_VALID_TEXTDETECTORS, GET_VALID_INPAINTERS, GET_VALID_OCR, \
-    BaseTranslator, InpainterBase, TextDetectorBase, OCRBase, merge_config_module_params
+    BaseTranslator, InpainterBase, TextDetectorBase, OCRBase, merge_config_module_params, \
+    TEXTDETECTOR_PARAM_INHERITANCE
 import ballontranslator.modules as modules
 modules.translators.SYSTEM_LANG = QLocale.system().name()
 from ballontranslator.utils.textblock import TextBlock, sort_regions
@@ -1474,7 +1475,8 @@ class ModuleManager(QObject):
         merge_config_module_params(
             cfg_module.inpainter_params, GET_VALID_INPAINTERS(), INPAINTERS.get)
         merge_config_module_params(
-            cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get)
+            cfg_module.textdetector_params, GET_VALID_TEXTDETECTORS(), TEXTDETECTORS.get,
+            inherit_from=TEXTDETECTOR_PARAM_INHERITANCE)
         merge_config_module_params(
             cfg_module.ocr_params, GET_VALID_OCR(), OCR.get)
 

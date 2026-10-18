@@ -1,5 +1,5 @@
 from .ocr import OCR, OCRBase
-from .textdetector import TEXTDETECTORS, TextDetectorBase
+from .textdetector import TEXTDETECTORS, TextDetectorBase, TEXTDETECTOR_PARAM_INHERITANCE
 from .translators import TRANSLATORS, BaseTranslator
 from .inpaint import INPAINTERS, InpainterBase
 from .base import DEFAULT_DEVICE, GPUINTENSIVE_SET, LOGGER, merge_config_module_params, \

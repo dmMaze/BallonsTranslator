@@ -28,15 +28,19 @@ def find_model_paths(model_dir, prefixes):
         for p in sorted(os.listdir(model_dir))
         if p.startswith(tuple(prefixes))
     ]
+    ordered_list = []
     for p in default_path_list:
         # Keep bundled download targets scoped to the requested model family,
         # just like the locally discovered checkpoint paths above.
         if not osp.basename(p).startswith(tuple(prefixes)):
             continue
-        if p not in found_list:
-            found_list.append(p)
+        if p not in ordered_list:
+            ordered_list.append(p)
+    for p in found_list:
+        if p not in ordered_list:
+            ordered_list.append(p)
 
-    return found_list
+    return ordered_list
 
 
 CKPT_LIST = find_model_paths(MODEL_DIR, YSGYOLO_MODEL_PREFIXES)
@@ -56,7 +60,7 @@ _YSGYOLO_PARAMS = {
     'model path': {
         'type': 'selector',
         'options': CKPT_LIST,
-        'value': 'data/models/ysgyolo_1.2_OS1.0.pt',
+        'value': 'data/models/ysgyolo_yolo26_2.0.pt',
         'editable': True,
         'flush_btn': True,
         'path_selector': True,
@@ -251,7 +255,10 @@ class YSGYoloDetector(TextDetectorBase):
                 if osp.exists(p):
                     df_model_path = p
                     break
-            self.logger.warning(f'{model_path} does not exist, try fall back to default value {df_model_path}')
+            self.logger.warning(
+                f'{model_path} does not exist, try fall back to default value {df_model_path}. '
+                f'Choose an available checkpoint in the detector\'s model path setting.'
+            )
             model_path = df_model_path
 
         if 'rtdetr' in os.path.basename(model_path):
@@ -365,6 +372,12 @@ class YSGYoloCTDDetector(YSGYoloDetector):
     on onomatopoeia. This detector keeps the YOLO boxes as the allowed region
     and intersects them with CTD's refined mask, so SFX outside the boxes are
     ignored while replacement/OCR still uses the YOLO text blocks.
+
+    The YOLO stage must behave exactly like the ``ysgyolo`` detector, otherwise
+    a text block the user trusts ysgyolo to find would be dropped before CTD
+    ever contributes. Its shared params are therefore seeded from the saved
+    ysgyolo config by ``TEXTDETECTOR_PARAM_INHERITANCE``; only the CTD-specific
+    params below are hybrid-only.
     """
 
     dependencies = ['torch', 'ultralytics>=8.4.14', 'torchvision', 'einops']

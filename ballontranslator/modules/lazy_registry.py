@@ -153,12 +153,15 @@ def _device_selector(not_supported=None):
 def _find_model_paths(model_dir, prefixes):
     """Return local model paths for selector metadata without importing modules.
 
+    Built-in default checkpoints come first so the primary model is also the
+    fallback when a saved config points at a missing file.
+
     Example:
         >>> with tempfile.TemporaryDirectory() as tmp:
         ...     _ = Path(tmp, 'ysgyolo_demo.pt').write_text('')
         ...     _ = Path(tmp, 'other.pt').write_text('')
         ...     _find_model_paths(tmp, ('ysgyolo',))  # doctest: +ELLIPSIS
-        ['...ysgyolo_demo.pt', 'data/models/ysgyolo_yolo26_2.0.pt', 'data/models/ysgyolo_yolo26OBB_2.0.pt']
+        ['data/models/ysgyolo_yolo26_2.0.pt', 'data/models/ysgyolo_yolo26OBB_2.0.pt', '...ysgyolo_demo.pt']
     """
 
     default_path_list = [
@@ -177,16 +180,18 @@ def _find_model_paths(model_dir, prefixes):
         for name in names
         if name.startswith(tuple(prefixes))
     ]
-
+    ordered_list = []
     for p in default_path_list:
         # Built-in download targets must obey the same prefix filter as local
         # files; SafeEval can encounter this helper with non-YSG prefixes.
         if not os.path.basename(p).startswith(tuple(prefixes)):
             continue
-        if p not in found_list:
-            found_list.append(p)
+        ordered_list.append(p)
+    for p in found_list:
+        if p not in ordered_list:
+            ordered_list.append(p)
 
-    return found_list
+    return ordered_list
 
 
 class SafeEval:

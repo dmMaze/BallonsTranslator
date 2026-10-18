@@ -396,6 +396,49 @@ class AutoTateChuYokoConfig(Config):
                 setattr(self, setting.name, setting.default)
 
 
+# ysg_ctd config sections created before the parameter-inheritance fix hold a
+# stale template default that never existed on disk. Keeping it made the
+# detector silently load the OBB checkpoint instead of the user's ysgyolo model.
+LEGACY_YSG_CTD_MODEL_PATHS = {'data/models/ysgyolo_1.2_OS1.0.pt'}
+
+
+def migrate_legacy_ysg_ctd_params(textdet_params: dict):
+    """Adopt the configured ysgyolo checkpoint in a stale ysg_ctd section.
+
+    Example:
+        >>> params = {
+        ...     'ysgyolo': {'model path': 'data/models/ysgyolo_yolo26_2.0.pt'},
+        ...     'ysg_ctd': {'model path': 'data/models/ysgyolo_1.2_OS1.0.pt'},
+        ... }
+        >>> migrate_legacy_ysg_ctd_params(params)
+        >>> params['ysg_ctd']['model path']
+        'data/models/ysgyolo_yolo26_2.0.pt'
+    """
+
+    if not isinstance(textdet_params, dict):
+        return
+    ysg_ctd = textdet_params.get('ysg_ctd')
+    ysgyolo = textdet_params.get('ysgyolo')
+    if not isinstance(ysg_ctd, dict) or not isinstance(ysgyolo, dict):
+        return
+    model_path = ysg_ctd.get('model path')
+    ysg_model_path = ysgyolo.get('model path')
+    if (
+        isinstance(model_path, str)
+        and model_path in LEGACY_YSG_CTD_MODEL_PATHS
+        and isinstance(ysg_model_path, str)
+        and ysg_model_path
+        and ysg_model_path != model_path
+    ):
+        LOGGER.info(
+            'Migrated ysg_ctd model path from legacy default %r to the configured '
+            'ysgyolo checkpoint %r.',
+            model_path,
+            ysg_model_path,
+        )
+        ysg_ctd['model path'] = ysg_model_path
+
+
 @nested_dataclass
 class ProgramConfig(Config):
 
@@ -547,6 +590,7 @@ class ProgramConfig(Config):
                 params = module_cfg['textdetector_params']
                 if 'rtdetr_v2' in params:
                     params['ctbd'] = params.pop('rtdetr_v2')
+                migrate_legacy_ysg_ctd_params(params)
 
         effect_notices = set()
         if 'global_fontformat' in config_dict:
