@@ -29,7 +29,7 @@ Qt remains the editable text model and shaper. The custom layouts place Qt
   must consume the same settled cells and transforms.
 - Qt positions are UTF-16 code units. Use the shared UTF-16 and grapheme helpers
   wherever Python strings meet Qt positions; never expose a caret inside a
-  surrogate pair or combined run.
+  surrogate pair or grapheme cluster.
 - Effect padding and visible ink overflow belong to source geometry, not the
   persistent logical rectangle.
 
@@ -49,12 +49,10 @@ in the document but receive derived continuation-row cells so wrapping, box
 growth, cursor, selection, and hit testing agree. Other Unicode separators keep
 Qt behavior.
 
-Common ligatures work under both bindings. Discretionary/contextual ligatures
-and oldstyle figures require Qt 6.11; Qt 5 preserves their CSS without applying
-them. Character spacing and font features are applied per range. Identity spacing is
-left unset when common ligatures should remain available because an explicit Qt
-spacing property may suppress optional ligatures. Version-specific feature-tag
-handling stays inside the layout/annotation boundary.
+Common ligatures work under both bindings; discretionary/contextual ligatures
+and oldstyle figures require Qt 6.11. Qt 5 preserves unsupported CSS without
+applying it. Font-metric fallbacks and binding differences belong at the
+layout/annotation boundary.
 
 ### Vertical
 
@@ -69,37 +67,30 @@ punctuation path. Compact punctuation shortens eligible punctuation cells
 without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
 indivisible runs, with character spacing applied after the run.
 
-Tate-chu-yoko is a horizontal Qt run occupying one vertical flow cell. Multi-character
-runs shape explicit full-width forms as their narrow equivalents, preserving the
-original document text and UTF-16 positions. Single-character runs and unrelated
-compatibility characters stay unchanged. Normalized runs use the same placement
-for paint, effects, selection, and hit testing; their temporary shaping layouts
-contain only the run's text. `TateChuYokoRun` translates run-local glyph and cursor
-indices to block-local UTF-16 offsets at the Qt boundary. These runs are rebuilt
-with the owning vertical layout. Native IME composition remains authoritative
-until commit.
+Tate-chu-yoko (TCY) is an authored horizontal run occupying one vertical cell.
+Only its selected range participates in shaping; surrounding whitespace keeps
+vertical cells. Multi-character runs shape full-width forms as narrow equivalents
+without changing document text or UTF-16 positions. Single-character runs and
+unrelated compatibility characters stay unchanged. `TateChuYokoRun` owns index
+mapping between the isolated run and source block. Native IME composition remains
+authoritative until commit.
 
-TCY ignores authored letter spacing and uses the font's half-width punctuation
-plus matching half-, third-, or quarter-width feature when available.
-Standard Roman mode keeps that shaped run's natural horizontal
-width; the alternate mode horizontally scales any remaining excess to one em.
-The resulting visible ink is centered without changing the stored text. Glyph
-ink may overhang the column, but that overhang affects only painting and
-interaction bounds, never neighboring columns.
+TCY ignores authored letter spacing. Standard Roman mode keeps its natural
+shaped width; alternate mode shrinks excess width to one em. Visible ink is
+centered, and overhang affects paint and interaction bounds without widening
+neighboring columns.
 
 Ruby/furigana is attached layout content, not a detached overlay. Group Ruby is
 indivisible; mono Ruby may wrap only between base/reading pairs. Each unit uses
 the larger of its base and annotation advances, and the shorter run is spaced
 within that cell. Horizontal Ruby appears above or below; vertical Ruby remains
-upright on the right or left. The same cells own wrapping, paint, selection,
-cursor, hit testing, effects, and visible bounds. Ruby and tate-chu-yoko cannot
-overlap, and automatic Ruby overhang is not supported.
+upright on the right or left. Ruby and TCY cannot overlap, and automatic Ruby
+overhang is not supported.
 
 ## Flow and spacing
 
-Character spacing is range-bound; line spacing is paragraph-bound. A caret
-formats its paragraph, a selection formats intersected paragraphs, and Enter
-inherits the block format. `FontFormat` supplies defaults for old or empty rich text.
+For paragraph spacing, a caret formats its paragraph, a selection formats
+intersected paragraphs, and Enter inherits the block format.
 
 Whitespace remains document content and must consume explicit editable cells.
 Horizontal and vertical layouts may represent those cells differently, but
@@ -107,20 +98,15 @@ neither may move whitespace into a second text model or drop it from cursor and
 hit geometry. Vertical whitespace contributes flow advance, not the ink bounds
 used to center the neighboring glyph in its column.
 
-Character spacing is a trailing advance for the affected glyph or joined run;
-W3C tate-chu-yoko composition ignores it. On a squeezed single-column vertical
-item, increasing it may grow the logical height to preserve that column;
-multi-column items keep normal fixed-area reflow, and automatic growth never
-silently shrinks the box.
+Character spacing is a trailing advance for the affected glyph or joined run.
+On a squeezed single-column vertical item, increasing it may grow the logical
+height to preserve that column; multi-column items keep normal fixed-area
+reflow, and automatic growth never silently shrinks the box.
 
 Line spacing is owned by the destination row or column. The first visual row or
 column stays anchored without leading spacing; each later one uses its
 paragraph's spacing value and mode. Paragraph boundaries do not restart this
 visual leading-edge rule.
-
-Settle a layout as one transaction. Wrapping, whitespace, annotations,
-fragment metrics, UTF-16 positions, ink bounds, and interaction geometry are
-coupled and must be published only when complete.
 
 ## Alignment and resize
 
@@ -141,10 +127,9 @@ the same resize.
 
 ## Painting and interaction
 
-`vertical_line_placement()` is the shared boundary for rotated glyphs,
-tate-chu-yoko, emphasis, Glyph Slant, and effects. Cursor, selection, and hit
-testing must use the same placement. Ligatures and joined glyphs may change
-shaping, but they do not change the logical UTF-16 editing range.
+`vertical_line_placement()` is the shared boundary for rotated glyphs, TCY,
+emphasis, Glyph Slant, effects, and editing geometry. Ligatures and joined glyphs
+may change shaping, but not the logical UTF-16 editing range.
 
 Document backgrounds paint below selection, and glyph ink paints above it.
 Foreground and effect layouts must reuse the same settled offsets. Caches tied
@@ -163,16 +148,11 @@ document or format change
   -> publish size and refresh geometry/effects
 ```
 
-Test relationships rather than exact font-dependent pixels. Cover the affected
-writing modes, alignments, spacing, annotations, effects, UTF-16 text, editing,
-resize, and mode switches. Focused coverage lives in:
-
-- `tests/test_horizontal_whitespace.py`
-- `tests/test_vertical_alignment.py`
-- `tests/test_vertical_interaction.py`
-- `tests/test_vertical_roman_alignment.py`
-- `tests/test_rich_text_annotations.py`
-- `tests/test_ruby_furigana.py`
+Test relationships rather than exact font-dependent pixels. Cover affected
+writing modes, fonts, spacing, annotations, effects, UTF-16 editing, resize, and
+mode switches. Start with `tests/test_horizontal_whitespace.py`,
+`tests/test_vertical_*.py`, `tests/test_rich_text_annotations.py`, and
+`tests/test_ruby_furigana.py`; add focused font/effect suites when those owners change.
 
 Follow the shared [text-engine verification](text_engine.md#invalidation-and-verification)
 for binding and visual checks.

@@ -39,6 +39,10 @@ from ballontranslator.ui.text_engine.formatting.commands import (
 )
 from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel
 from ballontranslator.ui.text_engine.item import TextBlkItem
+from ballontranslator.ui.text_engine.annotations import (
+    apply_ruby,
+    apply_text_combine_upright,
+)
 from ballontranslator.ui.text_engine.vertical_layout import (
     _LINE_INK_BOUNDS_CACHE,
     _line_ink_bounds,
@@ -50,6 +54,7 @@ from ballontranslator.ui.text_engine.vertical_layout import (
     PUNSET_HALF,
     PUNSET_NONBRACKET,
     PUNSET_PAUSEORSTOP,
+    PUNSET_JAPANESE_SIDEWAYS,
     PUNSET_STANDARD_VERTICAL_ROMAN,
 )
 from ballontranslator.ui.text_engine.rendering.glyph import glyph_geometry
@@ -1386,9 +1391,12 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     ink.center().x(), cell.center().x(), delta=1.0
                 )
-                self.assertAlmostEqual(
-                    ink.center().y(), cell.center().y(), delta=1.0
-                )
+                if char in PUNSET_JAPANESE_SIDEWAYS:
+                    self.assertFalse(self._orientation(standard, 0).isIdentity())
+                else:
+                    self.assertAlmostEqual(
+                        ink.center().y(), cell.center().y(), delta=1.0
+                    )
             with self.subTest(char=char, mode='chinese'):
                 chinese = self._make_item(char, False)
                 ink, cell = self._ink_and_cell(chinese, 0)
@@ -1398,6 +1406,59 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     ink.top(), cell.top(), delta=1.0
                 )
+
+    def test_ideographic_stops_with_ruby_combined_runs_and_resize(self) -> None:
+        original = C.pcfg.compact_vertical_punctuation_spacing
+        self.addCleanup(
+            setattr, C.pcfg, 'compact_vertical_punctuation_spacing', original
+        )
+        for compact in (False, True):
+            for standard in (False, True):
+                with self.subTest(compact=compact, standard=standard):
+                    C.pcfg.compact_vertical_punctuation_spacing = compact
+                    item = self._make_item('あ、12。い', standard)
+                    document = item.document()
+                    cursor = QTextCursor(document)
+                    cursor.setPosition(0)
+                    cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+                    apply_ruby(cursor, 'group', 'あいうえお')
+                    cursor.setPosition(2)
+                    cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+                    apply_text_combine_upright(cursor, True)
+                    item.refreshVerticalLayout()
+                    html = item.toHtml()
+                    undo_steps = document.availableUndoSteps()
+                    for width in (220, 280, 220):
+                        item.set_size(width, 900, set_layout_maxsize=True)
+                        for position in (1, 4):
+                            ink, cell = self._ink_and_cell(item, position)
+                            block = document.firstBlock()
+                            line = block.layout().lineForTextPosition(position)
+                            record = item.layout._line_record(block, line.lineNumber())
+                            # Ruby margins belong to the annotation, not the
+                            # base character frame's punctuation anchor.
+                            base_left = line.x() + record['left_margin']
+                            if standard:
+                                self.assertAlmostEqual(
+                                    ink.center().x(), base_left + record['base_width'] / 2,
+                                    delta=1.0,
+                                )
+                                self.assertGreater(ink.top(), cell.top())
+                            else:
+                                self.assertAlmostEqual(
+                                    ink.right(), base_left + record['base_width'], delta=1.0,
+                                )
+                                self.assertAlmostEqual(ink.top(), cell.top(), delta=1.0)
+                            self.assertTrue(item.contains(ink.center()))
+                        block = document.firstBlock()
+                        combined = block.layout().lineForTextPosition(2)
+                        self.assertTrue(item.layout.is_tate_chu_yoko_line(
+                            block, combined.lineNumber()
+                        ))
+                        self.assertTrue(item.layout._vertical_ruby_placements(block))
+                    self.assertEqual(item.toHtml(), html)
+                    self.assertEqual(document.availableUndoSteps(), undo_steps)
+                    item.deleteLater()
 
     def test_interpuncts_and_bullets_stay_centered(self):
         for char in PUNSET_ALIGNCENTER:

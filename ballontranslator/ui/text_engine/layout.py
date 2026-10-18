@@ -8,6 +8,7 @@ from qtpy.QtGui import (
     QFont,
     QFontMetricsF,
     QPixmap,
+    QRawFont,
     QTextBlock,
     QTextCharFormat,
     QTextCursor,
@@ -94,24 +95,56 @@ def paint_context_without_selection_ranges(
     delegated.selections = selections
     return delegated
 
-def _font_metrics(ffamily: str, size: float, weight: int, italic: bool) -> QFontMetricsF:
+def _metrics_font(ffamily: str, size: float, weight: int, italic: bool) -> QFont:
     # QFont's string constructor splits comma-bearing family names into a
     # fallback list. The shared boundary preserves one database family name.
     font = qfont_with_family(QFont(), ffamily)
     font.setPointSizeF(size)
     font.setWeight(weight)
     font.setItalic(italic)
-    return QFontMetricsF(font)
+    return font
 
 @lru_cache(maxsize=2048)
 def get_punc_rect(char: str, ffamily: str, size: float, weight: int, italic: bool) -> List[QRectF]:
-    fm = _font_metrics(ffamily, size, weight, italic)
-    br = [fm.tightBoundingRect(char), fm.boundingRect(char)]
-    return br
+    """Return representative ink metrics with a full-metric fallback.
+
+    The horizontal baseline probe must use the selected face's line metrics
+    when none of its reference glyphs exist. Ordinary CJK/punctuation queries
+    retain valid substitute ink because Qt also uses it to draw those glyphs.
+    Empty tight boxes fall back to ordinary bounds, then line metrics.
+
+    >>> len(get_punc_rect('A', 'Sans Serif', 12, QFont.Weight.Normal, False))
+    2
+    """
+    font = _metrics_font(ffamily, size, weight, italic)
+    fm = QFontMetricsF(font)
+    tight = fm.tightBoundingRect(char)
+    bounds = fm.boundingRect(char)
+    if char == '木fg':
+        raw_font = QRawFont.fromFont(font)
+        if raw_font.isValid() and not any(
+            raw_font.supportsCharacter(ord(character)) for character in char
+        ):
+            # Substitute probe ink can have an unrelated baseline. This does
+            # not apply to vertical cells, which use actual CJK fallback ink.
+            tight = QRectF(
+                bounds.left(), -fm.ascent(), max(0.0, bounds.width()),
+                max(0.0, fm.ascent() + fm.descent()),
+            )
+    if tight.width() <= 0 or tight.height() <= 0:
+        tight = QRectF(bounds)
+    if tight.width() <= 0 or tight.height() <= 0:
+        tight = QRectF(
+            0.0,
+            -fm.ascent(),
+            max(0.0, fm.horizontalAdvance(char)),
+            max(0.0, fm.ascent() + fm.descent()),
+        )
+    return [tight, bounds]
 
 @lru_cache(maxsize=2048)
-def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bool) -> int:
-    fm = _font_metrics(ffamily, size, weight, italic)
+def get_char_width(char: str, ffamily: str, size: float, weight: int, italic: bool) -> float:
+    fm = QFontMetricsF(_metrics_font(ffamily, size, weight, italic))
     return fm.horizontalAdvance(char)
 
 
