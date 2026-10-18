@@ -235,6 +235,7 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
   * AOT is from [manga-image-translator](https://github.com/zyddnys/manga-image-translator).
   * All lama* are finetuned using [LaMa](https://github.com/advimman/lama)
   * PatchMatch is an algorithm from [PyPatchMatch](https://github.com/vacancy/PyPatchMatch), this program uses a [modified version](https://github.com/dmMaze/PyPatchMatchInpaint) by me. 
+  * "Skip simple cases" is off by default: the shortcut fills a balloon detected as flat with its average color, which erases backgrounds showing through semi-transparent balloons. Enable it in the Run dialog for a speedup; even then it only fills pixels inside the repair mask. 
   
 ## Translators
 * **You can find information about Translators modules [here.](doc/modules/translators.md)**

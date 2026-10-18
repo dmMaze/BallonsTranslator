@@ -263,6 +263,26 @@ class DrawingInpainterTest(unittest.TestCase):
         self.assertIn('Draw inpaint completed: background fill', '\n'.join(logs.output))
         np.testing.assert_array_equal(project.inpainted_array, np.full((3, 3, 3), 255, np.uint8))
 
+    def test_native_background_fill_only_touches_the_repair_mask(self) -> None:
+        project = self.canvas.imgtrans_proj
+        source = np.full((3, 3, 3), 40, np.uint8)
+        project.inpainted_array = source.copy()
+        project.mask_array = np.zeros((3, 3), np.uint8)
+        mask = np.zeros((3, 3), np.uint8)
+        mask[1, 1] = 255
+        request = {'img': project.inpainted_array.copy(), 'mask': mask,
+                   'use_mask': True, 'need_inpaint': False, 'bground_rgb': [255, 255, 255],
+                   'ballon_mask': np.full((3, 3), 255, np.uint8), 'inpaint_rect': [0, 0, 3, 3]}
+        with patch.object(pcfg.module, 'check_need_inpaint', True), \
+                patch.object(self.panel, 'runInpaint', side_effect=AssertionError('Unexpected worker')), \
+                patch.object(self.canvas, 'updateLayers'):
+            self.panel.inpaintRect(request)
+
+        expected = source.copy()
+        expected[1, 1] = 255
+        np.testing.assert_array_equal(request['img'], expected)
+        np.testing.assert_array_equal(project.inpainted_array, expected)
+
     def test_staged_native_background_fill_does_not_overwrite_undo(self) -> None:
         project = self.canvas.imgtrans_proj
         project.inpainted_array = np.full((8, 8, 3), 10, np.uint8)

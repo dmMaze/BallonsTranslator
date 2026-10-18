@@ -121,7 +121,10 @@ class ModuleConfig(Config):
     llm_translate_summary_memory: bool = False
     llm_translate_overwrite_summary: bool = False
 
-    check_need_inpaint: bool = True
+    # Off by default: the flat-balloon shortcut only offers a speedup but can
+    # visibly flatten semi-transparent balloon backgrounds. Opt in per run via
+    # the "Skip simple cases" option when the speedup is known to be safe.
+    check_need_inpaint: bool = False
     empty_runcache: bool = False
     finish_code: int = 15
 

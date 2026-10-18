@@ -239,6 +239,7 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
   * AOT 修复模型来自 manga-image-translator
   * patchmatch 是非深度学习算法，也是PS修复画笔背后的算法，实现来自 [PyPatchMatch](https://github.com/vacancy/PyPatchMatch)，本程序用的是我的[修改版](https://github.com/dmMaze/PyPatchMatchInpaint)
   * lama* 是微调过的[lama](https://github.com/advimman/lama)
+  * "跳过简单情况"（Skip simple cases）默认关闭：该优化会把判定为纯色的气泡整体填成平均色，半透明气泡会因此丢失透出的背景；需要提速时可在运行对话框手动勾选，此时也只填充掩膜范围内的像素。
   
 
 ### 翻译器
