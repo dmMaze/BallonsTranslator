@@ -2,10 +2,10 @@
 
 from dataclasses import replace
 import math
-from typing import Optional, TYPE_CHECKING
+from typing import List, Optional, Tuple, TYPE_CHECKING
 
-from qtpy.QtCore import QObject, QPointF, Qt, Signal
-from qtpy.QtGui import QColor, QPainterPath, QPen
+from qtpy.QtCore import QObject, QPointF, QRectF, Qt, Signal
+from qtpy.QtGui import QColor, QCursor, QPainter, QPainterPath, QPen, QPixmap
 from qtpy.QtWidgets import (
     QGraphicsItem,
     QGraphicsPathItem,
@@ -14,6 +14,8 @@ from qtpy.QtWidgets import (
 )
 
 from ballontranslator.utils.text_alpha_mask import (
+    ALPHA_BRUSH_MAX_DIAMETER,
+    ALPHA_BRUSH_MIN_DIAMETER,
     ALPHA_BRUSH_MODES,
     AlphaBrushStroke,
     TextAlphaMask,
@@ -37,6 +39,7 @@ class TextAlphaMaskEditSession(QObject):
 
     state_changed = Signal()
     DEFAULT_DIAMETER = 24.0
+    MAX_NATIVE_CURSOR_SIZE = 512
 
     def __init__(self, canvas: "Canvas") -> None:
         super().__init__(canvas)
@@ -46,6 +49,11 @@ class TextAlphaMaskEditSession(QObject):
         self.mode = 'erase'
         self.diameter = self.DEFAULT_DIAMETER
         self._cursor_item = None
+        self._native_cursor: Optional[QCursor] = None
+        self._native_cursor_key: Optional[Tuple[QPainterPath, float]] = None
+        self._saved_cursors: List[Tuple[QGraphicsItem, Optional[QCursor]]] = []
+        self._resize_origin: Optional[QPointF] = None
+        self._resize_diameter = self.diameter
         self._drawing = False
         self._stroke_mapper = None
         self._stroke_origin = None
@@ -54,6 +62,7 @@ class TextAlphaMaskEditSession(QObject):
         self._stroke_before = None
         self._stroke_mode = self.mode
         self._stroke_diameter = self.diameter
+        canvas.scalefactor_changed.connect(self._refresh_cursor)
 
     def bind_controls(self, controls: "TextEffectPanel") -> None:
         """Bind the one production panel without adding a second owner."""
@@ -132,7 +141,7 @@ class TextAlphaMaskEditSession(QObject):
 
     def activate(self, item: Optional[TextBlkItem]) -> bool:
         if item is self.target and self.can_activate(item):
-            self._ensure_cursor_item()
+            self._refresh_cursor()
             self.state_changed.emit()
             return True
         if not self.can_activate(item):
@@ -149,6 +158,7 @@ class TextAlphaMaskEditSession(QObject):
         self.target = item
         try:
             item.destroyed.connect(self._on_target_destroyed)
+            item.visual_geometry_changed.connect(self._refresh_cursor)
         except (AttributeError, RuntimeError):
             self.target = None
             self.state_changed.emit()
@@ -159,31 +169,111 @@ class TextAlphaMaskEditSession(QObject):
             self._push_change(item, TextAlphaMask())
         elif not mask.enabled:
             self._push_change(item, replace(mask, enabled=True))
-        self._ensure_cursor_item()
         self.canvas.gv.setFocus()
         self.state_changed.emit()
         return True
 
     def deactivate(self) -> None:
         had_state = self.target is not None or self._drawing
-        self.cancel_active_stroke()
+        # Discard resize preview without refreshing a cursor being released.
+        self._resize_origin = None
         target = self.target
-        self.target = None
         if target is not None:
             try:
                 target.destroyed.disconnect(self._on_target_destroyed)
+                target.visual_geometry_changed.disconnect(self._refresh_cursor)
             except (AttributeError, RuntimeError, TypeError):
                 pass
+        self.cancel_active_stroke()
+        self.target = None
+        self._restore_cursors()
         self._remove_cursor_item()
         if had_state:
             self.state_changed.emit()
 
     def _on_target_destroyed(self, *_args: object) -> None:
         self.target = None
+        self._resize_origin = None
         self._drawing = False
         self._clear_stroke_state()
+        self._restore_cursors()
         self._remove_cursor_item()
         self.state_changed.emit()
+
+    def _set_cursor(self, cursor: QCursor) -> None:
+        if self._native_cursor == cursor:
+            return
+        if not self._saved_cursors:
+            # Inherit on the page and target body; child handles keep their
+            # own cursors through Qt's normal scene cursor precedence.
+            self._saved_cursors = [
+                (item, QCursor(item.cursor()) if item.hasCursor() else None)
+                for item in (
+                    self.canvas.baseLayer, self.target,
+                    self.canvas.txtblkShapeControl,
+                )
+            ]
+        self._native_cursor = cursor
+        self._native_cursor_key = None
+        for item, _previous in self._saved_cursors:
+            item.setCursor(cursor)
+
+    def _restore_cursors(self) -> None:
+        saved, self._saved_cursors = self._saved_cursors, []
+        for item, previous in saved:
+            try:
+                if item.cursor() != self._native_cursor:
+                    continue
+                if previous is None:
+                    item.unsetCursor()
+                else:
+                    item.setCursor(previous)
+            except RuntimeError:
+                # The target's C++ item may already be gone during deletion.
+                pass
+        self._native_cursor = None
+        self._native_cursor_key = None
+
+    def _set_cursor_path(self, path: QPainterPath, scene_point: QPointF) -> bool:
+        """Use a native cursor so pointer motion does not repaint the scene."""
+        view = self.canvas.gv
+        transform = view.viewportTransform()
+        path = transform.map(path)
+        path.translate(-transform.map(scene_point))
+        dpr = view.viewport().devicePixelRatioF()
+        key = (path, dpr)
+        if key == self._native_cursor_key:
+            return True
+        bounds = path.boundingRect().united(QRectF(0, 0, 1, 1))
+        bounds = bounds.adjusted(-2, -2, 2, 2).toAlignedRect()
+        width, height = bounds.width() * dpr, bounds.height() * dpr
+        # Keep oversized footprints in the scene instead of allocating huge
+        # native cursor pixmaps at high zoom or device scale.
+        if not (0 < width <= self.MAX_NATIVE_CURSOR_SIZE
+                and 0 < height <= self.MAX_NATIVE_CURSOR_SIZE):
+            return False
+        pixmap = QPixmap(math.ceil(width), math.ceil(height))
+        pixmap.setDevicePixelRatio(dpr)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(30, 147, 229, 220), 1.5))
+        painter.translate(-bounds.x(), -bounds.y())
+        painter.drawPath(path)
+        painter.end()
+        self._set_cursor(QCursor(pixmap, -bounds.x(), -bounds.y()))
+        self._native_cursor_key = key
+        return True
+
+    def _refresh_cursor(self) -> None:
+        # Install on pointer input first. Besides avoiding off-canvas work,
+        # this lets QGraphicsView establish its mouse/cursor restoration state.
+        if self.active and self._native_cursor is not None:
+            self._update_cursor(
+                self._resize_origin
+                if self._resize_origin is not None
+                else self.canvas.scene_cursor_pos()
+            )
 
     def _ensure_cursor_item(self) -> None:
         if self._cursor_item is not None:
@@ -226,47 +316,52 @@ class TextAlphaMaskEditSession(QObject):
         self._stroke_previous_source = QPointF(source)
         return QPointF(source.x() - origin.x(), source.y() - origin.y())
 
-    def _update_cursor(self, scene_point: QPointF) -> None:
-        target = self.target
-        cursor_item = self._cursor_item
-        if target is None or cursor_item is None:
-            return
-        mapper = target.geometry_controller.capture_scene_to_source_mapper()
-        if mapper is None:
-            cursor_item.hide()
-            return
+    def _mapped_cursor_outline(
+        self, scene_point: QPointF, diameter: float,
+    ) -> Optional[QPainterPath]:
+        """Map the source-space brush through the same geometry as the stroke."""
+        geometry = self.target.geometry_controller
+        mapper = geometry.capture_scene_to_source_mapper()
         try:
-            source = mapper(scene_point)
+            source = None if mapper is None else mapper(scene_point)
+            if source is None or not self._is_finite_point(source):
+                return None
+            path = QPainterPath()
+            radius = diameter / 2.0
+            for index in range(33):
+                angle = 2.0 * math.pi * index / 32.0
+                point = geometry.map_source_to_scene(QPointF(
+                    source.x() + radius * math.cos(angle),
+                    source.y() + radius * math.sin(angle),
+                ))
+                if not self._is_finite_point(point):
+                    return None
+                if index == 0:
+                    path.moveTo(point)
+                else:
+                    path.lineTo(point)
+            return path
         except (ArithmeticError, RuntimeError, ValueError):
-            cursor_item.hide()
+            return None
+
+    def _update_cursor(self, scene_point: QPointF) -> None:
+        if self.target is None:
             return
-        if source is None or not self._is_finite_point(source):
-            cursor_item.hide()
+        diameter = self.diameter if self._resize_origin is None else self._resize_diameter
+        path = self._mapped_cursor_outline(scene_point, diameter)
+        if (path is not None and self._resize_origin is None
+                and self._set_cursor_path(path, scene_point)):
+            if self._cursor_item is not None:
+                self._cursor_item.hide()
             return
-        path = QPainterPath()
-        radius = self.diameter / 2.0
-        for index in range(33):
-            angle = 2.0 * math.pi * index / 32.0
-            source_point = QPointF(
-                source.x() + radius * math.cos(angle),
-                source.y() + radius * math.sin(angle),
-            )
-            try:
-                scene_outline = target.geometry_controller.map_source_to_scene(
-                    source_point
-                )
-            except (ArithmeticError, RuntimeError, ValueError):
-                cursor_item.hide()
-                return
-            if not self._is_finite_point(scene_outline):
-                cursor_item.hide()
-                return
-            if index == 0:
-                path.moveTo(scene_outline)
-            else:
-                path.lineTo(scene_outline)
-        cursor_item.setPath(path)
-        cursor_item.show()
+        # Alt-drag keeps its preview anchored in the scene. Very large
+        # footprints reuse the same outline without allocating a huge bitmap.
+        self._set_cursor(QCursor(Qt.CursorShape.CrossCursor))
+        if path is not None:
+            self._ensure_cursor_item()
+            self._cursor_item.setPath(path)
+        if self._cursor_item is not None:
+            self._cursor_item.setVisible(path is not None)
 
     def _top_input_owner(
         self, scene_point: QPointF
@@ -286,6 +381,8 @@ class TextAlphaMaskEditSession(QObject):
         return None
 
     def handle_mouse_press(self, event: QGraphicsSceneMouseEvent) -> bool:
+        if self._resize_origin is not None:
+            return True
         if not self.active or event.button() != Qt.MouseButton.LeftButton:
             return False
         owner = self._top_input_owner(event.scenePos())
@@ -305,6 +402,11 @@ class TextAlphaMaskEditSession(QObject):
         if mask is None or not mask.enabled:
             self.deactivate()
             return False
+        if event.modifiers() == Qt.KeyboardModifier.AltModifier:
+            self._resize_origin = QPointF(event.scenePos())
+            self._resize_diameter = self.diameter
+            self._update_cursor(self._resize_origin)
+            return True
         self._stroke_mapper = mapper
         self._stroke_origin = QPointF(target.logical_unpadded_rect().topLeft())
         self._stroke_previous_source = None
@@ -325,6 +427,16 @@ class TextAlphaMaskEditSession(QObject):
     def handle_mouse_move(self, event: QGraphicsSceneMouseEvent) -> bool:
         if not self.active:
             return False
+        if self._resize_origin is not None:
+            # Match draw-panel resizing in scene X, independent of text rotation.
+            delta = event.scenePos().x() - self._resize_origin.x()
+            self._resize_diameter = min(
+                ALPHA_BRUSH_MAX_DIAMETER,
+                max(ALPHA_BRUSH_MIN_DIAMETER,
+                    round(self.diameter + delta / self.canvas.scale_factor, 1)),
+            )
+            self._update_cursor(self._resize_origin)
+            return True
         self._update_cursor(event.scenePos())
         if not self._drawing:
             return False
@@ -338,6 +450,14 @@ class TextAlphaMaskEditSession(QObject):
         return True
 
     def handle_mouse_release(self, event: QGraphicsSceneMouseEvent) -> bool:
+        if self._resize_origin is not None:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._resize_origin = None
+                if self.diameter == self._resize_diameter:
+                    self._update_cursor(event.scenePos())
+                else:
+                    self.set_diameter(self._resize_diameter)
+            return True
         if not self._drawing or event.button() != Qt.MouseButton.LeftButton:
             return False
         point = self._map_stroke_point(event.scenePos())
@@ -377,6 +497,13 @@ class TextAlphaMaskEditSession(QObject):
         )
 
     def cancel_active_stroke(self) -> bool:
+        """Discard a pending stroke or diameter preview at session boundaries."""
+        if self._resize_origin is not None:
+            self._resize_origin = None
+            if self._cursor_item is not None:
+                self._cursor_item.hide()
+            self._refresh_cursor()
+            return True
         if not self._drawing:
             return False
         target = self.target
@@ -438,6 +565,7 @@ class TextAlphaMaskEditSession(QObject):
         if self.diameter == value:
             return
         self.diameter = value
+        self._refresh_cursor()
         self.state_changed.emit()
 
     def set_enabled(self, enabled: bool) -> None:
