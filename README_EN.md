@@ -215,6 +215,7 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
    * For detailed instructions, see **Tuanzi OCR Instructions**: ([Chinese](doc/团子OCR说明.md) & [Brazilian Portuguese](doc/Manual_TuanziOCR_pt-BR.md) only)
  
  * `YSGDetector` models are trained by [lhj5426](https://github.com/lhj5426), these models would filter out onomatopoeia in CGs/Manga, download checkpoints from [YSGYoloDetector](https://huggingface.co/YSGforMTL/YSGYoloDetector) and put into `data/models`. 
+ * The `ysg_ctd` hybrid detector uses YSGYolo boxes to keep body text and reject onomatopoeia, then refines the mask inside those boxes with ComicTextDetector glyph masks. It both avoids over-inpainting SFX and shrinks oversized inpaint areas; both model families are downloaded automatically on first use.
 
 
 ## OCR

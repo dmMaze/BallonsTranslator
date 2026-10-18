@@ -1,6 +1,7 @@
 import os
 import os.path as osp
-from typing import Tuple, List
+from copy import deepcopy
+from typing import List, Optional, Tuple
 
 import numpy as np
 import cv2
@@ -48,82 +49,194 @@ def update_ckpt_list():
 
 update_ckpt_list()
 
+
+# Module-level metadata so detector variants can share one SafeEval-compatible
+# params/download template instead of duplicating it.
+_YSGYOLO_PARAMS = {
+    'model path': {
+        'type': 'selector',
+        'options': CKPT_LIST,
+        'value': 'data/models/ysgyolo_1.2_OS1.0.pt',
+        'editable': True,
+        'flush_btn': True,
+        'path_selector': True,
+        'path_filter': '*.pt *.ckpt *.pth *.safetensors',
+        'size': 'median',
+        'display_name': '模型路径'
+    },
+    'merge text lines': {
+        'display_name': '合并文本行', 'type': 'checkbox', 'value': True
+    },
+    'confidence threshold': {
+        'display_name': '置信度阈值', 'type': 'line_editor', 'value': 0.3
+    },
+    'IoU threshold': {
+        'display_name': 'IoU阈值', 'type': 'line_editor', 'value': 0.5
+    },
+    'font size multiplier': {
+        'display_name': '字号乘数', 'type': 'line_editor', 'value': 1.
+    },
+    'font size max': {
+        'display_name': '最大字号', 'type': 'line_editor', 'value': -1
+    },
+    'font size min': {
+        'display_name': '最小字号', 'type': 'line_editor', 'value': -1
+    },
+    'detect size': {
+        'display_name': '检测尺寸', 'type': 'line_editor', 'value': 1024
+    },
+    'device': {
+        **DEVICE_SELECTOR(),
+        'display_name': '设备'
+    },
+    'label': {
+        'value': {
+            'balloon': True,
+            'qipao': True,
+            'shuqing': True,
+            'changfangtiao': True,
+            'hengxie': True,
+            'other': False
+        },
+        'type': 'check_group',
+        'display_name': '标签'
+    },
+    'source text is vertical': {
+        'display_name': '竖排文本', 'type': 'checkbox', 'value': True
+    },
+    'mask dilate size': {
+        'display_name': '掩码扩张尺寸', 'type': 'line_editor', 'value': 2
+    }
+}
+
+_YSGYOLO_DOWNLOAD_FILE_LIST = [
+    {
+        'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/ysgyolo_yolo26OBB_2.0.pt',
+        'files': 'data/models/ysgyolo_yolo26OBB_2.0.pt',
+        'sha256_pre_calculated': 'a9c03afb069285fc9e0d3fffc3c9ead440b687570952a945391ba22cd843dc3f'
+    },
+    {
+        'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/ysgyolo_yolo26_2.0.pt',
+        'files': 'data/models/ysgyolo_yolo26_2.0.pt',
+        'sha256_pre_calculated': '889347d65c8636dd188a8ed4f312b29658543faaa69016b5958ddf0559980e22'
+    }
+]
+
+# Mirrors detector_ctd.download_file_list so the hybrid detector can prepare
+# both models without depending on the CTD detector having been selected once.
+_CTD_DOWNLOAD_FILE_LIST = [
+    {
+        'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/comictextdetector.pt',
+        'files': 'data/models/comictextdetector.pt',
+        'sha256_pre_calculated': '1f90fa60aeeb1eb82e2ac1167a66bf139a8a61b8780acd351ead55268540cccb'
+    },
+    {
+        'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/comictextdetector.pt.onnx',
+        'files': 'data/models/comictextdetector.pt.onnx',
+        'sha256_pre_calculated': '1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f'
+    }
+]
+
+
+def _dilate_mask(mask: np.ndarray, ksize: int) -> np.ndarray:
+    if ksize > 0:
+        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1), (ksize, ksize))
+        mask = cv2.dilate(mask, element)
+    return mask
+
+
+def _build_box_mask(blk_list: List[TextBlock], im_w: int, im_h: int) -> np.ndarray:
+    """Draw the union of all detected text polygons without dilation."""
+
+    mask = np.zeros((im_h, im_w), np.uint8)
+    for blk in blk_list:
+        for line in np.asarray(blk.lines, dtype=np.int32):
+            cv2.fillPoly(mask, [line.reshape(-1, 2)], 255)
+    return mask
+
+
+def _bbox_overlap_ratio(box_a, box_b) -> float:
+    ax1, ay1, ax2, ay2 = [float(v) for v in box_a]
+    bx1, by1, bx2, by2 = [float(v) for v in box_b]
+    inter_w = min(ax2, bx2) - max(ax1, bx1)
+    inter_h = min(ay2, by2) - max(ay1, by1)
+    if inter_w <= 0 or inter_h <= 0:
+        return 0.
+    area_a = max(ax2 - ax1, 0.) * max(ay2 - ay1, 0.)
+    if area_a <= 0:
+        return 0.
+    return inter_w * inter_h / area_a
+
+
+def _combine_refined_mask(
+    box_mask: np.ndarray,
+    fine_mask: np.ndarray,
+    blk_list: List[TextBlock],
+    ctd_blk_list: List[TextBlock],
+    ctd_overlap_ratio: float = 0.25,
+) -> np.ndarray:
+    """Keep CTD's glyph mask inside YOLO boxes, with per-line coarse fallback.
+
+    A YOLO text line whose region was not detected/refined by CTD keeps its
+    coarse box mask so the replacement text is never left unmasked.
+
+    Example:
+        >>> box = np.zeros((6, 6), np.uint8)
+        >>> box[1:5, 1:5] = 255
+        >>> fine = np.zeros_like(box)
+        >>> fine[2:3, 2:4] = 255
+        >>> blk = TextBlock(lines=[[[1, 1], [5, 1], [5, 5], [1, 5]]])
+        >>> blk.adjust_bbox()
+        >>> ctd_blk = TextBlock(xyxy=[1, 1, 5, 5])
+        >>> combined = _combine_refined_mask(box, fine, [blk], [ctd_blk])
+        >>> int(combined[2, 2]), int(combined[1, 1])
+        (255, 0)
+    """
+
+    combined = cv2.bitwise_and(fine_mask, box_mask)
+    im_h, im_w = box_mask.shape[:2]
+    for blk in blk_list:
+        for line in np.asarray(blk.lines, dtype=np.int32):
+            pts = line.reshape(-1, 2)
+            x1, y1 = pts[:, 0].min(), pts[:, 1].min()
+            x2, y2 = pts[:, 0].max() + 1, pts[:, 1].max() + 1
+            x1, y1 = max(int(x1), 0), max(int(y1), 0)
+            x2, y2 = min(int(x2), im_w), min(int(y2), im_h)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            box_crop = box_mask[y1: y2, x1: x2]
+            if not np.any(box_crop):
+                continue
+            line_bbox = [x1, y1, x2, y2]
+            ctd_refined = any(
+                _bbox_overlap_ratio(line_bbox, ctd_blk.xyxy) >= ctd_overlap_ratio
+                for ctd_blk in ctd_blk_list
+            )
+            if ctd_refined:
+                crop = combined[y1: y2, x1: x2]
+                if np.any(crop):
+                    continue
+            local_pts = pts - np.array([x1, y1], dtype=np.int32)
+            line_mask = np.zeros((y2 - y1, x2 - x1), np.uint8)
+            cv2.fillPoly(line_mask, [local_pts], 255)
+            line_region = cv2.bitwise_and(line_mask, box_crop)
+            if np.any(line_region):
+                combined[y1: y2, x1: x2] = cv2.bitwise_or(
+                    combined[y1: y2, x1: x2], line_region)
+    return combined
+
+
 @register_textdetectors('ysgyolo')
 class YSGYoloDetector(TextDetectorBase):
     dependencies = ['torch', 'ultralytics>=8.4.14']
 
-    params = {
-        'model path': {
-            'type': 'selector',
-            'options': CKPT_LIST,
-            'value': 'data/models/ysgyolo_1.2_OS1.0.pt',
-            'editable': True,
-            'flush_btn': True,
-            'path_selector': True,
-            'path_filter': '*.pt *.ckpt *.pth *.safetensors',
-            'size': 'median',
-            'display_name': '模型路径'
-        },
-        'merge text lines': {
-            'display_name': '合并文本行', 'type': 'checkbox', 'value': True
-        },
-        'confidence threshold': {
-            'display_name': '置信度阈值', 'type': 'line_editor', 'value': 0.3
-        },
-        'IoU threshold': {
-            'display_name': 'IoU阈值', 'type': 'line_editor', 'value': 0.5
-        },
-        'font size multiplier': {
-            'display_name': '字号乘数', 'type': 'line_editor', 'value': 1.
-        },
-        'font size max': {
-            'display_name': '最大字号', 'type': 'line_editor', 'value': -1
-        },
-        'font size min': {
-            'display_name': '最小字号', 'type': 'line_editor', 'value': -1
-        },
-        'detect size': {
-            'display_name': '检测尺寸', 'type': 'line_editor', 'value': 1024
-        },
-        'device': {
-            **DEVICE_SELECTOR(),
-            'display_name': '设备'
-        },
-        'label': {
-            'value': {
-                'balloon': True,
-                'qipao': True,
-                'shuqing': True,
-                'changfangtiao': True,
-                'hengxie': True,
-                'other': False
-            },
-            'type': 'check_group',
-            'display_name': '标签'
-        },
-        'source text is vertical': {
-            'display_name': '竖排文本', 'type': 'checkbox', 'value': True
-        },
-        'mask dilate size': {
-            'display_name': '掩码扩张尺寸', 'type': 'line_editor', 'value': 2
-        }
-    }
+    # Shared metadata template: the plain detector keeps the live list objects
+    # (model list flush updates them) while variants deep-copy their own.
+    params = _YSGYOLO_PARAMS
 
     _load_model_keys = {'model'}
 
-
-    download_file_list = [
-        {
-            'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/ysgyolo_yolo26OBB_2.0.pt',
-            'files': 'data/models/ysgyolo_yolo26OBB_2.0.pt',
-            'sha256_pre_calculated': 'a9c03afb069285fc9e0d3fffc3c9ead440b687570952a945391ba22cd843dc3f'
-        },
-        {
-            'url': 'https://huggingface.co/dreMaz/mit_models/resolve/main/ysgyolo_yolo26_2.0.pt',
-            'files': 'data/models/ysgyolo_yolo26_2.0.pt',
-            'sha256_pre_calculated': '889347d65c8636dd188a8ed4f312b29658543faaa69016b5958ddf0559980e22'
-        }
-    ]
+    download_file_list = _YSGYOLO_DOWNLOAD_FILE_LIST
 
     def __init__(self, **params) -> None:
         super().__init__(**params)
@@ -225,10 +338,7 @@ class YSGYoloDetector(TextDetectorBase):
             blk.font_size = sz
             blk._detected_font_size = sz
 
-        ksize = self.get_param_value('mask dilate size')
-        if ksize > 0:
-            element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1), (ksize, ksize))
-            mask = cv2.dilate(mask, element)
+        mask = _dilate_mask(mask, self.get_param_value('mask dilate size'))
 
         return mask, blk_list
 
@@ -244,3 +354,94 @@ class YSGYoloDetector(TextDetectorBase):
             update_ckpt_list()
             global CKPT_LIST
             return CKPT_LIST
+
+
+@register_textdetectors('ysg_ctd')
+class YSGYoloCTDDetector(YSGYoloDetector):
+    """YOLO decides which text to process, CTD refines its glyph mask.
+
+    YSGYOLO reliably separates body text from stylized onomatopoeia but only
+    produces rectangular masks. CTD produces glyph-tight masks but also fires
+    on onomatopoeia. This detector keeps the YOLO boxes as the allowed region
+    and intersects them with CTD's refined mask, so SFX outside the boxes are
+    ignored while replacement/OCR still uses the YOLO text blocks.
+    """
+
+    dependencies = ['torch', 'ultralytics>=8.4.14', 'torchvision', 'einops']
+
+    _load_model_keys = {'model', 'ctd_model'}
+
+    params = {
+        **deepcopy(_YSGYOLO_PARAMS),
+        'ctd detect size': {
+            'display_name': 'Detect Size', 'type': 'selector',
+            'options': [896, 1024, 1152, 1280], 'value': 1280
+        },
+        'ctd det rearrange max batches': {
+            'display_name': 'Max split batch size', 'type': 'selector',
+            'options': [1, 2, 4, 6, 8, 12, 16, 24, 32], 'value': 4
+        },
+        'description': '先用 ysgyolo 检测文本框，再用 ComicTextDetector 在框内生成贴合文字轮廓的掩膜',
+    }
+
+    # Both model families are declared so selecting the hybrid prepares them.
+    download_file_list = deepcopy(_YSGYOLO_DOWNLOAD_FILE_LIST) + _CTD_DOWNLOAD_FILE_LIST
+
+    def __init__(self, **params) -> None:
+        super().__init__(**params)
+        self.ctd_model = None
+
+    def _load_model(self):
+        super()._load_model()
+        self._load_ctd_model()
+
+    def _load_ctd_model(self) -> None:
+        from .detector_ctd import CTD_ONNX_PATH, CTD_TORCH_PATH
+        from .ctd import CTDModel
+
+        device = self.get_param_value('device')
+        model_path = CTD_ONNX_PATH if device == 'cpu' else CTD_TORCH_PATH
+        self.ctd_model = CTDModel(
+            model_path,
+            detect_size=int(self.get_param_value('ctd detect size')),
+            device=device,
+            det_rearrange_max_batches=self.get_param_value('ctd det rearrange max batches'),
+        )
+
+    def _detect_fine_text_mask(self, img: np.ndarray) -> Tuple[Optional[np.ndarray], List[TextBlock]]:
+        if self.ctd_model is None:
+            return None, []
+        try:
+            _, fine_mask, ctd_blk_list = self.ctd_model(img)
+        except Exception as error:
+            # YOLO block detection is still useful without mask refinement.
+            self.logger.warning(f'CTD mask refinement failed, falling back to ysgyolo masks: {error}')
+            return None, []
+        fine_mask = np.asarray(fine_mask).squeeze()
+        if fine_mask.shape[:2] != img.shape[:2]:
+            fine_mask = cv2.resize(fine_mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_LINEAR)
+        fine_mask = np.where(fine_mask > 127, 255, 0).astype(np.uint8)
+        return fine_mask, ctd_blk_list
+
+    def _detect(self, img: np.ndarray, proj: ProjImgTrans = None) -> Tuple[np.ndarray, List[TextBlock]]:
+        mask, blk_list = super()._detect(img, proj)
+        if not blk_list:
+            return mask, blk_list
+        fine_mask, ctd_blk_list = self._detect_fine_text_mask(img)
+        if fine_mask is None:
+            return mask, blk_list
+        im_h, im_w = img.shape[:2]
+        box_mask = _build_box_mask(blk_list, im_w, im_h)
+        mask = _combine_refined_mask(box_mask, fine_mask, blk_list, ctd_blk_list)
+        mask = _dilate_mask(mask, self.get_param_value('mask dilate size'))
+        return mask, blk_list
+
+    def updateParam(self, param_key: str, param_content):
+        super().updateParam(param_key, param_content)
+        if param_key == 'device':
+            # Both backends must be rebuilt on the newly selected device.
+            for key in ('model', 'ctd_model'):
+                if hasattr(self, key):
+                    setattr(self, key, None)
+        elif param_key in {'ctd detect size', 'ctd det rearrange max batches'}:
+            self.ctd_model = None
