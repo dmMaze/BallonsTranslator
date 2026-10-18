@@ -221,6 +221,7 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
  * 支持使用 [星河云(团子漫画OCR)](https://cloud.stariver.org.cn/)的文本检测，需要填写用户名和密码，每次启动时会自动登录。
    * 详细说明见 [团子OCR说明](doc/团子OCR说明.md)
  * `YSGDetector` 是由 [lhj5426](https://github.com/lhj5426) 训练的模型，能更好地过滤日漫/CG里的拟声词。需要手动从 [YSGYoloDetector](https://huggingface.co/YSGforMTL/YSGYoloDetector) 下载模型放到 data/models 目录下。
+ * `ysg_ctd` 结合 YSG 文本框与 CTD 精细掩膜；CTD 漏检的文本行保留框形掩膜，推理失败时回退到 YSG 掩膜。可在文本检测器中选择，参数独立于 `ysgyolo` 和 `ctd`，首次使用时会准备两套模型。
 
 
 ### OCR

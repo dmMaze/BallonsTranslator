@@ -502,6 +502,48 @@ MODULE_PARAM_CATALOG = {
     ('textdetector', 'stariver_ocr', 'update_token_btn', 'display_name'): {
         "source": '更新 Token', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '更新 Token'),
     },
+    ('textdetector', 'ysg_ctd', '', 'description'): {
+        "source": 'YSG text boxes with CTD glyph masks. Lines missed by CTD keep their box masks; CTD inference failure falls back to YSG masks. Settings are independent of ysgyolo and ctd.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'YSG text boxes with CTD glyph masks. Lines missed by CTD keep their box masks; CTD inference failure falls back to YSG masks. Settings are independent of ysgyolo and ctd.'),
+    },
+    ('textdetector', 'ysg_ctd', 'IoU threshold', 'display_name'): {
+        "source": 'IoU阈值', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'IoU阈值'),
+    },
+    ('textdetector', 'ysg_ctd', 'confidence threshold', 'display_name'): {
+        "source": '置信度阈值', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '置信度阈值'),
+    },
+    ('textdetector', 'ysg_ctd', 'ctd det rearrange max batches', 'display_name'): {
+        "source": 'CTD Max split batch size', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'CTD Max split batch size'),
+    },
+    ('textdetector', 'ysg_ctd', 'ctd detect size', 'description'): {
+        "source": 'CTD input size on GPU; CPU uses the fixed 1024 ONNX model.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'CTD input size on GPU; CPU uses the fixed 1024 ONNX model.'),
+    },
+    ('textdetector', 'ysg_ctd', 'ctd detect size', 'display_name'): {
+        "source": 'CTD Detect Size', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'CTD Detect Size'),
+    },
+    ('textdetector', 'ysg_ctd', 'device', 'display_name'): {
+        "source": '设备', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '设备'),
+    },
+    ('textdetector', 'ysg_ctd', 'font size max', 'display_name'): {
+        "source": '最大字号', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '最大字号'),
+    },
+    ('textdetector', 'ysg_ctd', 'font size min', 'display_name'): {
+        "source": '最小字号', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '最小字号'),
+    },
+    ('textdetector', 'ysg_ctd', 'font size multiplier', 'display_name'): {
+        "source": '字号乘数', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '字号乘数'),
+    },
+    ('textdetector', 'ysg_ctd', 'label', 'display_name'): {
+        "source": '标签', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '标签'),
+    },
+    ('textdetector', 'ysg_ctd', 'mask dilate size', 'display_name'): {
+        "source": '掩码扩张尺寸', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '掩码扩张尺寸'),
+    },
+    ('textdetector', 'ysg_ctd', 'merge text lines', 'display_name'): {
+        "source": '合并文本行', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '合并文本行'),
+    },
+    ('textdetector', 'ysg_ctd', 'model path', 'display_name'): {
+        "source": '模型路径', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '模型路径'),
+    },
     ('textdetector', 'ysgyolo', 'IoU threshold', 'display_name'): {
         "source": 'IoU阈值', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'IoU阈值'),
     },
