@@ -404,6 +404,9 @@ class ProgramConfig(Config):
     mirrors: NetworkMirrorsConfig = field(default_factory=lambda: NetworkMirrorsConfig())
     drawpanel: DrawPanelConfig = field(default_factory=lambda: DrawPanelConfig())
     auto_tate_chu_yoko: AutoTateChuYokoConfig = field(default_factory=AutoTateChuYokoConfig)
+    font_backend: Dict[str, str] = field(default_factory=lambda: {
+        'windows': 'default', 'macos': 'default',
+    })
     compact_vertical_punctuation_spacing: bool = True
     quick_insert_characters: str = '『』「」♥♡★☆※♩♬'
     global_fontformat: FontFormat = field(default_factory=lambda: FontFormat())
@@ -483,6 +486,24 @@ class ProgramConfig(Config):
         
         with open(cfg_path, 'r', encoding='utf8') as f:
             config_dict = json.loads(f.read())
+
+        font_backend = config_dict.get('font_backend', {})
+        if not isinstance(font_backend, Mapping):
+            LOGGER.warning('Discard invalid font_backend config: expected an object.')
+            font_backend = {}
+        validated_backends = {}
+        for name, choices in (
+            ('windows', ('default', 'gdi', 'freetype')),
+            ('macos', ('default', 'freetype')),
+        ):
+            value = font_backend.get(name, 'default')
+            if not isinstance(value, str) or value not in choices:
+                LOGGER.warning('Discard invalid font_backend.%s config: %r.', name, value)
+                value = 'default'
+            validated_backends[name] = value
+        for name in font_backend.keys() - validated_backends.keys():
+            LOGGER.warning('Discard unknown font_backend.%s config.', name)
+        config_dict['font_backend'] = validated_backends
 
         if not isinstance(config_dict.get('quick_insert_characters', ''), str):
             LOGGER.warning(
