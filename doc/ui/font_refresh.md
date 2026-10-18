@@ -4,6 +4,13 @@ Runtime refresh is supported in GUI mode with Qt 6.4 or later. Qt 5, older Qt 6,
 and headless startup retain normal font registration without refresh hooks.
 This support boundary does not imply a public Qt database-refresh API.
 
+The native font backend is selected at process startup under **General →
+Typesetting → Font backend**. Windows offers Default, GDI, and FreeType; macOS
+offers Default and FreeType; Linux keeps the platform default. Windows and macOS
+choices are saved separately in `font_backend`, preserving the other OS's setting.
+A changed selection is saved immediately and requires restart. An explicit Qt `-platform`
+argument takes precedence, while headless mode always uses `offscreen`.
+
 ## Ownership and ordering
 
 | Concern | Owner |

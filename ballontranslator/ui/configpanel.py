@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import List, Optional, Union, Tuple
 
 from qtpy.QtWidgets import (
@@ -688,6 +689,7 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     """
 
     save_config = Signal()
+    restart_requested = Signal()
     unload_models = Signal()
     prepare_selected_modules = Signal()
     reinstall_torch = Signal()
@@ -1341,6 +1343,32 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         vertical_layout_block.layout().setContentsMargins(0, 0, 0, 0)
         vertical_layout_block.setContentsMargins(0, 0, 0, 0)
 
+        self.font_backend_combobox = None
+        if sys.platform in ('win32', 'darwin'):
+            self._font_backend_key = 'windows' if sys.platform == 'win32' else 'macos'
+            backends = [('default', self.tr('Default')), ('freetype', 'FreeType')]
+            if sys.platform == 'win32':
+                backends.insert(1, ('gdi', 'GDI'))
+            self.font_backend_combobox, backend_row = typesettingConfigPanel.addCombobox(
+                [label for _value, label in backends], self.tr('Font backend'),
+            )
+            for index, (value, _label) in enumerate(backends):
+                self.font_backend_combobox.setItemData(index, value)
+            self.font_backend_combobox.setCurrentIndex(max(
+                0, self.font_backend_combobox.findData(pcfg.font_backend[self._font_backend_key]),
+            ))
+            self._active_font_backend = self.font_backend_combobox.currentData()
+            backend_row.setToolTip(self.tr(
+                'Choose the Qt font engine. GDI supports tools such as NexusFont on Windows. '
+                'Changes require a restart.'
+            ))
+            self.font_backend_restart_button = QPushButton(self.tr('Restart to apply'), backend_row)
+            self.font_backend_restart_button.hide()
+            self.font_backend_restart_button.clicked.connect(self.restart_requested.emit)
+            backend_row.layout().addWidget(self.font_backend_restart_button)
+            backend_row.layout().addStretch()
+            self.font_backend_combobox.activated.connect(self.on_font_backend_changed)
+
         self.rst_imgformat_combobox, imsave_sublock = applicationConfigPanel.addCombobox(['PNG', 'JPG', 'WEBP', 'JXL'], self.tr('Result image format'))
         self.rst_imgformat_combobox.activated.connect(self.on_rst_imgformat_changed)
         self.rst_imgquality_edit = PercentageLineEdit('100')
@@ -1444,6 +1472,14 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         section_key = SECTION_ALIASES.get(section_key, section_key)
         self.configContent.showSection(section_key)
         self.configTable.setCurrentSection(section_key)
+
+    def on_font_backend_changed(self, index: int) -> None:
+        selected_backend = self.font_backend_combobox.itemData(index)
+        if selected_backend is None or selected_backend == pcfg.font_backend[self._font_backend_key]:
+            return
+        pcfg.font_backend[self._font_backend_key] = selected_backend
+        self.font_backend_restart_button.setVisible(selected_backend != self._active_font_backend)
+        self.save_config.emit()
 
     def on_open_onstartup_changed(self):
         pcfg.open_recent_on_startup = self.open_on_startup_checker.isChecked()
@@ -1886,5 +1922,12 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.empty_runcache_checker.setChecked(pcfg.module.empty_runcache)
         self.package_auto_install_checker.setChecked(pcfg.package_manager.auto_install_missing_packages)
         self.let_show_only_custom_fonts.setChecked(pcfg.let_show_only_custom_fonts_flag)
+        if self.font_backend_combobox is not None:
+            self.font_backend_combobox.setCurrentIndex(max(
+                0, self.font_backend_combobox.findData(pcfg.font_backend[self._font_backend_key]),
+            ))
+            self.font_backend_restart_button.setVisible(
+                self.font_backend_combobox.currentData() != self._active_font_backend
+            )
 
         self.blockSignals(False)

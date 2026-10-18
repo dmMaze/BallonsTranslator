@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 import sys
 import argparse
@@ -13,6 +15,46 @@ QT_APIS = ['pyqt6', 'pyside6', 'pyqt5', 'pyside2']
 stored_commit_hash = None
 
 FONT_EXTS = {'.ttf','.otf','.ttc','.pfb'}
+
+
+def application_arguments(
+    argv: list[str],
+    *,
+    headless: bool,
+    platform_name: str,
+    qt_version: str,
+    font_backend: str,
+) -> list[str]:
+    """Build QApplication arguments without overriding an explicit QPA choice.
+
+    Headless mode owns the platform selection and always appends ``offscreen``.
+
+    >>> application_arguments(['app'], headless=False, platform_name='win32',
+    ...                       qt_version='6.8.0', font_backend='gdi')
+    ['app', '-platform', 'windows:fontengine=gdi']
+    """
+
+    app_args = list(argv)
+    if headless:
+        return app_args + ['-platform', 'offscreen']
+    if any(arg in ('-platform', '--platform') for arg in app_args[1:]):
+        return app_args
+    platform_argument = None
+    if platform_name == 'win32' and font_backend == 'gdi':
+        major_minor = tuple(int(part) for part in qt_version.split('.')[:2])
+        platform_argument = (
+            'windows:fontengine=gdi' if major_minor >= (6, 8)
+            else 'windows:nodirectwrite'
+        )
+    elif font_backend == 'freetype':
+        if platform_name == 'win32':
+            platform_argument = 'windows:fontengine=freetype'
+        elif platform_name == 'darwin':
+            platform_argument = 'cocoa:fontengine=freetype'
+    if platform_argument is not None:
+        app_args.extend(['-platform', platform_argument])
+    return app_args
+
 
 IS_WIN7 = "Windows-7" in platform()
 
@@ -286,9 +328,14 @@ def main():
 
     os.chdir(shared.PROGRAM_PATH)
 
-    app_args = sys.argv
-    if args.headless:
-        app_args = sys.argv + ['-platform', 'offscreen']
+    backend_key = {'win32': 'windows', 'darwin': 'macos'}.get(sys.platform, '')
+    app_args = application_arguments(
+        sys.argv,
+        headless=args.headless,
+        platform_name=sys.platform,
+        qt_version=QT_VERSION,
+        font_backend=config.font_backend.get(backend_key, 'default'),
+    )
     app = QApplication(app_args)
     app.setApplicationName('BalloonsTranslator')
     app.setApplicationVersion(APP_VERSION)

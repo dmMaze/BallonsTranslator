@@ -1,5 +1,6 @@
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -169,6 +170,72 @@ class LaunchRestartTests(unittest.TestCase):
 
             self.assertEqual(copied, [])
             self.assertEqual((root / 'resources' / 'stylesheet.css').read_text(encoding='utf8'), 'new css')
+
+
+    def test_font_backend_maps_to_platform_arguments(self) -> None:
+        for platform, version, backend, expected in (
+            ('win32', '5.15.14', 'gdi', 'windows:nodirectwrite'),
+            ('win32', '6.7.3', 'gdi', 'windows:nodirectwrite'),
+            ('win32', '6.8.0', 'gdi', 'windows:fontengine=gdi'),
+            ('win32', '6.8.0', 'freetype', 'windows:fontengine=freetype'),
+            ('darwin', '6.8.0', 'freetype', 'cocoa:fontengine=freetype'),
+            ('darwin', '6.8.0', 'gdi', None),
+            ('linux', '6.8.0', 'freetype', None),
+            ('win32', '6.8.0', 'default', None),
+        ):
+            with self.subTest(platform=platform, version=version, backend=backend):
+                argv = ['ballontranslator']
+                result = launch.application_arguments(
+                    argv, headless=False, platform_name=platform,
+                    qt_version=version, font_backend=backend,
+                )
+                self.assertEqual(result, argv + (['-platform', expected] if expected else []))
+                self.assertEqual(argv, ['ballontranslator'])
+
+    def test_platform_selection_reaches_qt(self) -> None:
+        try:
+            from qtpy import API_NAME, QT_VERSION
+        except ImportError as error:
+            self.skipTest(f'Qt dependencies unavailable: {error}')
+
+        qt_probe = (
+            'import json, sys\n'
+            'from qtpy.QtWidgets import QApplication\n'
+            'app = QApplication(json.loads(sys.argv[1]))\n'
+            'print(app.platformName())\n'
+        )
+        for options, headless in (
+            (['-platform', 'minimal'], False),
+            (['--platform', 'minimal'], False),
+            ([], True),
+            (['-platform', 'minimal'], True),
+            (['--platform', 'minimal'], True),
+        ):
+            with self.subTest(options=options, headless=headless):
+                argv = ['ballontranslator', *options]
+                result = launch.application_arguments(
+                    argv, headless=headless, platform_name='win32',
+                    qt_version=QT_VERSION, font_backend='gdi',
+                )
+                self.assertEqual(result, argv + (['-platform', 'offscreen'] if headless else []))
+                # Each QApplication needs a fresh process to select its platform.
+                process = subprocess.run(
+                    [sys.executable, '-c', qt_probe, json.dumps(result)],
+                    env={**os.environ, 'QT_API': API_NAME.lower(), 'QT_QPA_PLATFORM': 'offscreen'},
+                    capture_output=True, text=True, timeout=15,
+                )
+                self.assertEqual(process.returncode, 0, process.stderr)
+                self.assertEqual(process.stdout.strip(), 'offscreen' if headless else 'minimal')
+
+    def test_unsupported_platform_syntax_does_not_suppress_saved_backend(self) -> None:
+        for option in ('-platform=minimal', '--platform=minimal'):
+            with self.subTest(option=option):
+                argv = ['ballontranslator', option]
+                result = launch.application_arguments(
+                    argv, headless=False, platform_name='win32',
+                    qt_version='6.8.0', font_backend='gdi',
+                )
+                self.assertEqual(result, argv + ['-platform', 'windows:fontengine=gdi'])
 
 
 if __name__ == '__main__':
