@@ -3191,6 +3191,9 @@ class AlphaMaskCard(_EffectCard):
         size_layout.setSpacing(8)
         size_layout.addWidget(self.size_label)
         size_layout.addWidget(self.diameter_editor, 1)
+        size_widget.setToolTip(
+            self.tr('Alt+drag on the canvas to resize the brush.')
+        )
 
         self.clear_button = QToolButton(self)
         self.clear_button.setObjectName('TextAlphaMaskClearButton')

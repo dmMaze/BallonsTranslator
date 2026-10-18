@@ -1,3 +1,4 @@
+import math
 import os
 from types import SimpleNamespace
 import unittest
@@ -6,6 +7,8 @@ from unittest.mock import patch
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt
+from qtpy.QtGui import QCursor, QMouseEvent
+from qtpy.QtTest import QSignalSpy
 from qtpy.QtWidgets import (
     QApplication,
     QGraphicsRectItem,
@@ -30,6 +33,8 @@ from ballontranslator.utils.fontformat import (
     TextTransformStack,
 )
 from ballontranslator.utils.text_alpha_mask import (
+    ALPHA_BRUSH_MAX_DIAMETER,
+    ALPHA_BRUSH_MIN_DIAMETER,
     AlphaBrushStroke,
     TextAlphaMask,
 )
@@ -42,15 +47,24 @@ from ballontranslator.utils.textblock import TextBlock
 
 
 class _MouseEvent:
-    def __init__(self, button, position) -> None:
+    def __init__(
+        self, button, position, modifiers=Qt.KeyboardModifier.NoModifier,
+    ) -> None:
         self._button = button
         self._position = QPointF(position)
+        self._modifiers = modifiers
 
     def button(self):
         return self._button
 
     def scenePos(self):
         return QPointF(self._position)
+
+    def modifiers(self):
+        return self._modifiers
+
+    def accept(self) -> None:
+        pass
 
 
 class TextAlphaMaskEditSessionTest(unittest.TestCase):
@@ -79,8 +93,11 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
                 self.canvas.removeItem(self.item)
         except RuntimeError:
             pass
+        self.canvas.gv.close()
+        self.canvas.gv.deleteLater()
         self.canvas.deleteLater()
         SW.canvas = self.old_canvas
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
 
     def _scene_point(self, x: float, y: float) -> QPointF:
@@ -147,6 +164,108 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
         self.assertEqual(self.canvas.text_undo_stack.count(), count)
         self.assertEqual(len(self.item.blk.text_alpha_mask.strokes), 1)
         self.assertFalse(self.item.effect_renderer.has_text_alpha_mask_preview())
+
+    def test_alt_drag_resizes_at_canvas_zoom_without_erasing(self) -> None:
+        self._activate()
+        for mode, scale in (('erase', 0.5), ('restore', 2.0)):
+            with self.subTest(mode=mode, scale=scale):
+                self.session.set_mode(mode)
+                self.session.set_diameter(24.0)
+                self.canvas.scale_factor = scale
+                self.canvas.baseLayer.setScale(scale)
+                start = self._scene_point(100, 80)
+                end = start + QPointF(20 * scale, 15 * scale)
+                mask = self.item.blk.text_alpha_mask
+                count = self.canvas.text_undo_stack.count()
+                self.canvas.mousePressEvent(_MouseEvent(
+                    Qt.MouseButton.LeftButton, start,
+                    Qt.KeyboardModifier.AltModifier,
+                ))
+                # Releasing Alt first must not turn resizing into erasing.
+                self.canvas.mouseMoveEvent(_MouseEvent(
+                    Qt.MouseButton.NoButton, end,
+                ))
+                self.assertEqual(self.session.diameter, 24.0)
+                outline = self.session._cursor_item.path().boundingRect()
+                self.assertAlmostEqual(outline.width(), 44.0 * scale)
+                self.assertEqual(outline.center(), start)
+                self.assertFalse(
+                    self.item.effect_renderer.has_text_alpha_mask_preview()
+                )
+                # An overlapping button must not finish the resize or pan.
+                self.canvas.mousePressEvent(_MouseEvent(
+                    Qt.MouseButton.MiddleButton, end,
+                ))
+                self.canvas.mouseReleaseEvent(_MouseEvent(
+                    Qt.MouseButton.MiddleButton, end,
+                ))
+                self.assertFalse(self.canvas.mid_btn_pressed)
+                self.assertEqual(self.session.diameter, 24.0)
+                with patch.object(
+                    self.session, '_update_cursor', wraps=self.session._update_cursor,
+                ) as refresh:
+                    self.canvas.mouseReleaseEvent(_MouseEvent(Qt.MouseButton.LeftButton, end))
+                    self.assertEqual(refresh.call_count, 1)
+                self.assertEqual(self.session.diameter, 44.0)
+                self.assertEqual(self.item.blk.text_alpha_mask, mask)
+                self.assertEqual(self.canvas.text_undo_stack.count(), count)
+
+                stroke = _MouseEvent(Qt.MouseButton.LeftButton, end)
+                self.canvas.mousePressEvent(stroke)
+                self.canvas.mouseReleaseEvent(stroke)
+                saved = self.item.blk.text_alpha_mask.strokes[-1]
+                self.assertEqual((saved.mode, saved.diameter), (mode, 44.0))
+                self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
+
+    def test_alt_drag_uses_horizontal_delta_and_eraser_size_limits(self) -> None:
+        self._activate()
+        start = self._scene_point(100, 80)
+        for delta, expected in (
+            (QPointF(0, 200), 24.0),
+            (QPointF(-1000, 0), ALPHA_BRUSH_MIN_DIAMETER),
+            (QPointF(1000, 0), ALPHA_BRUSH_MAX_DIAMETER),
+        ):
+            with self.subTest(delta=delta):
+                self.session.set_diameter(24.0)
+                self.session.handle_mouse_press(_MouseEvent(
+                    Qt.MouseButton.LeftButton, start,
+                    Qt.KeyboardModifier.AltModifier,
+                ))
+                self.session.handle_mouse_move(_MouseEvent(
+                    Qt.MouseButton.NoButton, start + delta,
+                ))
+                self.session.handle_mouse_release(_MouseEvent(
+                    Qt.MouseButton.LeftButton, start + delta,
+                ))
+                self.assertEqual(self.session.diameter, expected)
+                self.assertEqual(self.item.blk.text_alpha_mask.strokes, ())
+
+    def test_interrupted_alt_drag_discards_resize_preview(self) -> None:
+        for cancel in (
+            self.session.resolve_for_save,
+            self.session.resolve_for_history_change,
+            self.session.handle_escape,
+            self.canvas.on_hide_canvas,
+            self.session.resolve_for_page_change,
+        ):
+            with self.subTest(cancel=cancel.__name__):
+                self._activate()
+                start = self._scene_point(100, 80)
+                self.session.handle_mouse_press(_MouseEvent(
+                    Qt.MouseButton.LeftButton, start,
+                    Qt.KeyboardModifier.AltModifier,
+                ))
+                self.session.handle_mouse_move(_MouseEvent(
+                    Qt.MouseButton.NoButton, start + QPointF(50, 0),
+                ))
+                cancel()
+                self.assertFalse(self.session.handle_mouse_release(
+                    _MouseEvent(Qt.MouseButton.LeftButton, start)
+                ))
+                self.assertEqual(self.session.diameter, 24.0)
+                self.assertEqual(self.item.blk.text_alpha_mask.strokes, ())
+                cursor = self.session._cursor_item
+                self.assertTrue(cursor is None or not cursor.isVisible())
 
     def test_release_promotes_complete_scratch_and_export_uses_canonical(self):
         self._activate()
@@ -382,6 +501,7 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
 
     def test_selection_remove_hide_and_modal_tool_release_target_overlay(self):
         self._activate()
+        self.session.handle_mouse_press(self._alt_resize_event())
         self.assertIsNotNone(self.session._cursor_item)
         self.assertTrue(bool(
             self.session._cursor_item.data(CONTROL_ITEM_DATA_KEY)
@@ -410,6 +530,7 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
 
     def test_deferred_target_delete_releases_session_and_control(self):
         self._activate()
+        self.session.handle_mouse_press(self._alt_resize_event())
         cursor = self.session._cursor_item
         self.item.deleteLater()
         QCoreApplication.sendPostedEvents(
@@ -420,6 +541,14 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
         self.assertIsNone(self.session.target)
         self.assertIsNone(self.session._cursor_item)
         self.assertIsNone(cursor.scene())
+        self.assertEqual(self.session._saved_cursors, [])
+        self.assertFalse(self.canvas.baseLayer.hasCursor())
+
+    def _alt_resize_event(self) -> _MouseEvent:
+        return _MouseEvent(
+            Qt.MouseButton.LeftButton, self._scene_point(100, 80),
+            Qt.KeyboardModifier.AltModifier,
+        )
 
     def test_command_factory_and_panel_gating_pinned_card(self):
         self.assertIsNone(SetTextAlphaMaskCommand.create(
@@ -493,6 +622,23 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             self.assertEqual(self.session.diameter, 48.0)
             self.assertEqual(self.canvas.text_undo_stack.count(), count)
 
+            controls.mask_brush_button.click()
+            self.assertTrue(self.session.active)
+            start = self._scene_point(100, 80)
+            self.canvas.mousePressEvent(_MouseEvent(
+                Qt.MouseButton.LeftButton, start,
+                Qt.KeyboardModifier.AltModifier,
+            ))
+            self.canvas.mouseMoveEvent(_MouseEvent(
+                Qt.MouseButton.NoButton, start + QPointF(20, 0),
+            ))
+            self.canvas.mouseReleaseEvent(_MouseEvent(
+                Qt.MouseButton.LeftButton, start + QPointF(20, 0),
+            ))
+            self.assertEqual(mask_card.diameter_editor.value(), 68.0)
+            self.assertEqual(self.session.diameter, 68.0)
+            self.assertEqual(self.canvas.text_undo_stack.count(), count)
+
             controls.color_dialog_active_changed.emit(True)
             self.assertFalse(self.session.active)
             self.assertTrue(self.session.activate(self.item))
@@ -523,6 +669,142 @@ class TextAlphaMaskEditSessionTest(unittest.TestCase):
             panel.deleteLater()
             C.active_format = old_active_format
             self.app.processEvents()
+
+    def _show_cursor_view(self) -> None:
+        if not self.canvas.gv.isVisible():
+            self.canvas.txtblkShapeControl.setBlkItem(self.item)
+            self.canvas.setSceneRect(QRectF(0, 0, 500, 350))
+            self.canvas.baseLayer.setRect(QRectF(0, 0, 500, 350))
+            self.canvas.gv.resize(700, 500)
+            self.canvas.gv.show()
+            self.app.processEvents()
+
+    def _move(self, point: QPointF) -> QCursor:
+        self._show_cursor_view()
+        viewport = self.canvas.gv.viewport()
+        pos = self.canvas.gv.mapFromScene(point)
+        event = QMouseEvent(
+            QEvent.Type.MouseMove, QPointF(pos),
+            QPointF(viewport.mapToGlobal(pos)), Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+        )
+        self.app.sendEvent(viewport, event)
+        self.app.processEvents()
+        return QCursor(viewport.cursor())
+
+    def test_native_cursor_tracks_body_without_scene_repaints_and_restores(self) -> None:
+        self.canvas.baseLayer.setCursor(Qt.CursorShape.CrossCursor)
+        original = QCursor(self.canvas.baseLayer.cursor())
+        self.assertTrue(self.session.activate(self.item))
+        cursor = self._move(self.item.mapToScene(QPointF(100, 80)))
+        self.assertEqual(cursor.shape(), Qt.CursorShape.BitmapCursor)
+        changes = QSignalSpy(self.canvas.changed)
+        for x in (110, 120, 130):
+            moved = self._move(self.item.mapToScene(QPointF(x, 80)))
+            self.assertEqual(moved.pixmap().cacheKey(), cursor.pixmap().cacheKey())
+        self.assertEqual(len(changes), 0)
+        self.assertIsNone(self.session._cursor_item)
+        self.assertEqual(self.item.blk.text_alpha_mask.strokes, ())
+        self.session.deactivate()
+        self.assertEqual(self.canvas.baseLayer.cursor(), original)
+        self.assertEqual(self.session._saved_cursors, [])
+        self.assertNotEqual(
+            self._move(self.item.mapToScene(QPointF(140, 80))).shape(),
+            Qt.CursorShape.BitmapCursor,
+        )
+
+    def test_native_footprint_matches_affine_perspective_and_warped_text(self) -> None:
+        for transform in (
+            ProjectiveTextTransform(horizontal_scale=1.5, vertical_scale=0.7, rotation_z=24),
+            ProjectiveTextTransform(rotation_x=32, rotation_y=28, perspective=0.5),
+            SineTextTransform(amplitude_x=0.12),
+        ):
+            with self.subTest(transform=transform):
+                self.item.set_text_transform(TextTransformStack((transform,)))
+                self.assertTrue(self.session.activate(self.item))
+                for center in (QPointF(100, 80), QPointF(140, 100)):
+                    point = self.item.geometry_controller.map_source_to_scene(center)
+                    self._move(point)
+                    self.session._update_cursor(point)
+                    cursor = self.item.cursor()
+                    self.assertEqual(cursor.shape(), Qt.CursorShape.BitmapCursor)
+                    pixmap = cursor.pixmap()
+                    image = pixmap.toImage()
+                    dpr = pixmap.devicePixelRatioF()
+                    view = self.canvas.gv.viewportTransform()
+                    for index in range(32):
+                        angle = 2 * math.pi * index / 32
+                        source = center + QPointF(12 * math.cos(angle), 12 * math.sin(angle))
+                        scene = self.item.geometry_controller.map_source_to_scene(source)
+                        pixel = (view.map(scene) - view.map(point) + QPointF(cursor.hotSpot())) * dpr
+                        x, y = round(pixel.x()), round(pixel.y())
+                        alpha = max(
+                            image.pixelColor(px, py).alpha()
+                            for px in range(max(0, x - 2), min(image.width(), x + 3))
+                            for py in range(max(0, y - 2), min(image.height(), y + 3))
+                        )
+                        self.assertGreater(alpha, 100)
+                self.assertIsNone(self.session._cursor_item)
+
+    def test_warped_motion_updates_native_footprint_without_scene_repaints(self) -> None:
+        self.item.set_text_transform(TextTransformStack((SineTextTransform(amplitude_x=0.12),)))
+        self.assertTrue(self.session.activate(self.item))
+        first = self._move(self.item.geometry_controller.map_source_to_scene(QPointF(100, 80)))
+        changes = QSignalSpy(self.canvas.changed)
+        second = self._move(self.item.geometry_controller.map_source_to_scene(QPointF(150, 90)))
+        self.assertEqual(second.shape(), Qt.CursorShape.BitmapCursor)
+        self.assertNotEqual(first.pixmap().toImage(), second.pixmap().toImage())
+        self.assertEqual(len(changes), 0)
+
+    def test_size_zoom_and_handles_keep_correct_cursor(self) -> None:
+        self.assertTrue(self.session.activate(self.item))
+        self._move(self.item.mapToScene(QPointF(100, 80)))
+        first = self.item.cursor().pixmap()
+        self.session.set_diameter(40)
+        resized = self.item.cursor().pixmap()
+        self.assertGreater(resized.width(), first.width())
+        self.canvas.scaleImage(1.5)
+        zoomed = self.item.cursor().pixmap()
+        self.assertGreater(zoomed.width(), resized.width())
+        handle = self.canvas.txtblkShapeControl.ctrlblock_group[0]
+        point = handle.mapToScene(handle.visible_rect.center())
+        self.assertEqual(self._move(point), handle.cursor())
+        self.assertEqual(
+            self._move(self.item.mapToScene(QPointF(100, 80))).shape(),
+            Qt.CursorShape.BitmapCursor,
+        )
+
+    def test_oversized_cursor_falls_back_then_returns_to_native(self) -> None:
+        self.assertTrue(self.session.activate(self.item))
+        self._move(self.item.mapToScene(QPointF(100, 80)))
+        self.session.set_diameter(500)
+        self.canvas.scaleImage(2)
+        self.session._update_cursor(self.item.mapToScene(QPointF(100, 80)))
+        self.assertTrue(self.session._cursor_item.isVisible())
+        self.assertEqual(self.item.cursor().shape(), Qt.CursorShape.CrossCursor)
+        self.session.set_diameter(24)
+        self.assertFalse(self.session._cursor_item.isVisible())
+        self.assertEqual(self.item.cursor().shape(), Qt.CursorShape.BitmapCursor)
+
+    def test_activation_can_end_before_first_viewport_mouse_event(self) -> None:
+        self._show_cursor_view()
+        self.assertTrue(self.session.activate(self.item))
+        self.session.set_diameter(40)
+        self.session.deactivate()
+        self.assertFalse(self.canvas.baseLayer.hasCursor())
+        self.assertEqual(self.session._saved_cursors, [])
+
+    def test_removing_target_releases_installed_native_cursors(self) -> None:
+        self.assertTrue(self.session.activate(self.item))
+        self._move(self.item.mapToScene(QPointF(100, 80)))
+        self.canvas.removeItem(self.item)
+        self.item.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        self.assertIsNone(self.session.target)
+        self.assertEqual(self.session._saved_cursors, [])
+        self.assertIsNone(self.session._native_cursor)
+        self.assertFalse(self.canvas.baseLayer.hasCursor())
 
 
 if __name__ == '__main__':
