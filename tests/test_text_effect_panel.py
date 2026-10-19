@@ -2368,6 +2368,7 @@ class TextEffectPanelTest(unittest.TestCase):
                 'builtin:gaussian_blur',
                 'builtin:bloom',
                 'builtin:glitch',
+                'builtin:ink_brush',
             ],
         )
         self.assertTrue(all(not action.icon().isNull() for action in actions.values()))

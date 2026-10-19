@@ -120,10 +120,12 @@ match the final `filter_id` segment. Keep metadata entirely literal.
 
 `apply` receives an owned contiguous straight RGBA8 array plus normalized
 declared params and returns the same shape and dtype. Reusing the input array is
-allowed. `FilterContext` supplies render scale, strict-export state, and the
-absolute integer pixel origin relative to the unpadded logical origin. Derive
-randomness only from seed and absolute coordinates. `tile_halo` returns the
-smallest bounded nonnegative physical-pixel sampling reach at the active scale.
+allowed. `FilterContext` supplies render scale, strict-export state, the
+absolute integer pixel origin relative to the unpadded logical origin, and the
+unpadded item size in logical units. Derive randomness only from seed and
+absolute coordinates; derive item-relative placement from the logical size, not
+from the current tile or surface extent. `tile_halo` returns the smallest
+bounded nonnegative physical-pixel sampling reach at the active scale.
 
 An exception, invalid output, missing implementation, incompatible schema,
 invalid/excessive halo, or undeclared/out-of-halo alpha growth bypasses only that
@@ -153,6 +155,7 @@ workers, GPU paths, or second vector/text rasterizer.
 | Gaussian Blur | Finite premultiplied RGBA blur with transparent borders and no edge fringe. |
 | Bloom | Thresholded premultiplied highlight blur and additive bloom. |
 | Glitch | Seeded row-block displacement and RGB split derived from absolute coordinates, adapted from the MIT-licensed [Godot shader](https://godotshaders.com/shader/glitch-effect-shader/). |
+| Ink Brush | Dry-brush alpha erosion. A coordinate-stable fBm field stretched along Streak Direction removes ink where the noise crosses the local density; Streak Direction and Streak control the bristle angle and elongation. Start Density and End Density are hole fractions that interpolate linearly along Gradient Direction; 0% leaves ink intact and 100% erases it completely. A distance-based edge bias frays the contour before the body. |
 
 ## Adding or changing a filter
 

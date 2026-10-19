@@ -6124,6 +6124,41 @@ Then restart Photoshop. Explorer will now open the source file and destination l
     </message>
     <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="115"/>
+        <source>Ink Brush</source>
+        <translation>水墨筆刷</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="118"/>
+        <source>Start Density</source>
+        <translation>起始端密度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="121"/>
+        <source>End Density</source>
+        <translation>末端密度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="124"/>
+        <source>Gradient Direction</source>
+        <translation>漸變方向</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="127"/>
+        <source>Streak Direction</source>
+        <translation>拉絲方向</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="130"/>
+        <source>Grain Size</source>
+        <translation>顆粒大小</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="133"/>
+        <source>Streak</source>
+        <translation>拉絲程度</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="136"/>
         <source>Amount</source>
         <translation>彎曲程度</translation>
     </message>
