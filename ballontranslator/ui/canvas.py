@@ -17,6 +17,7 @@ except:
 
 from .misc import ndarray2pixmap, QKEY, QNUMERIC_KEYS, ARROWKEY2DIRECTION
 from .text_engine.item import TextBlkItem, TextBlock
+from .text_quick_actions import TextQuickActions
 from .text_engine.shape_control import (
     CONTROL_ITEM_DATA_KEY,
     TextBlkShapeControl,
@@ -323,6 +324,12 @@ class Canvas(QGraphicsScene):
         self.scaleFactorLabel.gv = self.gv
 
         self.txtblkShapeControl = TextBlkShapeControl(self.gv)
+        self.text_quick_actions = TextQuickActions(
+            self.gv,
+            lambda: getattr(
+                SW.st_manager, "textblk_item_list", []
+            ),
+        )
         self.txtblkGridControl = TextGridTransformControl()
         self.txtblkProjectiveControl = TextProjectiveTransformControl()
         
@@ -480,6 +487,9 @@ class Canvas(QGraphicsScene):
         self._text_shape_refresh_timer.start(0)
 
     def _refresh_text_shape_control_now(self) -> None:
+        # Follow whatever the shape control is bound to, so the quick actions
+        # never keep a stale target after a selection change.
+        self.text_quick_actions.set_target(self.txtblkShapeControl.blk_item)
         self.txtblkShapeControl.requestGeometryRefresh()
         self.txtblkGridControl.requestGeometryRefresh()
         self.txtblkProjectiveControl.requestGeometryRefresh()
@@ -497,6 +507,7 @@ class Canvas(QGraphicsScene):
         self.txtblkProjectiveControl.clear()
         if self.txtblkShapeControl.blk_item is not item:
             self.txtblkShapeControl.setBlkItem(item)
+        self.text_quick_actions.set_target(item)
         self.txtblkGridControl.bind(
             item,
             stack_index,
@@ -983,6 +994,7 @@ class Canvas(QGraphicsScene):
         if self._text_creation_cursor_active:
             self.gv.viewport().setCursor(Qt.CursorShape.CrossCursor)
         self.txtblkShapeControl.setBlkItem(None)
+        self.text_quick_actions.set_target(None)
         self.txtblkShapeControl.setPos(0, 0)
         self.txtblkShapeControl.setRotation(0)
         self.txtblkShapeControl.setRect(QRectF(pos, QSizeF(1, 1)))

@@ -734,6 +734,9 @@ class FontFormat(Config):
     # standing each letter upright in its own full character cell. Horizontal
     # writing mode ignores it.
     roman_word_rotation: bool = False
+    # Let the text run past its frame instead of wrapping at
+    # the frame edge; the quick-action button toggles this.
+    no_forced_wrap: bool = False
     # None is constructor-only so legacy payloads can distinguish an omitted
     # weight from an explicitly saved Normal value. __post_init__ canonicalizes
     # every live instance to FontWeight.

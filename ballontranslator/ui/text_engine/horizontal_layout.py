@@ -1020,7 +1020,12 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
         option = doc.defaultTextOption()
         # maybe an option for it
-        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        if getattr(self.fontformat, 'no_forced_wrap', False):
+            option.setWrapMode(QTextOption.WrapMode.NoWrap)
+        else:
+            option.setWrapMode(
+                QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere
+            )
         tl.setTextOption(option)
         font = block.charFormat().font()
 

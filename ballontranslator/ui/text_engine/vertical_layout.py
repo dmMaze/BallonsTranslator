@@ -774,6 +774,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             # Roman word rotation changes the settled column advance, so a
             # cached column measured under the other value must not be reused.
             self.fontformat.roman_word_rotation,
+            # Free wrapping changes the column count the same way.
+            getattr(self.fontformat, 'no_forced_wrap', False),
             pcfg.compact_vertical_punctuation_spacing,
             option.alignment(), option.textDirection(), option.flags(),
             option.useDesignMetrics(), option.tabStopDistance(),
@@ -2488,6 +2490,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         inseparable_run_range = (run_start, run_end)
 
             available_height = self.available_height + doc_margin
+            if getattr(self.fontformat, 'no_forced_wrap', False):
+                # One column that never breaks; the frame no longer
+                # constrains where the text may go.
+                available_height = max(available_height, 1.0e6)
             text_len = line.textLength()
             end_char = char_idx + text_len >= blk_text_len
             if char_idx + text_len > blk_text_len:
