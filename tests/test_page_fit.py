@@ -100,6 +100,33 @@ class PageFitTest(unittest.TestCase):
         self.assertFalse(controller.fitted)
         self.assertAlmostEqual(canvas.scale_factor, 1.0, places=6)
 
+    def test_fit_survives_a_page_change(self) -> None:
+        canvas = FakeCanvas()
+        controller = PageFitController(canvas)
+        controller.fit()
+        fitted_factor = canvas.scale_factor
+        # A new page arrives with its own size while the fit is active.
+        canvas.scale_factor = 1.0
+        canvas.sceneRect = lambda: QRectF(0, 0, 1500, 3000)
+        controller.on_page_changed()
+        self.assertTrue(controller.fitted)
+        self.assertAlmostEqual(
+            canvas.scale_factor, min(573 / 1500, 658 / 3000), places=6
+        )
+        self.assertNotAlmostEqual(canvas.scale_factor, fitted_factor)
+        # Restoring returns to the new page's own default view.
+        self.assertTrue(controller.restore())
+        self.assertAlmostEqual(canvas.scale_factor, 1.0, places=6)
+        self.assertEqual(canvas.gv.hbar.value(), 0)
+        self.assertEqual(canvas.gv.vbar.value(), 0)
+
+    def test_page_change_without_fit_does_nothing(self) -> None:
+        canvas = FakeCanvas()
+        controller = PageFitController(canvas)
+        controller.on_page_changed()
+        self.assertFalse(controller.fitted)
+        self.assertAlmostEqual(canvas.scale_factor, 1.0, places=6)
+
     def test_degenerate_page_is_ignored(self) -> None:
         canvas = FakeCanvas()
         canvas.sceneRect = lambda: QRectF(0, 0, 0, 0)

@@ -1131,11 +1131,22 @@ class MainWindow(mainwindow_cls):
             self.canvas.clear_undostack(update_saved_step=True)
             self.canvas.updateCanvas()
             self.st_manager.populateSceneTextitems()
+            self._keep_page_fit()
             self.titleBar.setTitleContent(page_name=self.imgtrans_proj.current_img)
             self.module_manager.handle_page_changed()
             self.drawingPanel.handle_page_changed()
             
         self.page_changing = False
+
+    def _keep_page_fit(self) -> None:
+        """Keep the whole-page view when the user turns the page."""
+        controller = getattr(self, 'page_fit_controller', None)
+        if controller is None or not controller.fitted:
+            return
+        controller.on_page_changed()
+        button = getattr(self, 'page_fit_button', None)
+        if button is not None:
+            button.refresh()
 
     def setupShortcuts(self):
         self.titleBar.nextpage_trigger.connect(self.shortcutNext) 

@@ -12,6 +12,9 @@ from qtpy.QtWidgets import QToolButton, QWidget
 
 DEFAULT_SIZE = 156
 
+# Dark grey ink; the supplied artwork ships as solid black.
+INK = QColor(47, 51, 57)
+
 
 _icon_cache = {}
 
@@ -24,7 +27,10 @@ def _asset_icon(size: int, outline: int) -> QIcon | None:
         return cached
     try:
         from ballontranslator.utils import shared
-        from ballontranslator.ui.layer_peek import _with_white_outline
+        from ballontranslator.ui.layer_peek import (
+            _silhouette,
+            _with_white_outline,
+        )
     except Exception:
         return None
     base = getattr(shared, 'ICON_DIR', '')
@@ -51,6 +57,9 @@ def _asset_icon(size: int, outline: int) -> QIcon | None:
             pixmap = QPixmap(str(candidate))
             if pixmap.isNull():
                 continue
+        # The artwork ships as ink-on-transparent; recolour it to dark grey
+        # so it matches the rest of the floating controls.
+        pixmap = _silhouette(pixmap, INK)
         if outline > 0:
             icon_pixmap = _with_white_outline(
                 pixmap, max(2, size // 22), size
@@ -125,8 +134,13 @@ class PageFitController:
     def _page_rect(self):
         return self.canvas.sceneRect()
 
-    def fit(self) -> bool:
-        """Scale so the page fits the viewport; returns False if it cannot."""
+    def fit(self, restore_to_default: bool = False) -> bool:
+        """Scale so the page fits the viewport; returns False if it cannot.
+
+        ``restore_to_default`` makes restoring return to the page's own
+        1:1 view at the origin instead of whatever zoom the previous page
+        left behind, which is what a page switch should offer.
+        """
         canvas = self.canvas
         view = getattr(canvas, 'gv', None)
         if view is None:
@@ -144,7 +158,14 @@ class PageFitController:
         if factor <= 0:
             return False
         hbar, vbar = self._scrollbars()
-        self._saved = (current, hbar.value(), vbar.value())
+        if restore_to_default:
+            self._saved = (1.0, 0, 0)
+            if current != 1.0:
+                canvas.scaleImage(1.0 / current)
+                current = 1.0
+                factor = min(width / rect.width(), height / rect.height())
+        else:
+            self._saved = (current, hbar.value(), vbar.value())
         canvas.scaleImage(factor)
         view.centerOn(rect.center())
         self.fitted = True
@@ -166,6 +187,18 @@ class PageFitController:
         self._saved = None
         self.fitted = False
         return True
+
+    def on_page_changed(self) -> None:
+        """Stay fitted on the new page and rebase the restore target.
+
+        A fitted view is a viewing mode, not a one-page gesture: after
+        switching pages the new page is fitted too, and restoring goes
+        back to the zoom and offset that page had before the fit.
+        """
+        if not self.fitted:
+            return
+        self.fitted = False
+        self.fit(restore_to_default=True)
 
     def toggle(self) -> bool:
         """Fit when showing the page, restore when already fitted."""
