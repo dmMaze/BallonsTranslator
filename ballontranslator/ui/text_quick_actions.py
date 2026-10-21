@@ -208,18 +208,54 @@ class TextQuickActions:
             & Qt.KeyboardModifier.ShiftModifier
         )
 
+    def _snapshot(self, item) -> dict:
+        """Capture everything a scale step has to be able to restore."""
+        from ballontranslator.utils.fontformat import px2pt
+
+        rect = item.boundingRect()
+        centre = item.mapToScene(rect.center())
+        size = float(item.fontformat.font_size)
+        return {
+            'size': size,
+            'pt': px2pt(size),
+            'w': rect.width(),
+            'h': rect.height(),
+            'cx': centre.x(),
+            'cy': centre.y(),
+        }
+
+    def _snapshot(self, item) -> dict:
+        """Capture everything a scale step has to be able to restore."""
+        from ballontranslator.utils.fontformat import px2pt
+
+        rect = item.boundingRect()
+        centre = item.mapToScene(rect.center())
+        size = float(item.fontformat.font_size)
+        return {
+            'size': size,
+            'pt': px2pt(size),
+            'w': rect.width(),
+            'h': rect.height(),
+            'cx': centre.x(),
+            'cy': centre.y(),
+        }
+
     def _capture_frames(self) -> None:
-        """Remember each target's frame size and centre for scaled dragging."""
+        """Remember each target's frame and snapshot before the gesture."""
         self._frames = {}
+        self._initial = {}
+        self._initial_items = []
         for item in self._items(self._all_blocks):
             try:
-                rect = item.boundingRect()
-                centre = item.mapToScene(rect.center())
+                snapshot = self._snapshot(item)
             except RuntimeError:
                 continue
             self._frames[id(item)] = (
-                rect.width(), rect.height(), centre
+                snapshot['w'], snapshot['h'],
+                item.mapToScene(item.boundingRect().center()),
             )
+            self._initial[id(item)] = snapshot
+            self._initial_items.append(item)
 
     def _scale_frame(self, item, ratio: float) -> None:
         """Resize the frame by ``ratio`` and keep its centre where it was."""
@@ -283,6 +319,25 @@ class TextQuickActions:
 
     def end_scale(self) -> None:
         self._dragging = False
+        initial = getattr(self, '_initial', {})
+        items = getattr(self, '_initial_items', [])
+        if not items:
+            return
+        changed = any(
+            abs(initial[id(item)]['size']
+                - float(item.fontformat.font_size)) > 0.01
+            for item in items if id(item) in initial
+        )
+        if not changed:
+            return
+        from ballontranslator.ui.text_engine.formatting.commands import (
+            push_scale_snapshot,
+        )
+
+        canvas = self.view.scene() if hasattr(self.view, 'scene') else None
+        before = [initial[id(item)] for item in items]
+        after = [self._snapshot(item) for item in items]
+        push_scale_snapshot(canvas, items, before, after)
 
     # -- wrap toggle ------------------------------------------------------
     def _on_wrap_clicked(self) -> None:

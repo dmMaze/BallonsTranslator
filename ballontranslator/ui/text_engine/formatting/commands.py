@@ -1,6 +1,7 @@
 from typing import List, Callable, Dict
 import copy
 
+from qtpy.QtCore import QPointF
 from qtpy.QtWidgets import (
     QAbstractSlider,
     QAbstractSpinBox,
@@ -230,6 +231,55 @@ def ffmt_change_rel_font_size(param_name: str, values: float, act_ffmt: FontForm
     set_kwargs = global_default_set_kwargs if is_global else local_default_set_kwargs
     for blkitem, value in zip(blkitems, values):
         blkitem.setRelFontSize(value, clip_size=clip_size, **set_kwargs)
+
+def _apply_scale_snapshot(param_name: str, values, act_ffmt: FontFormat,
+                          is_global: bool, blkitems: List[TextBlkItem],
+                          **kwargs):
+    """Put a captured (size, frame, centre) snapshot back on each block."""
+    for blkitem, snapshot in zip(blkitems, values):
+        try:
+            blkitem.fontformat.font_size = snapshot['size']
+            blkitem.setFontSize(snapshot['pt'])
+            if snapshot.get('w'):
+                blkitem.set_size(
+                    snapshot['w'], snapshot['h'], set_layout_maxsize=True
+                )
+                blkitem.layout.reLayoutEverything()
+                centre = QPointF(snapshot['cx'], snapshot['cy'])
+                current = blkitem.mapToScene(blkitem.boundingRect().center())
+                blkitem.setPos(blkitem.pos() + (centre - current))
+        except (RuntimeError, AttributeError):
+            continue
+
+
+def push_scale_snapshot(canvas, blkitems: List[TextBlkItem],
+                        before: List[dict], after: List[dict]) -> None:
+    """Record one undoable step for a finished scale gesture.
+
+    The drag previews every intermediate size without touching the undo stack;
+    on release this pushes a single command, which is what marks the project
+    unsaved (and therefore saved when the page changes).
+
+    >>> callable(push_scale_snapshot)
+    True
+    """
+    items = [item for item in blkitems if _is_live_item(item)]
+    if not items or len(before) != len(items) or len(after) != len(items):
+        return
+    params = {
+        'param_name': 'font_size',
+        'act_ffmt': items[0].fontformat,
+        'is_global': False,
+        'blkitems': items,
+    }
+    push = getattr(canvas, 'push_text_command', None)
+    if push is None:
+        _apply_scale_snapshot(values=after, **params)
+        return
+    push(TextStyleUndoCommand(
+        _apply_scale_snapshot, params, after, before
+    ))
+
 
 def apply_no_forced_wrap(param_name: str, values, act_ffmt: FontFormat,
                          is_global: bool, blkitems: List[TextBlkItem],

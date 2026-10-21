@@ -257,5 +257,52 @@ class WrapPersistenceTest(unittest.TestCase):
         self.assertFalse(item.fontformat.no_forced_wrap)
 
 
+class ScalePersistenceTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_scale_snapshot_is_undoable(self) -> None:
+        """A finished drag must leave one undoable step on the text stack."""
+        from ballontranslator.ui.text_engine.formatting.commands import (
+            push_scale_snapshot,
+        )
+
+        class FakeUndoStack:
+            def __init__(self):
+                self.commands = []
+
+            def push(self, command):
+                self.commands.append(command)
+                command.redo()
+
+        class FakeCanvas:
+            def __init__(self):
+                self.stack = FakeUndoStack()
+
+            def push_text_command(self, command):
+                self.stack.push(command)
+
+        item = make_item('一二三', (0, 0, 120, 80), font_size=40)
+        before = {
+            'size': 40.0, 'pt': 30.75,
+            'w': item.boundingRect().width(),
+            'h': item.boundingRect().height(),
+            'cx': 0.0, 'cy': 0.0,
+        }
+        canvas = FakeCanvas()
+        push_scale_snapshot(
+            canvas,
+            [item],
+            [before],
+            [{**before, 'size': 60.0, 'pt': 46.12}],
+        )
+        self.assertEqual(len(canvas.stack.commands), 1)
+        self.assertAlmostEqual(item.fontformat.font_size, 60.0, places=2)
+        canvas.stack.commands[0].undo()
+        self.assertAlmostEqual(item.fontformat.font_size, 40.0, places=2)
+
+
 if __name__ == '__main__':
     unittest.main()
