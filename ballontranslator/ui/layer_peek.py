@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from qtpy.QtCore import QEvent, QObject, QPoint, Qt
-from qtpy.QtCore import QPointF, QRectF
+from qtpy.QtCore import QPointF, QRectF, QSize
 from qtpy.QtGui import (
     QColor,
     QFont,
@@ -343,21 +343,31 @@ class LayerPeekButton(QToolButton):
         self._dragged = False
         self._peeking = False
         self.user_moved = False
-        self.setIconSize(self.size())
-        self.setIcon(peek_icon_for(PeekMode.CURRENT, self._icon_size()))
-        self.setFixedSize(self._button_size(), self._button_size())
-        self._apply_style()
-        self.refresh()
+        self._size = 156
+        self.set_button_size(self._size)
 
     @staticmethod
     def _button_size() -> int:
         return 156
 
+    def set_button_size(self, size: int) -> None:
+        """Resize the button and its icon together.
+
+        QToolButton draws the icon at ``iconSize``, so a size change that
+        only touches the widget leaves the artwork at the old scale.
+        """
+        size = max(40, int(size))
+        self._size = size
+        self.setFixedSize(size, size)
+        self.setIconSize(QSize(self._icon_size(), self._icon_size()))
+        self._apply_style()
+        self.refresh()
+
     def _icon_size(self) -> int:
-        return self._button_size() - 8
+        return max(24, self._size - 8)
 
     def _apply_style(self) -> None:
-        radius = self._button_size() // 2
+        radius = self._size // 2
         self.setStyleSheet(
             'QToolButton#LayerPeekButton { border: none;'
             ' background: transparent; padding: 0px;'

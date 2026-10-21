@@ -128,6 +128,23 @@ class PeekWidgetsTest(unittest.TestCase):
         button.end_peek()
         self.assertEqual(controller.mode, PeekMode.CURRENT)
 
+    def test_icon_follows_the_button_size(self) -> None:
+        """A size change must resize the icon too.
+
+        QToolButton draws the icon at iconSize, so resizing only the
+        widget left the artwork at its old scale (it looked smaller).
+        """
+        from qtpy.QtWidgets import QWidget
+        canvas = FakeCanvas()
+        controller = PeekController(canvas, lambda: [])
+        parent = QWidget()          # keep the parent alive for the button
+        button = LayerPeekButton(controller, parent)
+        button.set_button_size(200)
+        self.assertEqual(button.width(), 200)
+        self.assertEqual(button.iconSize().width(), 192)
+        button.set_button_size(10)  # clamped, never degenerate
+        self.assertGreaterEqual(button.width(), 40)
+
     def test_resize_watcher_reports_view_changes(self) -> None:
         from qtpy.QtCore import QSize
         from qtpy.QtGui import QResizeEvent

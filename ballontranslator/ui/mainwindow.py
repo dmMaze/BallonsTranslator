@@ -369,6 +369,7 @@ class MainWindow(mainwindow_cls):
         self.mtSubWidget.hide()
 
         SW.st_manager = self.st_manager = SceneTextManager(self.app, self, self.canvas, self.textPanel)
+        SW.mainwindow = self
         self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
@@ -920,7 +921,7 @@ class MainWindow(mainwindow_cls):
             self.peek_button = LayerPeekButton(
                 self.peek_controller, self.canvas.gv
             )
-            self.peek_button.resize(self.peek_button._button_size(), self.peek_button._button_size())
+            self.peek_button.set_button_size(pcfg.peek_button_size)
             self.peek_button.show()
             self._place_peek_button()
             QTimer.singleShot(0, self._place_peek_button)
@@ -952,6 +953,14 @@ class MainWindow(mainwindow_cls):
         if filter_ is None:
             return
         filter_.keys = self._peek_key_map()
+
+    def set_peek_button_size(self, size: int) -> None:
+        """Apply a size chosen in the settings panel."""
+        button = getattr(self, 'peek_button', None)
+        if button is None:
+            return
+        button.set_button_size(size)
+        self._place_peek_button()
 
     def _place_peek_button(self) -> None:
         """Pin the button to the canvas corner unless the user moved it."""

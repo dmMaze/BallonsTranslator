@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
 from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
 from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent, QKeySequence
 
+from . import shared_widget as SW
 from .custom_widget import ConfigComboBox, NoBorderPushBtn, ScrollBar, Widget
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import OCRTextPostprocess, pcfg
@@ -1202,6 +1203,37 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         peek_layout.addWidget(peek_inpainted_label)
         peek_layout.addWidget(self.peek_inpainted_edit)
         typesettingConfigPanel.addBlockWidget(peek_row)
+
+        peek_size_row = Widget()
+        peek_size_row.setObjectName('ConfigInlineRow')
+        peek_size_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        peek_size_layout = QHBoxLayout(peek_size_row)
+        peek_size_layout.setContentsMargins(0, 0, 0, 0)
+        peek_size_layout.setSpacing(12)
+        peek_size_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        peek_size_label = ConfigTextLabel(
+            self.tr('Peek button size'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        peek_size_font = peek_size_label.font()
+        peek_size_font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        peek_size_label.setFont(peek_size_font)
+        peek_size_label.setToolTip(self.tr(
+            'Diameter of the floating button in pixels.'
+        ))
+        self.peek_size_spin = QSpinBox(peek_size_row)
+        self.peek_size_spin.setObjectName('PeekButtonSize')
+        self.peek_size_spin.setRange(40, 320)
+        self.peek_size_spin.setSingleStep(8)
+        self.peek_size_spin.setSuffix(' px')
+        self.peek_size_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.peek_size_spin.valueChanged.connect(
+            self.on_peek_button_size_changed
+        )
+        peek_size_layout.addWidget(peek_size_label)
+        peek_size_layout.addWidget(self.peek_size_spin)
+        typesettingConfigPanel.addBlockWidget(peek_size_row)
         cap_layout.addWidget(cap_label)
         cap_layout.addWidget(self.font_size_cap_spin)
         typesettingConfigPanel.addBlockWidget(cap_row)
@@ -1764,6 +1796,13 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_fntstroke_flag_changed(self):
         pcfg.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
+    def on_peek_button_size_changed(self, value: int):
+        pcfg.peek_button_size = int(value)
+        main_window = getattr(SW, 'mainwindow', None)
+        resize = getattr(main_window, 'set_peek_button_size', None)
+        if callable(resize):
+            resize(int(value))
+
     def on_peek_shortcuts_changed(self, *args):
         pcfg.peek_original_shortcut = (
             self.peek_original_edit.keySequence().toString()
@@ -1771,7 +1810,11 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         pcfg.peek_inpainted_shortcut = (
             self.peek_inpainted_edit.keySequence().toString()
         )
-        reload = getattr(self.window(), 'reload_peek_shortcuts', None)
+        reload = getattr(
+            getattr(SW, 'mainwindow', None),
+            'reload_peek_shortcuts',
+            None,
+        )
         if callable(reload):
             reload()
 
@@ -2044,6 +2087,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         )
         # Setting one field fires keySequenceChanged, whose handler writes
         # both fields back; block it so the second keeps its value.
+        self.peek_size_spin.blockSignals(True)
+        self.peek_size_spin.setValue(int(pcfg.peek_button_size))
+        self.peek_size_spin.blockSignals(False)
         for edit, value in (
             (self.peek_original_edit, pcfg.peek_original_shortcut),
             (self.peek_inpainted_edit, pcfg.peek_inpainted_shortcut),
