@@ -207,5 +207,55 @@ class NotifyTest(unittest.TestCase):
         self.assertIsNone(seen[-1])
 
 
+class WrapPersistenceTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_wrap_flag_survives_serialization(self) -> None:
+        """The flag has to reach the project file, not just the live item."""
+        item = make_item('一二三', (0, 0, 120, 80))
+        item.fontformat.no_forced_wrap = True
+        serialized = item.fontformat.to_serializable_dict()
+        self.assertIn('no_forced_wrap', serialized)
+        self.assertTrue(serialized['no_forced_wrap'])
+
+    def test_toggle_pushes_onto_the_text_undo_stack(self) -> None:
+        """Saving is driven by the undo stack, so the toggle must push there.
+
+        Before this, the toggle mutated the block directly, which left the
+        stack clean: the page change then skipped writing and the change was
+        lost on the next load.
+        """
+        from ballontranslator.ui.text_engine.formatting.commands import (
+            push_no_forced_wrap,
+        )
+
+        class FakeUndoStack:
+            def __init__(self):
+                self.commands = []
+
+            def push(self, command):
+                self.commands.append(command)
+                command.redo()
+
+        class FakeCanvas:
+            def __init__(self):
+                self.stack = FakeUndoStack()
+
+            def push_text_command(self, command):
+                self.stack.push(command)
+
+        item = make_item('一二三', (0, 0, 120, 80))
+        canvas = FakeCanvas()
+        push_no_forced_wrap(canvas, [item], True)
+        self.assertTrue(item.fontformat.no_forced_wrap)
+        self.assertEqual(len(canvas.stack.commands), 1)
+
+        canvas.stack.commands[0].undo()
+        self.assertFalse(item.fontformat.no_forced_wrap)
+
+
 if __name__ == '__main__':
     unittest.main()

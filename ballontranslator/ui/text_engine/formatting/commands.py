@@ -231,6 +231,52 @@ def ffmt_change_rel_font_size(param_name: str, values: float, act_ffmt: FontForm
     for blkitem, value in zip(blkitems, values):
         blkitem.setRelFontSize(value, clip_size=clip_size, **set_kwargs)
 
+def apply_no_forced_wrap(param_name: str, values, act_ffmt: FontFormat,
+                         is_global: bool, blkitems: List[TextBlkItem],
+                         **kwargs):
+    """Set the flag and relayout; used as the command's payload."""
+    for blkitem, value in zip(blkitems, values):
+        blkitem.fontformat.no_forced_wrap = bool(value)
+        try:
+            blkitem.layout.reLayoutEverything()
+        except (RuntimeError, AttributeError):
+            continue
+
+
+def push_no_forced_wrap(canvas, blkitems: List[TextBlkItem],
+                        enabled: bool) -> None:
+    """Apply the toggle and register it as an undoable text change.
+
+    The project's unsaved state comes from the text undo stack, so a direct
+    mutation looked saved and a page change skipped writing it. Pushing onto the
+    stack also makes the toggle undoable.
+
+    >>> callable(push_no_forced_wrap)
+    True
+    """
+    items = [item for item in blkitems if _is_live_item(item)]
+    if not items:
+        return
+    values = [bool(enabled)] * len(items)
+    undo_values = [bool(item.fontformat.no_forced_wrap) for item in items]
+    params = {
+        'param_name': 'no_forced_wrap',
+        'act_ffmt': items[0].fontformat,
+        'is_global': False,
+        'blkitems': items,
+    }
+    push = getattr(canvas, 'push_text_command', None)
+    if push is None:
+        # No text stack here (an embedded view or a test scene): still apply
+        # the change rather than silently doing nothing.
+        apply_no_forced_wrap(values=values, **params)
+        return
+    command = TextStyleUndoCommand(
+        apply_no_forced_wrap, params, values, undo_values
+    )
+    push(command)
+
+
 @font_formating(push_undostack=True)
 def ffmt_change_alignment(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     restore_cursor = not is_global

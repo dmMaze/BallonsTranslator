@@ -292,18 +292,30 @@ class TextQuickActions:
         enabled = not bool(
             getattr(items[0].fontformat, 'no_forced_wrap', False)
         )
-        for item in items:
-            try:
-                if enabled:
+        if enabled:
+            for item in items:
+                try:
                     # Remember the frame the user chose, so the switch is
                     # reversible instead of leaving a grown frame behind.
                     item.free_wrap_original_height = (
                         item.boundingRect().height()
                     )
-                item.fontformat.no_forced_wrap = enabled
-                item.layout.reLayoutEverything()
-                if not enabled:
+                except RuntimeError:
+                    continue
+
+        from ballontranslator.ui.text_engine.formatting.commands import (
+            push_no_forced_wrap,
+        )
+
+        # Pushing onto the text undo stack is what marks the project unsaved,
+        # so the toggle survives a page switch or a restart.
+        canvas = self.view.scene() if hasattr(self.view, 'scene') else None
+        push_no_forced_wrap(canvas, items, enabled)
+
+        if not enabled:
+            for item in items:
+                try:
                     restore_original_height(item)
-            except (RuntimeError, AttributeError):
-                continue
+                except RuntimeError:
+                    continue
         self.refresh()
