@@ -453,6 +453,10 @@ class ProgramConfig(Config):
     # Automatic font sizes are capped at this multiple of the page's
     # median size; 0 disables the cap.
     font_size_outlier_ratio: float = 1.5
+    # Hold-to-peek shortcuts for the original and inpainted page.
+    peek_original_shortcut: str = 'Tab'
+    peek_inpainted_shortcut: str = '`'
+    peek_button_position: str = ''
     let_letter_case: str = OCRTextPostprocess.NONE
     let_show_only_custom_fonts_flag: bool = False
     let_textstyle_indep_flag: bool = False
