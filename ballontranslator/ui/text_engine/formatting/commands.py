@@ -61,12 +61,31 @@ class TextStyleUndoCommand(QUndoCommand):
         self.style_func(values=self.undo_values, **self.params)
 
 
+def _is_live_item(item) -> bool:
+    """Return False for a missing or already deleted scene item.
+
+    The format panel can hold a binding to an item that a page reload has
+    already destroyed; passing it on raises from inside the Qt wrapper.
+
+    >>> _is_live_item(None)
+    False
+    """
+    if item is None:
+        return False
+    try:
+        item.scene()
+    except RuntimeError:
+        return False
+    return True
+
+
 def wrap_fntformat_input(values: str, blkitems: List[TextBlkItem], is_global: bool):
     if is_global:
         blkitems = SW.canvas.selected_text_items()
     else:
         if not isinstance(blkitems, List):
             blkitems = [blkitems]
+    blkitems = [item for item in blkitems if _is_live_item(item)]
     values = [values] * len(blkitems)
     return blkitems, values
 
