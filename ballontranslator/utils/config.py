@@ -442,6 +442,10 @@ class ProgramConfig(Config):
     let_fnteffect_flag: int = 1
     let_alignment_flag: int = 0
     let_writing_mode_flag: int = 0
+    # Layout placement options: 0 keeps each block's own value, 1 copies the
+    # global format during a RUN so a batch translation matches a manual change.
+    let_roman_word_rotation_flag: int = 0
+    let_vertical_alignment_flag: int = 0
     let_family_flag: int = 0
     let_autolayout_flag: bool = True
     let_letter_case: str = OCRTextPostprocess.NONE

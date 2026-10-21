@@ -66,6 +66,7 @@ from .text_engine.effects.paint import (
 from .text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
+    apply_layout_overrides,
 )
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
@@ -1968,6 +1969,8 @@ class MainWindow(mainwindow_cls):
         override_effect = pcfg.let_fnteffect_flag == 1
         override_writing_mode = pcfg.let_writing_mode_flag == 1
         override_font_family = pcfg.let_family_flag == 1
+        override_roman_word_rotation = pcfg.let_roman_word_rotation_flag == 1
+        override_vertical_alignment = pcfg.let_vertical_alignment_flag == 1
         gf = self._render_global_format
         if gf is None:
             gf = self.textPanel.formatpanel.global_format
@@ -2056,6 +2059,15 @@ class MainWindow(mainwindow_cls):
 
                     # Apply the complete global text-transform stack.
                     blk.fontformat.text_transform = gf.text_transform
+
+            # Settled-layout options follow the same per-property rule as the
+            # typography overrides above, so a batch RUN matches a manual change.
+            apply_layout_overrides(
+                blk_list,
+                gf,
+                roman_word_rotation=override_roman_word_rotation,
+                vertical_alignment=override_vertical_alignment,
+            )
 
             if pcfg.auto_tate_chu_yoko.enabled and (
                 enable_translate

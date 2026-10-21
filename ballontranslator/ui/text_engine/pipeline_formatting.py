@@ -14,7 +14,7 @@ from qtpy.QtGui import (
 )
 
 from ballontranslator.utils.config import AutoTateChuYokoConfig
-from ballontranslator.utils.fontformat import font_weight_to_qt
+from ballontranslator.utils.fontformat import FontFormat, font_weight_to_qt
 from ballontranslator.utils.message import create_error_dialog
 from ballontranslator.utils.textblock import TextBlock
 from .font_family import qfont_with_family
@@ -72,6 +72,51 @@ def _load_text_block_document(block: TextBlock) -> QTextDocument:
         font_format.line_spacing_type,
     )
     return document
+
+
+def apply_layout_overrides(
+    blocks: Sequence[TextBlock],
+    global_format: FontFormat,
+    *,
+    roman_word_rotation: bool = False,
+    vertical_alignment: bool = False,
+) -> int:
+    """Copy the settled-layout options onto blocks before they are laid out.
+
+    The pipeline normally leaves per-property state alone unless the matching
+    ``let_*`` flag asks for the global setting; these two options follow the
+    same rule so a batch RUN produces the placement a manual change would.
+    Return the number of blocks whose stored format changed.
+
+    >>> from ballontranslator.utils.fontformat import FontFormat
+    >>> block = TextBlock(translation="master")
+    >>> global_format = FontFormat()
+    >>> global_format.roman_word_rotation = True
+    >>> apply_layout_overrides([block], global_format, roman_word_rotation=True)
+    1
+    >>> block.fontformat.roman_word_rotation
+    True
+    """
+    changed = 0
+    for block in blocks:
+        block_format = block.fontformat
+        updated = False
+        if (
+            roman_word_rotation
+            and block_format.roman_word_rotation
+            != global_format.roman_word_rotation
+        ):
+            block_format.roman_word_rotation = global_format.roman_word_rotation
+            updated = True
+        if (
+            vertical_alignment
+            and block_format.vertical_alignment
+            != global_format.vertical_alignment
+        ):
+            block_format.vertical_alignment = global_format.vertical_alignment
+            updated = True
+        changed += int(updated)
+    return changed
 
 
 def apply_auto_tate_chu_yoko(

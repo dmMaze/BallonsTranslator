@@ -1019,6 +1019,13 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_family_combox.activated.connect(self.on_family_flag_changed)
         global_fntfmt_layout.addWidget(sublock, 3, 1)
 
+        self.let_roman_rotation_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Rotate Roman Words'), parent=self, insert_stretch=True)
+        self.let_roman_rotation_combox.activated.connect(self.on_roman_rotation_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 4, 0)
+        self.let_vertical_alignment_combox, sublock = combobox_with_label([dec_program_str, use_global_str], self.tr('Vertical Align'), parent=self, insert_stretch=True)
+        self.let_vertical_alignment_combox.activated.connect(self.on_vertical_alignment_flag_changed)
+        global_fntfmt_layout.addWidget(sublock, 4, 1)
+
         global_fntfmt_layout.addItem(QSpacerItem(0, 0, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding), 0, 2)
 
         self.quick_insert_characters_edit, _ = typesettingConfigPanel.addLineEdit(
@@ -1732,6 +1739,16 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_family_flag_changed(self):
         pcfg.let_family_flag = self.let_family_combox.currentIndex()
 
+    def on_roman_rotation_flag_changed(self):
+        pcfg.let_roman_word_rotation_flag = (
+            self.let_roman_rotation_combox.currentIndex()
+        )
+
+    def on_vertical_alignment_flag_changed(self):
+        pcfg.let_vertical_alignment_flag = (
+            self.let_vertical_alignment_combox.currentIndex()
+        )
+
     def on_effect_flag_changed(self):
         pcfg.let_fnteffect_flag = self.let_effect_combox.currentIndex()
 
@@ -1898,6 +1915,12 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_fnt_scolor_combox.setCurrentIndex(pcfg.let_fnt_scolor_flag)
         self.let_alignment_combox.setCurrentIndex(pcfg.let_alignment_flag)
         self.let_family_combox.setCurrentIndex(pcfg.let_family_flag)
+        self.let_roman_rotation_combox.setCurrentIndex(
+            pcfg.let_roman_word_rotation_flag
+        )
+        self.let_vertical_alignment_combox.setCurrentIndex(
+            pcfg.let_vertical_alignment_flag
+        )
         self.let_writing_mode_combox.setCurrentIndex(pcfg.let_writing_mode_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
         self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
