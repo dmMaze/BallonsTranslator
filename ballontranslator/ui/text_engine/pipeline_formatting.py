@@ -123,7 +123,7 @@ def normalize_translation_punctuation(blocks: Sequence[TextBlock]) -> int:
 
 def cap_font_size_outliers(
     blocks: Sequence[TextBlock],
-    ratio: float = 3.0,
+    ratio: float = 1.5,
 ) -> int:
     """Clamp automatic font sizes that a mis-detected box has inflated.
 
