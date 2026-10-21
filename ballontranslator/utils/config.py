@@ -455,7 +455,7 @@ class ProgramConfig(Config):
     font_size_outlier_ratio: float = 1.5
     # Hold-to-peek shortcuts for the original and inpainted page.
     peek_original_shortcut: str = 'Ctrl+Tab'
-    peek_inpainted_shortcut: str = 'Alt+Tab'
+    peek_inpainted_shortcut: str = 'Ctrl+Shift+Tab'
     peek_button_position: str = ''
     let_letter_case: str = OCRTextPostprocess.NONE
     let_show_only_custom_fonts_flag: bool = False
