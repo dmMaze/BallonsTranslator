@@ -187,56 +187,54 @@ class TextQuickActions:
         )
 
     def _capture_frames(self) -> None:
-        """Remember each target's frame so scaling never resizes it."""
+        """Remember each target's frame size and centre for scaled dragging."""
         self._frames = {}
         for item in self._items(self._all_blocks):
             try:
                 rect = item.boundingRect()
+                centre = item.mapToScene(rect.center())
             except RuntimeError:
                 continue
-            self._frames[id(item)] = (rect.width(), rect.height())
+            self._frames[id(item)] = (
+                rect.width(), rect.height(), centre
+            )
 
-    def _restore_frames(self) -> None:
-        """Put the captured frame size back after the layout reflowed."""
-        for item in self._items(self._all_blocks):
-            frame = getattr(self, '_frames', {}).get(id(item))
-            if frame is None:
-                continue
-            try:
-                rect = item.boundingRect()
-                if (
-                    abs(rect.width() - frame[0]) < 0.5
-                    and abs(rect.height() - frame[1]) < 0.5
-                ):
-                    continue
-                item.set_size(
-                    frame[0], frame[1], set_layout_maxsize=True
-                )
-            except (RuntimeError, AttributeError):
-                continue
+    def _scale_frame(self, item, ratio: float) -> None:
+        """Resize the frame by ``ratio`` and keep its centre where it was."""
+        frame = getattr(self, '_frames', {}).get(id(item))
+        if frame is None:
+            return
+        width, height, centre = frame
+        try:
+            item.set_size(
+                width * ratio, height * ratio, set_layout_maxsize=True
+            )
+            current = item.mapToScene(item.boundingRect().center())
+            item.setPos(item.pos() + (centre - current))
+            item.layout.reLayoutEverything()
+        except (RuntimeError, AttributeError):
+            return
 
     def _apply_size(self, size: float) -> None:
-        """Apply a size in the model's pixels, like the toolbar control.
+        """Scale text and frame as one unit, like resizing a picture.
 
         ``FontFormat.font_size`` is stored in pixels while ``setFontSize``
-        takes points, and the toolbar converts between them. Skipping the
-        conversion made every drag jump far past the intended size, which
-        in turn forced the frame to grow.
+        takes points, and the toolbar control converts between them.
+
+        >>> callable(TextQuickActions._apply_size)
+        True
         """
         from ballontranslator.utils.fontformat import px2pt
 
         self._last_size = size
-        shrinking = self._base_size > 0 and size < self._base_size
+        ratio = size / self._base_size if self._base_size else 1.0
         for item in self._items(self._all_blocks):
             try:
                 item.fontformat.font_size = size
                 item.setFontSize(px2pt(size))
             except RuntimeError:
                 continue
-        if shrinking:
-            # Enlarging lets the frame follow the text; shrinking must not
-            # leave the frame stretched, so it goes back to what it was.
-            self._restore_frames()
+            self._scale_frame(item, ratio)
         self.refresh()
 
     # -- scale gesture ----------------------------------------------------
@@ -260,8 +258,6 @@ class TextQuickActions:
 
     def end_scale(self) -> None:
         self._dragging = False
-        if self._base_size > 0 and self._last_size < self._base_size:
-            self._restore_frames()
 
     # -- wrap toggle ------------------------------------------------------
     def _on_wrap_clicked(self) -> None:

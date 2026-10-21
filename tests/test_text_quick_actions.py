@@ -73,28 +73,35 @@ class ActionsTest(unittest.TestCase):
         )
         self.actions.end_scale()
 
-    def test_growing_leaves_the_frame_to_the_layout(self) -> None:
-        """Enlarging must not pin the frame; the layout grows it instead."""
-        calls = []
-        self.actions._restore_frames = lambda: calls.append(1)
-        self.actions.start_scale(100.0)
-        self.actions.drag_scale(100.0 + DRAG_SPAN * 0.2)
-        self.assertEqual(calls, [])
-
-    def test_shrinking_restores_the_captured_frame(self) -> None:
-        """One gesture: grow, then shrink past the start."""
-        calls = []
+    def _scaled(self, dy: float):
         item = self.items[0]
-        captured = item.boundingRect().height()
+        self.actions.set_target(item)
         self.actions.start_scale(100.0)
-        self.actions.drag_scale(100.0 + DRAG_SPAN * 0.4)
-        self.actions._restore_frames = lambda: calls.append(1)
-        self.actions.drag_scale(100.0 - DRAG_SPAN * 0.4)
+        self.actions.drag_scale(100.0 + dy)
         self.actions.end_scale()
-        self.assertTrue(calls)
-        self.assertAlmostEqual(
-            item.boundingRect().height(), captured, places=1
-        )
+        return item
+
+    def test_growing_scales_the_frame_with_the_text(self) -> None:
+        item = self.items[0]
+        frame = item.boundingRect()
+        grown = self._scaled(DRAG_SPAN * 0.5)
+        self.assertAlmostEqual(grown.boundingRect().width(),
+                               frame.width() * 1.5, places=0)
+
+    def test_shrinking_scales_the_frame_down_too(self) -> None:
+        item = self.items[0]
+        frame = item.boundingRect()
+        shrunk = self._scaled(-DRAG_SPAN * 0.5)
+        self.assertAlmostEqual(shrunk.boundingRect().width(),
+                               frame.width() * 0.5, places=0)
+
+    def test_scaling_keeps_the_frame_centre(self) -> None:
+        item = self.items[0]
+        before = item.mapToScene(item.boundingRect().center())
+        grown = self._scaled(DRAG_SPAN * 0.4)
+        after = grown.mapToScene(grown.boundingRect().center())
+        self.assertAlmostEqual(after.x(), before.x(), places=1)
+        self.assertAlmostEqual(after.y(), before.y(), places=1)
 
     def test_wrap_toggle_flips_the_flag_and_back(self) -> None:
         self.actions._on_wrap_clicked()
