@@ -351,7 +351,7 @@ class LayerPeekButton(QToolButton):
 
     @staticmethod
     def _button_size() -> int:
-        return 78
+        return 156
 
     def _icon_size(self) -> int:
         return self._button_size() - 8
