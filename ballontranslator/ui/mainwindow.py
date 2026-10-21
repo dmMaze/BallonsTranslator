@@ -37,6 +37,7 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
+from .page_fit import PageFitButton, PageFitController
 from .layer_peek import (
     LayerPeekButton,
     PeekController,
@@ -933,6 +934,14 @@ class MainWindow(mainwindow_cls):
                 self._place_peek_button, self
             )
             self.canvas.gv.installEventFilter(self.peek_resize_watcher)
+            self.page_fit_controller = PageFitController(self.canvas)
+            self.page_fit_button = PageFitButton(
+                self.page_fit_controller,
+                self.canvas.gv,
+                pcfg.peek_button_size,
+            )
+            self.page_fit_button.show()
+            self._place_peek_button()
             self.peek_filter = PeekKeyFilter(
                 self.peek_controller,
                 lambda: self.canvas.gv,
@@ -970,18 +979,31 @@ class MainWindow(mainwindow_cls):
         if button is None:
             return
         button.set_button_size(size)
+        fit_button = getattr(self, 'page_fit_button', None)
+        if fit_button is not None:
+            fit_button.set_button_size(size)
         self._place_peek_button()
 
     def _place_peek_button(self) -> None:
-        """Pin the button to the canvas corner unless the user moved it."""
+        """Pin the floating buttons to the canvas corner.
+
+        The magnifier sits directly above the peek button and follows it,
+        so the corner stays predictable after a resize.
+        """
         button = getattr(self, 'peek_button', None)
         if button is None:
             return
+        view = self.canvas.gv
         if not button.user_moved:
-            view = self.canvas.gv
             button.move(
                 max(0, view.width() - button.width() - 14),
                 max(0, view.height() - button.height() - 14),
+            )
+        fit_button = getattr(self, 'page_fit_button', None)
+        if fit_button is not None and not fit_button.user_moved:
+            fit_button.move(
+                max(0, button.x()),
+                max(0, button.y() - fit_button.height() - 8),
             )
 
     def _peek_button_start(self):
