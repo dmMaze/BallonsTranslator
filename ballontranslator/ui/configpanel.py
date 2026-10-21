@@ -1112,6 +1112,17 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         )
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)
 
+        self.vertical_autofit_checker, _ = typesettingConfigPanel.addCheckBox(
+            self.tr('Enlarge vertical text to fill the box'),
+            discription=self.tr(
+                'Only grows vertical blocks that leave the column '
+                'clearly under-filled, and never past 1.6x.'
+            ),
+        )
+        self.vertical_autofit_checker.stateChanged.connect(
+            self.on_vertical_autofit_changed
+        )
+
         self.let_textstyle_indep_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
         self.let_textstyle_indep_checker.stateChanged.connect(self.on_textstyle_indep_changed)
 
@@ -1670,6 +1681,11 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_fntstroke_flag_changed(self):
         pcfg.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
+    def on_vertical_autofit_changed(self):
+        pcfg.vertical_font_autofit_enabled = (
+            self.vertical_autofit_checker.isChecked()
+        )
+
     def on_autolayout_changed(self):
         pcfg.let_autolayout_flag = self.let_autolayout_checker.isChecked()
 
@@ -1923,6 +1939,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         )
         self.let_writing_mode_combox.setCurrentIndex(pcfg.let_writing_mode_flag)
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
+        self.vertical_autofit_checker.setChecked(
+            pcfg.vertical_font_autofit_enabled
+        )
         self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
         self.let_letter_case_buttons[pcfg.let_letter_case].setChecked(True)
         self.compact_vertical_punctuation_checker.setChecked(

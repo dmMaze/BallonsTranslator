@@ -33,6 +33,7 @@ from .commands import (
     propagate_user_edit,
 )
 from ..formatting.panel import FontFormatPanel
+from ..vertical_fit import fit_vertical_font_size
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
 from ballontranslator.utils.imgproc_utils import extract_ballon_region, get_block_mask
@@ -517,7 +518,14 @@ class SceneTextManager(QObject):
         for textblock in self.imgtrans_proj.current_block_list():
             if textblock.font_family is None or textblock.font_family.strip() == '':
                 textblock.font_family = self.formatpanel.familybox.currentText()
-            self.addTextBlock(textblock)
+            blk_item = self.addTextBlock(textblock)
+            if (
+                pcfg.vertical_font_autofit_enabled
+                and pcfg.let_fntsize_flag == 0
+                and blk_item is not None
+                and textblock.vertical
+            ):
+                fit_vertical_font_size(blk_item)
         if self.auto_textlayout_flag:
             self.updateTextBlkList()
 
