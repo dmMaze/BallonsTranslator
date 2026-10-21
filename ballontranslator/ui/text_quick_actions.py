@@ -135,6 +135,7 @@ class TextQuickActions:
         self.wrap_button.clicked.connect(self._on_wrap_clicked)
 
         self._base_size = 0.0
+        self._last_size = 0.0
         self._press_y = 0.0
         self._dragging = False
         self._all_blocks = False
@@ -224,13 +225,18 @@ class TextQuickActions:
         """
         from ballontranslator.utils.fontformat import px2pt
 
+        self._last_size = size
+        shrinking = self._base_size > 0 and size < self._base_size
         for item in self._items(self._all_blocks):
             try:
                 item.fontformat.font_size = size
                 item.setFontSize(px2pt(size))
             except RuntimeError:
                 continue
-        self._restore_frames()
+        if shrinking:
+            # Enlarging lets the frame follow the text; shrinking must not
+            # leave the frame stretched, so it goes back to what it was.
+            self._restore_frames()
         self.refresh()
 
     # -- scale gesture ----------------------------------------------------
@@ -240,6 +246,7 @@ class TextQuickActions:
             return
         self._all_blocks = self._shift_down()
         self._base_size = float(item.fontformat.font_size)
+        self._last_size = self._base_size
         self._press_y = float(global_y)
         self._dragging = True
         self._capture_frames()
@@ -253,7 +260,8 @@ class TextQuickActions:
 
     def end_scale(self) -> None:
         self._dragging = False
-        self._restore_frames()
+        if self._base_size > 0 and self._last_size < self._base_size:
+            self._restore_frames()
 
     # -- wrap toggle ------------------------------------------------------
     def _on_wrap_clicked(self) -> None:

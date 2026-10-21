@@ -73,22 +73,28 @@ class ActionsTest(unittest.TestCase):
         )
         self.actions.end_scale()
 
-    def test_frame_does_not_change_while_scaling(self) -> None:
-        """The handle mirrors the toolbar's font-size control.
+    def test_growing_leaves_the_frame_to_the_layout(self) -> None:
+        """Enlarging must not pin the frame; the layout grows it instead."""
+        calls = []
+        self.actions._restore_frames = lambda: calls.append(1)
+        self.actions.start_scale(100.0)
+        self.actions.drag_scale(100.0 + DRAG_SPAN * 0.2)
+        self.assertEqual(calls, [])
 
-        Only the font may change; growing the frame as well made every
-        drag resize the box the user had arranged.
-        """
+    def test_shrinking_restores_the_captured_frame(self) -> None:
+        """One gesture: grow, then shrink past the start."""
+        calls = []
         item = self.items[0]
-        frame = item.boundingRect()
-        before = (frame.width(), frame.height())
+        captured = item.boundingRect().height()
         self.actions.start_scale(100.0)
         self.actions.drag_scale(100.0 + DRAG_SPAN * 0.4)
+        self.actions._restore_frames = lambda: calls.append(1)
         self.actions.drag_scale(100.0 - DRAG_SPAN * 0.4)
         self.actions.end_scale()
-        after = item.boundingRect()
-        self.assertAlmostEqual(after.width(), before[0], places=1)
-        self.assertAlmostEqual(after.height(), before[1], places=1)
+        self.assertTrue(calls)
+        self.assertAlmostEqual(
+            item.boundingRect().height(), captured, places=1
+        )
 
     def test_wrap_toggle_flips_the_flag_and_back(self) -> None:
         self.actions._on_wrap_clicked()
