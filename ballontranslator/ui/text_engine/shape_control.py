@@ -356,6 +356,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
     def requestGeometryRefresh(self) -> None:
+        self._notify_quick_actions()
         if not self.isVisible():
             return
         if self.blk_item is not None:
@@ -411,6 +412,17 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def _item_handle_points_in_scene(cls, item: TextBlkItem):
         return item.geometry_controller.visual_handle_points_in_scene()
 
+    def _notify_quick_actions(self) -> None:
+        """Mirror the bound item onto the floating quick-action handles."""
+        canvas = self.scene()
+        actions = getattr(canvas, 'text_quick_actions', None)
+        if actions is None:
+            return
+        try:
+            actions.set_target(self.blk_item)
+        except RuntimeError:
+            return
+
     def setBlkItem(self, blk_item: TextBlkItem):
         if (
             blk_item is not None
@@ -434,6 +446,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.blk_item.update()
 
         self.blk_item = blk_item
+        self._notify_quick_actions()
         if blk_item is None:
             self.resetInteraction()
             self._visual_path = QPainterPath()

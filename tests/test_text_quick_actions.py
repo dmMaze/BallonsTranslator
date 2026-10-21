@@ -148,5 +148,42 @@ class ActionsTest(unittest.TestCase):
         self.assertGreater(item.boundingRect().height(), before)
 
 
+class NotifyTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_binding_notifies_the_quick_actions(self) -> None:
+        """The handles follow the control's binding, including clearing."""
+        from types import SimpleNamespace
+
+        from qtpy.QtWidgets import QGraphicsScene
+
+        from ballontranslator.ui.text_engine.shape_control import (
+            TextBlkShapeControl,
+        )
+
+        scene = QGraphicsScene()
+        seen = []
+        scene.text_quick_actions = SimpleNamespace(
+            set_target=lambda item: seen.append(item)
+        )
+        from qtpy.QtWidgets import QGraphicsView
+
+        view = QGraphicsView(scene)
+        view.resize(400, 400)
+        control = TextBlkShapeControl(view)
+        scene.addItem(control)
+
+        item = make_item('一二', (0, 0, 100, 100))
+        control.setBlkItem(item)
+        self.assertTrue(seen)
+        self.assertIs(seen[-1], item)
+
+        control.setBlkItem(None)
+        self.assertIsNone(seen[-1])
+
+
 if __name__ == '__main__':
     unittest.main()

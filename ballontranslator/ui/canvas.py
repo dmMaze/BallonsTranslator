@@ -487,9 +487,13 @@ class Canvas(QGraphicsScene):
         self._text_shape_refresh_timer.start(0)
 
     def _refresh_text_shape_control_now(self) -> None:
-        # Follow whatever the shape control is bound to, so the quick actions
-        # never keep a stale target after a selection change.
-        self.text_quick_actions.set_target(self.txtblkShapeControl.blk_item)
+        # Follow the shape control, but only when it is bound: a refresh can
+        # happen while nothing is selected, and clearing here made the handles
+        # vanish on any scroll or resize.
+        if self.txtblkShapeControl.blk_item is not None:
+            self.text_quick_actions.set_target(
+                self.txtblkShapeControl.blk_item
+            )
         self.txtblkShapeControl.requestGeometryRefresh()
         self.txtblkGridControl.requestGeometryRefresh()
         self.txtblkProjectiveControl.requestGeometryRefresh()
@@ -995,6 +999,7 @@ class Canvas(QGraphicsScene):
             self.gv.viewport().setCursor(Qt.CursorShape.CrossCursor)
         self.txtblkShapeControl.setBlkItem(None)
         self.text_quick_actions.set_target(None)
+        self.text_quick_actions.set_target(None)
         self.txtblkShapeControl.setPos(0, 0)
         self.txtblkShapeControl.setRotation(0)
         self.txtblkShapeControl.setRect(QRectF(pos, QSizeF(1, 1)))
@@ -1072,6 +1077,7 @@ class Canvas(QGraphicsScene):
         self.clear_states()
         self.clear_text_transform_controls()
         self.txtblkShapeControl.setBlkItem(None)
+        self.text_quick_actions.set_target(None)
         self._path_reorder_active = True
         self._path_reorder_drawing = False
         self._path_reorder_path = QPainterPath()
@@ -1453,6 +1459,7 @@ class Canvas(QGraphicsScene):
                 for item in items_at
             ):
                 self.txtblkShapeControl.setBlkItem(None)
+        self.text_quick_actions.set_target(None)
 
         return super().mousePressEvent(event)
 
@@ -1622,6 +1629,7 @@ class Canvas(QGraphicsScene):
             self.removeItem(self.stroke_img_item)
         self.erase_img_key = None
         self.txtblkShapeControl.setBlkItem(None)
+        self.text_quick_actions.set_target(None)
         self.mid_btn_pressed = False
         self.search_widget.reInitialize()
 
