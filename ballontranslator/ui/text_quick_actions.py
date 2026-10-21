@@ -38,6 +38,35 @@ def scaled_font_size(base: float, dy: float) -> float:
     return max(MIN_FONT_SIZE, min(MAX_FONT_SIZE, size))
 
 
+def restore_original_height(item) -> bool:
+    """Shrink a frame back to the height it had before free wrapping.
+
+    The layout grows the frame to hold unconstrained text; turning the switch
+    off should put the frame back rather than leave it stretched. A block that
+    was already free-wrapped when the page loaded has no remembered height, so
+    it falls back to fitting its content.
+
+    >>> callable(restore_original_height)
+    True
+    """
+    height = getattr(item, 'free_wrap_original_height', None)
+    rect = item.boundingRect()
+    try:
+        if height is not None and height < rect.height():
+            item.set_size(
+                rect.width(), float(height), set_layout_maxsize=True
+            )
+            item.layout.reLayoutEverything()
+            return True
+        if height is None:
+            item.squeezeBoundingRect()
+            item.layout.reLayoutEverything()
+            return True
+    except (RuntimeError, AttributeError):
+        return False
+    return False
+
+
 class _ScaleHandle(QToolButton):
     """The ``T`` button: press, drag vertically, release."""
 
@@ -195,8 +224,16 @@ class TextQuickActions:
         )
         for item in items:
             try:
+                if enabled:
+                    # Remember the frame the user chose, so the switch is
+                    # reversible instead of leaving a grown frame behind.
+                    item.free_wrap_original_height = (
+                        item.boundingRect().height()
+                    )
                 item.fontformat.no_forced_wrap = enabled
                 item.layout.reLayoutEverything()
+                if not enabled:
+                    restore_original_height(item)
             except (RuntimeError, AttributeError):
                 continue
         self.refresh()

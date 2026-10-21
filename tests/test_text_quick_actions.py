@@ -103,6 +103,20 @@ class ActionsTest(unittest.TestCase):
         after = item.layout._plain_column_context
         self.assertNotEqual(before, after)
 
+    def test_switching_off_restores_the_original_height(self) -> None:
+        item = make_item('一二三四五六七八九十', (0, 0, 120, 80))
+        original = item.boundingRect().height()
+        actions = TextQuickActions(self.view, lambda: [item])
+        actions.set_target(item)
+        actions._on_wrap_clicked()
+        grown = item.boundingRect().height()
+        self.assertGreater(grown, original)
+        actions._on_wrap_clicked()
+        self.assertAlmostEqual(
+            item.boundingRect().height(), original, places=1
+        )
+        self.assertFalse(item.fontformat.no_forced_wrap)
+
     def test_frame_grows_to_hold_free_wrapped_text(self) -> None:
         item = make_item('一二三四五六七八九十', (0, 0, 120, 80))
         before = item.boundingRect().height()
