@@ -118,6 +118,9 @@ class TextBlock:
     merged: bool = False
     text: List = field(default_factory = lambda : [])
     translation: str = ""
+    # frame before the text was freed from it, so switching the mode
+    # off restores the original box even after a reload
+    pre_free_wrap_rect: List = None
     rich_text: str = ""
     _bounding_rect: List = None
     src_is_vertical: bool = None

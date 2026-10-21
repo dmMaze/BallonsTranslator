@@ -342,5 +342,45 @@ class FreeWrapHugTest(unittest.TestCase):
         self.assertAlmostEqual(restored.height(), before.height(), places=0)
 
 
+class StoredRectTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_stored_rect_restores_after_a_reload(self) -> None:
+        """A block that was free-wrapped when the page loaded must restore.
+
+        The live attribute does not exist after a reload, so the rect captured
+        on the block is the only way back to the original frame.
+        """
+        from ballontranslator.ui.text_quick_actions import (
+            hug_content,
+            restore_original_rect,
+        )
+
+        item = make_item('库尔基加尔', (0, 0, 220, 90), font_size=40)
+        item.layout.reLayoutEverything()
+        before = item.boundingRect()
+        centre = item.mapToScene(before.center())
+        item.blk.pre_free_wrap_rect = [
+            before.width(), before.height(), centre.x(), centre.y()
+        ]
+
+        item.fontformat.no_forced_wrap = True
+        item.layout.reLayoutEverything()
+        hug_content(item)
+        self.assertLess(item.boundingRect().width(), before.width())
+
+        # simulate a reload: the live attribute is gone
+        if hasattr(item, 'free_wrap_original_rect'):
+            delattr(item, 'free_wrap_original_rect')
+        item.fontformat.no_forced_wrap = False
+        item.layout.reLayoutEverything()
+        self.assertTrue(restore_original_rect(item))
+        self.assertAlmostEqual(item.boundingRect().width(), before.width(),
+                               places=0)
+
+
 if __name__ == '__main__':
     unittest.main()

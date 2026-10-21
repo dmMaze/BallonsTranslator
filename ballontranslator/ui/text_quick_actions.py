@@ -85,6 +85,13 @@ def restore_original_rect(item) -> bool:
     True
     """
     rect = getattr(item, 'free_wrap_original_rect', None)
+    if rect is None:
+        stored = getattr(getattr(item, 'blk', None),
+                         'pre_free_wrap_rect', None)
+        if stored and len(stored) == 4:
+            rect = (
+                stored[0], stored[1], (stored[2], stored[3])
+            )
     try:
         if rect is None:
             return hug_content(item)
@@ -146,6 +153,8 @@ class TextQuickActions:
         ' background: rgba(255, 255, 255, 225); font-size: 15px;'
         ' font-weight: 600; color: #22252b; }'
         'QToolButton:hover { background: rgba(240, 244, 252, 245); }'
+        'QToolButton:checked { background: #2f7cf6; color: white;'
+        ' border-color: #1f5ec4; }'
         % (BUTTON_SIZE // 2)
     )
 
@@ -168,6 +177,7 @@ class TextQuickActions:
             button.setStyleSheet(self.STYLE)
             button.setVisible(False)
 
+        self.wrap_button.setCheckable(True)
         self.wrap_button.clicked.connect(self._on_wrap_clicked)
 
         self._base_size = 0.0
@@ -186,6 +196,7 @@ class TextQuickActions:
         item = self.target
         buttons = (self.scale_button, self.wrap_button)
         if item is None:
+            self.wrap_button.setChecked(False)
             for button in buttons:
                 button.setVisible(False)
             return
@@ -193,6 +204,13 @@ class TextQuickActions:
             if not item.isVisible():
                 raise RuntimeError
             rect = item.mapToScene(item.boundingRect()).boundingRect()
+            free = bool(getattr(item.fontformat, 'no_forced_wrap', False))
+            self.wrap_button.setChecked(free)
+            self.wrap_button.setToolTip(
+                ('已开启：文字不受文字框限制，点击恢复' if free
+                 else '已关闭：文字受文字框限制，点击开启自由换行')
+                + '（按住 Shift：整页）'
+            )
         except RuntimeError:
             for button in buttons:
                 button.setVisible(False)
@@ -369,10 +387,16 @@ class TextQuickActions:
                     # reversible instead of leaving a grown frame behind.
                     rect = item.boundingRect()
                     centre = item.mapToScene(rect.center())
-                    item.free_wrap_original_rect = (
+                    captured = (
                         rect.width(), rect.height(),
                         (centre.x(), centre.y()),
                     )
+                    item.free_wrap_original_rect = captured
+                    # also store it in the project, so the switch can be
+                    # turned off after a reload
+                    item.blk.pre_free_wrap_rect = list(captured[:2]) + [
+                        captured[2][0], captured[2][1],
+                    ]
                 except RuntimeError:
                     continue
 
