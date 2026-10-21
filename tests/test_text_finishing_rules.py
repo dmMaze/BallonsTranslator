@@ -22,19 +22,19 @@ from ballontranslator.utils.fontformat import TextAlignment
 from ballontranslator.utils.textblock import TEXT_LAYOUT_VERSION, TextBlock
 
 
-def make_item(text, bounds, rotation=False) -> TextBlkItem:
+def make_item(text, bounds, rotation=True, font_size=30) -> TextBlkItem:
     block = TextBlock(list(bounds), text_layout_version=TEXT_LAYOUT_VERSION)
     block._bounding_rect = list(bounds)
     block.vertical = True
     block.alignment = TextAlignment.Left
     block.translation = text
-    block.fontformat.font_size = 30
+    block.fontformat.font_size = font_size
     block.fontformat.letter_spacing = 1.0
     block.fontformat.roman_word_rotation = rotation
     return TextBlkItem(block, 0)
 
 
-def letter_columns(item) -> list:
+def letter_columns(item, latin_only=False) -> list:
     layout = item.layout
     block = item.document().firstBlock().layout()
     text = item.toPlainText()
@@ -43,6 +43,8 @@ def letter_columns(item) -> list:
         start = block.lineAt(index).textStart()
         char = text[start]
         if char.isalpha() and _is_non_fullwidth_roman(char):
+            if latin_only and not char.isascii():
+                continue
             columns.append(round(block.lineAt(index).x(), 1))
     return columns
 
@@ -76,10 +78,21 @@ class WholeWordColumnsTest(unittest.TestCase):
         )
         self.assertAlmostEqual(block.lineAt(first).y(), 0.0, delta=0.5)
 
-    def test_word_wider_than_the_column_still_lays_out(self) -> None:
-        """Split is unavoidable here; the layout must not fail or loop."""
-        item = make_item('天地master', (0, 0, 200, 150))
-        self.assertGreater(len(letter_columns(item)), 1)
+    def test_word_taller_than_the_column_overflows_whole(self) -> None:
+        """Compression stops at 92%; beyond that the word overflows intact.
+
+        This is the reported case: a small box where six letters cannot be
+        squeezed in even with tight tracking, so the word must stay whole.
+        """
+        item = make_item('master', (0, 0, 90, 120), font_size=59.5)
+        columns = letter_columns(item, latin_only=True)
+        self.assertEqual(len(columns), 6)
+        self.assertEqual(len(set(columns)), 1, columns)
+
+    def test_word_fits_a_fresh_column_after_moving(self) -> None:
+        item = make_item('天地master', (0, 0, 200, 200))
+        columns = letter_columns(item, latin_only=True)
+        self.assertEqual(len(set(columns)), 1, columns)
 
 
 class EllipsisNormalizationTest(unittest.TestCase):

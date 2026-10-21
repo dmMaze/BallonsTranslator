@@ -86,6 +86,10 @@ PUNSET_BRACKET = PUNSET_BRACKETL.union(PUNSET_BRACKETR)
 PUNSET_COMPACT = PUNSET_PAUSEORSTOP.union(PUNSET_BRACKET)
 
 PUNSET_INSEPARABLE_REPEAT = {'—', '―', '‥', '…', '⋯'}
+
+# A Latin word may tighten its cells this much to stay in one column;
+# beyond that it is kept whole and allowed to overflow instead of splitting.
+_WORD_MIN_SCALE = 0.92
 PUNSET_NONBRACKET = {
     '⸺', '…', '⋯', '～', '-', '–', '—', '＿', '﹏', '~',
     '〜', '‐', '゠', 'ー', '〰', '‑', '‒', '－', 'ｰ', '⸻', '⹀',
@@ -2380,6 +2384,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         # A Latin word must stay inside one column, so its first character's
         # fit test uses the whole word's advance instead of one cell.
         roman_word_ends = _roman_word_ends(blk_text)
+        word_scale_range = (0, 0, 1.0)
+        no_break_until = -1
         block_line_spacing, block_line_spacing_type = (
             self.block_line_spacing(block)
         )
@@ -2712,6 +2718,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 tbr_h = cfmt.tbr.height() + cfmt.font_metrics.descent()
                 space_w = cfmt.space_width
 
+            # Fit a Latin word into the room left in this column, or refuse
+            # to split it when even a fresh column cannot hold it.
+            if char_idx < blk_text_len:
+                word_bounds = roman_word_ends.get(char_idx)
+                if word_bounds is not None:
+                    word_advance = self._roman_word_advance(
+                        block_no, blk_text, char_idx, word_bounds
+                    )
+                    remaining = available_height - line_y_offset
+                    if 0 < remaining < word_advance:
+                        if remaining >= word_advance * _WORD_MIN_SCALE:
+                            word_scale_range = (
+                                char_idx,
+                                word_bounds,
+                                remaining / word_advance,
+                            )
+                        else:
+                            no_break_until = word_bounds
+            scale_start, scale_end, scale_value = word_scale_range
+            if scale_value != 1.0 and scale_start <= char_idx < scale_end:
+                tbr_h *= scale_value
             # Zero tracking may collapse a narrow rotated glyph completely,
             # but a logical cell must never advance backwards.
             tbr_h = max(tbr_h, 0.0)
@@ -2729,13 +2756,18 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             word_end = roman_word_ends.get(char_idx)
             if word_end is not None:
                 # Never leave "mas" at the foot of one column and "ter" at the
-                # head of the next: move the whole word instead.
+                # head of the next: move the whole word instead, using the
+                # compression the word was given (if any).
+                word_fraction = 1.0
+                if word_scale_range[0] == char_idx:
+                    word_fraction = word_scale_range[2]
                 wrap_bottom = max(
                     wrap_bottom,
                     char_yoffset_lst[-1]
                     + self._roman_word_advance(
                         block_no, blk_text, char_idx, word_end
-                    ),
+                    )
+                    * word_fraction,
                 )
             out_of_vspace = (
                 force_ruby_wrap
@@ -2764,6 +2796,19 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 width_list.append(current_line_metrics)
             else:
                 width_list.append((-1.0, 0.0, 0.0))
+            if (
+                out_of_vspace
+                and not force_ruby_wrap
+                and word_end is None
+                and char_idx < no_break_until
+            ):
+                # Inside a word no column can hold: keep it whole, but report
+                # the overflow so the frame can grow instead of clipping it.
+                out_of_vspace = False
+                column_overflow = True
+                self.min_height = max(
+                    self.min_height, char_yoffset_lst[-1] + tbr_h
+                )
             if out_of_vspace:
                 column_overflow = True
                 # switch to next line
