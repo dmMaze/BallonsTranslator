@@ -73,6 +73,23 @@ class ActionsTest(unittest.TestCase):
         )
         self.actions.end_scale()
 
+    def test_frame_does_not_change_while_scaling(self) -> None:
+        """The handle mirrors the toolbar's font-size control.
+
+        Only the font may change; growing the frame as well made every
+        drag resize the box the user had arranged.
+        """
+        item = self.items[0]
+        frame = item.boundingRect()
+        before = (frame.width(), frame.height())
+        self.actions.start_scale(100.0)
+        self.actions.drag_scale(100.0 + DRAG_SPAN * 0.4)
+        self.actions.drag_scale(100.0 - DRAG_SPAN * 0.4)
+        self.actions.end_scale()
+        after = item.boundingRect()
+        self.assertAlmostEqual(after.width(), before[0], places=1)
+        self.assertAlmostEqual(after.height(), before[1], places=1)
+
     def test_wrap_toggle_flips_the_flag_and_back(self) -> None:
         self.actions._on_wrap_clicked()
         self.assertTrue(self.items[0].fontformat.no_forced_wrap)

@@ -185,13 +185,52 @@ class TextQuickActions:
             & Qt.KeyboardModifier.ShiftModifier
         )
 
+    def _capture_frames(self) -> None:
+        """Remember each target's frame so scaling never resizes it."""
+        self._frames = {}
+        for item in self._items(self._all_blocks):
+            try:
+                rect = item.boundingRect()
+            except RuntimeError:
+                continue
+            self._frames[id(item)] = (rect.width(), rect.height())
+
+    def _restore_frames(self) -> None:
+        """Put the captured frame size back after the layout reflowed."""
+        for item in self._items(self._all_blocks):
+            frame = getattr(self, '_frames', {}).get(id(item))
+            if frame is None:
+                continue
+            try:
+                rect = item.boundingRect()
+                if (
+                    abs(rect.width() - frame[0]) < 0.5
+                    and abs(rect.height() - frame[1]) < 0.5
+                ):
+                    continue
+                item.set_size(
+                    frame[0], frame[1], set_layout_maxsize=True
+                )
+            except (RuntimeError, AttributeError):
+                continue
+
     def _apply_size(self, size: float) -> None:
+        """Apply a size in the model's pixels, like the toolbar control.
+
+        ``FontFormat.font_size`` is stored in pixels while ``setFontSize``
+        takes points, and the toolbar converts between them. Skipping the
+        conversion made every drag jump far past the intended size, which
+        in turn forced the frame to grow.
+        """
+        from ballontranslator.utils.fontformat import px2pt
+
         for item in self._items(self._all_blocks):
             try:
                 item.fontformat.font_size = size
-                item.setFontSize(size)
+                item.setFontSize(px2pt(size))
             except RuntimeError:
                 continue
+        self._restore_frames()
         self.refresh()
 
     # -- scale gesture ----------------------------------------------------
@@ -203,6 +242,7 @@ class TextQuickActions:
         self._base_size = float(item.fontformat.font_size)
         self._press_y = float(global_y)
         self._dragging = True
+        self._capture_frames()
 
     def drag_scale(self, global_y: float) -> None:
         if not self._dragging:
@@ -213,6 +253,7 @@ class TextQuickActions:
 
     def end_scale(self) -> None:
         self._dragging = False
+        self._restore_frames()
 
     # -- wrap toggle ------------------------------------------------------
     def _on_wrap_clicked(self) -> None:
