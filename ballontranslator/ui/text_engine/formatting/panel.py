@@ -1,4 +1,4 @@
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 from qtpy.QtWidgets import (
     QApplication,
@@ -46,6 +46,7 @@ from qtpy.QtGui import (
 
 from ballontranslator.utils import shared
 from ballontranslator.utils import config as C
+from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.fontformat import (
     FontFormat,
     FontWeight,
@@ -1108,11 +1109,101 @@ class FontFormatPanel(Widget):
         else:
             return None
 
+    # Options that place the settled page layout rather than one block's
+    # typography. Existing blocks never inherit the global default, and the
+    # panel starts bound to that default, so a change here must reach the
+    # canvas: the selection when there is one, otherwise the whole page.
+    PAGE_WIDE_PARAMS = frozenset({'vertical_alignment', 'roman_word_rotation'})
+
+    def page_text_items(self) -> List[TextBlkItem]:
+        """Return every text block on the current page in index order.
+
+        Text items are attached to the canvas ``textLayer`` and owned by the
+        scene manager's list, so a bare scene walk can legitimately find none;
+        the manager is the authority and the layer is the next best source.
+
+        >>> callable(FontFormatPanel.page_text_items)
+        True
+        """
+        manager = getattr(SW, 'st_manager', None)
+        owned = getattr(manager, 'textblk_item_list', None)
+        if owned:
+            return [
+                item for item in owned if isinstance(item, TextBlkItem)
+            ]
+        layer = getattr(SW.canvas, 'textLayer', None)
+        if layer is not None:
+            attached = [
+                item for item in layer.childItems()
+                if isinstance(item, TextBlkItem)
+            ]
+            if attached:
+                return sorted(attached, key=lambda item: item.idx)
+        view = getattr(SW.canvas, 'gv', SW.canvas)
+        scene = view.scene() if view is not None else None
+        if scene is None:
+            return []
+        return sorted(
+            (item for item in scene.items() if isinstance(item, TextBlkItem)),
+            key=lambda item: item.idx,
+        )
+
+    def _apply_page_wide_option(
+        self,
+        param_name: str,
+        value,
+        func,
+        func_kwargs: dict,
+    ) -> None:
+        """Apply one settled-layout option to the page or the selection.
+
+        >>> callable(FontFormatPanel._apply_page_wide_option)
+        True
+        """
+        page_items = self.page_text_items()
+        bound = self.textblk_item
+        if isinstance(bound, list):
+            bound = [item for item in bound if item in page_items]
+        elif bound is not None and bound not in page_items:
+            # A binding left over from another page must not swallow the change.
+            bound = None
+        targets = bound or page_items
+        if self.global_mode():
+            # Keep the default current for blocks created later without
+            # pushing a second undo step for the same user action.
+            self.global_format[param_name] = value
+            self.update_text_style_label()
+        if not targets:
+            return
+        func(
+            param_name,
+            value,
+            C.active_format,
+            is_global=False,
+            blkitems=targets,
+            set_focus=True,
+            **func_kwargs,
+        )
+
     def on_param_changed(self, param_name: str, value):
         func = handle_ffmt_change.get(param_name)
         func_kwargs = {}
         if param_name in {'font_size', 'rel_font_size'}:
             func_kwargs['clip_size'] = True
+
+        if param_name in self.PAGE_WIDE_PARAMS:
+            try:
+                self._apply_page_wide_option(
+                    param_name, value, func, func_kwargs
+                )
+            except Exception:
+                # A formatting slot must not die silently: the control would
+                # show the new value while the canvas kept the old one.
+                LOGGER.exception(
+                    'Failed to apply %s=%r to the page.', param_name, value
+                )
+            return
+
         if self.global_mode():
             func(param_name, value, self.global_format, is_global=True, **func_kwargs)
             self.update_text_style_label()
