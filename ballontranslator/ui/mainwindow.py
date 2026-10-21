@@ -41,6 +41,7 @@ from .layer_peek import (
     LayerPeekButton,
     PeekController,
     PeekKeyFilter,
+    PeekResizeWatcher,
     peek_key_map,
 )
 from .configpanel import ConfigPanel
@@ -920,8 +921,14 @@ class MainWindow(mainwindow_cls):
                 self.peek_controller, self.canvas.gv
             )
             self.peek_button.resize(self.peek_button._button_size(), self.peek_button._button_size())
-            self.peek_button.move(self._peek_button_start())
             self.peek_button.show()
+            self._place_peek_button()
+            QTimer.singleShot(0, self._place_peek_button)
+            QTimer.singleShot(400, self._place_peek_button)
+            self.peek_resize_watcher = PeekResizeWatcher(
+                self._place_peek_button, self
+            )
+            self.canvas.gv.installEventFilter(self.peek_resize_watcher)
             self.peek_filter = PeekKeyFilter(
                 self.peek_controller,
                 lambda: self.canvas.gv,
@@ -946,6 +953,18 @@ class MainWindow(mainwindow_cls):
             return
         filter_.keys = self._peek_key_map()
 
+    def _place_peek_button(self) -> None:
+        """Pin the button to the canvas corner unless the user moved it."""
+        button = getattr(self, 'peek_button', None)
+        if button is None:
+            return
+        if not button.user_moved:
+            view = self.canvas.gv
+            button.move(
+                max(0, view.width() - button.width() - 14),
+                max(0, view.height() - button.height() - 14),
+            )
+
     def _peek_button_start(self):
         saved = (pcfg.peek_button_position or '').strip()
         if saved:
@@ -969,7 +988,7 @@ class MainWindow(mainwindow_cls):
 
     def _save_peek_position(self) -> None:
         button = getattr(self, 'peek_button', None)
-        if button is None:
+        if button is None or not button.user_moved:
             return
         pcfg.peek_button_position = f'{button.x()},{button.y()}'
 

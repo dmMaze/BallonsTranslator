@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Iterable, List, Optional, Tuple
 
 from qtpy.QtCore import QEvent, QObject, QPoint, Qt
+from qtpy.QtCore import QPointF, QRectF
 from qtpy.QtGui import (
     QColor,
     QFont,
@@ -33,25 +34,81 @@ class PeekMode(Enum):
 
 
 BUTTON_GLYPHS = {
-    PeekMode.CURRENT: '当',
-    PeekMode.ORIGINAL: '原',
-    PeekMode.INPAINTED: '修',
+    # Japanese for the untouched page, Chinese for the current one, and an
+    # empty bubble for the page with its lettering removed.
+    PeekMode.CURRENT: '\u539f',
+    PeekMode.ORIGINAL: '\u5143',
+    PeekMode.INPAINTED: '',
 }
 
 BUTTON_COLORS = {
-    PeekMode.CURRENT: '#1f6feb',
-    PeekMode.ORIGINAL: '#3b82f6',
-    PeekMode.INPAINTED: '#0b4ea2',
+    PeekMode.CURRENT: '#3b82f6',
+    PeekMode.ORIGINAL: '#60a5fa',
+    PeekMode.INPAINTED: '#1d4ed8',
 }
 
+_HANDWRITING_FAMILIES = (
+    'KaiTi',
+    'STKaiti',
+    'Kaiti SC',
+    'Yu Mincho',
+    '\u6977\u4f53',
+    '\u534e\u6587\u884c\u6977',
+    'Segoe Print',
+)
 
-def make_peek_icon(
-    mode: PeekMode,
-    size: int = 30,
-    background: Optional[str] = None,
-    foreground: str = '#ffffff',
-) -> QIcon:
-    """Draw one state's icon so no assets are needed.
+
+def _handwriting_font(size: int) -> QFont:
+    """Prefer a brush-like face so the glyph reads as hand lettering."""
+    from qtpy.QtGui import QFontDatabase
+
+    families = set(QFontDatabase.families())
+    font = QFont()
+    for family in _HANDWRITING_FAMILIES:
+        if family in families:
+            font.setFamily(family)
+            break
+    font.setPixelSize(size)
+    font.setBold(False)
+    font.setItalic(True)
+    return font
+
+
+def _bubble_path(size: int):
+    """A round speech bubble with the classic manga tail."""
+    from qtpy.QtGui import QPainterPath
+
+    inset = size * 0.06
+    diameter = size - inset * 2
+    path = QPainterPath()
+    path.addEllipse(inset, inset, diameter, diameter)
+    tail = QPainterPath()
+    tail.moveTo(size * 0.28, size * 0.80)
+    tail.lineTo(size * 0.10, size * 0.99)
+    tail.lineTo(size * 0.46, size * 0.90)
+    tail.closeSubpath()
+    return path.united(tail)
+
+
+def _draw_screentone(painter, size: int) -> None:
+    """Light halftone dots, the way a manga background is shaded."""
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(150, 160, 175, 140))
+    step = max(3.0, size / 13.0)
+    radius = max(0.7, step * 0.22)
+    y = step / 2
+    row = 0
+    while y < size:
+        x = step / 2 + (step / 2 if row % 2 else 0.0)
+        while x < size:
+            painter.drawEllipse(QPointF(x, y), radius, radius)
+            x += step
+        y += step
+        row += 1
+
+
+def make_peek_icon(mode: PeekMode, size: int = 44) -> QIcon:
+    """Draw one state as a screentoned speech bubble.
 
     >>> from qtpy.QtWidgets import QApplication
     >>> _ = QApplication.instance() or QApplication([])
@@ -60,21 +117,30 @@ def make_peek_icon(
     """
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
-    background = background or BUTTON_COLORS[mode]
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.setPen(QPen(QColor(background), 2))
-    painter.setBrush(QColor(background))
-    painter.drawRoundedRect(1, 1, size - 2, size - 2, 6, 6)
-    painter.setPen(QPen(QColor(foreground), 1))
-    font = QFont()
-    font.setPixelSize(int(size * 0.52))
-    font.setBold(True)
-    painter.setFont(font)
-    painter.drawText(
-        pixmap.rect(), Qt.AlignmentFlag.AlignCenter,
-        BUTTON_GLYPHS[mode],
-    )
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+    bubble = _bubble_path(size)
+    painter.save()
+    painter.setClipPath(bubble)
+    painter.fillRect(0, 0, size, size, QColor(252, 252, 250))
+    _draw_screentone(painter, size)
+    painter.restore()
+
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(QColor(BUTTON_COLORS[mode]), max(1.6, size * 0.045)))
+    painter.drawPath(bubble)
+
+    glyph = BUTTON_GLYPHS[mode]
+    if glyph:
+        painter.setPen(QColor(30, 32, 36))
+        painter.setFont(_handwriting_font(int(size * 0.46)))
+        painter.drawText(
+            QRectF(0, size * 0.06, size, size * 0.86),
+            Qt.AlignmentFlag.AlignCenter,
+            glyph,
+        )
     painter.end()
     return QIcon(pixmap)
 
@@ -178,6 +244,7 @@ class LayerPeekButton(QToolButton):
         self._drag_from: Optional[QPoint] = None
         self._dragged = False
         self._peeking = False
+        self.user_moved = False
         self.setIconSize(self.size())
         self.setIcon(make_peek_icon(PeekMode.CURRENT, self._icon_size()))
         self.setFixedSize(self._button_size(), self._button_size())
@@ -192,10 +259,11 @@ class LayerPeekButton(QToolButton):
         return self._button_size() - 8
 
     def _apply_style(self) -> None:
+        radius = self._button_size() // 2
         self.setStyleSheet(
-            'QToolButton#LayerPeekButton {'
-            ' border: none; border-radius: 26px;'
-            ' background: transparent; }'
+            'QToolButton#LayerPeekButton { border: none;'
+            ' background: transparent; padding: 0px;'
+            ' border-radius: %dpx; }' % radius
         )
 
     def begin_peek(self, mode: PeekMode) -> None:
@@ -245,6 +313,7 @@ class LayerPeekButton(QToolButton):
         if not self._dragged and delta.manhattanLength() < 4:
             return
         self._dragged = True
+        self.user_moved = True
         target = self.pos() + delta
         parent = self.parentWidget()
         if parent is not None:
@@ -302,6 +371,19 @@ def peek_key_map(original: str, inpainted: str) -> dict:
             continue
         modes[(key, int(modifiers))] = mode
     return modes
+
+
+class PeekResizeWatcher(QObject):
+    """Call back when the canvas view is resized, so the button follows."""
+
+    def __init__(self, on_resize, parent=None) -> None:
+        super().__init__(parent)
+        self._on_resize = on_resize
+
+    def eventFilter(self, obj, event) -> bool:
+        if event.type() is QEvent.Type.Resize and self._on_resize is not None:
+            self._on_resize()
+        return False
 
 
 class PeekKeyFilter(QObject):

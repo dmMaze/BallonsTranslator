@@ -14,6 +14,7 @@ from ballontranslator.ui.layer_peek import (
     LayerPeekButton,
     PeekController,
     PeekMode,
+    PeekResizeWatcher,
     make_peek_icon,
     peek_key_map,
 )
@@ -126,6 +127,16 @@ class PeekWidgetsTest(unittest.TestCase):
         self.assertEqual(controller.mode, PeekMode.INPAINTED)
         button.end_peek()
         self.assertEqual(controller.mode, PeekMode.CURRENT)
+
+    def test_resize_watcher_reports_view_changes(self) -> None:
+        from qtpy.QtWidgets import QWidget
+        calls = []
+        watcher = PeekResizeWatcher(lambda: calls.append(1))
+        widget = QWidget()
+        widget.installEventFilter(watcher)
+        widget.resize(120, 90)
+        self.app.processEvents()
+        self.assertTrue(calls)
 
     def test_default_shortcuts_map_to_the_two_peek_modes(self) -> None:
         keys = peek_key_map('Tab', '`')
