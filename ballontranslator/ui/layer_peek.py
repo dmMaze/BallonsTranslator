@@ -38,12 +38,18 @@ BUTTON_GLYPHS = {
     PeekMode.INPAINTED: '修',
 }
 
+BUTTON_COLORS = {
+    PeekMode.CURRENT: '#1f6feb',
+    PeekMode.ORIGINAL: '#3b82f6',
+    PeekMode.INPAINTED: '#0b4ea2',
+}
+
 
 def make_peek_icon(
     mode: PeekMode,
     size: int = 30,
-    background: str = '#2b2b2b',
-    foreground: str = '#f0f0f0',
+    background: Optional[str] = None,
+    foreground: str = '#ffffff',
 ) -> QIcon:
     """Draw one state's icon so no assets are needed.
 
@@ -54,6 +60,7 @@ def make_peek_icon(
     """
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
+    background = background or BUTTON_COLORS[mode]
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(QPen(QColor(background), 2))
@@ -86,6 +93,7 @@ class PeekController(QObject):
         self._text_items = text_items
         self.mode = PeekMode.CURRENT
         self._saved: List[Tuple[QObject, bool]] = []
+        self._saved_pixmap = None
 
     def _items(self) -> Iterable:
         try:
@@ -96,7 +104,30 @@ class PeekController(QObject):
     def _inpaint_layer(self):
         return getattr(self.canvas, 'inpaintLayer', None)
 
+    def _original_array(self):
+        project = getattr(self.canvas, 'imgtrans_proj', None)
+        return getattr(project, 'img_array', None)
+
+    def _show_original_page(self) -> None:
+        """Paint the untouched page; the base normally shows the inpaint."""
+        layer = self._inpaint_layer()
+        array = self._original_array()
+        if layer is None or array is None:
+            return
+        from ballontranslator.ui.misc import ndarray2pixmap
+
+        self._saved_pixmap = layer.pixmap()
+        layer.setPixmap(ndarray2pixmap(array))
+
     def _restore(self) -> None:
+        if self._saved_pixmap is not None:
+            layer = self._inpaint_layer()
+            if layer is not None:
+                try:
+                    layer.setPixmap(self._saved_pixmap)
+                except RuntimeError:
+                    pass
+            self._saved_pixmap = None
         for obj, visible in self._saved:
             try:
                 obj.setVisible(visible)
@@ -119,7 +150,7 @@ class PeekController(QObject):
             return
         self._restore()
         if mode is PeekMode.ORIGINAL:
-            self._hide(self._inpaint_layer())
+            self._show_original_page()
         if mode is not PeekMode.CURRENT:
             for item in self._items():
                 self._hide(item)
@@ -132,41 +163,79 @@ class PeekController(QObject):
 
 
 class LayerPeekButton(QToolButton):
-    """A draggable corner button showing what is being peeked at."""
+    """A draggable corner button: hold to peek, release to return.
+
+    The left button shows the untouched page, the right button shows the page
+    with its lettering removed; letting go always returns to the current view.
+    """
 
     def __init__(self, controller: PeekController, parent: QWidget) -> None:
         super().__init__(parent)
         self.controller = controller
         self.setObjectName('LayerPeekButton')
         self.setCursor(Qt.CursorShape.ArrowCursor)
-        self.setToolTip(
-            '当前图 / 按住看原图（默认 Tab）/ 反引号看修复图'
-        )
+        self.setAutoRaise(False)
         self._drag_from: Optional[QPoint] = None
         self._dragged = False
-        self.setIcon(make_peek_icon(PeekMode.CURRENT))
-        self.setAutoRaise(True)
-        self.clicked.connect(self._cycle)
+        self._peeking = False
+        self.setIconSize(self.size())
+        self.setIcon(make_peek_icon(PeekMode.CURRENT, self._icon_size()))
+        self.setFixedSize(self._button_size(), self._button_size())
+        self._apply_style()
+        self.refresh()
 
-    def _cycle(self) -> None:
-        order = [PeekMode.CURRENT, PeekMode.ORIGINAL, PeekMode.INPAINTED]
-        index = order.index(self.controller.mode)
-        self.controller.set_mode(order[(index + 1) % len(order)])
+    @staticmethod
+    def _button_size() -> int:
+        return 52
+
+    def _icon_size(self) -> int:
+        return self._button_size() - 8
+
+    def _apply_style(self) -> None:
+        self.setStyleSheet(
+            'QToolButton#LayerPeekButton {'
+            ' border: none; border-radius: 26px;'
+            ' background: transparent; }'
+        )
+
+    def begin_peek(self, mode: PeekMode) -> None:
+        """Start a hold; ignored while another hold is running."""
+        if self._peeking:
+            return
+        self._peeking = True
+        self.controller.set_mode(mode)
+        self.refresh()
+
+    def end_peek(self) -> None:
+        if not self._peeking:
+            return
+        self._peeking = False
+        self.controller.reset()
         self.refresh()
 
     def refresh(self) -> None:
-        self.setIcon(make_peek_icon(self.controller.mode))
+        self.setIcon(make_peek_icon(
+            self.controller.mode, self._icon_size()
+        ))
         self.setToolTip({
-            PeekMode.CURRENT: '当前图（点击切换 / 按住 Tab 看原图）',
-            PeekMode.ORIGINAL: '原图（松开恢复）',
-            PeekMode.INPAINTED: '修复图（松开恢复）',
+            PeekMode.CURRENT: '当前图（按住左键看原图 / 右键看修复图）',
+            PeekMode.ORIGINAL: '原图（松开返回）',
+            PeekMode.INPAINTED: '修复图（松开返回）',
         }[self.controller.mode])
 
-    # -- dragging ---------------------------------------------------------
+    # -- mouse ------------------------------------------------------------
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MouseButton.LeftButton:
+        button = event.button()
+        if button in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
             self._drag_from = event.position().toPoint()
             self._dragged = False
+            self.begin_peek(
+                PeekMode.ORIGINAL
+                if button == Qt.MouseButton.LeftButton
+                else PeekMode.INPAINTED
+            )
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
@@ -179,14 +248,21 @@ class LayerPeekButton(QToolButton):
         target = self.pos() + delta
         parent = self.parentWidget()
         if parent is not None:
-            bounds = parent.rect().adjusted(0, 0, -self.width(), -self.height())
+            bounds = parent.rect().adjusted(
+                0, 0, -self.width(), -self.height()
+            )
             target.setX(max(bounds.left(), min(target.x(), bounds.right())))
             target.setY(max(bounds.top(), min(target.y(), bounds.bottom())))
         self.move(target)
 
     def mouseReleaseEvent(self, event) -> None:
         self._drag_from = None
-        super().mouseReleaseEvent(event)
+        self.end_peek()
+        event.accept()
+
+    def contextMenuEvent(self, event) -> None:
+        # The right button is a peek gesture, not a menu gesture.
+        event.accept()
 
 
 def _parse_shortcut(text: str):

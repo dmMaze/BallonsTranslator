@@ -5,6 +5,9 @@ import unittest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
+import numpy as np
+from qtpy.QtCore import Qt
+from qtpy.QtGui import QPixmap
 from qtpy.QtWidgets import QApplication, QGraphicsPixmapItem, QGraphicsScene
 
 from ballontranslator.ui.layer_peek import (
@@ -21,6 +24,12 @@ class FakeCanvas(QGraphicsScene):
         super().__init__()
         self.inpaintLayer = QGraphicsPixmapItem()
         self.addItem(self.inpaintLayer)
+        pixmap = QPixmap(4, 4)
+        pixmap.fill(Qt.GlobalColor.white)
+        self.inpaintLayer.setPixmap(pixmap)
+        array = np.zeros((4, 4, 3), dtype=np.uint8)
+        array[:, :, 0] = 200
+        self.img_array = array
 
 
 class FakeItem:
@@ -46,10 +55,15 @@ class PeekControllerTest(unittest.TestCase):
         self.controller = PeekController(
             self.canvas, lambda: self.items
         )
+        self.original_key = self.canvas.inpaintLayer.pixmap().cacheKey()
 
-    def test_original_hides_inpaint_and_text(self) -> None:
+    def test_original_shows_the_source_page_and_hides_text(self) -> None:
         self.controller.set_mode(PeekMode.ORIGINAL)
-        self.assertFalse(self.canvas.inpaintLayer.isVisible())
+        # The base normally paints the inpainted page, so the peek swaps in
+        # the untouched array instead of hiding the layer (which showed blank).
+        self.assertIsNot(
+            self.canvas.inpaintLayer.pixmap().cacheKey(), self.original_key
+        )
         self.assertFalse(self.items[0].visible)
 
     def test_inpainted_hides_text_only(self) -> None:
@@ -60,7 +74,9 @@ class PeekControllerTest(unittest.TestCase):
     def test_returning_to_current_restores_exactly(self) -> None:
         self.controller.set_mode(PeekMode.ORIGINAL)
         self.controller.set_mode(PeekMode.CURRENT)
-        self.assertTrue(self.canvas.inpaintLayer.isVisible())
+        self.assertEqual(
+            self.canvas.inpaintLayer.pixmap().cacheKey(), self.original_key
+        )
         self.assertTrue(self.items[0].visible)
         self.assertFalse(self.items[1].visible, 'a hidden item stays hidden')
 
@@ -74,7 +90,9 @@ class PeekControllerTest(unittest.TestCase):
         self.controller.set_mode(PeekMode.ORIGINAL)
         self.controller.set_mode(PeekMode.INPAINTED)
         self.controller.set_mode(PeekMode.CURRENT)
-        self.assertTrue(self.canvas.inpaintLayer.isVisible())
+        self.assertEqual(
+            self.canvas.inpaintLayer.pixmap().cacheKey(), self.original_key
+        )
         self.assertTrue(self.items[0].visible)
         self.assertFalse(self.items[1].visible)
 
@@ -90,18 +108,23 @@ class PeekWidgetsTest(unittest.TestCase):
         keys = {icon.pixmap(16, 16).cacheKey() for icon in icons}
         self.assertEqual(len(keys), 3)
 
-    def test_button_cycles_through_the_three_states(self) -> None:
+    def test_holding_the_button_peeks_and_releasing_returns(self) -> None:
         canvas = FakeCanvas()
+        canvas.img_array = [[255]]
         controller = PeekController(canvas, lambda: [])
         from qtpy.QtWidgets import QWidget
         parent = QWidget()
         button = LayerPeekButton(controller, parent)
         self.assertEqual(controller.mode, PeekMode.CURRENT)
-        button._cycle()
+
+        button.begin_peek(PeekMode.ORIGINAL)
         self.assertEqual(controller.mode, PeekMode.ORIGINAL)
-        button._cycle()
+        button.end_peek()
+        self.assertEqual(controller.mode, PeekMode.CURRENT)
+
+        button.begin_peek(PeekMode.INPAINTED)
         self.assertEqual(controller.mode, PeekMode.INPAINTED)
-        button._cycle()
+        button.end_peek()
         self.assertEqual(controller.mode, PeekMode.CURRENT)
 
     def test_default_shortcuts_map_to_the_two_peek_modes(self) -> None:

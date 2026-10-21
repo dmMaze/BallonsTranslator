@@ -919,7 +919,7 @@ class MainWindow(mainwindow_cls):
             self.peek_button = LayerPeekButton(
                 self.peek_controller, self.canvas.gv
             )
-            self.peek_button.resize(34, 34)
+            self.peek_button.resize(self.peek_button._button_size(), self.peek_button._button_size())
             self.peek_button.move(self._peek_button_start())
             self.peek_button.show()
             self.peek_filter = PeekKeyFilter(
