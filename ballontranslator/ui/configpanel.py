@@ -1234,6 +1234,17 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         peek_size_layout.addWidget(peek_size_label)
         peek_size_layout.addWidget(self.peek_size_spin)
         typesettingConfigPanel.addBlockWidget(peek_size_row)
+
+        self.peek_outline_checker, _ = typesettingConfigPanel.addCheckBox(
+            self.tr('White outline around the peek button'),
+            discription=self.tr(
+                'Draw a white rim so the bubble stays readable on '
+                'dark artwork.'
+            ),
+        )
+        self.peek_outline_checker.stateChanged.connect(
+            self.on_peek_outline_changed
+        )
         cap_layout.addWidget(cap_label)
         cap_layout.addWidget(self.font_size_cap_spin)
         typesettingConfigPanel.addBlockWidget(cap_row)
@@ -1796,6 +1807,17 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_fntstroke_flag_changed(self):
         pcfg.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
+    def on_peek_outline_changed(self):
+        pcfg.peek_button_outline = (
+            self.peek_outline_checker.isChecked()
+        )
+        main_window = getattr(SW, 'mainwindow', None)
+        apply_outline = getattr(
+            main_window, 'set_peek_button_outline', None
+        )
+        if callable(apply_outline):
+            apply_outline(pcfg.peek_button_outline)
+
     def on_peek_button_size_changed(self, value: int):
         pcfg.peek_button_size = int(value)
         main_window = getattr(SW, 'mainwindow', None)
@@ -2087,6 +2109,11 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         )
         # Setting one field fires keySequenceChanged, whose handler writes
         # both fields back; block it so the second keeps its value.
+        self.peek_outline_checker.blockSignals(True)
+        self.peek_outline_checker.setChecked(
+            pcfg.peek_button_outline
+        )
+        self.peek_outline_checker.blockSignals(False)
         self.peek_size_spin.blockSignals(True)
         self.peek_size_spin.setValue(int(pcfg.peek_button_size))
         self.peek_size_spin.blockSignals(False)

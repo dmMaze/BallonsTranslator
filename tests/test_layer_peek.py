@@ -104,6 +104,15 @@ class PeekWidgetsTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_outline_can_be_turned_off(self) -> None:
+        from ballontranslator.ui.layer_peek import peek_icon_for
+        outlined = peek_icon_for(PeekMode.CURRENT, 96, True)
+        plain = peek_icon_for(PeekMode.CURRENT, 96, False)
+        self.assertNotEqual(
+            outlined.pixmap(96, 96).cacheKey(),
+            plain.pixmap(96, 96).cacheKey(),
+        )
+
     def test_each_mode_has_its_own_icon(self) -> None:
         icons = [make_peek_icon(mode) for mode in PeekMode]
         keys = {icon.pixmap(16, 16).cacheKey() for icon in icons}

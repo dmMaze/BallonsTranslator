@@ -922,6 +922,9 @@ class MainWindow(mainwindow_cls):
                 self.peek_controller, self.canvas.gv
             )
             self.peek_button.set_button_size(pcfg.peek_button_size)
+            self.peek_button.set_button_outline(
+                pcfg.peek_button_outline
+            )
             self.peek_button.show()
             self._place_peek_button()
             QTimer.singleShot(0, self._place_peek_button)
@@ -953,6 +956,13 @@ class MainWindow(mainwindow_cls):
         if filter_ is None:
             return
         filter_.keys = self._peek_key_map()
+
+    def set_peek_button_outline(self, enabled: bool) -> None:
+        """Apply the outline switch from the settings panel."""
+        button = getattr(self, 'peek_button', None)
+        if button is None:
+            return
+        button.set_button_outline(enabled)
 
     def set_peek_button_size(self, size: int) -> None:
         """Apply a size chosen in the settings panel."""

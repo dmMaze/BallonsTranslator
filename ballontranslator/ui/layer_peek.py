@@ -202,7 +202,9 @@ def _with_white_outline(pixmap: QPixmap, width: int, size: int) -> QPixmap:
     return canvas
 
 
-def peek_icon_for(mode: PeekMode, size: int = 44) -> QIcon:
+def peek_icon_for(
+    mode: PeekMode, size: int = 44, outline: bool = True
+) -> QIcon:
     """Return the artwork for ``mode`` at ``size``.
 
     The shipped icons live in ``resources/icons/layer_peek`` and win over the
@@ -214,7 +216,7 @@ def peek_icon_for(mode: PeekMode, size: int = 44) -> QIcon:
     >>> isinstance(peek_icon_for(PeekMode.CURRENT), QIcon)
     True
     """
-    key = (mode, size)
+    key = (mode, size, bool(outline))
     cached = _icon_cache.get(key)
     if cached is not None:
         return cached
@@ -233,9 +235,17 @@ def peek_icon_for(mode: PeekMode, size: int = 44) -> QIcon:
             pixmap = QPixmap(str(candidate))
             if pixmap.isNull():
                 continue
-            icon = QIcon(_with_white_outline(
-                pixmap, max(2, size // 22), size
-            ))
+            if outline:
+                icon = QIcon(_with_white_outline(
+                    pixmap, max(2, size // 22), size
+                ))
+            else:
+                icon = QIcon(pixmap.scaled(
+                    size,
+                    size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                ))
             break
     if icon is None:
         icon = make_peek_icon(mode, size)
@@ -344,11 +354,17 @@ class LayerPeekButton(QToolButton):
         self._peeking = False
         self.user_moved = False
         self._size = 156
+        self.outline = True
         self.set_button_size(self._size)
 
     @staticmethod
     def _button_size() -> int:
         return 156
+
+    def set_button_outline(self, enabled: bool) -> None:
+        """Toggle the white outline and redraw the icon."""
+        self.outline = bool(enabled)
+        self.refresh()
 
     def set_button_size(self, size: int) -> None:
         """Resize the button and its icon together.
@@ -391,7 +407,7 @@ class LayerPeekButton(QToolButton):
 
     def refresh(self) -> None:
         self.setIcon(peek_icon_for(
-            self.controller.mode, self._icon_size()
+            self.controller.mode, self._icon_size(), self.outline
         ))
         self.setToolTip({
             PeekMode.CURRENT: '当前图（按住左键看原图 / 右键看修复图）',

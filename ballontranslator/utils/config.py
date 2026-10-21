@@ -458,6 +458,7 @@ class ProgramConfig(Config):
     peek_inpainted_shortcut: str = 'Ctrl+Shift+Tab'
     peek_button_position: str = ''
     peek_button_size: int = 156
+    peek_button_outline: bool = True
     let_letter_case: str = OCRTextPostprocess.NONE
     let_show_only_custom_fonts_flag: bool = False
     let_textstyle_indep_flag: bool = False
