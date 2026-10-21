@@ -19,6 +19,7 @@ from qtpy.QtGui import (
     QColor,
     QFont,
     QIcon,
+    QImage,
     QKeySequence,
     QPainter,
     QPen,
@@ -156,6 +157,51 @@ _ICON_NAMES = {
 _icon_cache = {}
 
 
+def _silhouette(pixmap: QPixmap, colour: QColor) -> QPixmap:
+    """Return the artwork's alpha filled with one colour."""
+    image = pixmap.toImage().convertToFormat(
+        QImage.Format.Format_ARGB32_Premultiplied
+    )
+    painter = QPainter(image)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(image.rect(), colour)
+    painter.end()
+    return QPixmap.fromImage(image)
+
+
+def _with_white_outline(pixmap: QPixmap, width: int, size: int) -> QPixmap:
+    """Draw ``pixmap`` with a white outline of ``width`` pixels.
+
+    The outline follows the artwork's own alpha, so the bubble's tail gets one
+    too instead of a circle that ignores the shape.
+    """
+    import math
+
+    canvas = QPixmap(size, size)
+    canvas.fill(Qt.GlobalColor.transparent)
+    span = size - width * 2
+    art = pixmap.scaled(
+        span,
+        span,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    white = _silhouette(art, QColor(255, 255, 255))
+
+    painter = QPainter(canvas)
+    steps = max(12, width * 6)
+    for index in range(steps):
+        angle = 2 * math.pi * index / steps
+        painter.drawPixmap(
+            width + int(round(width * math.cos(angle))),
+            width + int(round(width * math.sin(angle))),
+            white,
+        )
+    painter.drawPixmap(width, width, art)
+    painter.end()
+    return canvas
+
+
 def peek_icon_for(mode: PeekMode, size: int = 44) -> QIcon:
     """Return the artwork for ``mode`` at ``size``.
 
@@ -187,11 +233,8 @@ def peek_icon_for(mode: PeekMode, size: int = 44) -> QIcon:
             pixmap = QPixmap(str(candidate))
             if pixmap.isNull():
                 continue
-            icon = QIcon(pixmap.scaled(
-                size,
-                size,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+            icon = QIcon(_with_white_outline(
+                pixmap, max(2, size // 22), size
             ))
             break
     if icon is None:
@@ -308,7 +351,7 @@ class LayerPeekButton(QToolButton):
 
     @staticmethod
     def _button_size() -> int:
-        return 52
+        return 78
 
     def _icon_size(self) -> int:
         return self._button_size() - 8
