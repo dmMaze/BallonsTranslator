@@ -19,11 +19,28 @@ MIN_FONT_SIZE = 4.0
 MAX_FONT_SIZE = 400.0
 
 
-def scaled_font_size(base: float, dy: float) -> float:
-    """Return the font size for a vertical drag of ``dy`` pixels.
+def drag_progress(dx: float, dy: float) -> float:
+    """Combine a pointer delta into one "enlarge" amount.
 
-    Dragging down grows the text and dragging up shrinks it, with the same drag
-    always giving the same result so a gesture can be repeated.
+    Moving right or up enlarges, moving left or down shrinks, so the same
+    diagonal gesture always produces the same change.
+
+    >>> drag_progress(0, 0)
+    0
+    >>> drag_progress(120, -120)
+    240
+    >>> drag_progress(-120, 120)
+    -240
+    """
+    return dx - dy
+
+
+def scaled_font_size(base: float, progress: float) -> float:
+    """Return the font size for a drag of ``progress`` pixels.
+
+    ``progress`` comes from :func:`drag_progress`, so dragging up or right
+    enlarges. The same drag always gives the same result, which keeps a gesture
+    repeatable.
 
     >>> round(scaled_font_size(50.0, 0.0), 2)
     50.0
@@ -34,7 +51,7 @@ def scaled_font_size(base: float, dy: float) -> float:
     >>> scaled_font_size(50.0, -DRAG_SPAN)
     4.0
     """
-    size = base * (1.0 + dy / DRAG_SPAN)
+    size = base * (1.0 + progress / DRAG_SPAN)
     return max(MIN_FONT_SIZE, min(MAX_FONT_SIZE, size))
 
 
@@ -78,13 +95,17 @@ class _ScaleHandle(QToolButton):
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
-            self.actions.start_scale(event.globalPosition().y())
+            self.actions.start_scale(
+                event.globalPosition().y(), event.globalPosition().x()
+            )
             event.accept()
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        self.actions.drag_scale(event.globalPosition().y())
+        self.actions.drag_scale(
+            event.globalPosition().y(), event.globalPosition().x()
+        )
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
@@ -137,6 +158,7 @@ class TextQuickActions:
         self._base_size = 0.0
         self._last_size = 0.0
         self._press_y = 0.0
+        self._press_x = 0.0
         self._dragging = False
         self._all_blocks = False
 
@@ -238,7 +260,7 @@ class TextQuickActions:
         self.refresh()
 
     # -- scale gesture ----------------------------------------------------
-    def start_scale(self, global_y: float) -> None:
+    def start_scale(self, global_y: float, global_x: float = 0.0) -> None:
         item = self.target
         if item is None:
             return
@@ -246,15 +268,18 @@ class TextQuickActions:
         self._base_size = float(item.fontformat.font_size)
         self._last_size = self._base_size
         self._press_y = float(global_y)
+        self._press_x = float(global_x)
         self._dragging = True
         self._capture_frames()
 
-    def drag_scale(self, global_y: float) -> None:
+    def drag_scale(self, global_y: float, global_x: float = 0.0) -> None:
         if not self._dragging:
             return
-        self._apply_size(
-            scaled_font_size(self._base_size, float(global_y) - self._press_y)
+        progress = drag_progress(
+            float(global_x) - self._press_x,
+            float(global_y) - self._press_y,
         )
+        self._apply_size(scaled_font_size(self._base_size, progress))
 
     def end_scale(self) -> None:
         self._dragging = False

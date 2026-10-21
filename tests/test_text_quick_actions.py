@@ -10,6 +10,7 @@ from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_quick_actions import (
     DRAG_SPAN,
+    drag_progress,
     MAX_FONT_SIZE,
     MIN_FONT_SIZE,
     TextQuickActions,
@@ -33,9 +34,19 @@ def make_item(text, bounds, font_size=30, vertical=True) -> TextBlkItem:
 
 class ScaledSizeTest(unittest.TestCase):
 
-    def test_drag_down_grows_and_up_shrinks(self) -> None:
-        self.assertGreater(scaled_font_size(40.0, 60.0), 40.0)
-        self.assertLess(scaled_font_size(40.0, -60.0), 40.0)
+    def test_up_and_right_enlarge(self) -> None:
+        right = drag_progress(60.0, 0.0)
+        up = drag_progress(0.0, -60.0)
+        self.assertGreater(scaled_font_size(40.0, right), 40.0)
+        self.assertGreater(scaled_font_size(40.0, up), 40.0)
+        self.assertAlmostEqual(
+            scaled_font_size(40.0, right),
+            scaled_font_size(40.0, up),
+        )
+
+    def test_down_and_left_shrink(self) -> None:
+        self.assertLess(scaled_font_size(40.0, drag_progress(-60.0, 0.0)), 40.0)
+        self.assertLess(scaled_font_size(40.0, drag_progress(0.0, 60.0)), 40.0)
 
     def test_zero_drag_keeps_the_size(self) -> None:
         self.assertAlmostEqual(scaled_font_size(40.0, 0.0), 40.0)
@@ -66,18 +77,22 @@ class ActionsTest(unittest.TestCase):
         self.actions.set_target(self.items[0])
 
     def test_drag_applies_a_scaled_size(self) -> None:
-        self.actions.start_scale(100.0)
-        self.actions.drag_scale(100.0 + DRAG_SPAN / 2)
+        self.actions.start_scale(100.0, 100.0)
+        # up (dy negative) plus right (dx positive) spans one full drag, so
+        # the size doubles.
+        self.actions.drag_scale(
+            100.0 - DRAG_SPAN / 2, 100.0 + DRAG_SPAN / 2
+        )
         self.assertAlmostEqual(
-            self.items[0].fontformat.font_size, 45.0, places=3
+            self.items[0].fontformat.font_size, 60.0, places=3
         )
         self.actions.end_scale()
 
     def _scaled(self, dy: float):
         item = self.items[0]
         self.actions.set_target(item)
-        self.actions.start_scale(100.0)
-        self.actions.drag_scale(100.0 + dy)
+        self.actions.start_scale(100.0, 100.0)
+        self.actions.drag_scale(100.0 - dy, 100.0)
         self.actions.end_scale()
         return item
 

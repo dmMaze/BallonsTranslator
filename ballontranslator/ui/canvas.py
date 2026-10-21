@@ -326,9 +326,7 @@ class Canvas(QGraphicsScene):
         self.txtblkShapeControl = TextBlkShapeControl(self.gv)
         self.text_quick_actions = TextQuickActions(
             self.gv,
-            lambda: getattr(
-                SW.st_manager, "textblk_item_list", []
-            ),
+            self.page_text_items,
         )
         self.txtblkGridControl = TextGridTransformControl()
         self.txtblkProjectiveControl = TextProjectiveTransformControl()
@@ -497,6 +495,21 @@ class Canvas(QGraphicsScene):
         self.txtblkShapeControl.requestGeometryRefresh()
         self.txtblkGridControl.requestGeometryRefresh()
         self.txtblkProjectiveControl.requestGeometryRefresh()
+
+    def page_text_items(self) -> list:
+        """Return the current page's text items.
+
+        Imported lazily: ``shared_widget`` imports this module, so a module
+        level import would be circular. The quick-action handles use this to
+        apply a gesture to every block on the page.
+
+        >>> callable(Canvas.page_text_items)
+        True
+        """
+        from . import shared_widget as SW
+
+        manager = getattr(SW, 'st_manager', None)
+        return list(getattr(manager, 'textblk_item_list', []) or [])
 
     def bind_text_grid_control(
         self,
