@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Callable, List
 
-from qtpy.QtCore import QPoint, Qt
+from qtpy.QtCore import QPoint, QPointF, Qt
 from qtpy.QtWidgets import QToolButton, QWidget
 
 BUTTON_SIZE = 30
@@ -55,33 +55,48 @@ def scaled_font_size(base: float, progress: float) -> float:
     return max(MIN_FONT_SIZE, min(MAX_FONT_SIZE, size))
 
 
-def restore_original_height(item) -> bool:
-    """Shrink a frame back to the height it had before free wrapping.
+def hug_content(item) -> bool:
+    """Shrink the frame onto the text, keeping the frame centre.
 
-    The layout grows the frame to hold unconstrained text; turning the switch
-    off should put the frame back rather than leave it stretched. A block that
-    was already free-wrapped when the page loaded has no remembered height, so
-    it falls back to fitting its content.
+    Free wrapping produces a single tall column, so an unchanged frame would
+    stay as wide as the balloon while the text sits in the middle of it.
 
-    >>> callable(restore_original_height)
+    >>> callable(hug_content)
     True
     """
-    height = getattr(item, 'free_wrap_original_height', None)
-    rect = item.boundingRect()
     try:
-        if height is not None and height < rect.height():
-            item.set_size(
-                rect.width(), float(height), set_layout_maxsize=True
-            )
-            item.layout.reLayoutEverything()
-            return True
-        if height is None:
-            item.squeezeBoundingRect()
-            item.layout.reLayoutEverything()
-            return True
-    except (RuntimeError, AttributeError):
+        centre = item.mapToScene(item.boundingRect().center())
+        item.squeezeBoundingRect()
+        item.layout.reLayoutEverything()
+        current = item.mapToScene(item.boundingRect().center())
+        item.setPos(item.pos() + (centre - current))
+        return True
+    except (RuntimeError, AttributeError, TypeError):
         return False
-    return False
+
+
+def restore_original_rect(item) -> bool:
+    """Put the frame captured before free wrapping back.
+
+    A block that was already free-wrapped when the page loaded has no captured
+    rect, so it falls back to fitting its content.
+
+    >>> callable(restore_original_rect)
+    True
+    """
+    rect = getattr(item, 'free_wrap_original_rect', None)
+    try:
+        if rect is None:
+            return hug_content(item)
+        width, height, centre_xy = rect
+        item.set_size(width, height, set_layout_maxsize=True)
+        item.layout.reLayoutEverything()
+        centre = QPointF(float(centre_xy[0]), float(centre_xy[1]))
+        current = item.mapToScene(item.boundingRect().center())
+        item.setPos(item.pos() + (centre - current))
+        return True
+    except (RuntimeError, AttributeError, TypeError):
+        return False
 
 
 class _ScaleHandle(QToolButton):
@@ -352,8 +367,11 @@ class TextQuickActions:
                 try:
                     # Remember the frame the user chose, so the switch is
                     # reversible instead of leaving a grown frame behind.
-                    item.free_wrap_original_height = (
-                        item.boundingRect().height()
+                    rect = item.boundingRect()
+                    centre = item.mapToScene(rect.center())
+                    item.free_wrap_original_rect = (
+                        rect.width(), rect.height(),
+                        (centre.x(), centre.y()),
                     )
                 except RuntimeError:
                     continue
@@ -367,10 +385,15 @@ class TextQuickActions:
         canvas = self.view.scene() if hasattr(self.view, 'scene') else None
         push_no_forced_wrap(canvas, items, enabled)
 
-        if not enabled:
+        if enabled:
+            # The frame has to follow the text, or a one-column block keeps
+            # the balloon's original width.
+            for item in items:
+                hug_content(item)
+        else:
             for item in items:
                 try:
-                    restore_original_height(item)
+                    restore_original_rect(item)
                 except RuntimeError:
                     continue
         self.refresh()

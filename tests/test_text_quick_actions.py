@@ -304,5 +304,43 @@ class ScalePersistenceTest(unittest.TestCase):
         self.assertAlmostEqual(item.fontformat.font_size, 40.0, places=2)
 
 
+class FreeWrapHugTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_free_wrapping_hugs_the_frame_in_both_directions(self) -> None:
+        """A one-column block must not keep the balloon's original width."""
+        from ballontranslator.ui.text_quick_actions import (
+            hug_content,
+            restore_original_rect,
+        )
+
+        item = make_item('库尔基加尔', (0, 0, 260, 90), font_size=40)
+        item.layout.reLayoutEverything()
+        before = item.boundingRect()
+        captured = (
+            before.width(), before.height(),
+            (item.mapToScene(before.center()).x(),
+             item.mapToScene(before.center()).y()),
+        )
+
+        item.fontformat.no_forced_wrap = True
+        item.layout.reLayoutEverything()
+        self.assertTrue(hug_content(item))
+        hugged = item.boundingRect()
+        self.assertLess(hugged.width(), before.width())
+        self.assertGreater(hugged.height(), 0.0)
+
+        item.free_wrap_original_rect = captured
+        item.fontformat.no_forced_wrap = False
+        item.layout.reLayoutEverything()
+        self.assertTrue(restore_original_rect(item))
+        restored = item.boundingRect()
+        self.assertAlmostEqual(restored.width(), before.width(), places=0)
+        self.assertAlmostEqual(restored.height(), before.height(), places=0)
+
+
 if __name__ == '__main__':
     unittest.main()
