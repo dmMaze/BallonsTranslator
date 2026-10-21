@@ -3,6 +3,7 @@ import sys
 from typing import List, Optional, Union, Tuple
 
 from qtpy.QtWidgets import (
+    QKeySequenceEdit,
     QDoubleSpinBox,
     QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout,
     QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
@@ -12,7 +13,7 @@ from qtpy.QtWidgets import (
     QFrame,
 )
 from qtpy.QtCore import Qt, Signal, QSize, QItemSelection, QTimer
-from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent
+from qtpy.QtGui import QStandardItem, QStandardItemModel, QMouseEvent, QFont, QIntValidator, QValidator, QFocusEvent, QKeySequence
 
 from .custom_widget import ConfigComboBox, NoBorderPushBtn, ScrollBar, Widget
 from ballontranslator.utils import shared
@@ -1152,6 +1153,55 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.font_size_cap_spin.valueChanged.connect(
             self.on_font_size_cap_changed
         )
+
+        peek_row = Widget()
+        peek_row.setObjectName('ConfigInlineRow')
+        peek_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        peek_layout = QHBoxLayout(peek_row)
+        peek_layout.setContentsMargins(0, 0, 0, 0)
+        peek_layout.setSpacing(12)
+        peek_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        peek_original_label = ConfigTextLabel(
+            self.tr('Peek original image'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        peek_original_font = peek_original_label.font()
+        peek_original_font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        peek_original_label.setFont(peek_original_font)
+        peek_original_label.setToolTip(self.tr(
+            'Hold this shortcut to see the untouched page.'
+        ))
+        self.peek_original_edit = QKeySequenceEdit(peek_row)
+        self.peek_original_edit.setObjectName('PeekOriginalShortcut')
+        self.peek_original_edit.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        peek_inpainted_label = ConfigTextLabel(
+            self.tr('Peek inpainted image'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        peek_inpainted_font = peek_inpainted_label.font()
+        peek_inpainted_font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        peek_inpainted_label.setFont(peek_inpainted_font)
+        peek_inpainted_label.setToolTip(self.tr(
+            'Hold this shortcut to see the page with its lettering '
+            'removed.'
+        ))
+        self.peek_inpainted_edit = QKeySequenceEdit(peek_row)
+        self.peek_inpainted_edit.setObjectName('PeekInpaintedShortcut')
+        self.peek_inpainted_edit.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.peek_original_edit.keySequenceChanged.connect(
+            self.on_peek_shortcuts_changed
+        )
+        self.peek_inpainted_edit.keySequenceChanged.connect(
+            self.on_peek_shortcuts_changed
+        )
+        peek_layout.addWidget(peek_original_label)
+        peek_layout.addWidget(self.peek_original_edit)
+        peek_layout.addSpacing(24)
+        peek_layout.addWidget(peek_inpainted_label)
+        peek_layout.addWidget(self.peek_inpainted_edit)
+        typesettingConfigPanel.addBlockWidget(peek_row)
         cap_layout.addWidget(cap_label)
         cap_layout.addWidget(self.font_size_cap_spin)
         typesettingConfigPanel.addBlockWidget(cap_row)
@@ -1714,6 +1764,17 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_fntstroke_flag_changed(self):
         pcfg.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
+    def on_peek_shortcuts_changed(self, *args):
+        pcfg.peek_original_shortcut = (
+            self.peek_original_edit.keySequence().toString()
+        )
+        pcfg.peek_inpainted_shortcut = (
+            self.peek_inpainted_edit.keySequence().toString()
+        )
+        reload = getattr(self.window(), 'reload_peek_shortcuts', None)
+        if callable(reload):
+            reload()
+
     def on_font_size_cap_changed(self, value: float):
         pcfg.font_size_outlier_ratio = float(value)
 
@@ -1981,6 +2042,15 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.font_size_cap_spin.setValue(
             float(pcfg.font_size_outlier_ratio)
         )
+        # Setting one field fires keySequenceChanged, whose handler writes
+        # both fields back; block it so the second keeps its value.
+        for edit, value in (
+            (self.peek_original_edit, pcfg.peek_original_shortcut),
+            (self.peek_inpainted_edit, pcfg.peek_inpainted_shortcut),
+        ):
+            edit.blockSignals(True)
+            edit.setKeySequence(QKeySequence(value))
+            edit.blockSignals(False)
         self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
         self.let_letter_case_buttons[pcfg.let_letter_case].setChecked(True)
         self.compact_vertical_punctuation_checker.setChecked(

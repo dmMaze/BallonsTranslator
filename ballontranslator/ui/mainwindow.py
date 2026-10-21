@@ -37,6 +37,12 @@ from ballontranslator.utils.config import (
 )
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from .canvas import Canvas
+from .layer_peek import (
+    LayerPeekButton,
+    PeekController,
+    PeekKeyFilter,
+    peek_key_map,
+)
 from .configpanel import ConfigPanel
 from .module_manager import ModuleManager
 from .text_engine.editing.widgets import SourceTextEdit, TransTextEdit
@@ -367,6 +373,8 @@ class MainWindow(mainwindow_cls):
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
         self.canvas.search_widget.replace_one.connect(self.st_manager.on_page_replace_one)
         self.canvas.search_widget.replace_all.connect(self.st_manager.on_page_replace_all)
+
+        self._setup_layer_peek()
 
         # comic trans pannel
         self.rightComicTransStackPanel = QStackedWidget(self)
@@ -900,7 +908,73 @@ class MainWindow(mainwindow_cls):
         pcfg.show_page_list = setup
         save_config()
 
+    def _setup_layer_peek(self) -> None:
+        """Create the draggable peek button and its hold-to-peek filter."""
+        try:
+            self.peek_controller = PeekController(
+                self.canvas,
+                lambda: getattr(self.st_manager, 'textblk_item_list', []),
+                self,
+            )
+            self.peek_button = LayerPeekButton(
+                self.peek_controller, self.canvas.gv
+            )
+            self.peek_button.resize(34, 34)
+            self.peek_button.move(self._peek_button_start())
+            self.peek_button.show()
+            self.peek_filter = PeekKeyFilter(
+                self.peek_controller,
+                lambda: self.canvas.gv,
+                self._peek_key_map(),
+                self,
+            )
+            QApplication.instance().installEventFilter(self.peek_filter)
+        except Exception:
+            # A failed decoration must never keep the window from opening.
+            LOGGER.exception('layer peek setup failed')
+
+    def _peek_key_map(self) -> dict:
+        return peek_key_map(
+            pcfg.peek_original_shortcut,
+            pcfg.peek_inpainted_shortcut,
+        )
+
+    def reload_peek_shortcuts(self) -> None:
+        """Apply a rebinding made in the settings panel."""
+        filter_ = getattr(self, 'peek_filter', None)
+        if filter_ is None:
+            return
+        filter_.keys = self._peek_key_map()
+
+    def _peek_button_start(self):
+        saved = (pcfg.peek_button_position or '').strip()
+        if saved:
+            try:
+                x_text, y_text = saved.split(',')
+                point = QPoint(int(x_text), int(y_text))
+                bounds = self.canvas.gv.rect().adjusted(
+                    0, 0, -self.peek_button.width(),
+                    -self.peek_button.height(),
+                )
+                return QPoint(
+                    max(bounds.left(), min(point.x(), bounds.right())),
+                    max(bounds.top(), min(point.y(), bounds.bottom())),
+                )
+            except (ValueError, AttributeError):
+                pass
+        return QPoint(
+            max(0, self.canvas.gv.width() - 46),
+            max(0, self.canvas.gv.height() - 46),
+        )
+
+    def _save_peek_position(self) -> None:
+        button = getattr(self, 'peek_button', None)
+        if button is None:
+            return
+        pcfg.peek_button_position = f'{button.x()},{button.y()}'
+
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._save_peek_position()
         if self.font_change_detector is not None:
             self.font_change_detector.stop()
         self.font_refresh.shutdown()

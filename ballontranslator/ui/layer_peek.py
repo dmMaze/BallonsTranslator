@@ -245,13 +245,24 @@ class PeekKeyFilter(QObject):
         self._active = None
 
     def _canvas_focused(self) -> bool:
+        """Only peek while the canvas owns the keyboard.
+
+        Tab is Qt's focus-navigation key, so it has to pass through every
+        other widget untouched. An empty focus counts as the canvas,
+        because the view is the window's main widget.
+        """
         window = QApplication.activeWindow()
         if window is None:
             return False
         view = self._view_getter()
         if view is None:
             return False
-        return view.hasFocus()
+        focused = QApplication.focusWidget()
+        if focused is None:
+            return True
+        if focused is view or focused is view.viewport():
+            return True
+        return view.isAncestorOf(focused)
 
     def eventFilter(self, obj, event) -> bool:
         kind = event.type()
