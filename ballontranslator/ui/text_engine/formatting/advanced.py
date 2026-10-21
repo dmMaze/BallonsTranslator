@@ -278,7 +278,8 @@ class TextAdvancedFormatPanel(PanelArea):
         )
         self.vertical_alignment_label = _word_wrap_label(
             SmallParamLabel(
-                self.tr('Vertical Align'), parent=self.top_section
+                self.tr('Vertical Align'),
+                parent=self.top_section,
             )
         )
         self.vertical_alignment_unit = _atomic_unit(
@@ -287,9 +288,13 @@ class TextAdvancedFormatPanel(PanelArea):
             self.vertical_alignment_combobox,
         )
 
-        self.roman_word_rotation_checkbox = QCheckBox(
-            self.tr('Rotate Roman Words'), self.top_section
+        self.roman_word_rotation_label = _word_wrap_label(
+            SmallParamLabel(
+                self.tr('Rotate Roman Words'),
+                parent=self.top_section,
+            )
         )
+        self.roman_word_rotation_checkbox = QCheckBox(self.top_section)
         self.roman_word_rotation_checkbox.setObjectName(
             'TextAdvancedFormatCheckbox'
         )
@@ -302,6 +307,7 @@ class TextAdvancedFormatPanel(PanelArea):
         )
         self.roman_word_rotation_unit = _atomic_unit(
             self.top_section,
+            self.roman_word_rotation_label,
             self.roman_word_rotation_checkbox,
         )
 

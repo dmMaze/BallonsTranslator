@@ -1,5 +1,6 @@
 """Final text-document formatting at page and project boundaries."""
 
+import re
 import threading
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -72,6 +73,52 @@ def _load_text_block_document(block: TextBlock) -> QTextDocument:
         font_format.line_spacing_type,
     )
     return document
+
+
+_ELLIPSIS_RUN = re.compile('\u2026{2,}')
+
+
+def collapse_ellipsis_runs(text: str) -> str:
+    """Collapse a run of U+2026 into a single ellipsis mark.
+
+    Japanese sources frequently use one ``…`` while a translator emits ``……``;
+    the source's single mark is what the reader expects in the Chinese text.
+
+    >>> collapse_ellipsis_runs('等等……')
+    '等等…'
+    >>> collapse_ellipsis_runs('...')   # ASCII dots are left alone
+    '...'
+    """
+    return _ELLIPSIS_RUN.sub('\u2026', text or '')
+
+
+def normalize_translation_punctuation(blocks: Sequence[TextBlock]) -> int:
+    """Apply the ellipsis rule to finished translations and their rich text.
+
+    Return the number of blocks whose stored text changed.
+
+    >>> block = TextBlock(translation='等等……')
+    >>> normalize_translation_punctuation([block])
+    1
+    >>> block.translation
+    '等等…'
+    """
+    changed = 0
+    for block in blocks:
+        translation = collapse_ellipsis_runs(block.translation)
+        rich_text = block.rich_text
+        if rich_text:
+            rich_text = collapse_ellipsis_runs(rich_text)
+        if (
+            translation == (block.translation or '')
+            and rich_text == block.rich_text
+        ):
+            continue
+        block.translation = translation
+        if block.rich_text:
+            block.rich_text = rich_text
+        changed += 1
+    return changed
 
 
 def apply_layout_overrides(

@@ -2,7 +2,7 @@ import re
 import unicodedata
 from bisect import bisect_right
 from functools import lru_cache
-from typing import List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 from qtpy.QtCore import QPointF, QRectF, QSizeF, Qt
 from qtpy.QtGui import (
@@ -156,6 +156,38 @@ def _is_non_fullwidth_roman(char: str) -> bool:
         return False
     name = unicodedata.name(char, '')
     return name.startswith('LATIN ') or name.startswith('ROMAN NUMERAL ')
+
+
+def _roman_word_ends(text: str) -> Dict[int, int]:
+    """Map each multi-character Latin word's start to its UTF-16 end.
+
+    Vertical layout keeps a word inside one column by testing the whole word's
+    advance when its first character is placed, so only the start is needed.
+
+    >>> _roman_word_ends('a Master b')
+    {2: 8}
+    >>> _roman_word_ends('漢字のみ')
+    {}
+    """
+    ends: Dict[int, int] = {}
+    length = _utf16_length(text)
+    position = 0
+    while position < length:
+        char = _utf16_char_at(text, position)
+        if not (char.isalpha() and _is_non_fullwidth_roman(char)):
+            position += 1
+            continue
+        start = position
+        position += 1
+        while position < length:
+            nxt = _utf16_char_at(text, position)
+            if nxt.isalpha() and _is_non_fullwidth_roman(nxt):
+                position += 1
+                continue
+            break
+        if position - start > 1:
+            ends[start] = position
+    return ends
 
 
 def _inseparable_punctuation_run(
@@ -444,6 +476,38 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         })
         self._plain_column_reused.add(block.blockNumber())
         return True
+
+    def _roman_word_advance(
+        self,
+        block_no: int,
+        text: str,
+        start: int,
+        end: int,
+    ) -> float:
+        """Return a Latin word's advance in the cell loop's own terms.
+
+        Mirrors the per-character branch so the fit test measures exactly what
+        the settled cells will consume, including the compact advance the
+        rotated branch derives from the glyph's horizontal metrics.
+
+        >>> callable(VerticalTextDocumentLayout._roman_word_advance)
+        True
+        """
+        total = 0.0
+        for position in range(start, end):
+            char = _utf16_char_at(text, position)
+            cfmt = self.get_char_fontfmt(block_no, position)
+            if cfmt is None:
+                continue
+            spacing = max(cfmt.tbr.height() * (cfmt.letter_spacing - 1.0), 0.0)
+            if self.needs_vertical_rotation(char):
+                _tbr, bounds = cfmt.punc_rect(char)
+                doubled = cfmt.punc_rect(char + char)[1].width()
+                advance = bounds.width() - (bounds.width() * 2 - doubled)
+            else:
+                advance = cfmt.tbr.height()
+            total += max(advance, 0.0) + spacing
+        return total
 
     def roman_word_rotation_applies(self, char: str) -> bool:
         """Return whether a Roman letter rotates as one compact word run.
@@ -2313,6 +2377,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             block_width = self.block_ideal_width[block_no]
         else:
             block_width = CharFontFormat(block.charFormat()).tbr.width()
+        # A Latin word must stay inside one column, so its first character's
+        # fit test uses the whole word's advance instead of one cell.
+        roman_word_ends = _roman_word_ends(blk_text)
         block_line_spacing, block_line_spacing_type = (
             self.block_line_spacing(block)
         )
@@ -2658,11 +2725,23 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
 
             char_bottom = char_yoffset_lst[-1] + tbr_h
+            wrap_bottom = char_bottom
+            word_end = roman_word_ends.get(char_idx)
+            if word_end is not None:
+                # Never leave "mas" at the foot of one column and "ter" at the
+                # head of the next: move the whole word instead.
+                wrap_bottom = max(
+                    wrap_bottom,
+                    char_yoffset_lst[-1]
+                    + self._roman_word_advance(
+                        block_no, blk_text, char_idx, word_end
+                    ),
+                )
             out_of_vspace = (
                 force_ruby_wrap
                 or (
                     not group_ruby
-                    and char_bottom + ruby_space_gap + ruby_trailing
+                    and wrap_bottom + ruby_space_gap + ruby_trailing
                     - max(spacing_advance, 0) > available_height
                 )
             )

@@ -67,6 +67,7 @@ from .text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
     apply_layout_overrides,
+    normalize_translation_punctuation,
 )
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
@@ -1946,6 +1947,7 @@ class MainWindow(mainwindow_cls):
                 self.run_next_dir()
 
     def postprocess_translations(self, blk_list: List[TextBlock]) -> None:
+        normalize_translation_punctuation(blk_list)
         if not is_cjk(pcfg.module.translate_target):
             for blk in blk_list:
                 if blk.vertical:
