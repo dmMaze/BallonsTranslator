@@ -3,6 +3,7 @@ import sys
 from typing import List, Optional, Union, Tuple
 
 from qtpy.QtWidgets import (
+    QDoubleSpinBox,
     QApplication, QPushButton, QLayout, QGridLayout, QHBoxLayout, QVBoxLayout,
     QTreeView, QWidget, QLabel, QSizePolicy, QSpacerItem, QCheckBox,
     QSplitter, QScrollArea, QLineEdit, QStackedWidget, QMessageBox,
@@ -1123,6 +1124,38 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             self.on_vertical_autofit_changed
         )
 
+        cap_row = Widget()
+        cap_row.setObjectName('ConfigInlineRow')
+        cap_row.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        cap_layout = QHBoxLayout(cap_row)
+        cap_layout.setContentsMargins(0, 0, 0, 0)
+        cap_layout.setSpacing(12)
+        cap_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        cap_label = ConfigTextLabel(
+            self.tr('Automatic font size limit'),
+            CONFIG_FONTSIZE_CONTENT,
+            QFont.Weight.Normal,
+        )
+        cap_font = cap_label.font()
+        cap_font.setPixelSize(CONFIG_FONTSIZE_CONTENT)
+        cap_label.setFont(cap_font)
+        cap_label.setToolTip(self.tr(
+            'Automatic font sizes above this multiple of the page '
+            'median are pulled down. 0 disables the limit.'
+        ))
+        self.font_size_cap_spin = QDoubleSpinBox(cap_row)
+        self.font_size_cap_spin.setObjectName('FontSizeCapRatio')
+        self.font_size_cap_spin.setRange(0.0, 10.0)
+        self.font_size_cap_spin.setSingleStep(0.5)
+        self.font_size_cap_spin.setDecimals(1)
+        self.font_size_cap_spin.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.font_size_cap_spin.valueChanged.connect(
+            self.on_font_size_cap_changed
+        )
+        cap_layout.addWidget(cap_label)
+        cap_layout.addWidget(self.font_size_cap_spin)
+        typesettingConfigPanel.addBlockWidget(cap_row)
+
         self.let_textstyle_indep_checker, _ = typesettingConfigPanel.addCheckBox(self.tr('Independent text styles for each projects'))
         self.let_textstyle_indep_checker.stateChanged.connect(self.on_textstyle_indep_changed)
 
@@ -1681,6 +1714,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
     def on_fntstroke_flag_changed(self):
         pcfg.let_fntstroke_flag = self.let_fntstroke_combox.currentIndex()
 
+    def on_font_size_cap_changed(self, value: float):
+        pcfg.font_size_outlier_ratio = float(value)
+
     def on_vertical_autofit_changed(self):
         pcfg.vertical_font_autofit_enabled = (
             self.vertical_autofit_checker.isChecked()
@@ -1941,6 +1977,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_autolayout_checker.setChecked(pcfg.let_autolayout_flag)
         self.vertical_autofit_checker.setChecked(
             pcfg.vertical_font_autofit_enabled
+        )
+        self.font_size_cap_spin.setValue(
+            float(pcfg.font_size_outlier_ratio)
         )
         self.quick_insert_characters_edit.setText(pcfg.quick_insert_characters)
         self.let_letter_case_buttons[pcfg.let_letter_case].setChecked(True)
