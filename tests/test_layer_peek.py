@@ -129,13 +129,17 @@ class PeekWidgetsTest(unittest.TestCase):
         self.assertEqual(controller.mode, PeekMode.CURRENT)
 
     def test_resize_watcher_reports_view_changes(self) -> None:
+        from qtpy.QtCore import QSize
+        from qtpy.QtGui import QResizeEvent
         from qtpy.QtWidgets import QWidget
         calls = []
         watcher = PeekResizeWatcher(lambda: calls.append(1))
         widget = QWidget()
         widget.installEventFilter(watcher)
-        widget.resize(120, 90)
-        self.app.processEvents()
+        # A hidden widget may not emit a resize; post it explicitly.
+        QApplication.sendEvent(
+            widget, QResizeEvent(QSize(120, 90), QSize(10, 10))
+        )
         self.assertTrue(calls)
 
     def test_default_shortcuts_map_to_the_two_peek_modes(self) -> None:

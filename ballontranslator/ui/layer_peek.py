@@ -8,7 +8,9 @@ then restores exactly the previous visibility.
 
 from __future__ import annotations
 
+import os
 from enum import Enum
+from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from qtpy.QtCore import QEvent, QObject, QPoint, Qt
@@ -145,6 +147,59 @@ def make_peek_icon(mode: PeekMode, size: int = 44) -> QIcon:
     return QIcon(pixmap)
 
 
+_ICON_NAMES = {
+    PeekMode.CURRENT: 'current',
+    PeekMode.ORIGINAL: 'original',
+    PeekMode.INPAINTED: 'inpainted',
+}
+
+_icon_cache = {}
+
+
+def peek_icon_for(mode: PeekMode, size: int = 44) -> QIcon:
+    """Return the artwork for ``mode`` at ``size``.
+
+    The shipped icons live in ``resources/icons/layer_peek`` and win over the
+    drawn fallback; a missing or unreadable file falls back to the bubble that
+    this module draws, so a bad asset can never leave a blank button.
+
+    >>> from qtpy.QtWidgets import QApplication
+    >>> _ = QApplication.instance() or QApplication([])
+    >>> isinstance(peek_icon_for(PeekMode.CURRENT), QIcon)
+    True
+    """
+    key = (mode, size)
+    cached = _icon_cache.get(key)
+    if cached is not None:
+        return cached
+
+    from ballontranslator.utils import shared
+
+    base = getattr(shared, 'ICON_DIR', '')
+    directory = base and str(Path(base) / 'layer_peek')
+    name = _ICON_NAMES[mode]
+    icon = None
+    if directory:
+        for suffix in ('.png', '.svg'):
+            candidate = Path(directory) / f'{name}{suffix}'
+            if not candidate.is_file():
+                continue
+            pixmap = QPixmap(str(candidate))
+            if pixmap.isNull():
+                continue
+            icon = QIcon(pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+            break
+    if icon is None:
+        icon = make_peek_icon(mode, size)
+    _icon_cache[key] = icon
+    return icon
+
+
 class PeekController(QObject):
     """Switch the canvas between the three states and restore exactly."""
 
@@ -246,7 +301,7 @@ class LayerPeekButton(QToolButton):
         self._peeking = False
         self.user_moved = False
         self.setIconSize(self.size())
-        self.setIcon(make_peek_icon(PeekMode.CURRENT, self._icon_size()))
+        self.setIcon(peek_icon_for(PeekMode.CURRENT, self._icon_size()))
         self.setFixedSize(self._button_size(), self._button_size())
         self._apply_style()
         self.refresh()
@@ -282,7 +337,7 @@ class LayerPeekButton(QToolButton):
         self.refresh()
 
     def refresh(self) -> None:
-        self.setIcon(make_peek_icon(
+        self.setIcon(peek_icon_for(
             self.controller.mode, self._icon_size()
         ))
         self.setToolTip({
