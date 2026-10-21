@@ -87,13 +87,28 @@ class ActionsTest(unittest.TestCase):
         columns = {round(block.lineAt(i).x(), 1) for i in range(block.lineCount())}
         self.assertEqual(len(columns), 1, columns)
 
-        # Turning it off must restore the wrapped layout instead of reusing the
-        # cached single-column geometry.
-        item.fontformat.no_forced_wrap = False
-        item.layout.reLayoutEverything()
-        block = item.document().firstBlock().layout()
+        wrapped = make_item('一二三四五六七八九十', (0, 0, 120, 80))
+        wrapped.layout.reLayoutEverything()
+        block = wrapped.document().firstBlock().layout()
         columns = {round(block.lineAt(i).x(), 1) for i in range(block.lineCount())}
         self.assertGreater(len(columns), 1, columns)
+
+    def test_flag_is_part_of_the_layout_cache_key(self) -> None:
+        """Turning the flag off must not reuse the free-wrapped geometry."""
+        item = make_item('一二三四五六七八九十', (0, 0, 120, 80))
+        item.layout.reLayoutEverything()
+        before = item.layout._plain_column_context
+        item.fontformat.no_forced_wrap = True
+        item.layout.reLayoutEverything()
+        after = item.layout._plain_column_context
+        self.assertNotEqual(before, after)
+
+    def test_frame_grows_to_hold_free_wrapped_text(self) -> None:
+        item = make_item('一二三四五六七八九十', (0, 0, 120, 80))
+        before = item.boundingRect().height()
+        item.fontformat.no_forced_wrap = True
+        item.layout.reLayoutEverything()
+        self.assertGreater(item.boundingRect().height(), before)
 
 
 if __name__ == '__main__':

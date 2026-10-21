@@ -803,6 +803,16 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.layoutBlock(block)
             block = block.next()
 
+        if getattr(self.fontformat, 'no_forced_wrap', False):
+            # Free wrapping lets the text leave the frame, so the frame has to
+            # grow to the extent the text actually reached.
+            extent = 0.0
+            for offsets in self.y_offset_lst or []:
+                for pair in offsets:
+                    extent = max(extent, float(pair[1]))
+            if extent > self.min_height:
+                self.min_height = extent
+
         enlarged = False
         x_shift = 0
         if self.layout_left < doc_margin:
