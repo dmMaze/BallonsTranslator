@@ -1032,6 +1032,37 @@ class TextBlkItem(QGraphicsTextItem):
         self.update()
         self.visual_geometry_changed.emit()
 
+    def setRomanWordRotation(
+        self,
+        enabled: bool,
+        repaint_background: bool = True,
+    ) -> None:
+        """Rotate Roman letters as one compact run in vertical layout.
+
+        The compact advance also changes column breaking, so vertical layout
+        must run a full relayout rather than translate settled columns.
+        Horizontal writing mode stores the value but never rotates.
+        """
+        enabled = bool(enabled)
+        if self.fontformat.roman_word_rotation == enabled:
+            return
+        vertical_layout = isinstance(
+            self.layout, VerticalTextDocumentLayout
+        )
+        if vertical_layout:
+            # Column advance can expose ink outside the logical box.
+            self.prepareGeometryChange()
+        self.fontformat.roman_word_rotation = enabled
+        if not vertical_layout:
+            return
+
+        self.layout.reLayout()
+        self.geometry_controller.flush_deferred_compilation()
+        if repaint_background:
+            self.repaint_background()
+        self.update()
+        self.visual_geometry_changed.emit()
+
     def setVerticalAlignment(
         self,
         value: int,

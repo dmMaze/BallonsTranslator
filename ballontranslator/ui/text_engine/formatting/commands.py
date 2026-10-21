@@ -230,6 +230,18 @@ def ffmt_change_vertical_alignment(
     for blkitem, value in zip(blkitems, values):
         blkitem.setVerticalAlignment(value)
 
+@font_formating(push_undostack=True)
+def ffmt_change_roman_word_rotation(
+    param_name: str,
+    values: bool,
+    act_ffmt: FontFormat,
+    is_global: bool,
+    blkitems: List[TextBlkItem],
+    **kwargs,
+) -> None:
+    for blkitem, value in zip(blkitems, values):
+        blkitem.setRomanWordRotation(value)
+
 @font_formating()
 def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     for blkitem, value in zip(blkitems, values):

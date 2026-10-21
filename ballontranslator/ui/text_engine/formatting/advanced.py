@@ -2,6 +2,7 @@ from typing import Callable
 
 from qtpy.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QGroupBox,
     QHBoxLayout,
@@ -286,6 +287,24 @@ class TextAdvancedFormatPanel(PanelArea):
             self.vertical_alignment_combobox,
         )
 
+        self.roman_word_rotation_checkbox = QCheckBox(
+            self.tr('Rotate Roman Words'), self.top_section
+        )
+        self.roman_word_rotation_checkbox.setObjectName(
+            'TextAdvancedFormatCheckbox'
+        )
+        self.roman_word_rotation_checkbox.setToolTip(self.tr(
+            'Vertical layout only: rotate Latin letters as one compact run '
+            'instead of standing each letter in its own full-width cell'
+        ))
+        self.roman_word_rotation_checkbox.toggled.connect(
+            self.on_roman_word_rotation_toggled
+        )
+        self.roman_word_rotation_unit = _atomic_unit(
+            self.top_section,
+            self.roman_word_rotation_checkbox,
+        )
+
         self.ligature_group = QGroupBox(
             self.tr('Ligature'), self.scrollContent
         )
@@ -367,6 +386,7 @@ class TextAdvancedFormatPanel(PanelArea):
         self.top_atomic_units = (
             self.linespacing_type_unit,
             self.vertical_alignment_unit,
+            self.roman_word_rotation_unit,
         )
         self.top_layout = AdaptiveWrapLayout(self.top_section)
         for unit in self.top_atomic_units:
@@ -605,6 +625,9 @@ class TextAdvancedFormatPanel(PanelArea):
             int(self.vertical_alignment_combobox.currentData()),
         )
 
+    def on_roman_word_rotation_toggled(self, checked: bool) -> None:
+        self.on_format_changed('roman_word_rotation', bool(checked))
+
     def on_ligature_axis_changed(self, _index: int) -> None:
         combo = self.sender()
         axis = str(combo.property('ligature-axis'))
@@ -613,6 +636,17 @@ class TextAdvancedFormatPanel(PanelArea):
     def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
         self.set_vertical_alignment(font_format.vertical_alignment)
+        self.set_roman_word_rotation(font_format.roman_word_rotation)
+
+    def set_roman_word_rotation(self, enabled: bool) -> None:
+        checkbox = self.roman_word_rotation_checkbox
+        if checkbox.isChecked() == bool(enabled):
+            return
+        checkbox.blockSignals(True)
+        try:
+            checkbox.setChecked(bool(enabled))
+        finally:
+            checkbox.blockSignals(False)
 
     def set_vertical_alignment(self, alignment: int) -> None:
         if self.vertical_alignment_combobox.hasFocus():

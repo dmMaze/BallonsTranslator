@@ -445,6 +445,23 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._plain_column_reused.add(block.blockNumber())
         return True
 
+    def roman_word_rotation_applies(self, char: str) -> bool:
+        """Return whether a Roman letter rotates as one compact word run.
+
+        Only Latin letters are affected: halfwidth punctuation, digits, and
+        fullwidth forms keep whichever orientation
+        ``standard_vertical_roman_alignment`` selects, so enabling compact
+        Roman text never changes bracket, leader, or stop-mark policy.
+
+        >>> callable(VerticalTextDocumentLayout.roman_word_rotation_applies)
+        True
+        """
+        return (
+            self.fontformat.roman_word_rotation
+            and char.isalpha()
+            and _is_non_fullwidth_roman(char)
+        )
+
     def needs_vertical_rotation(self, char: str) -> bool:
         rotation_chars = (
             PUNSET_STANDARD_VERTICAL_ROMAN
@@ -453,6 +470,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         )
         return (
             char in rotation_chars
+            or self.roman_word_rotation_applies(char)
             or (
                 not self.fontformat.standard_vertical_roman_alignment
                 and _is_non_fullwidth_roman(char)
@@ -486,6 +504,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         if (
             self.fontformat.standard_vertical_roman_alignment
             and _is_non_fullwidth_roman(char)
+            and not self.roman_word_rotation_applies(char)
         ):
             return True
         return (
@@ -684,6 +703,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self.available_height, self._effect_padding,
             self.line_spacing, self.linespacing_type, self.letter_spacing,
             self.fontformat.standard_vertical_roman_alignment,
+            # Roman word rotation changes the settled column advance, so a
+            # cached column measured under the other value must not be reused.
+            self.fontformat.roman_word_rotation,
             pcfg.compact_vertical_punctuation_spacing,
             option.alignment(), option.textDirection(), option.flags(),
             option.useDesignMetrics(), option.tabStopDistance(),

@@ -63,9 +63,14 @@ adding paint-time glyph exceptions.
 
 Standard Roman mode keeps proportional Roman glyphs upright and centered. The
 alternate mode rotates them clockwise and uses the Chinese mixed-layout
-punctuation path. Compact punctuation shortens eligible punctuation cells
-without clipping their ink. Repeated dashes, bars, leaders, and ellipses form
-indivisible runs, with character spacing applied after the run.
+punctuation path. `roman_word_rotation` offers the rotation without that
+punctuation switch: Latin letters rotate clockwise into the compact advance the
+rotated branch already measures, while punctuation, digits, and fullwidth forms
+keep whichever policy `standard_vertical_roman_alignment` selects. Because the
+advance shrinks, a toggle relayouts instead of translating settled columns.
+Compact punctuation shortens eligible punctuation cells without clipping their
+ink. Repeated dashes, bars, leaders, and ellipses form indivisible runs, with
+character spacing applied after the run.
 
 Tate-chu-yoko (TCY) is an authored horizontal run occupying one vertical cell.
 Only its selected range participates in shaping; surrounding whitespace keeps

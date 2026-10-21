@@ -730,6 +730,10 @@ class FontFormat(Config):
     vertical_alignment: int = TextVerticalAlignment.Auto
     vertical: bool = False
     standard_vertical_roman_alignment: bool = True
+    # Rotates Roman letters as one compact run in vertical layout instead of
+    # standing each letter upright in its own full character cell. Horizontal
+    # writing mode ignores it.
+    roman_word_rotation: bool = False
     # None is constructor-only so legacy payloads can distinguish an omitted
     # weight from an explicitly saved Normal value. __post_init__ canonicalizes
     # every live instance to FontWeight.
@@ -864,6 +868,14 @@ class FontFormat(Config):
                 self.standard_vertical_roman_alignment,
             )
             self.standard_vertical_roman_alignment = True
+
+        if not isinstance(self.roman_word_rotation, bool):
+            LOGGER.warning(
+                'Ignoring invalid Roman word rotation value (%r); using the '
+                'disabled default.',
+                self.roman_word_rotation,
+            )
+            self.roman_word_rotation = False
 
         try:
             vertical_alignment = TextVerticalAlignment(self.vertical_alignment)
