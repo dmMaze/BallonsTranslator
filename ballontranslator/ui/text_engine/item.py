@@ -34,6 +34,7 @@ from ballontranslator.utils.fontformat import (
     FontWeight,
     LineSpacingType,
     TextTransformStack,
+    TextVerticalAlignment,
     font_weight_from_qt,
     font_weight_to_qt,
     pt2px,
@@ -1024,6 +1025,31 @@ class TextBlkItem(QGraphicsTextItem):
         if not vertical_layout:
             return
 
+        self.layout.reLayout()
+        self.geometry_controller.flush_deferred_compilation()
+        if repaint_background:
+            self.repaint_background()
+        self.update()
+        self.visual_geometry_changed.emit()
+
+    def setVerticalAlignment(
+        self,
+        value: int,
+        repaint_background: bool = True,
+    ) -> None:
+        """Settle the text at the top, centre, or bottom of its rectangle.
+
+        Both writing modes place content from the top, so the anchor only
+        translates settled lines; wrapping and line breaks never change.
+        """
+        alignment = TextVerticalAlignment(int(value))
+        if self.fontformat.vertical_alignment == alignment:
+            return
+        # The rectangle keeps its size, but moved ink can exceed the padding
+        # captured for the previous surface.
+        self.prepareGeometryChange()
+        self.fontformat.vertical_alignment = alignment
+        self.geometry_controller.invalidate_surface_cache()
         self.layout.reLayout()
         self.geometry_controller.flush_deferred_compilation()
         if repaint_background:

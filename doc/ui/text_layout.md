@@ -125,6 +125,16 @@ changes require full layout. The geometry controller preserves the matching
 scene-space anchor, so layout and scene movement must not both compensate for
 the same resize.
 
+`FontFormat.vertical_alignment` settles the content along the rectangle's
+height in both writing modes. It is applied after wrapping, as a translation of
+settled lines, so column breaks and line breaks never depend on the anchor.
+`Auto` keeps the historical rule (horizontal blocks centre only while their
+horizontal alignment is centred; vertical blocks stay top-anchored), which keeps
+older projects unchanged. Vertical layout keeps absolute vertical cells beside
+its lines — line-space offsets and per-character extents for selection, cell
+removal, ruby placement, and Glyph Slant — so any vertical translation must move
+those records with the lines.
+
 ## Painting and interaction
 
 `vertical_line_placement()` is the shared boundary for rotated glyphs, TCY,

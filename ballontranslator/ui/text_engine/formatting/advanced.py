@@ -29,7 +29,7 @@ from ...custom_widget import (
 )
 from ...custom_widget.combobox import BottomBorderComboBox
 from ...adaptive_wrap_layout import AdaptiveWrapLayout
-from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.fontformat import FontFormat, TextVerticalAlignment
 from ..annotations import (
     FONT_FEATURES_AVAILABLE,
     LIGATURE_AXIS_VALUES,
@@ -256,6 +256,36 @@ class TextAdvancedFormatPanel(PanelArea):
             self.linespacing_type_combobox,
         )
 
+        self.vertical_alignment_combobox = BottomBorderComboBox(
+            parent=self.top_section
+        )
+        self.vertical_alignment_combobox.setObjectName(
+            'TextAdvancedFormatParamEditor'
+        )
+        self.vertical_alignment_combobox.setToolTip(self.tr(
+            'Place the settled text at the top, centre, or bottom of its box'
+        ))
+        for option, value in (
+            (self.tr('Auto'), TextVerticalAlignment.Auto),
+            (self.tr('Top'), TextVerticalAlignment.Top),
+            (self.tr('Centre'), TextVerticalAlignment.Center),
+            (self.tr('Bottom'), TextVerticalAlignment.Bottom),
+        ):
+            self.vertical_alignment_combobox.addItem(option, int(value))
+        self.vertical_alignment_combobox.activated.connect(
+            self.on_vertical_alignment_changed
+        )
+        self.vertical_alignment_label = _word_wrap_label(
+            SmallParamLabel(
+                self.tr('Vertical Align'), parent=self.top_section
+            )
+        )
+        self.vertical_alignment_unit = _atomic_unit(
+            self.top_section,
+            self.vertical_alignment_label,
+            self.vertical_alignment_combobox,
+        )
+
         self.ligature_group = QGroupBox(
             self.tr('Ligature'), self.scrollContent
         )
@@ -334,7 +364,10 @@ class TextAdvancedFormatPanel(PanelArea):
         for row in self.ligature_rows:
             self.ligature_group_layout.addWidget(row)
 
-        self.top_atomic_units = (self.linespacing_type_unit,)
+        self.top_atomic_units = (
+            self.linespacing_type_unit,
+            self.vertical_alignment_unit,
+        )
         self.top_layout = AdaptiveWrapLayout(self.top_section)
         for unit in self.top_atomic_units:
             self.top_layout.addWidget(unit)
@@ -566,6 +599,12 @@ class TextAdvancedFormatPanel(PanelArea):
     def on_linespacing_type_changed(self) -> None:
         self.on_format_changed('line_spacing_type', self.linespacing_type_combobox.currentIndex())
 
+    def on_vertical_alignment_changed(self, _index: int) -> None:
+        self.on_format_changed(
+            'vertical_alignment',
+            int(self.vertical_alignment_combobox.currentData()),
+        )
+
     def on_ligature_axis_changed(self, _index: int) -> None:
         combo = self.sender()
         axis = str(combo.property('ligature-axis'))
@@ -573,6 +612,14 @@ class TextAdvancedFormatPanel(PanelArea):
 
     def set_active_format(self, font_format: FontFormat) -> None:
         self.linespacing_type_combobox.setCurrentIndex(font_format.line_spacing_type)
+        self.set_vertical_alignment(font_format.vertical_alignment)
+
+    def set_vertical_alignment(self, alignment: int) -> None:
+        if self.vertical_alignment_combobox.hasFocus():
+            return
+        index = self.vertical_alignment_combobox.findData(int(alignment))
+        if index >= 0:
+            self.vertical_alignment_combobox.setCurrentIndex(index)
 
     def set_line_spacing_type(self, spacing_type: int) -> None:
         if not self.linespacing_type_combobox.hasFocus():

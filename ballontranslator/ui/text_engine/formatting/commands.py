@@ -218,6 +218,18 @@ def ffmt_change_alignment(param_name: str, values: float, act_ffmt: FontFormat, 
     for blkitem, value in zip(blkitems, values):
         blkitem.setAlignment(value, restore_cursor=restore_cursor)
 
+@font_formating(push_undostack=True)
+def ffmt_change_vertical_alignment(
+    param_name: str,
+    values: float,
+    act_ffmt: FontFormat,
+    is_global: bool,
+    blkitems: List[TextBlkItem],
+    **kwargs,
+) -> None:
+    for blkitem, value in zip(blkitems, values):
+        blkitem.setVerticalAlignment(value)
+
 @font_formating()
 def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: FontFormat, is_global: bool, blkitems: List[TextBlkItem], **kwargs):
     for blkitem, value in zip(blkitems, values):

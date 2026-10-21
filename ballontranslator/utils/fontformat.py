@@ -432,6 +432,24 @@ class TextAlignment(enum.IntEnum):
     Right = 2
 
 
+class TextVerticalAlignment(enum.IntEnum):
+    """Placement of settled text along the logical rectangle's height.
+
+    Auto preserves the historical writing-mode rule: horizontal blocks are
+    centred vertically only while their horizontal alignment is centred, and
+    vertical blocks stay top-anchored. Older projects therefore keep their
+    current placement instead of shifting on upgrade.
+
+    >>> int(TextVerticalAlignment.Auto), int(TextVerticalAlignment.Bottom)
+    (-1, 2)
+    """
+
+    Auto = -1
+    Top = 0
+    Center = 1
+    Bottom = 2
+
+
 _QT5_TO_FONT_WEIGHT = {
     0: FontWeight.Thin,
     12: FontWeight.ExtraLight,
@@ -709,6 +727,7 @@ class FontFormat(Config):
     underline: bool = False
     italic: bool = False
     alignment: int = 0
+    vertical_alignment: int = TextVerticalAlignment.Auto
     vertical: bool = False
     standard_vertical_roman_alignment: bool = True
     # None is constructor-only so legacy payloads can distinguish an omitted
@@ -845,6 +864,16 @@ class FontFormat(Config):
                 self.standard_vertical_roman_alignment,
             )
             self.standard_vertical_roman_alignment = True
+
+        try:
+            vertical_alignment = TextVerticalAlignment(self.vertical_alignment)
+        except (TypeError, ValueError):
+            LOGGER.warning(
+                'Ignoring invalid vertical alignment value (%r); using auto.',
+                self.vertical_alignment,
+            )
+            vertical_alignment = TextVerticalAlignment.Auto
+        self.vertical_alignment = vertical_alignment
 
         for name in (
             'ligature_common',

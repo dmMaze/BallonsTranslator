@@ -529,6 +529,27 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.layout_left += applied_shift
         return applied_shift
 
+    def _translate_absolute_y(self, y_shift: float) -> None:
+        """Shift the absolute vertical cells this layout stores beside lines.
+
+        Line positions own paint, caret, and hit testing, but line-space
+        offsets and per-character extents stay absolute for selection cells,
+        cell removal, ruby placement, and slanted-glyph painting. They must
+        move with the lines or interaction would disagree with what is drawn.
+
+        >>> callable(VerticalTextDocumentLayout._translate_absolute_y)
+        True
+        """
+        if abs(y_shift) <= 1e-9:
+            return
+        for block_spaces in self.line_spaces_lst:
+            for entry in block_spaces:
+                entry[2] = [offset + y_shift for offset in entry[2]]
+        for block_extents in self.y_offset_lst:
+            for extent in block_extents:
+                extent[0] += y_shift
+                extent[1] += y_shift
+
     def _column_content_width(self) -> float:
         if not self.x_offset_lst:
             return 0.0
@@ -703,6 +724,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             enlarged = True
         if enlarged:
             self._emit_size_enlarged()
+        # Settle the vertical anchor only after wrapping has finished: column
+        # breaks depend on the content height, not on where the block sits.
+        # shrink_height is the settled content height; min_height only tracks
+        # the ruby flow extent in this layout.
+        anchor_shift = self.vertical_anchor_shift(self.shrink_height)
+        if abs(anchor_shift) > 1e-9:
+            self.translate_lines_y(anchor_shift)
+            self._translate_absolute_y(anchor_shift)
         self._translate_columns(x_shift)
         self._translate_columns(self._alignment_column_shift())
         self.updateDrawOffsets()

@@ -16,7 +16,13 @@ from qtpy.QtGui import (
     QTextFrame,
 )
 
-from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, pt2px
+from ballontranslator.utils.fontformat import (
+    FontFormat,
+    LineSpacingType,
+    TextAlignment,
+    TextVerticalAlignment,
+    pt2px,
+)
 from .font_family import qfont_with_family
 from .annotations import letter_spacing_value, line_spacing_values
 
@@ -335,6 +341,72 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
     def reLayoutForResize(self):
         self.reLayout()
+
+    def effective_vertical_alignment(self) -> TextVerticalAlignment:
+        """Resolve ``Auto`` against the writing mode and horizontal alignment.
+
+        Auto reproduces the pre-existing placement: horizontal blocks centre
+        vertically only while their horizontal alignment is centred, while
+        vertical blocks stay top-anchored. Older projects therefore keep their
+        rendering until a block opts into an explicit anchor.
+
+        >>> TextVerticalAlignment.Auto != TextVerticalAlignment.Center
+        True
+        """
+        value = TextVerticalAlignment(
+            getattr(
+                self.fontformat,
+                'vertical_alignment',
+                TextVerticalAlignment.Auto,
+            )
+        )
+        if value is not TextVerticalAlignment.Auto:
+            return value
+        if self.fontformat.vertical:
+            return TextVerticalAlignment.Top
+        if self.fontformat.alignment == TextAlignment.Center:
+            return TextVerticalAlignment.Center
+        return TextVerticalAlignment.Top
+
+    def vertical_anchor_shift(self, content_height: float) -> float:
+        """Return the downward shift that settles content at its anchor.
+
+        Content is laid out from the effect padding, so the free space is the
+        available height minus the settled content height. Centre spends half
+        of it, Bottom all of it, and Top none. Overflow leaves no free space.
+
+        >>> callable(SceneTextLayout.vertical_anchor_shift)
+        True
+        """
+        slack = max(0.0, self.available_height - max(0.0, content_height))
+        anchor = self.effective_vertical_alignment()
+        if anchor is TextVerticalAlignment.Center:
+            return slack / 2
+        if anchor is TextVerticalAlignment.Bottom:
+            return slack
+        return 0.0
+
+    def translate_lines_y(self, y_shift: float) -> None:
+        """Move every settled line without reshaping it or its derived data.
+
+        Callers must shift any absolutely positioned bookkeeping they own and
+        refresh ink bounds afterwards; shaping, wrapping, and draw offsets are
+        expressed relative to line positions and stay valid.
+
+        >>> callable(SceneTextLayout.translate_lines_y)
+        True
+        """
+        if abs(y_shift) <= 1e-9:
+            return
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for number in range(layout.lineCount()):
+                line = layout.lineAt(number)
+                position = line.position()
+                position.setY(position.y() + y_shift)
+                line.setPosition(position)
+            block = block.next()
 
     def block_line_spacing(
         self,

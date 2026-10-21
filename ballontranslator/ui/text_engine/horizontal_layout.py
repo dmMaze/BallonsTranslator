@@ -920,18 +920,12 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
             self.available_height = new_height
             self._emit_size_enlarged()
 
-        if doc.defaultTextOption().alignment() == Qt.AlignmentFlag.AlignCenter:
-            block = doc.firstBlock()
-            y_offset = (self.max_height - new_height) / 2 - doc_margin
-            while block.isValid():
-                tl = block.layout()
-                for ii in range(tl.lineCount()):
-                    line = tl.lineAt(ii)
-                    line_pos = line.position()
-                    line_pos.setY(y_offset + line_pos.y())
-                    line.setPosition(line_pos)
-                block = block.next()
-            self._translate_space_rows_y(y_offset)
+        # Settle the vertical anchor last: wrapping must depend on the content
+        # height, never on where the settled block is placed in the box.
+        anchor_shift = self.vertical_anchor_shift(new_height - doc_margin)
+        if abs(anchor_shift) > 1e-9:
+            self.translate_lines_y(anchor_shift)
+            self._translate_space_rows_y(anchor_shift)
 
         self._refresh_annotation_ink_bounds()
 
