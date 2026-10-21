@@ -12,7 +12,15 @@ from enum import Enum
 from typing import Iterable, List, Optional, Tuple
 
 from qtpy.QtCore import QEvent, QObject, QPoint, Qt
-from qtpy.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
+from qtpy.QtGui import (
+    QColor,
+    QFont,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from qtpy.QtWidgets import QApplication, QToolButton, QWidget
 
 
@@ -181,20 +189,43 @@ class LayerPeekButton(QToolButton):
         super().mouseReleaseEvent(event)
 
 
-def peek_key_map(original: str, inpainted: str) -> dict:
-    """Map Qt key codes to peek modes from the configured shortcut text.
+def _parse_shortcut(text: str):
+    """Turn ``'Ctrl+Tab'`` into a key code and its modifier mask.
 
-    >>> sorted(peek_key_map('Tab', '`').values(), key=lambda m: m.value)
-    [<PeekMode.ORIGINAL: 'original'>, <PeekMode.INPAINTED: 'inpainted'>]
+    >>> _parse_shortcut('Ctrl+Tab')[0] == Qt.Key.Key_Tab
+    True
+    >>> _parse_shortcut('')[0] is None
+    True
+    """
+    text = (text or '').strip()
+    if not text:
+        return None, Qt.KeyboardModifier.NoModifier
+    sequence = QKeySequence(text)
+    if sequence.isEmpty():
+        return None, Qt.KeyboardModifier.NoModifier
+    combined = sequence[0]
+    return int(combined.key()), int(combined.keyboardModifiers().value)
+
+
+def peek_key_map(original: str, inpainted: str) -> dict:
+    """Map (key, modifiers) pairs to peek modes from the configured text.
+
+    >>> modes = peek_key_map('Ctrl+Tab', 'Alt+Tab')
+    >>> sorted(mode.value for mode in modes.values())
+    ['inpainted', 'original']
+    >>> peek_key_map('', '')
+    {}
     """
     modes = {}
-    if original:
-        modes[getattr(Qt.Key, f'Key_{original}', None)] = PeekMode.ORIGINAL
-    if inpainted:
-        value = inpainted
-        name = 'Key_QuoteLeft' if value == '`' else f'Key_{value}'
-        modes[getattr(Qt.Key, name, None)] = PeekMode.INPAINTED
-    return {key: mode for key, mode in modes.items() if key is not None}
+    for text, mode in (
+        (original, PeekMode.ORIGINAL),
+        (inpainted, PeekMode.INPAINTED),
+    ):
+        key, modifiers = _parse_shortcut(text)
+        if key is None:
+            continue
+        modes[(key, int(modifiers))] = mode
+    return modes
 
 
 class PeekKeyFilter(QObject):
@@ -230,7 +261,8 @@ class PeekKeyFilter(QObject):
             return False
         if event.isAutoRepeat():
             return False
-        mode = self.keys.get(event.key())
+        combination = (int(event.key()), int(event.modifiers().value))
+        mode = self.keys.get(combination)
         if mode is None:
             return False
         if not self._canvas_focused():
