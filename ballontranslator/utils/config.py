@@ -450,6 +450,9 @@ class ProgramConfig(Config):
     let_autolayout_flag: bool = True
     # Grow a vertical block's font size to fill its box (opt-in).
     vertical_font_autofit_enabled: bool = False
+    # Automatic font sizes are capped at this multiple of the page's
+    # median size; 0 disables the cap.
+    font_size_outlier_ratio: float = 3.0
     let_letter_case: str = OCRTextPostprocess.NONE
     let_show_only_custom_fonts_flag: bool = False
     let_textstyle_indep_flag: bool = False

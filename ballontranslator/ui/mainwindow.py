@@ -67,6 +67,7 @@ from .text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
     apply_layout_overrides,
+    cap_font_size_outliers,
     normalize_translation_punctuation,
 )
 from .framelesswindow import FramelessWindow, FramelessMoveResize
@@ -2061,6 +2062,12 @@ class MainWindow(mainwindow_cls):
 
                     # Apply the complete global text-transform stack.
                     blk.fontformat.text_transform = gf.text_transform
+
+            # A mis-detected region must not inflate the automatic size.
+            if pcfg.let_fntsize_flag == 0:
+                cap_font_size_outliers(
+                    blk_list, pcfg.font_size_outlier_ratio
+                )
 
             # Settled-layout options follow the same per-property rule as the
             # typography overrides above, so a batch RUN matches a manual change.

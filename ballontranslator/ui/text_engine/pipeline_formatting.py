@@ -121,6 +121,52 @@ def normalize_translation_punctuation(blocks: Sequence[TextBlock]) -> int:
     return changed
 
 
+def cap_font_size_outliers(
+    blocks: Sequence[TextBlock],
+    ratio: float = 3.0,
+) -> int:
+    """Clamp automatic font sizes that a mis-detected box has inflated.
+
+    A detected region far larger than the drawn bubble makes the automatic size
+    fill that region, which can produce sizes many times the page's norm. Every
+    size above ``ratio`` times the page median is pulled down to that bound.
+    ``ratio`` of 0 disables the cap; half or fewer usable sizes also skip it,
+    because a median of one or two values says nothing.
+
+    >>> from ballontranslator.utils.fontformat import FontFormat
+    >>> blocks = [TextBlock(translation='a') for _ in range(3)]
+    >>> for size, block in zip((50.0, 50.0, 400.0), blocks):
+    ...     block.fontformat.font_size = size
+    >>> cap_font_size_outliers(blocks, 3.0)
+    1
+    >>> [block.fontformat.font_size for block in blocks]
+    [50.0, 50.0, 150.0]
+    """
+    if ratio <= 0 or not blocks:
+        return 0
+    sizes = sorted(
+        float(block.fontformat.font_size)
+        for block in blocks
+        if block.fontformat.font_size
+    )
+    if len(sizes) < 3:
+        return 0
+    middle = len(sizes) // 2
+    median = (
+        sizes[middle]
+        if len(sizes) % 2
+        else (sizes[middle - 1] + sizes[middle]) / 2.0
+    )
+    limit = median * ratio
+    changed = 0
+    for block in blocks:
+        size = float(block.fontformat.font_size)
+        if size > limit:
+            block.fontformat.font_size = limit
+            changed += 1
+    return changed
+
+
 def apply_layout_overrides(
     blocks: Sequence[TextBlock],
     global_format: FontFormat,
