@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Optional, Tuple
 
 from qtpy.QtCore import QPoint, QRectF, QSize, Qt
@@ -10,6 +11,61 @@ from qtpy.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from qtpy.QtWidgets import QToolButton, QWidget
 
 DEFAULT_SIZE = 156
+
+
+_icon_cache = {}
+
+
+def _asset_icon(size: int, outline: int) -> QIcon | None:
+    """Rasterise the supplied SVG at ``size`` with an optional white rim."""
+    key = ('asset', size, int(outline))
+    cached = _icon_cache.get(key)
+    if cached is not None:
+        return cached
+    try:
+        from ballontranslator.utils import shared
+        from ballontranslator.ui.layer_peek import _with_white_outline
+    except Exception:
+        return None
+    base = getattr(shared, 'ICON_DIR', '')
+    if not base:
+        return None
+    for suffix in ('.svg', '.png'):
+        candidate = Path(base) / 'page_fit' / f'magnifier{suffix}'
+        if not candidate.is_file():
+            continue
+        supersample = size * 2
+        if suffix == '.svg':
+            from qtpy.QtSvg import QSvgRenderer
+
+            renderer = QSvgRenderer(str(candidate))
+            if not renderer.isValid():
+                continue
+            pixmap = QPixmap(supersample, supersample)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            renderer.render(painter)
+            painter.end()
+        else:
+            pixmap = QPixmap(str(candidate))
+            if pixmap.isNull():
+                continue
+        if outline > 0:
+            icon_pixmap = _with_white_outline(
+                pixmap, max(2, size // 22), size
+            )
+        else:
+            icon_pixmap = pixmap.scaled(
+                size,
+                size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        icon = QIcon(icon_pixmap)
+        _icon_cache[key] = icon
+        return icon
+    return None
 
 
 def make_magnifier_icon(size: int = 44, outline: int = 0) -> QIcon:
@@ -20,6 +76,9 @@ def make_magnifier_icon(size: int = 44, outline: int = 0) -> QIcon:
     >>> isinstance(make_magnifier_icon(64), QIcon)
     True
     """
+    asset = _asset_icon(size, outline)
+    if asset is not None:
+        return asset
     canvas = QPixmap(size, size)
     canvas.fill(Qt.GlobalColor.transparent)
     painter = QPainter(canvas)
