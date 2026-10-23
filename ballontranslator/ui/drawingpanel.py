@@ -668,10 +668,14 @@ class DrawingPanel(Widget):
         self.setObjectName('DrawingPanel')
         self.module_manager: ModuleManager = None
         self.canvas = canvas
+        self.canvas.drawing_panel = self
         self.inpaint_stroke: StrokeImgItem = None
         self.rect_inpaint_dict: dict = None
         self.inpaint_mask_array: np.ndarray = None
         self.extracted_imask_array: np.ndarray = None
+        self._pending_inpaint_timer = QTimer(self)
+        self._pending_inpaint_timer.setSingleShot(True)
+        self._pending_inpaint_timer.timeout.connect(self._execute_pending_inpaint)
 
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
         self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
@@ -1280,11 +1284,17 @@ class DrawingPanel(Widget):
             self.inpaint_stroke = stroke_item
             if self.canvas.gv.ctrl_pressed:
                 return
-            else:
+            has_dragged = getattr(stroke_item, 'has_dragged', False)
+            if has_dragged:
                 self.runInpaint()
+            else:
+                self._pending_inpaint_timer.start(200)
 
     def on_finish_erasing(self, stroke_item: StrokeImgItem):
         stroke_item.finishPainting()
+        if self.canvas.touch_gesture_active:
+            self.canvas.removeItem(stroke_item)
+            return
         # inpainted-erasing logic is essentially the same as inpainting
         if self.currentTool == self.inpaintTool:
             rect, mask, _ = stroke_item.clip(mask_only=True)
@@ -1322,6 +1332,8 @@ class DrawingPanel(Widget):
         
 
     def runInpaint(self, inpaint_dict: dict | None = None) -> None:
+        if hasattr(self, '_pending_inpaint_timer') and self._pending_inpaint_timer.isActive():
+            self._pending_inpaint_timer.stop()
         if self.currentTool is self.inpaintTool and (
             not self.isVisible()
             or self.canvas.image_edit_mode != ImageEditMode.InpaintTool
@@ -1618,8 +1630,25 @@ class DrawingPanel(Widget):
         self.clearInpaintItems()
         return super().hideEvent(e)
 
-    def clearInpaintItems(self) -> None:
+    def cancelPendingInpaint(self) -> bool:
+        canceled = False
+        if hasattr(self, '_pending_inpaint_timer') and self._pending_inpaint_timer.isActive():
+            self._pending_inpaint_timer.stop()
+            canceled = True
+        if self.inpaint_stroke is not None:
+            self.clearInpaintItems()
+            canceled = True
+        return canceled
 
+    def _execute_pending_inpaint(self) -> None:
+        if self.inpaint_stroke is not None and not self.canvas.touch_gesture_active:
+            self.runInpaint()
+        else:
+            self.clearInpaintItems()
+
+    def clearInpaintItems(self) -> None:
+        if hasattr(self, '_pending_inpaint_timer') and self._pending_inpaint_timer.isActive():
+            self._pending_inpaint_timer.stop()
         self.rect_inpaint_dict = None
         self.inpaint_mask_array = None
         if self.inpaint_mask_item is not None:
