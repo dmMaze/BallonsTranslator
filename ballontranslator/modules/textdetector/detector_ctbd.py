@@ -315,7 +315,26 @@ class ImageSlicer:
         which = 1 if a1 >= a2 else 2 if is_contained else 0
         return is_contained, ratio, which
 
-    def merge_overlapping_boxes(self, boxes: np.ndarray, img_h: int) -> np.ndarray:
+    def merge_overlapping_boxes(
+        self,
+        boxes: np.ndarray,
+        img_h: int,
+        seam_bands: List[Tuple[int, int]],
+        edge_tol: float,
+    ) -> np.ndarray:
+        """Drop cross-slice duplicates and rejoin boxes a slice seam cut apart.
+
+        A seam-cut box touches the edge of the slice it came from, so only such
+        pairs are rejoined; neighbouring bubbles on a tall page stay separate.
+
+        >>> slicer = ImageSlicer(LOGGER)
+        >>> bubbles = np.array([[100, 2500, 300, 2700], [100, 2900, 300, 3200]])
+        >>> len(slicer.merge_overlapping_boxes(bubbles, 5000, [(2400, 3000)], 10))
+        2
+        >>> cut = np.array([[100, 2200, 300, 3000], [100, 2950, 300, 3400]])
+        >>> slicer.merge_overlapping_boxes(cut, 5000, [(2400, 3000)], 10).tolist()
+        [[100, 2200, 300, 3400]]
+        """
         if boxes is None or boxes.size < 2:
             return boxes if boxes is not None else np.array([])
         bl = sorted(boxes.tolist(), key=lambda b: b[1])
@@ -356,8 +375,16 @@ class ImageSlicer:
                 a1, a2 = max(0, w1 * (b1[3] - b1[1])), max(0, w2 * (b2[3] - b2[1]))
                 max_a = max(a1, a2)
                 size_ratio = min(a1, a2) / max_a if max_a > 0 else 0.0
+                # bl is sorted by top edge, so b1 is the upper box. Each band is
+                # (top of the lower slice, bottom of the upper slice).
+                at_seam = any(
+                    b1[3] >= e - edge_tol or b2[1] <= s + edge_tol
+                    for s, e in seam_bands
+                    if b1[3] >= s and b2[1] <= e
+                )
                 if (
-                    y_dist < merge_y_dist_pixels
+                    at_seam
+                    and y_dist < merge_y_dist_pixels
                     and x_overlap_ratio > self.merge_iou_threshold
                     and size_ratio > 0.3
                 ):
@@ -392,8 +419,13 @@ class ImageSlicer:
             )
         _, slice_h, eff_h, num_s = self.calculate_slice_params(image.shape)
         all_b, all_t = [], []
+        # Each band is where slice i-1 overlaps slice i: (start of i, end of i-1).
+        seam_bands, prev_end = [], None
         for i in range(num_s):
-            slice_img, start_y, _ = self.get_slice(image, i, eff_h, slice_h)
+            slice_img, start_y, end_y = self.get_slice(image, i, eff_h, slice_h)
+            if prev_end is not None:
+                seam_bands.append((start_y, prev_end))
+            prev_end = end_y
             if slice_img.size == 0:
                 continue
             b_s, t_s = detect_func(slice_img)
@@ -403,9 +435,11 @@ class ImageSlicer:
                 all_t.append(self.adjust_box_coordinates(t_s, start_y))
         cb = np.vstack(all_b) if all_b else np.array([])
         ct = np.vstack(all_t) if all_t else np.array([])
+        # Two pixels of the 640 px model input, measured in image pixels.
+        edge_tol = 2 * slice_h / 640
         return self.merge_overlapping_boxes(
-            cb, image.shape[0]
-        ), self.merge_overlapping_boxes(ct, image.shape[0])
+            cb, image.shape[0], seam_bands, edge_tol
+        ), self.merge_overlapping_boxes(ct, image.shape[0], seam_bands, edge_tol)
 
 
 @register_textdetectors("ctbd")
