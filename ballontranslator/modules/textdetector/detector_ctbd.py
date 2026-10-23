@@ -1,9 +1,10 @@
 # detector_ctbd.py
 import os
 import math
+from logging import Logger
 import cv2
 import numpy as np
-from typing import Tuple, List, Optional, Callable
+from typing import Tuple, List, Optional, Callable, Sequence
 
 from .base import register_textdetectors, TextDetectorBase, TextBlock, DEVICE_SELECTOR, ProjImgTrans
 from ballontranslator.utils.logger import logger as LOGGER
@@ -77,18 +78,24 @@ def adjust_text_line_coordinates(line, x_off, y_off, image_shape):
     )
 
 
-def detect_content_in_bbox(image_crop):
+def detect_content_in_bbox(
+    image_crop: Optional[np.ndarray],
+    text_bounds: Tuple[int, int, int, int],
+) -> List[Tuple[int, int, int, int]]:
+    """Find interior components using text bounds expressed in crop coordinates."""
     if image_crop is None or image_crop.size == 0:
         return []
     gray = cv2.cvtColor(image_crop, cv2.COLOR_BGR2GRAY)
     bboxes = []
+    enclosing_outlines = []
     h_crop, w_crop = image_crop.shape[:2]
+    tx1, ty1, tx2, ty2 = text_bounds
     min_area = 10
     for thresh_type in [cv2.THRESH_BINARY, cv2.THRESH_BINARY_INV]:
         binary = cv2.adaptiveThreshold(
             gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, thresh_type, 11, 2
         )
-        num_labels, _, stats, _ = cv2.connectedComponentsWithStats(
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
             binary, connectivity=8
         )
         for i in range(1, num_labels):
@@ -96,23 +103,66 @@ def detect_content_in_bbox(image_crop):
                 x, y = stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP]
                 bw, bh = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
                 if x > 0 and y > 0 and x + bw < w_crop and y + bh < h_crop:
-                    bboxes.append((x, y, x + bw, y + bh))
-    return bboxes
+                    box = (x, y, x + bw, y + bh)
+                    bboxes.append(box)
+                    # A surrounding outline has no pixels in the text box.
+                    # Bounding extents alone would also reject clipped glyphs.
+                    if x < tx1 and y < ty1 and x + bw > tx2 and y + bh > ty2:
+                        if not np.any(labels[ty1:ty2, tx1:tx2] == i):
+                            # Adaptive thresholding also outlines solid ink.
+                            # A uniform text crop provides no evidence of a
+                            # separate border, so preserve that glyph candidate.
+                            text_gray = gray[ty1:ty2, tx1:tx2]
+                            if text_gray.size and np.ptp(text_gray) > 0:
+                                enclosing_outlines.append(box)
+    if not enclosing_outlines:
+        return bboxes
+    # Drop the enclosing border and its opposite-polarity background, while
+    # retaining glyphs (and glyph interiors) inside the detected text region.
+    return [
+        box for box in bboxes
+        if not any(
+            does_rectangle_fit(outline, box) and does_rectangle_fit(box, text_bounds)
+            for outline in enclosing_outlines
+        )
+    ]
 
 
-def get_inpaint_bboxes(text_bbox_abs, full_image, logger_instance=None):
-    coords = adjust_text_line_coordinates(text_bbox_abs, 0, 10, full_image.shape)
+def get_inpaint_bboxes(
+    text_bbox_abs: Optional[Sequence[int]],
+    full_image: np.ndarray,
+    logger_instance: Optional[Logger] = None,
+) -> List[Tuple[int, int, int, int]]:
+    """Extract text components with context around the detector's box.
+
+    >>> image = np.full((30, 30, 3), 255, np.uint8)
+    >>> image[10:20, 10:20] = 0
+    >>> len(get_inpaint_bboxes([10, 10, 20, 20], image))
+    1
+    """
+    # detect_content_in_bbox drops components touching the crop edge, so a glyph
+    # the model's box clips would be dropped and survive inpainting. Pad both
+    # axes: vertical CJK columns touch their box on the left and right.
+    coords = adjust_text_line_coordinates(text_bbox_abs, 10, 10, full_image.shape)
     if coords is None:
         return []
     x1_crop, y1_crop, x2_crop, y2_crop = coords
     if y1_crop >= y2_crop or x1_crop >= x2_crop:
         return []
     crop_img = full_image[y1_crop:y2_crop, x1_crop:x2_crop]
-    content_bboxes_relative = detect_content_in_bbox(crop_img)
-    return [
-        (x1_crop + lx1, y1_crop + ly1, x1_crop + lx2, y1_crop + ly2)
-        for lx1, ly1, lx2, ly2 in content_bboxes_relative
-    ]
+    tx1, ty1, tx2, ty2 = map(int, text_bbox_abs)
+    content_bboxes_relative = detect_content_in_bbox(
+        crop_img, (tx1 - x1_crop, ty1 - y1_crop, tx2 - x1_crop, ty2 - y1_crop)
+    )
+    regions = []
+    for lx1, ly1, lx2, ly2 in content_bboxes_relative:
+        x1, y1, x2, y2 = x1_crop + lx1, y1_crop + ly1, x1_crop + lx2, y1_crop + ly2
+        # Keep the existing vertical margin, but do not admit unrelated content
+        # solely because the crop now includes horizontal padding.
+        if x2 <= tx1 or x1 >= tx2:
+            continue
+        regions.append((x1, y1, x2, y2))
+    return regions
 
 
 def create_unified_mask(input_mask: np.ndarray, method: str = "hull") -> np.ndarray:
@@ -312,17 +362,43 @@ class ImageSlicer:
         which = 1 if a1 >= a2 else 2 if is_contained else 0
         return is_contained, ratio, which
 
-    def merge_overlapping_boxes(self, boxes: np.ndarray, img_h: int) -> np.ndarray:
+    def merge_overlapping_boxes(
+        self,
+        boxes: np.ndarray,
+        img_h: int,
+        slice_indices: Sequence[int],
+        slice_bounds: Sequence[Tuple[int, int]],
+    ) -> np.ndarray:
+        """Drop cross-slice duplicates and rejoin boxes a slice seam cut apart.
+
+        A seam-cut box touches the edge of the slice it came from, so only such
+        pairs are rejoined; neighbouring bubbles on a tall page stay separate.
+
+        >>> slicer = ImageSlicer(LOGGER)
+        >>> bounds = [(0, 3000), (2400, 5000)]
+        >>> bubbles = np.array([[100, 2500, 300, 2700], [100, 2900, 300, 3200]])
+        >>> len(slicer.merge_overlapping_boxes(bubbles, 5000, [0, 1], bounds))
+        2
+        >>> cut = np.array([[100, 2200, 300, 3000], [100, 2950, 300, 3400]])
+        >>> slicer.merge_overlapping_boxes(cut, 5000, [0, 1], bounds).tolist()
+        [[100, 2200, 300, 3400]]
+        """
         if boxes is None or boxes.size < 2:
             return boxes if boxes is not None else np.array([])
-        bl = sorted(boxes.tolist(), key=lambda b: b[1])
+        # Keep the first/last source slice with each box through stitching.
+        # Duplicate removal keeps only the winning detection's provenance.
+        bl = sorted(
+            [(box, idx, idx) for box, idx in zip(boxes.tolist(), slice_indices)],
+            key=lambda item: item[0][1],
+        )
         merge_y_dist_pixels = self.merge_y_distance_threshold_ratio * img_h
         i = 0
         while i < len(bl):
             j = i + 1
             merged_current = False
             while j < len(bl):
-                b1, b2 = bl[i], bl[j]
+                b1, first1, last1 = bl[i]
+                b2, first2, last2 = bl[j]
                 if b2[1] > b1[3] + merge_y_dist_pixels * 2:
                     break
                 iou = calculate_iou(b1, b2)
@@ -331,7 +407,7 @@ class ImageSlicer:
                     if which_contains == 1:
                         bl.pop(j)
                     else:
-                        bl[i] = b2
+                        bl[i] = bl[j]
                         bl.pop(j)
                         merged_current = True
                         break
@@ -341,7 +417,7 @@ class ImageSlicer:
                         b2[3] - b2[1]
                     )
                     if a2 > a1:
-                        bl[i] = b2
+                        bl[i] = bl[j]
                     bl.pop(j)
                     merged_current = True
                     break
@@ -358,6 +434,32 @@ class ImageSlicer:
                     and x_overlap_ratio > self.merge_iou_threshold
                     and size_ratio > 0.3
                 ):
+                    # Source order can differ from predicted top-edge order.
+                    # Never stitch detections sharing a source slice.
+                    if last1 < first2:
+                        upper, lower, upper_idx, lower_idx = b1, b2, last1, first2
+                    elif last2 < first1:
+                        upper, lower, upper_idx, lower_idx = b2, b1, last2, first1
+                    else:
+                        j += 1
+                        continue
+                    upper_start, upper_end = slice_bounds[upper_idx]
+                    lower_start, lower_end = slice_bounds[lower_idx]
+                    # Two model-input pixels, using each slice's actual height
+                    # (the final slice can be taller or shorter).
+                    upper_tol = 2 * (upper_end - upper_start) / 640
+                    lower_tol = 2 * (lower_end - lower_start) / 640
+                    at_seam = (
+                        upper[3] >= lower_start - upper_tol
+                        and lower[1] <= upper_end + lower_tol
+                        and (
+                            upper[3] >= upper_end - upper_tol
+                            or lower[1] <= lower_start + lower_tol
+                        )
+                    )
+                    if not at_seam:
+                        j += 1
+                        continue
                     merged_box = [
                         min(b1[0], b2[0]),
                         min(b1[1], b2[1]),
@@ -370,17 +472,19 @@ class ImageSlicer:
                         * (merged_box[3] - merged_box[1])
                         <= 3 * max_a
                     ):
-                        bl[i] = merged_box
+                        bl[i] = (merged_box, min(first1, first2), max(last1, last2))
                         bl.pop(j)
                         merged_current = True
                         break
                 j += 1
             if not merged_current:
                 i += 1
-        return np.array(bl) if bl else np.array([])
+        return np.array([item[0] for item in bl]) if bl else np.array([])
 
     def process_slices_for_detection(
-        self, image: np.ndarray, detect_func: Callable
+        self,
+        image: np.ndarray,
+        detect_func: Callable[[np.ndarray], Tuple[np.ndarray, np.ndarray]],
     ) -> Tuple[np.ndarray, np.ndarray]:
         if not self.should_slice(image):
             b, t = detect_func(image)
@@ -389,20 +493,24 @@ class ImageSlicer:
             )
         _, slice_h, eff_h, num_s = self.calculate_slice_params(image.shape)
         all_b, all_t = [], []
+        b_slices, t_slices, slice_bounds = [], [], []
         for i in range(num_s):
-            slice_img, start_y, _ = self.get_slice(image, i, eff_h, slice_h)
+            slice_img, start_y, end_y = self.get_slice(image, i, eff_h, slice_h)
+            slice_bounds.append((start_y, end_y))
             if slice_img.size == 0:
                 continue
             b_s, t_s = detect_func(slice_img)
             if b_s.size > 0:
                 all_b.append(self.adjust_box_coordinates(b_s, start_y))
+                b_slices.extend([i] * len(b_s))
             if t_s.size > 0:
                 all_t.append(self.adjust_box_coordinates(t_s, start_y))
+                t_slices.extend([i] * len(t_s))
         cb = np.vstack(all_b) if all_b else np.array([])
         ct = np.vstack(all_t) if all_t else np.array([])
         return self.merge_overlapping_boxes(
-            cb, image.shape[0]
-        ), self.merge_overlapping_boxes(ct, image.shape[0])
+            cb, image.shape[0], b_slices, slice_bounds
+        ), self.merge_overlapping_boxes(ct, image.shape[0], t_slices, slice_bounds)
 
 
 @register_textdetectors("ctbd")
