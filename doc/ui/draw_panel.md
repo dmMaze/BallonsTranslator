@@ -44,6 +44,49 @@ anchors must not connect to each other, and magic wand must remain outside the
 brush-segment path. Coordinate conversion must agree between mouse events,
 keyboard-driven previews, and committed pixels at every zoom level.
 
+Magic Wand selects a region from image colors at one click. Circle and Rectangle
+Brush share **Mask Region Mode**, which replaces the independent Flood Fill
+shape. `DrawPanelConfig` migrates its old saved shape value to Circle Brush with
+region mode enabled; older settings default to the normal brush mode.
+
+A bare Shift press in the drawing window toggles region mode once, including
+after focus moves to the page list or brush controls. TitleBar routes it through
+the existing main-window hook with the same window scope as P/T shortcuts;
+DrawingPanel ignores requests when inpaint brushes are inactive or hidden.
+Text editors, other windows, popups, and modal dialogs keep their normal input.
+Key release and key auto-repeat do not toggle it. Ctrl+Shift retains the ordinary
+inpaint line shortcut outside
+region mode. Toggling the mode sets displayed mask opacity to 20%, without
+changing mask pixels or export alpha. The checkbox exposes the same state and
+is disabled during a submitted inpaint operation.
+
+`MaskRegionIndex` indexes four-connected on/off components from a mask snapshot
+in the selection-preview worker. Hover reads the component under the pointer;
+active strokes contribute only dirty brush rectangles and accumulate touched
+component IDs. Circle and Rectangle use their normal footprints; rectangle
+region strokes sweep the tip through each segment so the latest endpoint and
+intervening regions are included. The preview item is a control guide excluded
+from exports. Page/mask updates invalidate the index and outstanding previews;
+mode exit and hiding release the index, and cancelled gestures do not recreate
+a preview until the pointer moves again.
+
+The live brush stroke remains visible above the component preview and is
+excluded from export. Region cursor icons sit beyond the brush footprint's
+bottom-right corner; the hotspot remains at the footprint center.
+
+| Region operation | Preview and commit contract |
+| --- | --- |
+| Hover over mask-off | Magic-wand addition color and a bucket cursor. |
+| Hover over mask-on | Orange deletion preview and a bucket cursor. |
+| Left-button stroke | Addition preview includes every touched mask-off component. Ctrl retains completed strokes until release submits inpainting. |
+| Right-button stroke | Deletion preview includes every touched mask-on component. Release restores their original pixels and clears their mask through canvas undo. |
+| Any added component touches any page edge | Reject the entire accumulated addition. Show only rejected components with a red rejection color and prohibition cursor and highlight the responsible page edges; submit no inference or partial edit. |
+
+Button press fixes the preview operation. Cursor feedback follows the hovered
+pixel; addition on mask-on and clearing on mask-off hide the operation icon. Switching direction discards incompatible accumulated
+strokes. Preview and submission use the same component and edge rules, and a
+submission reuses the available index for the matching source snapshot.
+
 ## Asynchronous work
 
 Drawing requests use their own inpainter/profile selection while sharing module
@@ -96,6 +139,7 @@ failure paths when changing drawing pixels or render state.
 | Stroke cleanup and cursor handoff | `tests/test_canvas_stroke_lifecycle.py`, `tests/test_canvas_cursor_lifecycle.py` |
 | Inpaint scheduling and drawing profiles | `tests/test_canvas_inpaint_lifecycle.py`, `tests/test_drawing_inpainter.py` |
 | Wand selection and preview lifetime | `tests/test_inpaint_magic_wand.py`, `tests/test_magic_wand_canvas.py` |
+| Mask Region Mode, preview and component editing | `tests/test_mask_region_mode.py`, `tests/test_inpaint_magic_wand.py` |
 | Configuration and save/export | `tests/test_drawpanel_config.py`, `tests/test_editing_layer_opacity.py` |
 
 Shared scene-event changes also need coverage for path ordering, text alpha-mask

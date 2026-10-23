@@ -1045,6 +1045,10 @@
         <source>Shape Erase</source>
         <translation>도형 지우기</translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>Shift 키를 눌러 마스크 영역 모드를 전환합니다. Ctrl 키를 누른 상태에서 브러시 획을 연속으로 추가하고, Ctrl 키를 떼면 인페인트를 실행합니다.</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -2292,6 +2296,20 @@
     <message>
         <source>Inpainter</source>
         <translation type="vanished">인페인터</translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>마스크 영역 모드</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>마스크의 연결된 영역을 채우거나 지웁니다.
+모드 전환: Shift
+채우기: 왼쪽 버튼으로 드래그; 지우기: 오른쪽 버튼으로 드래그.
+이미지 가장자리에 닿는 영역은 채울 수 없습니다.</translation>
     </message>
 </context>
 <context>

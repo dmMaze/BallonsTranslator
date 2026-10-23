@@ -2350,6 +2350,11 @@ class ModuleManager(QObject):
             if request is not None:
                 self.canvas_inpaint_failed.emit()
 
+    def cancel_canvas_inpaint(self) -> None:
+        """Discard manual drawing requests while their native worker finishes."""
+        self._pending_canvas_inpaint = None
+        self._canvas_inpaint_request = None
+
     def _canvas_inpaint_source_matches(self, request: dict) -> bool:
         source = request['source']
         if source is not self.imgtrans_proj.inpainted_array:
@@ -2358,6 +2363,11 @@ class ModuleManager(QObject):
         if rect is not None:
             x1, y1, x2, y2 = rect
             source = source[y1:y2, x1:x2]
+            snapshot = request.get('source_mask')
+            if snapshot is not None:
+                mask = self.imgtrans_proj.mask_array
+                if mask is None or not np.array_equal(mask[y1:y2, x1:x2], snapshot):
+                    return False
         # Undo/redo can edit the same array. Ignore changes outside this crop.
         return np.array_equal(source, request['img'])
 
@@ -2403,6 +2413,11 @@ class ModuleManager(QObject):
             'profile': profile,
             'use_mask': use_mask,
         }
+        mask = self.imgtrans_proj.mask_array
+        rect = inpaint_dict.get('inpaint_rect')
+        if mask is not None and rect is not None:
+            x1, y1, x2, y2 = rect
+            self._pending_canvas_inpaint['source_mask'] = mask[y1:y2, x1:x2].copy()
         self._continue_canvas_inpaint()
 
     def _continue_canvas_inpaint(self) -> None:
@@ -2440,6 +2455,7 @@ class ModuleManager(QObject):
         self._canvas_inpaint_request = inpaint_dict
         worker_request = dict(inpaint_dict)
         worker_request.pop('source')
+        worker_request.pop('source_mask', None)
         worker_request.pop('inpainter')
         # Native modules may edit their input; keep the comparison snapshot intact.
         worker_request['img'] = inpaint_dict['img'].copy()

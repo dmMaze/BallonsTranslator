@@ -1067,6 +1067,10 @@
         <source>Mask Transparency</source>
         <translation>Maszk átlátszóság</translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>A Shift billentyűvel válthatsz a maszkterület módra és vissza. Tartsd lenyomva a Ctrl billentyűt az ecsetvonások halmozásához; engedd fel a képretusálás indításához.</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -2321,6 +2325,20 @@
     <message>
         <source>pen thickness </source>
         <translation>ceruza vastagság</translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>Maszkterület mód</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>A maszk összefüggő területeinek kitöltése vagy törlése.
+Váltás: Shift
+Kitöltés: húzás a bal egérgombbal; törlés: húzás a jobb egérgombbal.
+A kép szélét érintő területek nem tölthetők ki.</translation>
     </message>
 </context>
 <context>

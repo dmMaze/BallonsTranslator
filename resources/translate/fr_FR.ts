@@ -301,6 +301,10 @@
         <source>Mask Opacity</source>
         <translation>Opacité du masque</translation>
     </message>
+    <message>
+        <source>Press Shift to toggle Mask Region Mode. Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.</source>
+        <translation>Appuyez sur Maj pour basculer le mode des régions du masque. Maintenez Ctrl pour cumuler les coups de pinceau ; relâchez Ctrl pour lancer la retouche.</translation>
+    </message>
 </context>
 <context>
     <name>ExportDocThread</name>
@@ -554,6 +558,20 @@
         <location filename="../ui/drawingpanel.py" line="92" />
         <source>Inpainter</source>
         <translation>Retoucheur</translation>
+    </message>
+    <message>
+        <source>Mask Region Mode</source>
+        <translation>Mode des régions du masque</translation>
+    </message>
+    <message>
+        <source>Fill or clear connected mask regions.
+Toggle: Shift
+Fill: left-drag; clear: right-drag.
+Regions touching an image edge cannot be filled.</source>
+        <translation>Remplir ou effacer les régions connexes du masque.
+Basculer : Maj
+Remplir : glisser avec le bouton gauche ; effacer : glisser avec le bouton droit.
+Les régions touchant un bord de l’image ne peuvent pas être remplies.</translation>
     </message>
 </context>
 <context>
