@@ -97,6 +97,11 @@ class CustomGV(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setMouseTracking(True)
 
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.ctrl_pressed = True
+        return super().mousePressEvent(event)
+
     def viewportEvent(self, event: QEvent) -> bool:
         canvas = self.canvas
         if canvas is not None and canvas._brush_anchor is not None and event.type() == QEvent.Type.Leave:
@@ -1323,6 +1328,8 @@ class Canvas(QGraphicsScene):
         return self.gv.mapToScene(origin)
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self.gv.ctrl_pressed = True
         btn = event.button()
         if self.text_move_session.handle_mouse_press(event):
             event.accept()
