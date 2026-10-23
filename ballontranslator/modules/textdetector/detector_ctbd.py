@@ -101,7 +101,10 @@ def detect_content_in_bbox(image_crop):
 
 
 def get_inpaint_bboxes(text_bbox_abs, full_image, logger_instance=None):
-    coords = adjust_text_line_coordinates(text_bbox_abs, 0, 10, full_image.shape)
+    # detect_content_in_bbox drops components touching the crop edge, so a glyph
+    # the model's box clips would be dropped and survive inpainting. Pad both
+    # axes: vertical CJK columns touch their box on the left and right.
+    coords = adjust_text_line_coordinates(text_bbox_abs, 10, 10, full_image.shape)
     if coords is None:
         return []
     x1_crop, y1_crop, x2_crop, y2_crop = coords
