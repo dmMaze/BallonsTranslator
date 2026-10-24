@@ -152,7 +152,11 @@ class InpainterBase(BaseModule):
                     inpaint_thresh = 7 if np.std(std_rgb) > 1 else 10
                     if std_max < inpaint_thresh:
                         result_rgb = img_rgb.copy()
-                        result_rgb[np.where(ballon_msk > 0)] = average_bg_color
+                        # The shortcut may only replace pixels inside the repair
+                        # mask. A semi-transparent balloon can still pass the
+                        # uniformity test, and filling the whole balloon would
+                        # erase the background visible through it.
+                        result_rgb[np.where(mask > 127)] = average_bg_color
                         # Recombine with alpha if original was RGBA
                         if original_alpha is not None:
                             return np.concatenate([result_rgb, original_alpha], axis=2)
@@ -187,7 +191,9 @@ class InpainterBase(BaseModule):
                         inpaint_thresh = 7 if np.std(std_rgb) > 1 else 10
                         if std_max < inpaint_thresh:
                             need_inpaint = False
-                            im[np.where(ballon_msk > 0)] = average_bg_color
+                            # Same invariant as the full-image branch: the
+                            # skip-simple-cases fill must stay inside the mask.
+                            im[np.where(msk > 127)] = average_bg_color
                         # cv2.imshow('im', im)
                         # cv2.imshow('ballon', ballon_msk)
                         # cv2.imshow('non_text', non_text_msk)
