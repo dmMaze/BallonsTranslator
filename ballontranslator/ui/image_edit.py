@@ -15,7 +15,8 @@ class ImageEditMode:
     HandTool = 0
     InpaintTool = 1
     PenTool = 2
-    RectTool = 3
+    SelectionTool = 3
+    RectTool = SelectionTool  # Preserve the saved tool ID and extension compatibility.
     ShapeFillTool = 4
 
 

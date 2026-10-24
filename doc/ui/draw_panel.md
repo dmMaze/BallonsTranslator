@@ -44,6 +44,34 @@ anchors must not connect to each other, and magic wand must remain outside the
 brush-segment path. Coordinate conversion must agree between mouse events,
 keyboard-driven previews, and committed pixels at every zoom level.
 
+The Selection Tool uses Rectangle, Lasso, and Polygon gestures owned by
+`Canvas`. Gestures produce page-local geometry; `DrawingPanel` rasterizes
+non-rectangular selections into the same cropped-mask request as rectangles.
+Edge Extraction, Threshold Segmentation, and Use Existing Mask retain method
+IDs 0, 1, and 2. The saved `rectool_*`/`recttool_*` preferences and tool ID 3
+remain compatible; `selection_shape` defaults to `rectangle` for older settings.
+
+Selection boundaries clip extracted masks before and after morphology and clip
+background-fill regions. Restoration and completed backend results affect only
+selected pixels, including requests without mask extraction. Outside pixels
+and existing masks survive replacement/erosion inside the crop. The scheduler
+freezes the selection boundary with its source snapshot and returns it to the
+drawing owner without passing it to backend APIs.
+
+Selection-mask post-processing uses a signed radius only in Use Existing Mask
+mode. Its values down to `-25` erode the selected mask, and an erosion may remove
+it completely. The other mask methods accept only zero or positive dilation.
+When Existing Mask erosion removes pixels, the corresponding inpainted pixels
+return to the original image; the final mask replaces the old mask inside the
+selection.
+
+Polygon drafts retain confirmed vertices separately from the hover endpoint.
+Only the initiating button may extend/finish a gesture; a polygon can close at
+its first vertex, on double-click, or on Enter. Escape, tool/shape changes,
+history, hiding/deactivation, and page replacement discard drafts. Selection
+guides carry `CONTROL_ITEM_DATA_KEY` and are excluded from exports. Shape
+selection is disabled during submitted inference and restored on completion.
+
 ## Asynchronous work
 
 Drawing requests use their own inpainter/profile selection while sharing module
@@ -93,6 +121,7 @@ failure paths when changing drawing pixels or render state.
 | Area | Tests |
 | --- | --- |
 | Brush and shape gestures | `tests/test_brush_lines.py`, `tests/test_shape_fill.py` |
+| Selection gestures, bounds, cancellation, compositing and undo | `tests/test_selection_tool.py` |
 | Stroke cleanup and cursor handoff | `tests/test_canvas_stroke_lifecycle.py`, `tests/test_canvas_cursor_lifecycle.py` |
 | Inpaint scheduling and drawing profiles | `tests/test_canvas_inpaint_lifecycle.py`, `tests/test_drawing_inpainter.py` |
 | Wand selection and preview lifetime | `tests/test_inpaint_magic_wand.py`, `tests/test_magic_wand_canvas.py` |

@@ -301,6 +301,10 @@
         <source>Mask Opacity</source>
         <translation>Opacité du masque</translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>Outil de sélection</translation>
+    </message>
 </context>
 <context>
     <name>ExportDocThread</name>
@@ -944,16 +948,6 @@ Tous les résultats de traduction existants seront effacés !</translation>
     </message>
     <message>
         <location filename="../ui/drawingpanel.py" line="204" />
-        <source>method 1</source>
-        <translation>méthode 1</translation>
-    </message>
-    <message>
-        <location filename="../ui/drawingpanel.py" line="204" />
-        <source>method 2</source>
-        <translation>Méthode n ° 2</translation>
-    </message>
-    <message>
-        <location filename="../ui/drawingpanel.py" line="204" />
         <source>Use Existing Mask</source>
         <translation>Utiliser existante</translation>
     </message>
@@ -991,6 +985,76 @@ Tous les résultats de traduction existants seront effacés !</translation>
         <location filename="../ui/drawingpanel.py" line="224" />
         <source>Inpainter</source>
         <translation>Retoucheur</translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>Les valeurs négatives réduisent le masque ; les valeurs positives l’agrandissent.</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>Les valeurs positives agrandissent le masque.</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>Rectangle</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>Lasso</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>Polygone</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>Aide à la sélection</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Faites glisser pour créer une sélection rectangulaire (bouton droit : restaurer l’image originale).
+Annuler : Échap</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Faites glisser pour créer une sélection au lasso (bouton droit : restaurer l’image originale).
+Annuler : Échap</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>Cliquez sur les sommets pour créer une sélection polygonale (bouton droit : restaurer l’image originale).
+Annuler : Échap
+Retirer le dernier sommet : Retour arrière
+Valider : Double-cliquez, cliquez sur le premier sommet ou appuyez sur Entrée.</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation>Utiliser le masque</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>Si cette option est décochée, toute la sélection est remplacée sans extraction du masque.</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Sélection</translation>
+    </message>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation>Activez « Utiliser le masque » pour modifier la méthode du masque et la dilatation.</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>Méthode 1 : Extraction des contours</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>Méthode 2 : Segmentation par seuil</translation>
     </message>
 </context>
 <context>

@@ -1561,6 +1561,8 @@ class MainWindow(mainwindow_cls):
         edit.setTextCursor(cursor)
 
     def shortcutEscape(self) -> None:
+        if self.canvas.cancel_selection():
+            return
         if self.canvas.cancel_shape_fill():
             return
         if self.canvas.reset_brush_line():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
 from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
-from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
+from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage, QPainterPath
 
 from typing import Union, Tuple, List
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -26,7 +26,7 @@ from .llm_modality import LLM_MODALITY_IMAGE
 from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_fill_image
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
 from .canvas import Canvas
-from .misc import ndarray2pixmap, themed_icon_path
+from .misc import ndarray2pixmap, pixmap2ndarray, themed_icon_path
 from ballontranslator.utils.config import DrawPanelConfig, pcfg
 from ballontranslator.utils.llm_profiles import LLMProfile, LLM_INPAINT_KEY, profile_by_id
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
@@ -40,6 +40,51 @@ MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
 MAGICWAND_TOLERANCE_MAX = 255
 MAGICWAND_RANGE_LIMIT = 50
+
+RECT_MASK_MORPH_MIN = -25
+RECT_MASK_MORPH_MAX = 100
+
+
+def _morph_rectangle_mask(mask: np.ndarray, radius: int) -> np.ndarray:
+    """Dilate for positive radii and erode for negative radii.
+
+    >>> mask = np.zeros((5, 5), np.uint8); mask[1:4, 1:4] = 255
+    >>> int(_morph_rectangle_mask(mask, -1).sum())
+    255
+    >>> bool(_morph_rectangle_mask(mask, -2).any())
+    False
+    """
+    if radius == 0:
+        return mask
+    kernel_radius = abs(radius)
+    element = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE,
+        (2 * kernel_radius + 1, 2 * kernel_radius + 1),
+        (kernel_radius, kernel_radius),
+    )
+    operation = cv2.dilate if radius > 0 else cv2.erode
+    return operation(mask, element)
+
+
+def _restore_removed_mask_pixels(
+    inpainted: np.ndarray,
+    original: np.ndarray,
+    previous_mask: np.ndarray,
+    new_mask: np.ndarray,
+) -> np.ndarray:
+    """Restore original pixels where replacement removes an existing mask.
+
+    >>> current = np.full((2, 2, 3), 9, np.uint8)
+    >>> original = np.zeros_like(current)
+    >>> old = np.array([[255, 255], [0, 0]], np.uint8)
+    >>> new = np.array([[0, 255], [0, 0]], np.uint8)
+    >>> _restore_removed_mask_pixels(current, original, old, new)[0, :, 0].tolist()
+    [0, 9]
+    """
+    restored = np.copy(inpainted)
+    removed = (previous_mask > 0) & (new_mask == 0)
+    restored[removed] = original[removed]
+    return restored
 
 
 def _magic_wand_preview(
@@ -564,6 +609,8 @@ class ShapeFillPanel(Widget):
 
 
 class RectPanel(Widget):
+    # Keep the translation context and saved rectangle settings for older installs.
+    shape_changed = Signal()
     dilate_ksize_changed = Signal()
     mask_changed = Signal()
     delete_btn_clicked = Signal()
@@ -571,23 +618,55 @@ class RectPanel(Widget):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
+        self.shapeComboBox = QComboBox()
+        self.shapeComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
+        self.shapeComboBox.addItem(self.tr('Rectangle'), 'rectangle')
+        self.shapeComboBox.addItem(self.tr('Lasso'), 'lasso')
+        self.shapeComboBox.addItem(self.tr('Polygon'), 'polygon')
+        self.shapeComboBox.setCurrentIndex(self.shapeComboBox.findData(pcfg.drawpanel.selection_shape))
+        self.selection_help = QToolButton()
+        self.selection_help.setObjectName('SelectionHelpButton')
+        self.selection_help.setText('?')
+        self.selection_help.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.selection_help.setAccessibleName(self.tr('Selection Help'))
+        self._selection_tooltips = {
+            'rectangle': self.tr(
+                'Drag to create a rectangle selection (right button: restore original image).\n'
+                'Cancel: Esc'
+            ),
+            'lasso': self.tr(
+                'Drag to create a lasso selection (right button: restore original image).\n'
+                'Cancel: Esc'
+            ),
+            'polygon': self.tr(
+                'Click vertices to create a polygon selection (right button: restore original image).\n'
+                'Cancel: Esc\n'
+                'Undo last vertex: Backspace\n'
+                'Submit: Double-click, click the first vertex, or press Enter.'
+            ),
+        }
+        self.selection_help.setToolTip(self._selection_tooltips[self.shapeComboBox.currentData()])
+        self.shapeComboBox.currentIndexChanged.connect(self.on_selection_shape_changed)
         self.dilate_label = ToolNameLabel(100, self.tr('Dilate'))
         self.dilate_slider = PaintQSlider()
-        self.dilate_slider.setRange(0, 100)
+        self.dilate_slider.setRange(0, RECT_MASK_MORPH_MAX)
         self.dilate_slider.valueChanged.connect(self.dilate_ksize_changed)
         self.methodComboBox = QComboBox()
         self.methodComboBox.setFixedHeight(CONFIG_COMBOBOX_HEIGHT)
-        self.methodComboBox.setFixedWidth(CONFIG_COMBOBOX_SHORT)
+        self.methodComboBox.setMinimumWidth(CONFIG_COMBOBOX_SHORT)
+        # Bound the content hint so long localized names do not widen the
+        # shared tool stack. Qt sizes the opened list to its full contents.
+        self.methodComboBox.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.methodComboBox.setMinimumContentsLength(16)
         self.methodComboBox.addItems([
-            self.tr('method 1'), 
-            self.tr('method 2'),
+            self.tr('Method 1: Edge Extraction'),
+            self.tr('Method 2: Threshold Segmentation'),
             self.tr('Use Existing Mask')
         ])
         self.methodComboBox.activated.connect(self.on_inpaint_seg_method_changed)
         self.use_mask_checker = QCheckBox(self.tr('Use mask'))
         self.use_mask_checker.setToolTip(self.tr(
-            'When unchecked, LLM inpainters receive no mask and the entire rectangle is replaced. '
-            'Local inpainters treat the entire rectangle as masked.'
+            'When unchecked, the whole selection is replaced without mask extraction.'
         ))
         self.use_mask_checker.setChecked(pcfg.drawpanel.rectool_use_mask)
         self.use_mask_checker.toggled.connect(self.on_use_mask_changed)
@@ -608,11 +687,22 @@ class RectPanel(Widget):
         self.inpainter_selector = InpainterSelectorRow(self)
 
         glayout = QGridLayout()
-        glayout.addWidget(self.dilate_label, 0, 0)
-        glayout.addWidget(self.dilate_slider, 0, 1)
-        glayout.addWidget(self.autoChecker, 1, 0)
-        glayout.addWidget(self.methodComboBox, 1, 1)
-        glayout.addWidget(self.use_mask_checker, 2, 0, 1, 2)
+        selection_label = QHBoxLayout()
+        selection_label.setContentsMargins(0, 0, 0, 0)
+        selection_label.setSpacing(3)
+        selection_text = ToolNameLabel(70, self.tr('Selection'))
+        selection_text.setMinimumWidth(0)
+        selection_text.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+        selection_label.addWidget(selection_text)
+        selection_label.addWidget(self.selection_help)
+        selection_label.addStretch()
+        glayout.addLayout(selection_label, 0, 0)
+        glayout.addWidget(self.shapeComboBox, 0, 1)
+        glayout.addWidget(self.dilate_label, 1, 0)
+        glayout.addWidget(self.dilate_slider, 1, 1)
+        glayout.addWidget(self.autoChecker, 2, 0)
+        glayout.addWidget(self.methodComboBox, 2, 1)
+        glayout.addWidget(self.use_mask_checker, 3, 0, 1, 2)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
@@ -622,9 +712,23 @@ class RectPanel(Widget):
         layout.addLayout(self.btnlayout)
         layout.setSpacing(14)
 
+    def on_selection_shape_changed(self) -> None:
+        pcfg.drawpanel.selection_shape = self.shapeComboBox.currentData()
+        self.selection_help.setToolTip(self._selection_tooltips[pcfg.drawpanel.selection_shape])
+        self.shape_changed.emit()
+
     def on_inpaint_seg_method_changed(self) -> None:
+        self.sync_dilate_range()
         pcfg.drawpanel.rectool_method = self.methodComboBox.currentIndex()
         self.mask_changed.emit()
+
+    def sync_dilate_range(self) -> None:
+        existing_mask = self.methodComboBox.currentIndex() == 2
+        self.dilate_slider.setMinimum(RECT_MASK_MORPH_MIN if existing_mask else 0)
+        if self.use_mask_checker.isChecked():
+            tooltip = self.tr('Negative values shrink the mask; positive values expand it.') if existing_mask else self.tr('Positive values expand the mask.')
+            self.dilate_label.setToolTip(tooltip)
+            self.dilate_slider.setToolTip(tooltip)
 
     def on_use_mask_changed(self) -> None:
         use_mask = self.use_mask_checker.isChecked()
@@ -633,6 +737,7 @@ class RectPanel(Widget):
         for control in (self.dilate_label, self.dilate_slider, self.methodComboBox):
             control.setEnabled(use_mask)
             control.setToolTip(hint)
+        self.sync_dilate_range()
         self.mask_changed.emit()
 
     def on_auto_changed(self):
@@ -648,14 +753,11 @@ class RectPanel(Widget):
     def auto(self) -> bool:
         return self.autoChecker.isChecked()
 
-    def post_process_mask(self, mask: np.ndarray) -> np.ndarray:
+    def post_process_mask(self, mask: np.ndarray) -> np.ndarray | None:
+        """Expand or shrink the selected mask by the configured radius."""
         if mask is None:
             return None
-        ksize = self.dilate_slider.value()
-        if ksize == 0:
-            return mask
-        element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1),(ksize, ksize))
-        return cv2.dilate(mask, element)
+        return _morph_rectangle_mask(mask, self.dilate_slider.value())
 
 
 class DrawingPanel(Widget):
@@ -672,6 +774,8 @@ class DrawingPanel(Widget):
         self.rect_inpaint_dict: dict = None
         self.inpaint_mask_array: np.ndarray = None
         self.extracted_imask_array: np.ndarray = None
+        self._replace_inpaint_mask_on_finish = False
+        self._replace_inpaint_mask_source: np.ndarray | None = None
 
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
         self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
@@ -709,6 +813,7 @@ class DrawingPanel(Widget):
         canvas.end_scale_tool.connect(self.on_end_scale_tool)
         canvas.scalefactor_changed.connect(self.on_canvas_scalefactor_changed)
         canvas.end_create_rect.connect(self.on_end_create_rect)
+        canvas.end_create_selection.connect(self.on_end_create_rect)
         canvas.end_create_shape_fill.connect(self.fill_shape)
         canvas.magic_wand_clicked.connect(self.on_magic_wand_clicked)
         canvas.magic_wand_hover.connect(self.on_magic_wand_hover)
@@ -733,9 +838,11 @@ class DrawingPanel(Widget):
 
         self.rectTool = DrawToolCheckBox()
         self.rectTool.setObjectName("DrawRectTool")
+        self.rectTool.setToolTip(self.tr('Selection Tool'))
         self.rectTool.checked.connect(self.on_use_recttool)
         self.rectTool.stateChanged.connect(self.on_rectchecker_changed)
         self.rectPanel = RectPanel()
+        self.rectPanel.shape_changed.connect(self.on_selection_shape_changed)
         self.rectPanel.inpaint_btn_clicked.connect(self.on_rect_inpaintbtn_clicked)
         self.rectPanel.delete_btn_clicked.connect(self.on_rect_deletebtn_clicked)
         self.rectPanel.dilate_ksize_changed.connect(self.on_rectool_ksize_changed)
@@ -1106,10 +1213,10 @@ class DrawingPanel(Widget):
         if self.currentTool is not None and self.currentTool != self.rectTool:
             self.currentTool.setChecked(False)
         self.currentTool = self.rectTool
-        pcfg.drawpanel.current_tool = ImageEditMode.RectTool
+        pcfg.drawpanel.current_tool = ImageEditMode.SelectionTool
         self.toolConfigStackwidget.setCurrentWidget(self.rectPanel)
         self.canvas.gv.setDragMode(QGraphicsView.DragMode.NoDrag)
-        self.canvas.image_edit_mode = ImageEditMode.RectTool
+        self.canvas.image_edit_mode = ImageEditMode.SelectionTool
         self.setCrossCursor()
         self._sync_magic_wand_hover_tracking()
 
@@ -1151,9 +1258,11 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel.rangeSlider.setValue(config.magicwand_range)
         self.inpaintConfigPanel.set_fill_mode(config.magicwand_fill_mode)
         
-        self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.autoChecker.setChecked(config.rectool_auto)
+        self.rectPanel.shapeComboBox.setCurrentIndex(self.rectPanel.shapeComboBox.findData(config.selection_shape))
         self.rectPanel.methodComboBox.setCurrentIndex(config.rectool_method)
+        self.rectPanel.sync_dilate_range()
+        self.rectPanel.dilate_slider.setValue(config.recttool_dilate_ksize)
         self.rectPanel.use_mask_checker.setChecked(config.rectool_use_mask)
         self.shapePanel.shapeCombobox.setCurrentIndex(
             self.shapePanel.shapeCombobox.findData(config.shape_fill_shape)
@@ -1169,7 +1278,7 @@ class DrawingPanel(Widget):
             self.inpaintTool.setChecked(True)
         elif config.current_tool == ImageEditMode.PenTool:
             self.penTool.setChecked(True)
-        elif config.current_tool == ImageEditMode.RectTool:
+        elif config.current_tool == ImageEditMode.SelectionTool:
             self.rectTool.setChecked(True)
         elif config.current_tool == ImageEditMode.ShapeFillTool:
             self.shapeTool.setChecked(True)
@@ -1212,7 +1321,7 @@ class DrawingPanel(Widget):
                 raise NotImplementedError
             # elif shape == PenShape.Triangle:
                 # painter.drawPolygon
-        cross_left = (map_size  - 1 - cross_size) // 2 
+        cross_left = (map_size  - 1 - cross_size) // 2
         cross_right = map_size - cross_left
 
         pen = QPen(Qt.GlobalColor.white, 5, Qt.PenStyle.SolidLine)
@@ -1359,13 +1468,61 @@ class DrawingPanel(Widget):
         self.canvas.image_edit_mode = ImageEditMode.NONE
         self._sync_magic_wand_hover_tracking()
         self.canvas.set_canvas_cursor(Qt.CursorShape.WaitCursor)
+        if self.currentTool is self.rectTool:
+            self.rectPanel.shapeComboBox.setEnabled(False)
+        self._replace_inpaint_mask_on_finish = bool(
+            inpaint_dict.get('replace_existing_mask', False)
+        )
+        self._replace_inpaint_mask_source = None
+        if self._replace_inpaint_mask_on_finish:
+            x1, y1, x2, y2 = inpaint_dict['inpaint_rect']
+            self._replace_inpaint_mask_source = np.copy(
+                self.canvas.imgtrans_proj.mask_array[y1:y2, x1:x2]
+            )
         self.module_manager.canvas_inpaint(inpaint_dict)
 
     def on_inpaint_finished(self, inpaint_dict: dict) -> None:
         inpainted = inpaint_dict['inpainted']
         inpaint_rect = inpaint_dict['inpaint_rect']
-        mask_array = self.canvas.imgtrans_proj.mask_array
-        mask = cv2.bitwise_or(inpaint_dict['mask'], mask_array[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]])
+        selection_mask = inpaint_dict.get('selection_mask')
+        incoming_mask = inpaint_dict['mask']
+        if selection_mask is not None:
+            x1, y1, x2, y2 = inpaint_rect
+            # A backend (including an unmasked LLM request) may return a whole
+            # crop. The selection owns the final edit, independently of it.
+            outside = selection_mask == 0
+            inpainted = inpainted.copy()
+            inpainted[outside] = self.canvas.imgtrans_proj.inpainted_array[y1:y2, x1:x2][outside]
+            incoming_mask = cv2.bitwise_and(incoming_mask, selection_mask)
+        if self._replace_inpaint_mask_on_finish:
+            mask = incoming_mask
+            x1, y1, x2, y2 = inpaint_rect
+            current_mask = self.canvas.imgtrans_proj.mask_array[y1:y2, x1:x2]
+            if not np.array_equal(current_mask, self._replace_inpaint_mask_source):
+                LOGGER.info(
+                    'Draw inpaint result discarded: source mask changed, rectangle=%s',
+                    inpaint_rect,
+                )
+                self._finish_inpaint()
+                return
+            if selection_mask is not None:
+                mask = np.where(selection_mask > 0, mask, current_mask)
+            original = self.canvas.imgtrans_proj.img_array[y1:y2, x1:x2]
+            inpainted = _restore_removed_mask_pixels(
+                inpainted,
+                original,
+                current_mask,
+                mask,
+            )
+        else:
+            mask_array = self.canvas.imgtrans_proj.mask_array
+            mask = cv2.bitwise_or(
+                incoming_mask,
+                mask_array[
+                    inpaint_rect[1]:inpaint_rect[3],
+                    inpaint_rect[0]:inpaint_rect[2],
+                ],
+            )
         self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, inpainted, mask, inpaint_rect))
         self._finish_inpaint()
 
@@ -1374,6 +1531,9 @@ class DrawingPanel(Widget):
 
     def _finish_inpaint(self) -> None:
         self.clearInpaintItems()
+        self.rectPanel.shapeComboBox.setEnabled(True)
+        self._replace_inpaint_mask_on_finish = False
+        self._replace_inpaint_mask_source = None
         # Completion may arrive after the user hid the drawing panel or
         # switched tools. Only restore the tool that is still active.
         if self.isVisible() and self.canvas.drawMode():
@@ -1381,7 +1541,7 @@ class DrawingPanel(Widget):
                 self.canvas.image_edit_mode = ImageEditMode.InpaintTool
                 self.setInpaintCursor()
             elif self.currentTool is self.rectTool:
-                self.canvas.image_edit_mode = ImageEditMode.RectTool
+                self.canvas.image_edit_mode = ImageEditMode.SelectionTool
                 self.setCrossCursor()
         self._sync_magic_wand_hover_tracking()
 
@@ -1483,8 +1643,16 @@ class DrawingPanel(Widget):
         else:
             self.toolConfigStackwidget.show()
 
-    def on_end_create_rect(self, rect: QRectF, mode: int) -> None:
+    def on_end_create_rect(self, rect: QRectF | QPainterPath, mode: int) -> None:
+        """Stage any selection in the existing cropped-mask/inpaint workflow.
+
+        >>> DrawingPanel.on_end_create_rect.__annotations__['mode']
+        'int'
+        """
         if self.currentTool == self.rectTool:
+            path = rect if isinstance(rect, QPainterPath) else None
+            if path is not None:
+                rect = path.boundingRect()
             self.canvas.image_edit_mode = ImageEditMode.NONE
             img = self.canvas.imgtrans_proj.inpainted_array
             im_h, im_w = img.shape[:2]
@@ -1495,21 +1663,42 @@ class DrawingPanel(Widget):
             xyxy[[1, 3]] = np.clip(xyxy[[1, 3]], 0, im_h - 1)
             x1, y1, x2, y2 = xyxy.astype(np.int64)
             if y2 - y1 < 2 or x2 - x1 < 2:
-                self.canvas.image_edit_mode = ImageEditMode.RectTool
+                self.canvas.image_edit_mode = ImageEditMode.SelectionTool
                 return
+            selection_mask = np.full((y2 - y1, x2 - x1), 255, np.uint8)
+            if path is not None:
+                image = QImage(x2 - x1, y2 - y1, QImage.Format.Format_ARGB32_Premultiplied)
+                image.fill(Qt.GlobalColor.transparent)
+                painter = QPainter(image)
+                try:
+                    painter.translate(-int(x1), -int(y1))
+                    painter.fillPath(path, Qt.GlobalColor.white)
+                finally:
+                    painter.end()
+                selection_mask = np.ascontiguousarray(pixmap2ndarray(image)[..., 3])
+                if not np.any(selection_mask):
+                    self.canvas.image_edit_mode = ImageEditMode.SelectionTool
+                    return
             if mode == 0:
                 im = np.copy(img[y1: y2, x1: x2])
-                self.rect_inpaint_dict = {'img': im, 'inpaint_rect': [x1, y1, x2, y2]}
+                self.rect_inpaint_dict = {
+                    'img': im, 'inpaint_rect': [x1, y1, x2, y2],
+                    'selection_mask': selection_mask,
+                }
                 self._update_rect_mask()
                 self.inpaint_mask_item.setParentItem(self.canvas.baseLayer)
                 self.inpaint_mask_item.setPos(x1, y1)
                 if self.rectPanel.auto():
                     self.inpaintRect(self.rect_inpaint_dict)
             else:   # erasing
-                mask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
-                erased = self.canvas.imgtrans_proj.img_array[y1: y2, x1: x2]
+                self.clearInpaintItems()
+                mask = self.canvas.imgtrans_proj.mask_array[y1:y2, x1:x2].copy()
+                erased = img[y1:y2, x1:x2].copy()
+                selected = selection_mask > 0
+                mask[selected] = 0
+                erased[selected] = self.canvas.imgtrans_proj.img_array[y1:y2, x1:x2][selected]
                 self.canvas.push_undo_command(InpaintUndoCommand(self.canvas, erased, mask, [x1, y1, x2, y2]))
-                self.canvas.image_edit_mode = ImageEditMode.RectTool
+                self.canvas.image_edit_mode = ImageEditMode.SelectionTool
             self.setCrossCursor()
 
     def fill_shape(self, rect: QRectF, erasing: bool = False) -> None:
@@ -1552,6 +1741,11 @@ class DrawingPanel(Widget):
         self.inpaint_mask_array, balloon_mask, info = method(
             request['img'], mask=self.canvas.imgtrans_proj.mask_array[y1:y2, x1:x2],
         )
+        selection_mask = request['selection_mask']
+        # Clip before morphology too: pixels outside the selection must not
+        # seed expansion back into it, especially for Use Existing Mask.
+        self.inpaint_mask_array = cv2.bitwise_and(self.inpaint_mask_array, selection_mask)
+        balloon_mask = cv2.bitwise_and(balloon_mask, selection_mask)
         request.update(use_mask=use_mask, need_inpaint=info['need_inpaint'],
                        bground_rgb=info['bground_rgb'], ballon_mask=balloon_mask)
         self._update_rect_mask_preview()
@@ -1562,6 +1756,30 @@ class DrawingPanel(Widget):
         need_inpaint = inpaint_dict['need_inpaint']
         bground_rgb = inpaint_dict['bground_rgb']
         ballon_mask = inpaint_dict['ballon_mask']
+        replace_existing_mask = inpaint_dict.get('replace_existing_mask', False)
+        if replace_existing_mask and not np.any(mask):
+            # An empty erosion is still an edit: clear the old mask without
+            # sending an empty request to an inpainter backend.
+            x1, y1, x2, y2 = inpaint_dict['inpaint_rect']
+            previous_mask = self.canvas.imgtrans_proj.mask_array[y1:y2, x1:x2]
+            selection_mask = inpaint_dict.get('selection_mask')
+            if selection_mask is not None:
+                mask = np.where(selection_mask > 0, mask, previous_mask)
+            original = self.canvas.imgtrans_proj.img_array[y1:y2, x1:x2]
+            restored = _restore_removed_mask_pixels(
+                img,
+                original,
+                previous_mask,
+                mask,
+            )
+            self.canvas.push_undo_command(InpaintUndoCommand(
+                self.canvas,
+                restored,
+                mask,
+                inpaint_dict['inpaint_rect'],
+            ))
+            self._finish_inpaint()
+            return
         if (inpaint_dict['use_mask'] and pcfg.drawpanel.inpainter != LLM_INPAINT_KEY
                 and not need_inpaint and pcfg.module.check_need_inpaint):
             x1, y1, x2, y2 = inpaint_dict['inpaint_rect']
@@ -1601,24 +1819,39 @@ class DrawingPanel(Widget):
             return
         mask = (self.rectPanel.post_process_mask(self.inpaint_mask_array)
                 if self.rect_inpaint_dict['use_mask'] else self.inpaint_mask_array)
+        mask = cv2.bitwise_and(mask, self.rect_inpaint_dict['selection_mask'])
         self.rect_inpaint_dict['mask'] = mask
+        self.rect_inpaint_dict['replace_existing_mask'] = (
+            self.rect_inpaint_dict['use_mask']
+            and self.rectPanel.methodComboBox.currentIndex() == 2
+            and self.rectPanel.dilate_slider.value() < 0
+        )
         user_preview_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
         user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
         self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_preview_mask))
 
     def on_rectchecker_changed(self):
         if not self.rectTool.isChecked():
+            self.canvas.cancel_selection()
             self.clearInpaintItems()
+
+    def on_selection_shape_changed(self) -> None:
+        self.canvas.cancel_selection()
+        if self.currentTool is self.rectTool and self.rectPanel.shapeComboBox.isEnabled():
+            self._finish_inpaint()
 
     def hideEvent(self, e) -> None:
         self.canvas.reset_brush_line()
         self.canvas.cancel_shape_fill()
+        self.canvas.cancel_selection()
         self.canvas.set_magic_wand_hover_tracking(False)
         self.clear_magic_wand_preview()
         self.clearInpaintItems()
         return super().hideEvent(e)
 
     def clearInpaintItems(self) -> None:
+        if self.module_manager is not None:
+            self.module_manager.cancel_canvas_inpaint()
 
         self.rect_inpaint_dict = None
         self.inpaint_mask_array = None
@@ -1633,5 +1866,6 @@ class DrawingPanel(Widget):
         self._sync_magic_wand_hover_tracking()
 
     def handle_page_changed(self) -> None:
+        self.canvas.cancel_selection()
         self.clear_magic_wand_preview()
         self._finish_inpaint()

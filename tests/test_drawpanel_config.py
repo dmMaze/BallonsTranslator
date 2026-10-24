@@ -24,6 +24,7 @@ class DrawPanelConfigTest(unittest.TestCase):
         self.assertEqual(drawing.inpaint_llm_model, '')
         self.assertEqual(drawing.inpaint_prompt_override, '')
         self.assertTrue(drawing.rectool_use_mask)
+        self.assertEqual(drawing.selection_shape, 'rectangle')
         self.assertEqual(drawing.pentool_width, 12.5)
         self.assertEqual(drawing.magicwand_tolerance, 77)
         self.assertEqual(config.module.inpainter, 'LLMInpaint')
@@ -36,6 +37,7 @@ class DrawPanelConfigTest(unittest.TestCase):
             'inpaint_llm_model': 'gpt-image-2',
             'inpaint_prompt_override': '\n  Remove only the marked lettering.\n\n ',
             'rectool_use_mask': False,
+            'selection_shape': 'polygon',
         }
         config = self.load_config({
             'module': {'inpainter': 'lama_mpe', 'inpaint_llm_id': 'openai'},
@@ -78,6 +80,47 @@ class DrawPanelConfigTest(unittest.TestCase):
                 }}).drawpanel
             self.assertTrue(drawing.rectool_use_mask)
             self.assertEqual(drawing.pentool_width, 12.5)
+
+    def test_rectangle_mask_morph_radius_loads_and_clamps(self) -> None:
+        self.assertEqual(
+            DrawPanelConfig(
+                rectool_method=2,
+                recttool_dilate_ksize=-25,
+            ).recttool_dilate_ksize,
+            -25,
+        )
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            below = DrawPanelConfig(
+                rectool_method=2,
+                recttool_dilate_ksize=-26,
+            )
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            above = DrawPanelConfig(recttool_dilate_ksize=101)
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            malformed = DrawPanelConfig(
+                recttool_dilate_ksize='bad',
+                pentool_width=12.5,
+            )
+
+        self.assertEqual(below.recttool_dilate_ksize, -25)
+        self.assertEqual(above.recttool_dilate_ksize, 100)
+        self.assertEqual(malformed.recttool_dilate_ksize, 2)
+        self.assertEqual(malformed.pentool_width, 12.5)
+        with self.assertLogs('BallonTranslator', level='WARNING'):
+            other_method = DrawPanelConfig(
+                rectool_method=1,
+                recttool_dilate_ksize=-10,
+            )
+        self.assertEqual(other_method.recttool_dilate_ksize, 0)
+
+    def test_selection_shapes_load_independently_and_invalid_shapes_warn(self) -> None:
+        for shape in ('rectangle', 'lasso', 'polygon'):
+            self.assertEqual(self.load_config({'drawpanel': {'selection_shape': shape}}).drawpanel.selection_shape, shape)
+        for invalid in (None, True, 42, [], {}, 'unknown'):
+            with self.subTest(invalid=invalid), self.assertLogs('BallonTranslator', level='WARNING'):
+                drawing = self.load_config({'drawpanel': {'selection_shape': invalid, 'recttool_dilate_ksize': 12}}).drawpanel
+            self.assertEqual(drawing.selection_shape, 'rectangle')
+            self.assertEqual(drawing.recttool_dilate_ksize, 12)
 
 
 if __name__ == '__main__':

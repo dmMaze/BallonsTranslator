@@ -109,6 +109,8 @@ class Slider(QSlider):
         self.handle.pressed.connect(self.sliderPressed)
         self.handle.released.connect(self.sliderReleased)
         self.valueChanged.connect(self._adjustHandlePos)
+        # A new range moves the handle even when the value stays unchanged.
+        self.rangeChanged.connect(self._adjustHandlePos)
 
     def setOrientation(self, orientation: Qt.Orientation) -> None:
         super().setOrientation(orientation)
@@ -141,7 +143,12 @@ class Slider(QSlider):
             ratio * (self.maximum() - self.minimum()) + self.minimum()
         )
 
-    def _adjustHandlePos(self):
+    def _adjustHandlePos(self) -> None:
+        # Qt emits rangeChanged before clamping the old value. Wait for the
+        # ensuing valueChanged before mapping it (logarithmic sliders need a
+        # positive value), while still updating unchanged in-range values.
+        if not self.minimum() <= self.value() <= self.maximum():
+            return
         delta = int(self._value_to_position_ratio() * self.grooveLength)
 
         if self.orientation() == Qt.Orientation.Vertical:

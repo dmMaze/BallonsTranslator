@@ -668,6 +668,10 @@
         <source>Mask Opacity</source>
         <translation>Непрозрачность маски</translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>Инструмент выделения</translation>
+    </message>
 </context>
 <context>
     <name>EmphasisToolButton</name>
@@ -3656,16 +3660,6 @@ qipao,qipao2</translation>
         <translation>Расширение</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="238" />
-        <source>method 1</source>
-        <translation>метод 1</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="239" />
-        <source>method 2</source>
-        <translation>метод 2</translation>
-    </message>
-    <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="240" />
         <source>Use Existing Mask</source>
         <translation>Использовать существующую маску</translation>
@@ -3699,6 +3693,76 @@ qipao,qipao2</translation>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="250" />
         <source>Ctrl+D</source>
         <translation>Ctrl+D</translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>Отрицательные значения сужают маску, положительные — расширяют.</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>Положительные значения расширяют маску.</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>Прямоугольник</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>Лассо</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>Многоугольник</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>Справка по выделению</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Перетащите указатель, чтобы создать прямоугольное выделение (правая кнопка: восстановление исходного изображения).
+Отмена: Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Перетащите указатель, чтобы создать выделение лассо (правая кнопка: восстановление исходного изображения).
+Отмена: Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>Щёлкайте по вершинам, чтобы создать многоугольное выделение (правая кнопка: восстановление исходного изображения).
+Отмена: Esc
+Удалить последнюю вершину: Backspace
+Подтвердить: Дважды щёлкните, щёлкните по первой вершине или нажмите Enter.</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation>Использовать маску</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>Если флажок снят, всё выделение заменяется без извлечения маски.</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Выделение</translation>
+    </message>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation>Включите «Использовать маску», чтобы изменить метод маски и расширение.</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>Метод 1: Выделение границ</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>Метод 2: Пороговая сегментация</translation>
     </message>
 </context>
 <context>

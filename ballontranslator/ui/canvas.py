@@ -208,6 +208,7 @@ class Canvas(QGraphicsScene):
     end_create_textblock = Signal(QRectF)
     paste2selected_textitems = Signal()
     end_create_rect = Signal(QRectF, int)
+    end_create_selection = Signal(QPainterPath, int)
     end_create_shape_fill = Signal(QRectF, bool)
     finish_painting = Signal(StrokeImgItem)
     finish_erasing = Signal(StrokeImgItem)
@@ -258,6 +259,9 @@ class Canvas(QGraphicsScene):
         self.create_block_origin: QPointF = None
         self._shape_fill_origin: QPointF | None = None
         self._shape_fill_button = Qt.MouseButton.NoButton
+        self._selection_points: list[QPointF] = []
+        self._selection_button = Qt.MouseButton.NoButton
+        self._selection_shape = 'rectangle'
         # Page coordinates survive inpaint's temporary NONE mode while its
         # worker runs; actual tool/page/history transitions reset the anchor.
         self._brush_anchor: QPointF | None = None
@@ -367,6 +371,11 @@ class Canvas(QGraphicsScene):
         self.shape_fill_composite_preview.setShapeMode(QGraphicsPixmapItem.ShapeMode.BoundingRectShape)
         self.shape_fill_composite_preview.setData(CONTROL_ITEM_DATA_KEY, True)
         self.shape_fill_composite_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.selection_preview = QGraphicsPathItem(self.baseLayer)
+        self.selection_preview.setData(CONTROL_ITEM_DATA_KEY, True)
+        self.selection_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.selection_preview.setZValue(20)
+        self.selection_preview.hide()
         self.brush_line_preview = QGraphicsLineItem(self.baseLayer)
         self.brush_line_preview.setData(CONTROL_ITEM_DATA_KEY, True)
         self.brush_line_preview.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
@@ -778,6 +787,22 @@ class Canvas(QGraphicsScene):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
 
+        if self._selection_points:
+            if key == QKEY.Key_Escape:
+                self.cancel_selection()
+            elif self._selection_shape == 'polygon' and key in (QKEY.Key_Return, QKEY.Key_Enter):
+                self._finish_selection()
+            elif self._selection_shape == 'polygon' and key == QKEY.Key_Backspace:
+                self._selection_points.pop()
+                if self._selection_points:
+                    self._update_selection_preview(self._selection_points[-1])
+                else:
+                    self.cancel_selection()
+            else:
+                return super().keyPressEvent(event)
+            event.accept()
+            return
+
         if key == QKEY.Key_Escape and self.alpha_mask_edit_session.handle_escape():
             event.accept()
             return
@@ -997,14 +1022,106 @@ class Canvas(QGraphicsScene):
         self.txtblkShapeControl.hide()
         textblk_created = False
         rect = self.txtblkShapeControl.rect()
-        if self.creating_normal_rect:
-            self.end_create_rect.emit(rect, btn)
-            self.txtblkShapeControl.showControls()
-        else:
-            if rect.width() > 1 and rect.height() > 1:
-                self.end_create_textblock.emit(rect)
-                textblk_created = True
+        if rect.width() > 1 and rect.height() > 1:
+            self.end_create_textblock.emit(rect)
+            textblk_created = True
         return textblk_created
+
+    def cancel_selection(self) -> bool:
+        """Discard an unfinished page-local selection without editing pixels."""
+        active = bool(self._selection_points)
+        if not active:
+            return False
+        self._selection_points.clear()
+        self._selection_button = Qt.MouseButton.NoButton
+        self.selection_preview.hide()
+        self.selection_preview.setPath(QPainterPath())
+        return active
+
+    def _update_selection_preview(self, pos: QPointF) -> None:
+        if self._selection_shape == 'rectangle':
+            if len(self._selection_points) == 1:
+                self._selection_points.append(QPointF(pos))
+            else:
+                self._selection_points[-1] = QPointF(pos)
+            path = shape_fill_path(QRectF(self._selection_points[0], pos), 'rectangle')
+        elif self._selection_shape == 'lasso':
+            # Reuse the native path instead of rebuilding every sampled point
+            # in Python on each high-frequency freehand move.
+            path = self.selection_preview.path()
+            if path.isEmpty():
+                path = QPainterPath(self._selection_points[0])
+            if path.currentPosition() != pos:
+                path.lineTo(pos)
+        else:
+            path = QPainterPath(self._selection_points[0])
+            for point in self._selection_points[1:]:
+                path.lineTo(point)
+            if self._selection_shape == 'polygon':
+                path.lineTo(pos)
+            path.closeSubpath()
+        self.selection_preview.setPath(path)
+
+    def _press_selection(self, event: QGraphicsSceneMouseEvent) -> None:
+        button = event.button()
+        if button not in (Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton):
+            return
+        pos = self.baseLayer.mapFromScene(event.scenePos())
+        if not self._selection_points:
+            self._selection_shape = pcfg.drawpanel.selection_shape
+            self._selection_points.append(pos)
+            self._selection_button = button
+            pen = QPen(QColor(*shared.FOREGROUND_FONTCOLOR), 1, Qt.PenStyle.DashLine)
+            pen.setCosmetic(True)
+            self.selection_preview.setPen(pen)
+            self.selection_preview.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+            self.selection_preview.show()
+        elif self._selection_shape == 'polygon':
+            if button != self._selection_button:
+                self.cancel_selection()
+                return
+            origin = self.gv.mapFromScene(self.baseLayer.mapToScene(self._selection_points[0]))
+            pointer = self.gv.mapFromScene(event.scenePos())
+            delta = pointer - origin
+            if len(self._selection_points) >= 3 and delta.x() ** 2 + delta.y() ** 2 <= 36:
+                self._finish_selection()
+                return
+            if pos != self._selection_points[-1]:
+                self._selection_points.append(pos)
+        else:
+            # Another button must not replace the initiating drag.
+            return
+        self._update_selection_preview(pos)
+
+    def _finish_selection(self) -> bool:
+        """Publish a closed path once, after releasing the transient gesture.
+
+        >>> callable(Canvas._finish_selection)
+        True
+        """
+        shape = self._selection_shape
+        if shape == 'lasso':
+            path = self.selection_preview.path()
+            if path.elementCount() < 3:
+                return False
+            path.closeSubpath()
+        elif len(self._selection_points) < (2 if shape == 'rectangle' else 3):
+            return False
+        mode = int(self._selection_button == Qt.MouseButton.RightButton)
+        # Polygon hover is a draft endpoint; only confirmed vertices are saved.
+        if shape == 'rectangle':
+            path = shape_fill_path(QRectF(self._selection_points[0], self._selection_points[-1]), 'rectangle')
+        elif shape == 'polygon':
+            path = QPainterPath(self._selection_points[0])
+            for point in self._selection_points[1:]:
+                path.lineTo(point)
+            path.closeSubpath()
+        self.cancel_selection()
+        if shape == 'rectangle':
+            self.end_create_rect.emit(path.boundingRect(), mode)
+        else:
+            self.end_create_selection.emit(path, mode)
+        return True
 
     def cancel_shape_fill(self) -> bool:
         if self._shape_fill_origin is None:
@@ -1207,7 +1324,10 @@ class Canvas(QGraphicsScene):
             self.pan_initial_pos = new_pos
             self.hscroll_bar.setValue(int(self.hscroll_bar.value() - delta_pos.x()))
             self.vscroll_bar.setValue(int(self.vscroll_bar.value() - delta_pos.y()))
-            
+        elif self._selection_points:
+            self._update_selection_preview(self.baseLayer.mapFromScene(event.scenePos()))
+            event.accept()
+            return
         elif self._shape_fill_origin is not None:
             rect = QRectF(self._shape_fill_origin, self.baseLayer.mapFromScene(event.scenePos()))
             config = pcfg.drawpanel
@@ -1271,6 +1391,7 @@ class Canvas(QGraphicsScene):
         self.text_move_session.cancel()
         self.reset_brush_line()
         self.cancel_shape_fill()
+        self.cancel_selection()
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.end_scale_tool.emit()
@@ -1372,6 +1493,10 @@ class Canvas(QGraphicsScene):
             return
         
         if self.imgtrans_proj.img_valid:
+            if self.drawMode() and self.image_edit_mode == ImageEditMode.SelectionTool:
+                self._press_selection(event)
+                event.accept()
+                return
             if self.drawMode() and self.image_edit_mode == ImageEditMode.ShapeFillTool:
                 if self._shape_fill_origin is None and btn in (
                     Qt.MouseButton.LeftButton, Qt.MouseButton.RightButton,
@@ -1398,10 +1523,6 @@ class Canvas(QGraphicsScene):
             if self.textblock_mode and len(self.selectedItems()) == 0 and self.textEditMode():
                 if btn == Qt.MouseButton.RightButton:
                     return self.startCreateTextblock(event.scenePos())
-            elif self.creating_normal_rect:
-                if btn == Qt.MouseButton.RightButton or btn == Qt.MouseButton.LeftButton:
-                    return self.startCreateTextblock(event.scenePos(), hide_control=True)
-
             elif btn == Qt.MouseButton.LeftButton:
                 # user is drawing using the pen/inpainting tool
                 if self.scale_tool_mode:
@@ -1444,10 +1565,6 @@ class Canvas(QGraphicsScene):
 
         return super().mousePressEvent(event)
 
-    @property
-    def creating_normal_rect(self) -> bool:
-        return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
-
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
         if self.text_move_session.handle_mouse_release(event):
@@ -1475,6 +1592,13 @@ class Canvas(QGraphicsScene):
         Qt.MouseButton.LeftButton
         if btn == Qt.MouseButton.MiddleButton:
             self.mid_btn_pressed = False
+        elif self._selection_points:
+            if self._selection_shape != 'polygon' and btn == self._selection_button:
+                self._update_selection_preview(self.baseLayer.mapFromScene(event.scenePos()))
+                if not self._finish_selection():
+                    self.cancel_selection()
+            event.accept()
+            return
         if self._shape_fill_origin is not None:
             if btn == self._shape_fill_button:
                 rect = QRectF(
@@ -1514,6 +1638,14 @@ class Canvas(QGraphicsScene):
         return super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self._selection_points and self._selection_shape == 'polygon':
+            if event.button() == self._selection_button:
+                pos = self.baseLayer.mapFromScene(event.scenePos())
+                if pos != self._selection_points[-1]:
+                    self._selection_points.append(pos)
+                self._finish_selection()
+            event.accept()
+            return
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
         return super().mouseDoubleClickEvent(event)
@@ -1605,6 +1737,7 @@ class Canvas(QGraphicsScene):
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         self.cancel_shape_fill()
+        self.cancel_selection()
         self.editing_textblkitem = None
         if self.stroke_img_item is not None:
             self.removeItem(self.stroke_img_item)
@@ -1661,6 +1794,7 @@ class Canvas(QGraphicsScene):
         self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
+        self.cancel_selection()
         self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
         if self.creating_textblock:
@@ -1685,6 +1819,7 @@ class Canvas(QGraphicsScene):
 
     def setTextBlockMode(self, mode: bool) -> None:
         self.text_move_session.cancel()
+        self.cancel_selection()
         if mode:
             self.alpha_mask_edit_session.deactivate()
         self.cancel_path_reorder()
@@ -1809,6 +1944,7 @@ class Canvas(QGraphicsScene):
         self.text_move_session.cancel()
         self.hide_rubber_band()
         self.cancel_shape_fill()
+        self.cancel_selection()
         if self._text_creation_cursor_active:
             self._clear_text_creation_cursor()
         if self.creating_textblock:
@@ -1901,6 +2037,7 @@ class Canvas(QGraphicsScene):
         self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
+        self.cancel_selection()
         self.cancel_path_reorder()
         stack = self.get_active_undostack()
         if stack is not None and stack.canRedo():
@@ -1914,6 +2051,7 @@ class Canvas(QGraphicsScene):
         self.reset_brush_line()
         self.text_move_session.cancel()
         self.cancel_shape_fill()
+        self.cancel_selection()
         self.cancel_path_reorder()
         stack = self.get_active_undostack()
         if stack is not None and stack.canUndo():

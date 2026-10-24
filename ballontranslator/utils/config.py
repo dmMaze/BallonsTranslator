@@ -281,6 +281,7 @@ class DrawPanelConfig(Config):
     rectool_use_mask: bool = True
     rectool_method: int = 0
     recttool_dilate_ksize: int = 2
+    selection_shape: str = 'rectangle'
     shape_fill_shape: str = 'rectangle'
     shape_fill_color: str = '#ffffff'
     shape_fill_alpha: int = 255
@@ -289,6 +290,28 @@ class DrawPanelConfig(Config):
     shape_border_color: str = '#000000'
 
     def __post_init__(self) -> None:
+        for name, default, minimum, maximum in (
+            ('rectool_method', 0, 0, 2),
+            ('recttool_dilate_ksize', 2, -25, 100),
+        ):
+            raw = getattr(self, name)
+            try:
+                value = int(raw)
+                if isinstance(raw, float) and raw != value:
+                    raise ValueError('Expected an integer.')
+            except (TypeError, ValueError, OverflowError):
+                LOGGER.warning('Discard invalid drawpanel.%s %r.', name, raw)
+                value = default
+            if not minimum <= value <= maximum:
+                LOGGER.warning('Discard out-of-range drawpanel.%s %r.', name, raw)
+                value = min(max(value, minimum), maximum)
+            setattr(self, name, value)
+        if self.rectool_method != 2 and self.recttool_dilate_ksize < 0:
+            LOGGER.warning('Discard negative dilation outside Use Existing Mask mode.')
+            self.recttool_dilate_ksize = 0
+        if not isinstance(self.selection_shape, str) or self.selection_shape not in ('rectangle', 'lasso', 'polygon'):
+            LOGGER.warning('Discard invalid drawpanel.selection_shape %r.', self.selection_shape)
+            self.selection_shape = 'rectangle'
         if not isinstance(self.rectool_use_mask, bool):
             LOGGER.warning('Discard invalid drawpanel.rectool_use_mask config.')
             self.rectool_use_mask = True

@@ -1045,6 +1045,10 @@
         <source>Shape Erase</source>
         <translation>도형 지우기</translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>선택 도구</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -4783,22 +4787,11 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="517"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="230"/>
         <source>Dilate</source>
         <translation>확장</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="525"/>
-        <source>method 1</source>
-        <translation>방법 1</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="526"/>
-        <source>method 2</source>
-        <translation>방법 2</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="530"/>
         <source>Use mask</source>
         <translation>마스크 사용</translation>
     </message>
@@ -4808,48 +4801,109 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>선택 해제 시 LLM 인페인터에는 마스크가 전달되지 않고 사각형 영역 전체가 대체되며, 로컬 인페인터는 사각형 영역 전체를 마스크 처리된 것으로 간주합니다.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="538"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="243"/>
         <source>Auto</source>
         <translation>자동</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="539"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="244"/>
         <source>run inpainting automatically.</source>
         <translation>자동 인페인팅 시도</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="541"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="246"/>
         <source>Inpaint</source>
         <translation>인페인트</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="542"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="247"/>
         <source>Space</source>
         <translation>여백</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="544"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="249"/>
         <source>Delete</source>
         <translation>삭제</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="545"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="250"/>
         <source>Ctrl+D</source>
         <translation>Ctrl+D</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="575"/>
         <source>Enable Use mask to change the mask method and dilation.</source>
-        <translation>마스크 방식과 팽창 크기를 변경하려면 &apos;마스크 사용&apos;을 활성화하세요.</translation>
+        <translation>마스크 방식과 팽창 값을 변경하려면 마스크 사용을 활성화하세요.</translation>
     </message>
     <message>
         <source>Inpainter</source>
         <translation type="vanished">인페인터</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="527"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="240"/>
         <source>Use Existing Mask</source>
         <translation>기존 마스크 사용</translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>음수는 마스크를 축소하고 양수는 확대합니다.</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>양수는 마스크를 확대합니다.</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>사각형</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>올가미</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>다각형</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>선택 도움말</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>드래그하여 사각형 선택 영역 생성 (오른쪽 버튼: 원본 이미지 복원)
+취소: Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>드래그하여 올가미 선택 영역 생성 (오른쪽 버튼: 원본 이미지 복원)
+취소: Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>꼭짓점을 차례로 클릭하여 다각형 선택 영역 생성 (오른쪽 버튼: 원본 이미지 복원)
+취소: Esc
+마지막 꼭짓점 삭제: Backspace
+완료: 더블 클릭, 첫 번째 꼭짓점 클릭 또는 Enter</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>선택을 해제하면 마스크 추출 없이 선택 영역 전체를 교체합니다.</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>선택</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>방법 1: 윤곽 추출</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>방법 2: 임계값 분할</translation>
     </message>
 </context>
 <context>

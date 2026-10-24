@@ -1067,6 +1067,10 @@
         <source>Mask Transparency</source>
         <translation>Maszk átlátszóság</translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>Kijelölő eszköz</translation>
+    </message>
 </context>
 <context>
     <name>EffectDeleteButton</name>
@@ -4855,7 +4859,7 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
     <name>RectPanel</name>
     <message>
         <source>Enable Use mask to change the mask method and dilation.</source>
-        <translation>Jelöld be a „Maszk használata” jelölőnégyzetet a maszkolási módszer és a dilatáció módosításához.</translation>
+        <translation>A maszkmódszer és a tágítás módosításához engedélyezze a maszk használatát.</translation>
     </message>
     <message>
         <source>Use mask</source>
@@ -4869,16 +4873,6 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="197"/>
         <source>Dilate</source>
         <translation>Tágítás</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
-        <source>method 1</source>
-        <translation>1 módszer</translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
-        <source>method 2</source>
-        <translation>2 módszer</translation>
     </message>
     <message>
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
@@ -4923,6 +4917,68 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
     <message>
         <source>kernel size: </source>
         <translation>kernel mérete: </translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>A negatív értékek szűkítik, a pozitívak bővítik a maszkot.</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>A pozitív értékek bővítik a maszkot.</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>Téglalap</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>Lasszó</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>Sokszög</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>Kijelölési súgó</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Húzással hozzon létre téglalap-kijelölést (jobb gomb: az eredeti kép visszaállítása).
+Megszakítás: Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Húzással hozzon létre lasszókijelölést (jobb gomb: az eredeti kép visszaállítása).
+Megszakítás: Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>A csúcsokra kattintva hozzon létre sokszög-kijelölést (jobb gomb: az eredeti kép visszaállítása).
+Megszakítás: Esc
+Utolsó csúcs törlése: Backspace
+Véglegesítés: Kattintson duplán, kattintson az első csúcsra vagy nyomja meg az Entert.</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>Ha nincs bejelölve, a teljes kijelölés cserélődik a maszk kinyerése nélkül.</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Kijelölés</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>1. módszer: Élkinyerés</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>2. módszer: Küszöbértékes szegmentálás</translation>
     </message>
 </context>
 <context>

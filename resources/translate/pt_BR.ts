@@ -303,7 +303,11 @@
       <source>Mask Opacity</source>
       <translation>Opacidade da máscara</translation>
     </message>
-  </context>
+      <message>
+        <source>Selection Tool</source>
+        <translation>Ferramenta de seleção</translation>
+    </message>
+</context>
   <context>
     <name>ExportDocThread</name>
     <message>
@@ -888,16 +892,6 @@
       <translation>Dilatar</translation>
     </message>
     <message>
-      <location filename="..\ui\drawingpanel.py" line="204"/>
-      <source>method 1</source>
-      <translation>método 1</translation>
-    </message>
-    <message>
-      <location filename="..\ui\drawingpanel.py" line="204"/>
-      <source>method 2</source>
-      <translation>método 2</translation>
-    </message>
-    <message>
       <location filename="..\ui\drawingpanel.py" line="205"/>
       <source>Auto</source>
       <translation>Automático</translation>
@@ -932,7 +926,81 @@
       <source>Inpainter</source>
       <translation>Inpainter</translation>
     </message>
-  </context>
+      <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>Valores negativos reduzem a máscara; valores positivos a expandem.</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>Valores positivos expandem a máscara.</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>Retângulo</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>Laço</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>Polígono</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>Ajuda de seleção</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Arraste para criar uma seleção retangular (botão direito: restaurar a imagem original).
+Cancelar: Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Arraste para criar uma seleção com o laço (botão direito: restaurar a imagem original).
+Cancelar: Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>Clique nos vértices para criar uma seleção poligonal (botão direito: restaurar a imagem original).
+Cancelar: Esc
+Remover o último vértice: Backspace
+Confirmar: Dê um clique duplo, clique no primeiro vértice ou pressione Enter.</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation>Usar máscara</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>Quando desmarcada, toda a seleção é substituída sem extrair a máscara.</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Seleção</translation>
+    </message>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation>Ative « Usar máscara » para alterar o método da máscara e a dilatação.</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>Método 1: Extração de bordas</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>Método 2: Segmentação por limiar</translation>
+    </message>
+    <message>
+        <source>Use Existing Mask</source>
+        <translation>Usar máscara existente</translation>
+    </message>
+</context>
   <context>
     <name>TextEffectPanel</name>
     <message>

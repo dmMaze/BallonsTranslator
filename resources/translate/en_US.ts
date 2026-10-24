@@ -427,6 +427,10 @@
         <source>Mask Opacity</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Selection Tool</source>
+        <translation>Selection Tool</translation>
+    </message>
 </context>
 <context>
     <name>ExportDocThread</name>
@@ -1286,52 +1290,42 @@
 <context>
     <name>RectPanel</name>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="197"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="376"/>
         <source>Dilate</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
-        <source>method 1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
-        <source>method 2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="204"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="394"/>
         <source>Use Existing Mask</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="210"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="405"/>
         <source>Auto</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="211"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="406"/>
         <source>run inpainting automatically.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="213"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="408"/>
         <source>Inpaint</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="214"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="409"/>
         <source>Space</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="216"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="411"/>
         <source>Delete</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/drawingpanel.py" line="217"/>
+        <location filename="../../ballontranslator/ui/drawingpanel.py" line="412"/>
         <source>Ctrl+D</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1339,6 +1333,76 @@
         <location filename="../../ballontranslator/ui/drawingpanel.py" line="224"/>
         <source>Inpainter</source>
         <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Negative values shrink the mask; positive values expand it.</source>
+        <translation>Negative values shrink the mask; positive values expand it.</translation>
+    </message>
+    <message>
+        <source>Positive values expand the mask.</source>
+        <translation>Positive values expand the mask.</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>Rectangle</translation>
+    </message>
+    <message>
+        <source>Lasso</source>
+        <translation>Lasso</translation>
+    </message>
+    <message>
+        <source>Polygon</source>
+        <translation>Polygon</translation>
+    </message>
+    <message>
+        <source>Selection Help</source>
+        <translation>Selection Help</translation>
+    </message>
+    <message>
+        <source>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Drag to create a rectangle selection (right button: restore original image).
+Cancel: Esc</translation>
+    </message>
+    <message>
+        <source>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</source>
+        <translation>Drag to create a lasso selection (right button: restore original image).
+Cancel: Esc</translation>
+    </message>
+    <message>
+        <source>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</source>
+        <translation>Click vertices to create a polygon selection (right button: restore original image).
+Cancel: Esc
+Undo last vertex: Backspace
+Submit: Double-click, click the first vertex, or press Enter.</translation>
+    </message>
+    <message>
+        <source>Use mask</source>
+        <translation>Use mask</translation>
+    </message>
+    <message>
+        <source>When unchecked, the whole selection is replaced without mask extraction.</source>
+        <translation>When unchecked, the whole selection is replaced without mask extraction.</translation>
+    </message>
+    <message>
+        <source>Selection</source>
+        <translation>Selection</translation>
+    </message>
+    <message>
+        <source>Enable Use mask to change the mask method and dilation.</source>
+        <translation>Enable Use mask to change the mask method and dilation.</translation>
+    </message>
+    <message>
+        <source>Method 1: Edge Extraction</source>
+        <translation>Method 1: Edge Extraction</translation>
+    </message>
+    <message>
+        <source>Method 2: Threshold Segmentation</source>
+        <translation>Method 2: Threshold Segmentation</translation>
     </message>
 </context>
 <context>
