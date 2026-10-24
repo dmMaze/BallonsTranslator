@@ -202,7 +202,13 @@ class LamaInpainterMPE(InpainterBase):
             'value': 2048,
             'display_name': 'Inpaint Size'
         },
-        'device': DEVICE_SELECTOR(not_supported=['privateuseone'])
+        'device': DEVICE_SELECTOR(not_supported=['privateuseone']),
+        'preserve screentones': {
+            'type': 'checkbox',
+            'value': False,
+            'display_name': 'Preserve Screentones (Experimental)',
+            'description': 'Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.',
+        },
     }
 
     download_file_list = [{
@@ -297,6 +303,9 @@ class LamaInpainterMPE(InpainterBase):
         new_shape = img_inpainted.shape[:2]
         if new_shape[0] != im_h or new_shape[1] != im_w :
             img_inpainted = cv2.resize(img_inpainted, (im_w, im_h), interpolation = cv2.INTER_LINEAR)
+        if self.get_param_value('preserve screentones'):
+            from .screentone import restore_screentone
+            img_inpainted = restore_screentone(img, mask, img_inpainted)
         img_inpainted = img_inpainted * mask_original + img_original * (1 - mask_original)
         
         return img_inpainted
@@ -349,7 +358,13 @@ class LamaLarge(LamaInpainterMPE):
                 'bf16'
             ], 
             'value': 'bf16' if BF16_SUPPORTED == 'cuda' else 'fp32'
-        }, 
+        },
+        'preserve screentones': {
+            'type': 'checkbox',
+            'value': False,
+            'display_name': 'Preserve Screentones (Experimental)',
+            'description': 'Restore regular monochrome dots from nearby background after inpainting, while retaining shading and strong edges. Unsupported areas keep the normal result.',
+        },
     }
 
     download_file_list = [{
