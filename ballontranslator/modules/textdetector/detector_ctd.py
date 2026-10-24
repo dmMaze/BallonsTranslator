@@ -4,6 +4,8 @@ from typing import Tuple, List
 
 from .base import register_textdetectors, TextDetectorBase, TextBlock, DEFAULT_DEVICE, DEVICE_SELECTOR, ProjImgTrans
 from .ctd import CTDModel
+from .ctd_padding import pad_ctd_boxes, parse_ctd_padding
+from ..exceptions import ModuleRunError
 
 CTD_ONNX_PATH = 'data/models/comictextdetector.pt.onnx'
 CTD_TORCH_PATH = 'data/models/comictextdetector.pt'
@@ -36,7 +38,8 @@ class ComicTextDetector(TextDetectorBase):
         'font size multiplier': 1.,
         'font size max': -1,
         'font size min': -1,
-        'mask dilate size': 3
+        'mask dilate size': 3,
+        'Detect box padding (px)': 0
     }
     _load_model_keys = {'model'}
     download_file_list = [
@@ -66,13 +69,19 @@ class ComicTextDetector(TextDetectorBase):
     def detect_size(self):
         return int(self.params['detect_size']['value'])
 
-    def _load_model(self):
+    def _load_model(self) -> None:
+        # Reject live malformed settings before any expensive model loading.
+        try:
+            parse_ctd_padding(self.get_param_value('Detect box padding (px)'))
+        except ValueError as error:
+            raise ModuleRunError('textdetector', self.name, str(error)) from error
         if self.device != 'cpu':
             self.model = load_ctd_model(CTD_TORCH_PATH, self.device, self.detect_size)
         else:
             self.model = load_ctd_model(CTD_ONNX_PATH, self.device, self.detect_size)
 
     def _detect(self, img: np.ndarray, proj: ProjImgTrans) -> Tuple[np.ndarray, List[TextBlock]]:
+        padding = parse_ctd_padding(self.get_param_value('Detect box padding (px)'))
         _, mask, blk_list = self.model(img)
         
         fnt_rsz = self.get_param_value('font size multiplier')
@@ -92,9 +101,14 @@ class ComicTextDetector(TextDetectorBase):
             element = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * ksize + 1, 2 * ksize + 1),(ksize, ksize))
             mask = cv2.dilate(mask, element)
 
+        if padding:
+            pad_ctd_boxes(blk_list, padding, img.shape[:2], self.logger)
+
         return mask, blk_list
 
-    def updateParam(self, param_key: str, param_content):
+    def updateParam(self, param_key: str, param_content: object) -> None:
+        if param_key == 'Detect box padding (px)':
+            param_content = parse_ctd_padding(param_content)
         super().updateParam(param_key, param_content)
         device = self.device
         if param_key == 'device' and self.all_model_loaded():
