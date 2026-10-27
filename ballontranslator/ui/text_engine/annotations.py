@@ -14,6 +14,7 @@ from html import escape, unescape
 from html.parser import HTMLParser
 import math
 import re
+import unicodedata
 from typing import AbstractSet, Callable, Optional
 from uuid import uuid4
 
@@ -2493,6 +2494,38 @@ def prepare_tate_chu_yoko_insertion(
     cursor.mergeCharFormat(_text_combine_modifier(False))
 
 
+def _narrow_character(character: str) -> str:
+    """Return the ASCII form of one full-width compatibility character.
+
+    Automatic detection compares characters by this form, the same
+    equivalence the layout uses when it shapes a run.
+
+    >>> _narrow_character('！'), _narrow_character('。')
+    ('!', '。')
+    """
+    decomposition = unicodedata.decomposition(character)
+    if decomposition.startswith('<wide> '):
+        return chr(int(decomposition.split()[1], 16))
+    return character
+
+
+def has_auto_text_combine_character(
+    text: str,
+    allowed_characters: AbstractSet[str],
+) -> bool:
+    """Return whether automatic detection finds a candidate in ``text``.
+
+    >>> has_auto_text_combine_character('干什么…!?', frozenset('！？'))
+    True
+    >>> has_auto_text_combine_character('干什么', frozenset('！？'))
+    False
+    """
+    narrow_allowed = {
+        _narrow_character(character) for character in allowed_characters
+    }
+    return any(_narrow_character(character) in narrow_allowed for character in text)
+
+
 def apply_auto_text_combine_upright(
     document: QTextDocument,
     allowed_characters: AbstractSet[str],
@@ -2501,12 +2534,16 @@ def apply_auto_text_combine_upright(
     """Replace Tate-chu-yoko with qualified non-Ruby character runs.
 
     ``allowed_characters`` is compiled once by the pipeline and reused for
-    every block on the page. Return whether the document changed.
+    every block on the page. Width variants of the configured characters match
+    each other, so a list holding full-width punctuation also groups the ASCII
+    forms that translators commonly emit. Return whether the document changed.
 
     >>> document = QTextDocument('12')
     >>> apply_auto_text_combine_upright(document, frozenset('12'), 2)
     True
     >>> apply_auto_text_combine_upright(document, frozenset('12'), 2)
+    True
+    >>> apply_auto_text_combine_upright(QTextDocument('干什么…!?'), frozenset('！？'), 2)
     True
     """
     if (
@@ -2516,6 +2553,9 @@ def apply_auto_text_combine_upright(
     ):
         raise ValueError(f'unsupported maximum run length: {max_length!r}')
 
+    narrow_allowed = {
+        _narrow_character(character) for character in allowed_characters
+    }
     old_ranges = []
     block = document.firstBlock()
     while block.isValid():
@@ -2536,7 +2576,7 @@ def apply_auto_text_combine_upright(
             utf16_offset = 0
             runs = []
             for character in block.text():
-                if character in allowed_characters:
+                if _narrow_character(character) in narrow_allowed:
                     if run_start < 0:
                         run_start = utf16_offset
                     run_length += 1
