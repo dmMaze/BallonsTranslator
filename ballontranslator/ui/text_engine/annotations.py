@@ -41,7 +41,12 @@ from .font_family import (
     normalize_document_font_families,
     restore_project_font_families_in_html,
 )
-from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
+from .rendering.indexing import (
+    _grapheme_count,
+    _grapheme_ranges,
+    _utf16_length,
+    _utf16_slice,
+)
 
 
 RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
@@ -2458,6 +2463,34 @@ def apply_text_combine_upright(
             vertical=vertical,
         ),
     )
+
+
+def prepare_tate_chu_yoko_insertion(
+    cursor: QTextCursor,
+    text: str = '',
+) -> None:
+    """Keep inserted text out of an existing Tate-chu-yoko group.
+
+    A group is the fixed set of characters the user combined, so pasted or
+    replaced content must not silently join it: Qt's ``insertText`` inherits
+    the cursor's char format, which would combine the whole paragraph into one
+    upright cell. A single grapheme typed at a caret keeps that insertion
+    format, which is how the formatting toggle builds a group.
+
+    >>> document = QTextDocument('12')
+    >>> cursor = QTextCursor(document)
+    >>> cursor.select(QTextCursor.SelectionType.Document)
+    >>> prepare_tate_chu_yoko_insertion(cursor, '34')
+    >>> text_combine_upright_values(cursor.charFormat())[0]
+    'none'
+    """
+    if not text:
+        return
+    if not cursor.hasSelection() and _grapheme_count(text) < 2:
+        return
+    if text_combine_upright_values(cursor.charFormat())[0] != TEXT_COMBINE_ALL:
+        return
+    cursor.mergeCharFormat(_text_combine_modifier(False))
 
 
 def apply_auto_text_combine_upright(

@@ -73,7 +73,10 @@ vertical cells. Multi-character runs shape full-width forms as narrow equivalent
 without changing document text or UTF-16 positions. Single-character runs and
 unrelated compatibility characters stay unchanged. `TateChuYokoRun` owns index
 mapping between the isolated run and source block. Native IME composition remains
-authoritative until commit.
+authoritative authoritative until commit. A group covers only the characters the user combined:
+inserted text keeps the active insertion format for one grapheme typed at a
+caret, and pasted or replaced content is treated as fresh text so it cannot
+absorb the paragraph into one cell.
 
 TCY ignores authored letter spacing. Standard Roman mode keeps its natural
 shaped width; alternate mode shrinks excess width to one em. Visible ink is

@@ -71,6 +71,7 @@ from .annotations import (
     load_rich_text_html,
     oldstyle_nums_value,
     prepare_ruby_insertion,
+    prepare_tate_chu_yoko_insertion,
     remove_ruby,
     ruby_container_for_cursor,
     ruby_containers_intersecting_cursor,
@@ -1136,6 +1137,7 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.beginEditBlock()
             try:
                 prepare_ruby_insertion(cursor, '\n')
+                prepare_tate_chu_yoko_insertion(cursor, '\n')
                 cursor.insertText('\n')
             finally:
                 cursor.endEditBlock()
@@ -1147,6 +1149,7 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.beginEditBlock()
             try:
                 prepare_ruby_insertion(cursor, e.text())
+                prepare_tate_chu_yoko_insertion(cursor, e.text())
                 cursor.insertText(e.text())
             finally:
                 cursor.endEditBlock()
@@ -1536,6 +1539,7 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.beginEditBlock()
         try:
             prepare_ruby_insertion(cursor, text)
+            prepare_tate_chu_yoko_insertion(cursor, text)
             cursor.insertText(text)
         finally:
             cursor.endEditBlock()

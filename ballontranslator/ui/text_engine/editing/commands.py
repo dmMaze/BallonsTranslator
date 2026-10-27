@@ -9,7 +9,10 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from ..item import TextBlkItem, TextBlock
-from ..annotations import prepare_ruby_insertion
+from ..annotations import (
+    prepare_ruby_insertion,
+    prepare_tate_chu_yoko_insertion,
+)
 from ..rendering.indexing import _utf16_boundaries
 from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
@@ -60,6 +63,7 @@ def propagate_user_edit(
         )
     if isinstance(target_edit, TextBlkItem):
         prepare_ruby_insertion(cursor, added_text)
+        prepare_tate_chu_yoko_insertion(cursor, added_text)
     # During focus loss the paired editor may already have focus. Replaying
     # the edit must not publish it again as a new user action.
     in_redo_undo = target_edit.in_redo_undo
