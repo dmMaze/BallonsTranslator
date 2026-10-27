@@ -2645,6 +2645,138 @@ def apply_auto_text_combine_upright(
     return True
 
 
+def _combine_tate_chu_yoko_run(
+    block: QTextBlock,
+    run_start: int,
+    run_length: int,
+    max_length: int,
+) -> bool:
+    """Combine or release one allowed-character run inside ``block``."""
+    run_end = run_start + run_length
+    existing = [
+        entry for entry in text_combine_upright_ranges(block)
+        if entry[0] < run_end and run_start < entry[0] + entry[1]
+    ]
+    cursor = QTextCursor(block)
+
+    if run_length > max_length:
+        # The run outgrew the configured limit; it must not stay combined.
+        if not existing:
+            return False
+        clear_format = _text_combine_modifier(False)
+        for start, length, _group_id in existing:
+            cursor.setPosition(block.position() + start)
+            cursor.setPosition(
+                block.position() + start + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            cursor.mergeCharFormat(clear_format)
+        return True
+
+    if (
+        len(existing) == 1
+        and existing[0][0] == run_start
+        and existing[0][1] == run_length
+    ):
+        return False
+
+    modifier = QTextCharFormat()
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_UPRIGHT, TEXT_COMBINE_ALL
+    )
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_ID,
+        existing[0][2] if len(existing) == 1 else uuid4().hex,
+    )
+    cursor.setPosition(block.position() + run_start)
+    cursor.setPosition(block.position() + run_end, QTextCursor.MoveMode.KeepAnchor)
+    cursor.mergeCharFormat(modifier)
+    _rewrite_cursor_char_formats(
+        cursor,
+        lambda char_format: sync_native_ligature_shaping(
+            char_format,
+            vertical=True,
+        ),
+    )
+    return True
+
+
+def auto_combine_tate_chu_yoko_in_range(
+    document: QTextDocument,
+    start: int,
+    end: int,
+    allowed_characters: AbstractSet[str],
+    max_length: int,
+) -> bool:
+    """Apply the automatic rule to every run the ``start``-``end`` range touches.
+
+    Live editing uses this instead of re-deriving the whole document, so groups
+    outside the edited runs keep their identity and manual groups built from
+    other characters stay untouched. An empty range covers the run at the caret.
+    Return whether the document changed.
+
+    >>> document = QTextDocument('a12b')
+    >>> auto_combine_tate_chu_yoko_in_range(document, 2, 3, frozenset('12'), 4)
+    True
+    >>> [entry[:2] for entry in text_combine_upright_ranges(document.firstBlock())]
+    [(1, 2)]
+    >>> auto_combine_tate_chu_yoko_in_range(document, 2, 3, frozenset('12'), 4)
+    False
+    >>> pasted = QTextDocument('啊!!!\\n活该!!!')
+    >>> auto_combine_tate_chu_yoko_in_range(pasted, 0, 8, frozenset('!'), 3)
+    True
+    >>> blocks = [pasted.firstBlock(), pasted.firstBlock().next()]
+    >>> [[entry[:2] for entry in text_combine_upright_ranges(b)] for b in blocks]
+    [[(1, 3)], [(2, 3)]]
+    """
+    if max_length < 1:
+        return False
+    narrow_allowed = {
+        _narrow_character(character) for character in allowed_characters
+    }
+    if not narrow_allowed:
+        return False
+    if end < start:
+        start, end = end, start
+
+    changed = False
+    last = document.findBlock(max(start, end - 1))
+    block = document.findBlock(start)
+    while block.isValid():
+        text = block.text()
+        window_start = min(max(start - block.position(), 0), len(text))
+        window_end = min(max(end - block.position(), 0), len(text))
+        while (
+            window_start > 0
+            and _narrow_character(text[window_start - 1]) in narrow_allowed
+        ):
+            window_start -= 1
+        while (
+            window_end < len(text)
+            and _narrow_character(text[window_end]) in narrow_allowed
+        ):
+            window_end += 1
+
+        index = window_start
+        while index < window_end:
+            if _narrow_character(text[index]) not in narrow_allowed:
+                index += 1
+                continue
+            run_start = index
+            while (
+                index < window_end
+                and _narrow_character(text[index]) in narrow_allowed
+            ):
+                index += 1
+            changed |= _combine_tate_chu_yoko_run(
+                block, run_start, index - run_start, max_length
+            )
+        if block == last:
+            break
+        block = block.next()
+    return changed
+
+
 class RubyValidationError(ValueError):
     """A requested Ruby edit cannot be represented by the first version."""
 
@@ -2997,8 +3129,15 @@ def insert_rich_text_mime(
     mime: QMimeData,
     *,
     vertical: bool = False,
+    allowed_characters: Optional[AbstractSet[str]] = None,
+    max_length: int = 0,
 ) -> bool:
-    """Insert the custom rich-text representation when it is valid."""
+    """Insert the custom rich-text representation when it is valid.
+
+    ``allowed_characters`` applies the automatic Tate-chu-yoko rule to the
+    inserted range inside the same edit block, so a rich paste is combined just
+    like a plain-text paste.
+    """
     if not mime.hasFormat(RICH_TEXT_MIME_TYPE):
         return False
     encoded = bytes(mime.data(RICH_TEXT_MIME_TYPE))
@@ -3076,6 +3215,14 @@ def insert_rich_text_mime(
                 unit.text,
                 surrounding_group.position,
             ))
+        if allowed_characters:
+            auto_combine_tate_chu_yoko_in_range(
+                cursor.document(),
+                insertion_start,
+                insertion_end,
+                allowed_characters,
+                max_length,
+            )
     finally:
         cursor.endEditBlock()
     return True

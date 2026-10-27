@@ -76,7 +76,9 @@ mapping between the isolated run and source block. Native IME composition remain
 authoritative authoritative until commit. A group covers only the characters the user combined:
 inserted text keeps the active insertion format for one grapheme typed at a
 caret, and pasted or replaced content is treated as fresh text so it cannot
-absorb the paragraph into one cell.
+absorb the paragraph into one cell. With automatic TCY enabled, each insertion
+re-derives every run it touches, so typed and pasted text is combined without
+the project-wide Apply action while groups elsewhere keep their identity.
 
 TCY ignores authored letter spacing. Standard Roman mode keeps its natural
 shaped width; alternate mode shrinks excess width to one em. Visible ink is

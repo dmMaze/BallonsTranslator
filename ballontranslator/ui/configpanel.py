@@ -1177,6 +1177,9 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
             self.tr('Apply'),
             auto_tcy_header,
         )
+        self.auto_tate_chu_yoko_apply_btn.setToolTip(
+            self.tr('Re-apply to every text block in the project')
+        )
         auto_tcy_header_layout.addWidget(self.auto_tate_chu_yoko_apply_btn)
         auto_tcy_header_layout.addStretch()
         auto_tcy_layout.addWidget(auto_tcy_header)

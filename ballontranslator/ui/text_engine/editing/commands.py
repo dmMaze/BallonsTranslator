@@ -13,7 +13,7 @@ from ..annotations import (
     prepare_ruby_insertion,
     prepare_tate_chu_yoko_insertion,
 )
-from ..rendering.indexing import _utf16_boundaries
+from ..rendering.indexing import _utf16_boundaries, _utf16_length
 from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
     FontFormat,
@@ -70,6 +70,10 @@ def propagate_user_edit(
     target_edit.in_redo_undo = True
     try:
         cursor.insertText(added_text)
+        if isinstance(target_edit, TextBlkItem):
+            target_edit.auto_combine_tate_chu_yoko_in_range(
+                pos, pos + _utf16_length(added_text)
+            )
         cursor.endEditBlock()
         target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
     finally:

@@ -19,6 +19,7 @@ from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
                        QBrush, QFontMetrics, QPen,
                        QTextBlockFormat)
 
+from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
@@ -61,6 +62,7 @@ from .annotations import (
     apply_letter_spacing,
     apply_ruby,
     apply_text_combine_upright,
+    auto_combine_tate_chu_yoko_in_range,
     canonical_letter_spacing,
     create_rich_text_mime,
     emphasis_values,
@@ -301,8 +303,15 @@ class TextBlkItem(QGraphicsTextItem):
             if replacement_length == 0:
                 cursor = prepare_cursor
             super().setTextCursor(cursor)
+            commit_start = cursor.selectionStart()
             try:
                 super().inputMethodEvent(e)
+                # The commit is the editable text; a still-open composition
+                # owns the document until it is cleared.
+                if not e.preeditString():
+                    self.auto_combine_tate_chu_yoko_in_range(
+                        commit_start, self.textCursor().position()
+                    )
             finally:
                 cursor.endEditBlock()
         else:
@@ -1146,11 +1155,15 @@ class TextBlkItem(QGraphicsTextItem):
         elif e.text() and e.text().isprintable():
             e.accept()
             cursor = self.textCursor()
+            insert_start = cursor.selectionStart()
             cursor.beginEditBlock()
             try:
                 prepare_ruby_insertion(cursor, e.text())
                 prepare_tate_chu_yoko_insertion(cursor, e.text())
                 cursor.insertText(e.text())
+                self.auto_combine_tate_chu_yoko_in_range(
+                    insert_start, cursor.position()
+                )
             finally:
                 cursor.endEditBlock()
             self.setTextCursor(cursor)
@@ -1523,24 +1536,57 @@ class TextBlkItem(QGraphicsTextItem):
         self.repaint_background()
 
     def insert_from_mime_data(self, mime: QMimeData) -> bool:
+        settings = pcfg.auto_tate_chu_yoko
+        applies_rule = settings.enabled and self.fontformat.vertical
         cursor = self.textCursor()
         inserted = insert_rich_text_mime(
             cursor,
             mime,
             vertical=self.fontformat.vertical,
+            allowed_characters=(
+                settings.allowed_characters() if applies_rule else None
+            ),
+            max_length=settings.max_length,
         )
         if inserted:
             self.setTextCursor(cursor)
         return inserted
 
+    def auto_combine_tate_chu_yoko_in_range(self, start: int, end: int) -> None:
+        """Apply the automatic Tate-chu-yoko rule to an edited range.
+
+        Every run the range touches is re-derived in place, so typing or
+        pasting keeps the configured characters combined without waiting for
+        the project-wide Apply action or disturbing unrelated groups.
+
+        >>> callable(TextBlkItem.auto_combine_tate_chu_yoko_in_range)
+        True
+        """
+        settings = pcfg.auto_tate_chu_yoko
+        if not settings.enabled or not self.fontformat.vertical:
+            return
+        if self.document().isEmpty():
+            return
+        auto_combine_tate_chu_yoko_in_range(
+            self.document(),
+            start,
+            end,
+            settings.allowed_characters(),
+            settings.max_length,
+        )
+
     def insert_plain_text_at_cursor(self, text: str) -> None:
         """Insert clipboard text with Ruby's boundary inheritance rules."""
         cursor = self.textCursor()
+        insert_start = cursor.selectionStart()
         cursor.beginEditBlock()
         try:
             prepare_ruby_insertion(cursor, text)
             prepare_tate_chu_yoko_insertion(cursor, text)
             cursor.insertText(text)
+            self.auto_combine_tate_chu_yoko_in_range(
+                insert_start, cursor.position()
+            )
         finally:
             cursor.endEditBlock()
         self.setTextCursor(cursor)
