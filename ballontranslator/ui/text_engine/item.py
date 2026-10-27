@@ -67,6 +67,7 @@ from .annotations import (
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
+    inline_annotation_state,
     ligature_axis_value,
     letter_spacing_value,
     line_spacing_values,
@@ -75,6 +76,7 @@ from .annotations import (
     prepare_ruby_insertion,
     prepare_tate_chu_yoko_insertion,
     remove_ruby,
+    restore_inline_annotations,
     ruby_container_for_cursor,
     ruby_containers_intersecting_cursor,
     set_document_letter_spacing_writing_mode,
@@ -84,6 +86,7 @@ from .annotations import (
     text_combine_upright_values,
     to_rich_text_html,
     validated_line_spacing,
+    without_inline_annotations,
 )
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
@@ -1646,9 +1649,19 @@ class TextBlkItem(QGraphicsTextItem):
                 repaint_background=False,
             )
 
+        # A whole-style apply replaces every fragment format, and the
+        # replacement is derived from the first character's format. Capture the
+        # inline annotations so the replacement cannot spread the first
+        # character's annotation over the block, and merge them back once the
+        # style owns the rest of the formatting.
+        annotation_state = (
+            inline_annotation_state(self.document())
+            if set_char_format
+            else None
+        )
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
-        format = cursor.charFormat()
+        format = without_inline_annotations(cursor.charFormat())
         font = qfont_with_family(
             self.document().defaultFont(),
             ffmat.font_family,
@@ -1690,6 +1703,14 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.setBlockCharFormat(format)
         if set_char_format:
             cursor.setCharFormat(format)
+            # The replacement above rewrote every fragment format, so the
+            # style-derived annotations are merged back here, inside the same
+            # style transaction.
+            restore_inline_annotations(
+                self.document(),
+                annotation_state,
+                vertical=ffmat.vertical,
+            )
         cursor.clearSelection()
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
         cursor.movePosition(QTextCursor.MoveOperation.Start)

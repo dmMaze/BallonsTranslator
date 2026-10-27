@@ -3041,6 +3041,219 @@ def prepare_ruby_insertion(cursor: QTextCursor, text: str = '') -> None:
     cursor.setCharFormat(char_format)
 
 
+# ---------------------------------------------------------------------------
+# Whole-style replacement
+# ---------------------------------------------------------------------------
+# ``QTextCursor.setCharFormat()`` over a selection replaces every fragment
+# format instead of merging into it, and the replacement is built from one
+# character's format. A whole text style replaces the document that way, so
+# per-character annotations need an explicit snapshot: they must stay out of
+# the replacement (otherwise the first character's annotation spreads over the
+# whole block) and be merged back afterwards (``FontFormat`` has no annotation
+# fields, so applying a style must not clear them).
+
+INLINE_ANNOTATION_PROPERTIES = (
+    AnnotationProperty.EMPHASIS_STYLE,
+    AnnotationProperty.EMPHASIS_POSITION,
+    AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+    AnnotationProperty.TEXT_COMBINE_ID,
+    AnnotationProperty.RUBY_ID,
+    AnnotationProperty.RUBY_UNIT_ID,
+    AnnotationProperty.RUBY_TYPE,
+    AnnotationProperty.RUBY_TEXT,
+    AnnotationProperty.RUBY_POSITION,
+)
+
+
+@dataclass(frozen=True)
+class EmphasisRange:
+    """One contiguous emphasis run in absolute Qt UTF-16 coordinates.
+
+    >>> EmphasisRange(3, 2, 'filled dot', 'over right').end
+    5
+    """
+
+    start: int
+    length: int
+    style: str
+    position: str
+
+    @property
+    def end(self) -> int:
+        return self.start + self.length
+
+
+@dataclass(frozen=True)
+class InlineAnnotationState:
+    """Per-character annotations captured before a whole-style replacement.
+
+    >>> InlineAnnotationState().empty
+    True
+    """
+
+    text_combine: tuple[tuple[int, int, str], ...] = ()
+    ruby: tuple[RubyContainerRange, ...] = ()
+    emphasis: tuple[EmphasisRange, ...] = ()
+
+    @property
+    def empty(self) -> bool:
+        return not (self.text_combine or self.ruby or self.emphasis)
+
+
+def emphasis_ranges(document: QTextDocument) -> tuple[EmphasisRange, ...]:
+    """Return contiguous emphasis runs in absolute document coordinates.
+
+    >>> emphasis_ranges(QTextDocument('plain'))
+    ()
+    """
+    ranges: list[EmphasisRange] = []
+    block = document.firstBlock()
+    while block.isValid():
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid() and fragment.length() > 0:
+                style, position = emphasis_values(fragment.charFormat())
+                if style != 'none':
+                    start = fragment.position()
+                    length = fragment.length()
+                    if (
+                        ranges
+                        and ranges[-1].end == start
+                        and (ranges[-1].style, ranges[-1].position)
+                        == (style, position)
+                    ):
+                        previous = ranges[-1]
+                        ranges[-1] = EmphasisRange(
+                            previous.start,
+                            previous.length + length,
+                            style,
+                            position,
+                        )
+                    else:
+                        ranges.append(
+                            EmphasisRange(start, length, style, position)
+                        )
+            iterator += 1
+        block = block.next()
+    return tuple(ranges)
+
+
+def inline_annotation_state(document: QTextDocument) -> InlineAnnotationState:
+    """Capture every inline annotation of one document.
+
+    >>> inline_annotation_state(QTextDocument('plain')).empty
+    True
+    """
+    text_combine = []
+    block = document.firstBlock()
+    while block.isValid():
+        for start, length, group_id in text_combine_upright_ranges(block):
+            text_combine.append(
+                (block.position() + start, length, group_id)
+            )
+        block = block.next()
+    return InlineAnnotationState(
+        tuple(text_combine),
+        ruby_containers(document),
+        emphasis_ranges(document),
+    )
+
+
+def without_inline_annotations(
+    char_format: QTextCharFormat,
+) -> QTextCharFormat:
+    """Return a copy with every per-character annotation property removed.
+
+    A whole-document replacement is derived from one character's format, so
+    that format must not carry annotation state into unrelated characters.
+
+    >>> fmt = QTextCharFormat()
+    >>> fmt.setProperty(AnnotationProperty.TEXT_COMBINE_UPRIGHT, TEXT_COMBINE_ALL)
+    >>> without_inline_annotations(fmt).property(
+    ...     AnnotationProperty.TEXT_COMBINE_UPRIGHT
+    ... ) is None
+    True
+    """
+    stripped = QTextCharFormat(char_format)
+    for prop in INLINE_ANNOTATION_PROPERTIES:
+        stripped.clearProperty(prop)
+    return stripped
+
+
+def restore_inline_annotations(
+    document: QTextDocument,
+    state: InlineAnnotationState,
+    *,
+    vertical: bool = True,
+) -> bool:
+    """Merge a captured annotation state back into one document.
+
+    Only annotation properties are merged, so the font, colour, spacing,
+    effects, and transform of a replacement survive. Group and container
+    identity is preserved, which keeps the restored document equal to the
+    captured one. Return whether anything was restored.
+
+    >>> document = QTextDocument('12')
+    >>> cursor = QTextCursor(document)
+    >>> cursor.select(QTextCursor.SelectionType.Document)
+    >>> apply_text_combine_upright(cursor, True)
+    >>> state = inline_annotation_state(document)
+    >>> cursor.mergeCharFormat(_text_combine_modifier(False))
+    >>> text_combine_upright_values(cursor.charFormat())[0]
+    'none'
+    >>> restore_inline_annotations(document, state)
+    True
+    >>> [entry[:2] for entry in text_combine_upright_ranges(document.firstBlock())]
+    [(0, 2)]
+    """
+    if state.empty:
+        return False
+
+    work = QTextCursor(document)
+    for start, length, group_id in state.text_combine:
+        work.setPosition(start)
+        work.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+        modifier = QTextCharFormat()
+        modifier.setProperty(
+            AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+            TEXT_COMBINE_ALL,
+        )
+        modifier.setProperty(AnnotationProperty.TEXT_COMBINE_ID, group_id)
+        work.mergeCharFormat(modifier)
+        # A combined run shapes differently from the surrounding cells, so its
+        # native spacing and feature tags are re-derived from the restored
+        # annotation state.
+        work.setPosition(start)
+        work.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+        _rewrite_cursor_char_formats(
+            work,
+            lambda char_format: sync_native_ligature_shaping(
+                char_format,
+                vertical=vertical,
+            ),
+        )
+
+    for container in state.ruby:
+        for unit in container.units:
+            work.setPosition(unit.start)
+            work.setPosition(unit.end, QTextCursor.MoveMode.KeepAnchor)
+            work.mergeCharFormat(_ruby_modifier(
+                container.container_id,
+                unit.unit_id,
+                container.ruby_type,
+                unit.text,
+                container.position,
+            ))
+
+    for emphasis in state.emphasis:
+        work.setPosition(emphasis.start)
+        work.setPosition(emphasis.end, QTextCursor.MoveMode.KeepAnchor)
+        apply_emphasis(work, emphasis.style, emphasis.position)
+
+    return True
+
+
 def _remap_text_combine_ids(document: QTextDocument) -> None:
     """Give every pasted combined group a document-local identity."""
     replacements = {}

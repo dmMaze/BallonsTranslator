@@ -113,6 +113,14 @@ column stays anchored without leading spacing; each later one uses its
 paragraph's spacing value and mode. Paragraph boundaries do not restart this
 visual leading-edge rule.
 
+A whole-style apply (`set_fontformat(set_char_format=True)`) replaces every
+fragment format, because a stored style owns font, colour, spacing, effects,
+alignment, and transform for the whole item. Inline annotations are not part of
+`FontFormat`, so tate-chu-yoko, Ruby, and emphasis are captured before the
+replacement and merged back afterwards. The replacement format is derived from
+one character's format and is stripped of annotation properties first; otherwise
+an annotation on that character would spread over the whole block.
+
 ## Alignment and resize
 
 Vertical alignment translates settled columns horizontally:
