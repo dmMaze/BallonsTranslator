@@ -19,6 +19,7 @@ from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
                        QBrush, QFontMetrics, QPen,
                        QTextBlockFormat)
 
+from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
@@ -61,17 +62,21 @@ from .annotations import (
     apply_letter_spacing,
     apply_ruby,
     apply_text_combine_upright,
+    auto_combine_tate_chu_yoko_in_range,
     canonical_letter_spacing,
     create_rich_text_mime,
     emphasis_values,
     insert_rich_text_mime,
+    inline_annotation_state,
     ligature_axis_value,
     letter_spacing_value,
     line_spacing_values,
     load_rich_text_html,
     oldstyle_nums_value,
     prepare_ruby_insertion,
+    prepare_tate_chu_yoko_insertion,
     remove_ruby,
+    restore_inline_annotations,
     ruby_container_for_cursor,
     ruby_containers_intersecting_cursor,
     set_document_letter_spacing_writing_mode,
@@ -81,6 +86,7 @@ from .annotations import (
     text_combine_upright_values,
     to_rich_text_html,
     validated_line_spacing,
+    without_inline_annotations,
 )
 
 TEXTRECT_SHOW_COLOR = QColor(30, 147, 229, 170)
@@ -300,8 +306,15 @@ class TextBlkItem(QGraphicsTextItem):
             if replacement_length == 0:
                 cursor = prepare_cursor
             super().setTextCursor(cursor)
+            commit_start = cursor.selectionStart()
             try:
                 super().inputMethodEvent(e)
+                # The commit is the editable text; a still-open composition
+                # owns the document until it is cleared.
+                if not e.preeditString():
+                    self.auto_combine_tate_chu_yoko_in_range(
+                        commit_start, self.textCursor().position()
+                    )
             finally:
                 cursor.endEditBlock()
         else:
@@ -1136,6 +1149,7 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.beginEditBlock()
             try:
                 prepare_ruby_insertion(cursor, '\n')
+                prepare_tate_chu_yoko_insertion(cursor, '\n')
                 cursor.insertText('\n')
             finally:
                 cursor.endEditBlock()
@@ -1144,10 +1158,15 @@ class TextBlkItem(QGraphicsTextItem):
         elif e.text() and e.text().isprintable():
             e.accept()
             cursor = self.textCursor()
+            insert_start = cursor.selectionStart()
             cursor.beginEditBlock()
             try:
                 prepare_ruby_insertion(cursor, e.text())
+                prepare_tate_chu_yoko_insertion(cursor, e.text())
                 cursor.insertText(e.text())
+                self.auto_combine_tate_chu_yoko_in_range(
+                    insert_start, cursor.position()
+                )
             finally:
                 cursor.endEditBlock()
             self.setTextCursor(cursor)
@@ -1520,23 +1539,57 @@ class TextBlkItem(QGraphicsTextItem):
         self.repaint_background()
 
     def insert_from_mime_data(self, mime: QMimeData) -> bool:
+        settings = pcfg.auto_tate_chu_yoko
+        applies_rule = settings.enabled and self.fontformat.vertical
         cursor = self.textCursor()
         inserted = insert_rich_text_mime(
             cursor,
             mime,
             vertical=self.fontformat.vertical,
+            allowed_characters=(
+                settings.allowed_characters() if applies_rule else None
+            ),
+            max_length=settings.max_length,
         )
         if inserted:
             self.setTextCursor(cursor)
         return inserted
 
+    def auto_combine_tate_chu_yoko_in_range(self, start: int, end: int) -> None:
+        """Apply the automatic Tate-chu-yoko rule to an edited range.
+
+        Every run the range touches is re-derived in place, so typing or
+        pasting keeps the configured characters combined without waiting for
+        the project-wide Apply action or disturbing unrelated groups.
+
+        >>> callable(TextBlkItem.auto_combine_tate_chu_yoko_in_range)
+        True
+        """
+        settings = pcfg.auto_tate_chu_yoko
+        if not settings.enabled or not self.fontformat.vertical:
+            return
+        if self.document().isEmpty():
+            return
+        auto_combine_tate_chu_yoko_in_range(
+            self.document(),
+            start,
+            end,
+            settings.allowed_characters(),
+            settings.max_length,
+        )
+
     def insert_plain_text_at_cursor(self, text: str) -> None:
         """Insert clipboard text with Ruby's boundary inheritance rules."""
         cursor = self.textCursor()
+        insert_start = cursor.selectionStart()
         cursor.beginEditBlock()
         try:
             prepare_ruby_insertion(cursor, text)
+            prepare_tate_chu_yoko_insertion(cursor, text)
             cursor.insertText(text)
+            self.auto_combine_tate_chu_yoko_in_range(
+                insert_start, cursor.position()
+            )
         finally:
             cursor.endEditBlock()
         self.setTextCursor(cursor)
@@ -1596,9 +1649,19 @@ class TextBlkItem(QGraphicsTextItem):
                 repaint_background=False,
             )
 
+        # A whole-style apply replaces every fragment format, and the
+        # replacement is derived from the first character's format. Capture the
+        # inline annotations so the replacement cannot spread the first
+        # character's annotation over the block, and merge them back once the
+        # style owns the rest of the formatting.
+        annotation_state = (
+            inline_annotation_state(self.document())
+            if set_char_format
+            else None
+        )
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.Start)
-        format = cursor.charFormat()
+        format = without_inline_annotations(cursor.charFormat())
         font = qfont_with_family(
             self.document().defaultFont(),
             ffmat.font_family,
@@ -1640,6 +1703,14 @@ class TextBlkItem(QGraphicsTextItem):
         cursor.setBlockCharFormat(format)
         if set_char_format:
             cursor.setCharFormat(format)
+            # The replacement above rewrote every fragment format, so the
+            # style-derived annotations are merged back here, inside the same
+            # style transaction.
+            restore_inline_annotations(
+                self.document(),
+                annotation_state,
+                vertical=ffmat.vertical,
+            )
         cursor.clearSelection()
         # https://stackoverflow.com/questions/37160039/set-default-character-format-in-qtextdocument
         cursor.movePosition(QTextCursor.MoveOperation.Start)
