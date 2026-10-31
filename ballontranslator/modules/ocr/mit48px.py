@@ -108,6 +108,8 @@ class XPOS2D(nn.Module):
 # Roformer with Xpos
 
 class Model48pxOCR:
+    # a line is kept if its per-character probability reaches MIN_CHAR_PROB (or the whole sequence's reaches 0.2)
+    MIN_CHAR_PROB = 0.5
     _MODEL_MAPPING = {
         'model': {
             'url': 'https://huggingface.co/zyddnys/manga-image-translator/resolve/main/ocr_ar_48px.ckpt',
@@ -167,8 +169,6 @@ class Model48pxOCR:
             with torch.no_grad():
                 ret = self.model.infer_beam_batch_tensor(image_tensor, widths, beams_k = 5, max_seq_length = 255)
             for i, (pred_chars_index, prob, fg_pred, bg_pred, fg_ind_pred, bg_ind_pred) in enumerate(ret):
-                if prob < 0.2:
-                    continue
                 has_fg = (fg_ind_pred[:, 1] > fg_ind_pred[:, 0])
                 has_bg = (bg_ind_pred[:, 1] > bg_ind_pred[:, 0])
                 seq = []
@@ -200,6 +200,11 @@ class Model48pxOCR:
                         bg(int(c_fg[1] * 255))
                         bb(int(c_fg[2] * 255))
                 txt = ''.join(seq)
+                # prob is the whole sequence's probability, so it shrinks with line length: a cut on it alone
+                # dropped long, well-read lines. The per-character (geometric mean) probability does not.
+                char_prob = prob ** (1 / (len(txt) + 1))
+                if prob < 0.2 and char_prob < self.MIN_CHAR_PROB:
+                    continue
                 fr = min(max(int(fr()), 0), 255)
                 fg = min(max(int(fg()), 0), 255)
                 fb = min(max(int(fb()), 0), 255)
@@ -733,6 +738,9 @@ class OCR(nn.Module):
             finished = out_idx[:, -1] == end_tok
             pred_chars_values[finished] = 0
             pred_chars_index[finished] = end_tok
+            # A finished beam was copied into all k candidates, so ONE early </S> filled the whole beam
+            # and counted as max_finished_hypos finished hypotheses: keep a single continuation.
+            pred_chars_values[finished, 1:] = float('-inf')
 
 
             # Extend hypotheses
@@ -752,13 +760,19 @@ class OCR(nn.Module):
             expanded_topk_indices = batch_topk_indices.unsqueeze(-1).expand(-1, -1, new_out_idx.shape[-1])  # Shape [N, k, seq_len + 1]
             out_idx = torch.gather(new_out_idx, 1, expanded_topk_indices).reshape(-1, step + 2)  # [N * k, seq_len + 1]
             log_probs = batch_topk_log_probs.view(-1, 1)  # Reshape to [N * k, 1]
+            # The cache holds each beam's own history for self-attention: follow the parent beam.
+            parent = (torch.arange(N_remaining, device=img.device).unsqueeze(1) * beams_k + batch_topk_indices // beams_k).view(-1)
+            cached_activations = cached_activations.index_select(0, parent)
 
 
             # Check for finished sequences
             finished = (out_idx[:, -1] == end_tok)  # Check if the last token is the end token
             finished = finished.view(N_remaining, beams_k)  # Reshape to [N, k]
             finished_counts = finished.sum(dim=1)  # Count the number of finished hypotheses per sample
-            finished_batch_indices = (finished_counts >= max_finished_hypos).nonzero(as_tuple=False).squeeze()
+            # Stop a sample only when its best beam has finished: log probs only fall, so no live beam can
+            # beat it. Stopping at max_finished_hypos finished beams returned the best beam even while it was
+            # still live (a truncated read) or, among finished ones only, a far weaker read.
+            finished_batch_indices = finished[:, 0].nonzero(as_tuple=False).squeeze()
 
 
             if finished_batch_indices.numel() == 0:
