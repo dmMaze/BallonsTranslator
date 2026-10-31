@@ -267,6 +267,28 @@ class InkBrushAlgorithmTest(unittest.TestCase):
             effect.params_dict()['opaque_future'], 'preserved'
         )
 
+    def test_edge_outside_tile_halo_cannot_change_core(self) -> None:
+        params = dict(
+            self.runtime.params, start_density=0.4, end_density=0.4
+        )
+        source = np.full((256, 256, 4), 255, dtype=np.uint8)
+        source[:, 0, 3] = 0
+        for scale in (1.0, 1.25, 2.0, 4.0):
+            with self.subTest(scale=scale):
+                halo = self.runtime.tile_halo(params, scale)
+                full = self.runtime.apply(
+                    source.copy(), params,
+                    FilterContext(scale, -7, -13, False, 256, 256),
+                )
+                # The tile omits the only transparent edge, beyond its halo.
+                tile = self.runtime.apply(
+                    source[:, 1:].copy(), params,
+                    FilterContext(scale, -6, -13, False, 256, 256),
+                )
+                np.testing.assert_array_equal(
+                    full[:, 1 + halo:], tile[:, halo:]
+                )
+
 
 class InkBrushRendererTest(unittest.TestCase):
     @classmethod

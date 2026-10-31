@@ -109,7 +109,7 @@ _MIX_B = np.uint64(0x94D049BB133111EB)
 _EDGE_BIAS = np.float32(0.8)
 # Rim bias falloff in logical pixels; it is independent of the grain size.
 _EDGE_DECAY = 2.0
-# Rim bias is effectively zero beyond this many decay lengths.
+# Hard cutoff in decay lengths keeps the edge bias within the tile halo.
 _EDGE_REACH = 6.0
 
 
@@ -275,6 +275,7 @@ def apply(
     rim = np.exp(
         -distance[rows, columns] / max(1e-3, _EDGE_DECAY * scale)
     )
+    rim[distance[rows, columns] >= _EDGE_REACH * _EDGE_DECAY * scale] = 0.0
     probability = np.clip(
         density * (1.0 + _EDGE_BIAS * rim), 0.0, 1.0
     )
