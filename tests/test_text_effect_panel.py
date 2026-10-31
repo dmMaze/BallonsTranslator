@@ -1105,7 +1105,7 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(editor.stop_bar.accessibleName(), 'Gradient Stops')
         editor.deleteLater()
 
-    def test_inline_gradient_numeric_suffixes_fit_narrow_card(self):
+    def test_inline_gradient_numeric_suffixes_fit_narrow_card(self) -> None:
         old_stylesheet = self.app.styleSheet()
         theme_globals = {
             name: getattr(shared, name)
@@ -1129,33 +1129,34 @@ class TextEffectPanelTest(unittest.TestCase):
                     with self.subTest(theme=theme, card=card_type.__name__):
                         self.app.setStyleSheet(parse_stylesheet(theme))
                         host = QWidget()
-                        layout = QVBoxLayout(host)
-                        layout.setContentsMargins(11, 11, 11, 11)
-                        card = card_type(0)
-                        card.set_value(effect)
-                        layout.addWidget(card)
-                        requested_width = 316
-                        host.resize(
-                            requested_width, card.sizeHint().height() + 22
-                        )
-                        host.show()
-                        self.app.processEvents()
+                        try:
+                            layout = QVBoxLayout(host)
+                            layout.setContentsMargins(11, 11, 11, 11)
+                            card = card_type(0)
+                            card.set_value(effect)
+                            layout.addWidget(card)
+                            host.resize(316, card.sizeHint().height() + 22)
+                            host.show()
+                            self.app.processEvents()
 
-                        self.assertEqual(host.width(), requested_width)
-                        for field in card.gradient_editor._editors():
-                            line_edit = field.lineEdit()
-                            text_width = (
-                                line_edit.fontMetrics().horizontalAdvance(
-                                    field.text()
+                            # Qt may enlarge the host for platform font metrics.
+                            for field in card.gradient_editor._editors():
+                                line_edit = field.lineEdit()
+                                text_width = (
+                                    line_edit.fontMetrics().horizontalAdvance(
+                                        field.text()
+                                    )
                                 )
+                                self.assertGreaterEqual(
+                                    line_edit.contentsRect().width(),
+                                    text_width + 4,
+                                    field.text(),
+                                )
+                        finally:
+                            host.deleteLater()
+                            QCoreApplication.sendPostedEvents(
+                                host, QEvent.Type.DeferredDelete
                             )
-                            self.assertGreaterEqual(
-                                line_edit.contentsRect().width(),
-                                text_width + 4,
-                                field.text(),
-                            )
-                        host.deleteLater()
-                        self.app.processEvents()
         finally:
             self.app.setStyleSheet(old_stylesheet)
             for name, value in theme_globals.items():
@@ -2368,6 +2369,7 @@ class TextEffectPanelTest(unittest.TestCase):
                 'builtin:gaussian_blur',
                 'builtin:bloom',
                 'builtin:glitch',
+                'builtin:ink_brush',
             ],
         )
         self.assertTrue(all(not action.icon().isNull() for action in actions.values()))

@@ -2897,6 +2897,8 @@ class TextEffectRenderer:
                 (surface_rect.top() - logical.top()) * render_scale
             )),
             strict_export=self.export_render,
+            logical_width=float(logical.width()),
+            logical_height=float(logical.height()),
         )
         adopted = False
         for _index, effect, runtime, halo in plan:

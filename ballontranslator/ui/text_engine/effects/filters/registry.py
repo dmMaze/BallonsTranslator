@@ -38,6 +38,9 @@ class FilterContext:
 
     ``origin_x`` and ``origin_y`` are physical pixels relative to the
     unpadded logical text origin, including negative effect overflow.
+    ``logical_width`` and ``logical_height`` are the unpadded item size in
+    logical units; filters that need item-relative placement use them instead
+    of the current tile or surface extent.
 
     >>> FilterContext(2.0, -4, 8, True).origin_x
     -4
@@ -47,6 +50,8 @@ class FilterContext:
     origin_x: int
     origin_y: int
     strict_export: bool = False
+    logical_width: float = 0.0
+    logical_height: float = 0.0
 
 
 @dataclass(frozen=True)

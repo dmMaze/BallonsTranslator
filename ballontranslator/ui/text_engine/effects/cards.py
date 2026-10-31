@@ -112,6 +112,27 @@ def _filter_ui_text(spec: FilterSpec, text: str) -> str:
         'Glitch': lambda: QCoreApplication.translate(
             'TextEffectPanel', 'Glitch'
         ),
+        'Ink Brush': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'Ink Brush'
+        ),
+        'Start Density': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'Start Density'
+        ),
+        'End Density': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'End Density'
+        ),
+        'Gradient Direction': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'Gradient Direction'
+        ),
+        'Streak Direction': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'Streak Direction'
+        ),
+        'Grain Size': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'Grain Size'
+        ),
+        'Streak': lambda: QCoreApplication.translate(
+            'TextEffectPanel', 'Streak'
+        ),
         'Amount': lambda: QCoreApplication.translate(
             'TextEffectPanel', 'Amount'
         ),
