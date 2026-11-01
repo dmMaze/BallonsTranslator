@@ -1,3 +1,5 @@
+import math
+import time
 import numpy as np
 from typing import Callable, List, Optional, Union
 from uuid import uuid4
@@ -5,7 +7,7 @@ import os
 
 from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSize, QSizeF, QEvent, QTimer
-from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QMouseEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
+from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QMouseEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent, QTabletEvent, QInputDevice, QPointingDevice
 from qtpy.QtWidgets import QGraphicsLineItem, QGraphicsPathItem
 from qtpy.QtCore import QLineF
 from qtpy.QtGui import QBrush, QColor, QPainterPathStroker
@@ -76,6 +78,58 @@ def _segment_rect_entry(
     return min(max(entry, 0.0), 1.0)
 
 
+def detect_pointer_device(event: QEvent) -> str:
+    if event is None:
+        return 'mouse'
+
+    if isinstance(event, QTabletEvent) or event.type() in (
+        getattr(QEvent.Type, 'TabletPress', getattr(QEvent, 'TabletPress', -1)),
+        getattr(QEvent.Type, 'TabletMove', getattr(QEvent, 'TabletMove', -1)),
+        getattr(QEvent.Type, 'TabletRelease', getattr(QEvent, 'TabletRelease', -1)),
+    ):
+        return 'stylus'
+
+    if isinstance(event, QNativeGestureEvent):
+        return 'touchpad'
+
+    if isinstance(event, QWheelEvent):
+        if not event.pixelDelta().isNull():
+            return 'touchpad'
+        return 'mouse'
+
+    if hasattr(event, 'points') or hasattr(event, 'touchPoints') or event.type() in (
+        getattr(QEvent.Type, 'TouchBegin', getattr(QEvent, 'TouchBegin', -1)),
+        getattr(QEvent.Type, 'TouchUpdate', getattr(QEvent, 'TouchUpdate', -1)),
+        getattr(QEvent.Type, 'TouchEnd', getattr(QEvent, 'TouchEnd', -1)),
+        getattr(QEvent.Type, 'TouchCancel', getattr(QEvent, 'TouchCancel', -1)),
+    ):
+        return 'touchscreen'
+
+    if hasattr(event, 'pointingDevice'):
+        pd = event.pointingDevice()
+        if pd is not None:
+            p_type = getattr(pd, 'pointerType', lambda: None)()
+            if p_type is not None:
+                p_name = str(p_type).lower()
+                if 'pen' in p_name or 'eraser' in p_name:
+                    return 'stylus'
+
+            d_type = getattr(pd, 'deviceType', lambda: None)()
+            if d_type is not None:
+                d_name = str(d_type).lower()
+                if 'touchpad' in d_name:
+                    return 'touchpad'
+                elif 'touchscreen' in d_name:
+                    return 'touchscreen'
+
+    if hasattr(event, 'source'):
+        src = event.source()
+        if src == Qt.MouseEventSource.MouseEventSynthesizedBySystem:
+            return 'touchscreen'
+
+    return 'mouse'
+
+
 class CustomGV(QGraphicsView):
     ctrl_pressed = False
     scale_up_signal = Signal()
@@ -86,6 +140,10 @@ class CustomGV(QGraphicsView):
     ctrl_released = Signal()
     magic_wand_hover = Signal(QPointF)
     magic_wand_hover_left = Signal()
+    next_page_requested = Signal()
+    prev_page_requested = Signal()
+    undo_requested = Signal()
+    redo_requested = Signal()
     canvas: Optional["Canvas"] = None
 
     def __init__(self, parent=None):
@@ -97,12 +155,261 @@ class CustomGV(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         self.setMouseTracking(True)
 
+        self.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self._touch_active = False
+        self._touch_start_time = 0.0
+        self._last_multi_touch_time = 0.0
+        self._touch_prev_center = None
+        self._touch_prev_dist = None
+        self._touch_max_fingers = 0
+        self._touch_total_move = 0.0
+        self._touch_swipe_triggered = False
+        self._tablet_active = False
+        self._last_tablet_time = 0.0
+
+    def _extract_touch_points(self, event: QEvent):
+        if hasattr(event, 'points'):
+            raw_pts = event.points()
+        elif hasattr(event, 'touchPoints'):
+            raw_pts = event.touchPoints()
+        else:
+            raw_pts = []
+        pts = []
+        for p in raw_pts:
+            pos = None
+            if hasattr(p, 'position'):
+                pos = p.position()
+                if pos is None or (pos.x() == 0 and pos.y() == 0 and hasattr(p, 'scenePosition') and not p.scenePosition().isNull()):
+                    pos = p.scenePosition()
+            elif hasattr(p, 'pos'):
+                pos = p.pos()
+            if pos is None and hasattr(p, 'scenePosition'):
+                pos = p.scenePosition()
+            if pos is None:
+                continue
+
+            pt_id = p.id() if hasattr(p, 'id') else 0
+            pts.append({
+                'id': pt_id,
+                'pos': QPointF(pos.x(), pos.y()),
+            })
+        return pts
+
+    def _ignore_first_finger_if_needed(self) -> None:
+        if self.canvas is None:
+            return
+        self.canvas.cancel_active_gestures_and_strokes()
+        if hasattr(self.canvas, 'drawing_panel') and self.canvas.drawing_panel is not None:
+            self.canvas.drawing_panel.cancelPendingInpaint()
+        last_tap_time = getattr(self.canvas, '_last_tap_stroke_time', 0.0)
+        if time.time() - last_tap_time < 0.35:
+            if not getattr(self.canvas, '_last_tap_was_dragged', False):
+                if self.canvas.draw_undo_stack.canUndo():
+                    self.canvas.draw_undo_stack.undo()
+                self.canvas._last_tap_stroke_time = 0.0
+        self.canvas.drawingLayer.updateDrawing()
+        self.viewport().update()
+
+    def _handle_tablet_event(self, event: QTabletEvent) -> bool:
+        etype = event.type()
+        self._last_tablet_time = time.time()
+
+        # Detect eraser end or eraser side button
+        is_eraser = False
+        p_type = None
+        if hasattr(event, 'pointingDevice') and event.pointingDevice() is not None:
+            p_type = getattr(event.pointingDevice(), 'pointerType', lambda: None)()
+        elif hasattr(event, 'pointerType'):
+            p_type = event.pointerType()
+        elif hasattr(event, 'deviceType'):
+            p_type = event.deviceType()
+
+        if p_type is not None:
+            name = str(p_type).lower()
+            if 'eraser' in name:
+                is_eraser = True
+
+        if event.button() == Qt.MouseButton.RightButton or (event.buttons() & Qt.MouseButton.RightButton):
+            is_eraser = True
+
+        pressure = float(event.pressure()) if hasattr(event, 'pressure') else 1.0
+        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
+        scene_pos = self.mapToScene(pos)
+
+        press_type = getattr(QEvent.Type, 'TabletPress', getattr(QEvent, 'TabletPress', None))
+        move_type = getattr(QEvent.Type, 'TabletMove', getattr(QEvent, 'TabletMove', None))
+        release_type = getattr(QEvent.Type, 'TabletRelease', getattr(QEvent, 'TabletRelease', None))
+
+        if self.canvas is not None and self.canvas.imgtrans_proj is not None and self.canvas.imgtrans_proj.img_valid:
+            if self.canvas.drawMode() and self.canvas.painting:
+                if etype == press_type:
+                    self._tablet_active = True
+                    self.canvas.handle_tablet_press(scene_pos, is_eraser=is_eraser, pressure=pressure)
+                    event.accept()
+                    return True
+                elif etype == move_type:
+                    self._tablet_active = True
+                    self.canvas.handle_tablet_move(scene_pos, pressure=pressure)
+                    event.accept()
+                    return True
+                elif etype == release_type:
+                    self._tablet_active = False
+                    self.canvas.handle_tablet_release(scene_pos, is_eraser=is_eraser)
+                    event.accept()
+                    return True
+
+        if etype == release_type:
+            self._tablet_active = False
+
+        return False
+
+    def _handle_touch_event(self, event: QEvent) -> bool:
+        # Palm contact rejection: Stylus is active or was recently on screen
+        if getattr(self, '_tablet_active', False) or (time.time() - getattr(self, '_last_tablet_time', 0.0) < 0.6):
+            event.accept()
+            return True
+
+        etype = event.type()
+        pts = self._extract_touch_points(event)
+        num_pts = len(pts)
+
+        if etype == QEvent.Type.TouchBegin:
+            self._touch_start_time = time.time()
+            self._touch_prev_center = None
+            self._touch_prev_dist = None
+            self._touch_max_fingers = num_pts
+            self._touch_total_move = 0.0
+            self._touch_swipe_triggered = False
+            if num_pts >= 2:
+                self._touch_active = True
+                self._last_multi_touch_time = time.time()
+                self._ignore_first_finger_if_needed()
+                p1, p2 = pts[0]['pos'], pts[1]['pos']
+                self._touch_prev_center = (p1 + p2) / 2.0
+                self._touch_start_center = self._touch_prev_center
+                self._touch_prev_dist = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
+                event.accept()
+                return True
+            else:
+                self._touch_active = False
+                if time.time() - getattr(self, '_last_multi_touch_time', 0.0) < 0.4:
+                    event.accept()
+                    return True
+            return False
+
+        elif etype == QEvent.Type.TouchUpdate:
+            if num_pts > self._touch_max_fingers:
+                self._touch_max_fingers = num_pts
+
+            if num_pts >= 2:
+                self._last_multi_touch_time = time.time()
+                if not self._touch_active:
+                    self._touch_active = True
+                    self._ignore_first_finger_if_needed()
+                    if num_pts == 2:
+                        p1, p2 = pts[0]['pos'], pts[1]['pos']
+                        self._touch_prev_center = (p1 + p2) / 2.0
+                        self._touch_start_center = self._touch_prev_center
+                        self._touch_prev_dist = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
+                    event.accept()
+                    return True
+
+                if num_pts == 2:
+                    p1, p2 = pts[0]['pos'], pts[1]['pos']
+                    curr_center = (p1 + p2) / 2.0
+                    curr_dist = math.hypot(p1.x() - p2.x(), p1.y() - p2.y())
+
+                    if self._touch_prev_center is not None and self._touch_prev_dist is not None and self._touch_prev_dist > 1.0:
+                        delta_x = curr_center.x() - self._touch_prev_center.x()
+                        delta_y = curr_center.y() - self._touch_prev_center.y()
+                        move_len = math.hypot(delta_x, delta_y)
+                        dist_change = abs(curr_dist - self._touch_prev_dist)
+                        self._touch_total_move += move_len + dist_change
+
+                        h_bar = self.horizontalScrollBar()
+                        v_bar = self.verticalScrollBar()
+                        if abs(delta_x) > 0.01 or abs(delta_y) > 0.01:
+                            h_bar.setValue(int(round(h_bar.value() - delta_x)))
+                            v_bar.setValue(int(round(v_bar.value() - delta_y)))
+
+                        scale_factor = curr_dist / self._touch_prev_dist
+                        if abs(scale_factor - 1.0) > 0.002 and self.canvas is not None:
+                            self.canvas.scaleImage(scale_factor, anchor_pos=curr_center)
+
+                    self._touch_prev_center = curr_center
+                    self._touch_prev_dist = curr_dist
+                    event.accept()
+                    return True
+
+                elif num_pts >= 3:
+                    self._touch_prev_center = None
+                    self._touch_prev_dist = None
+                    event.accept()
+                    return True
+
+        elif etype in (QEvent.Type.TouchEnd, QEvent.Type.TouchCancel):
+            was_active = self._touch_active or (self._touch_max_fingers >= 2)
+            max_fingers = self._touch_max_fingers
+            total_move = self._touch_total_move
+            elapsed = time.time() - getattr(self, '_touch_start_time', 0.0)
+
+            if was_active:
+                self._last_multi_touch_time = time.time()
+                if self.canvas is not None:
+                    self.canvas.cancel_active_gestures_and_strokes()
+
+            if was_active and elapsed < 0.4 and total_move < 25 and max_fingers == 2:
+                self.undo_requested.emit()
+
+            self._touch_active = False
+            self._touch_prev_center = None
+            self._touch_prev_dist = None
+            self._touch_max_fingers = 0
+            self._touch_total_move = 0.0
+            self._touch_swipe_triggered = False
+
+            if was_active or num_pts >= 2:
+                event.accept()
+                return True
+
+        return False
+
     def viewportEvent(self, event: QEvent) -> bool:
+        etype = event.type()
+        if etype in (
+            QEvent.Type.TouchBegin,
+            QEvent.Type.TouchUpdate,
+            QEvent.Type.TouchEnd,
+            QEvent.Type.TouchCancel,
+        ):
+            if self._handle_touch_event(event):
+                return True
+
+        tablet_press = getattr(QEvent.Type, 'TabletPress', getattr(QEvent, 'TabletPress', None))
+        tablet_move = getattr(QEvent.Type, 'TabletMove', getattr(QEvent, 'TabletMove', None))
+        tablet_release = getattr(QEvent.Type, 'TabletRelease', getattr(QEvent, 'TabletRelease', None))
+        if etype in (tablet_press, tablet_move, tablet_release):
+            if self._handle_tablet_event(event):
+                return True
+
+        if etype in (
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseMove,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.MouseButtonDblClick,
+        ):
+            if getattr(self, '_tablet_active', False) or (time.time() - getattr(self, '_last_tablet_time', 0.0) < 0.3):
+                event.accept()
+                return True
+            if self._touch_active or (time.time() - getattr(self, '_last_multi_touch_time', 0.0) < 0.4):
+                event.accept()
+                return True
+
         canvas = self.canvas
         if canvas is not None and canvas._brush_anchor is not None and event.type() == QEvent.Type.Leave:
             canvas.brush_line_preview.hide()
         if canvas is not None and canvas._magic_wand_hover_enabled:
-            etype = event.type()
             if etype in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
                 if (
                     not isinstance(event, QMouseEvent)
@@ -118,14 +425,69 @@ class CustomGV(QGraphicsView):
                 self.magic_wand_hover_left.emit()
         return super().viewportEvent(event)
 
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            items_under = self.scene().items(scene_pos) if self.scene() else []
+            is_interactive = False
+            for item in items_under:
+                if isinstance(item, TextBlkItem) or bool(item.data(CONTROL_ITEM_DATA_KEY)):
+                    is_interactive = True
+                    break
+
+            if not is_interactive and self.canvas is not None and self.canvas.imgtrans_proj is not None and self.canvas.imgtrans_proj.img_valid:
+                if hasattr(self.canvas, 'drawing_panel') and self.canvas.drawing_panel is not None:
+                    self.canvas.drawing_panel.cancelPendingInpaint()
+                self.canvas.cancel_active_gestures_and_strokes()
+                last_tap_time = getattr(self.canvas, '_last_tap_stroke_time', 0.0)
+                if time.time() - last_tap_time < 0.4:
+                    if not getattr(self.canvas, '_last_tap_was_dragged', False):
+                        if self.canvas.draw_undo_stack.canUndo():
+                            self.canvas.draw_undo_stack.undo()
+                        self.canvas._last_tap_stroke_time = 0.0
+                self.canvas._suppress_next_release = True
+                self.canvas.toggle_zoom_fit_or_step(anchor_pos=event.pos())
+                event.accept()
+                return
+
+        return super().mouseDoubleClickEvent(event)
+
     def wheelEvent(self, event : QWheelEvent) -> None:
-        # qgraphicsview always scroll content according to wheelevent
-        # which is not desired when scaling img
+        if event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            pixel_delta = event.pixelDelta()
+            if not pixel_delta.isNull():
+                dx = pixel_delta.x()
+                dy = pixel_delta.y()
+                if abs(dx) > 0 or abs(dy) > 0:
+                    h_bar = self.horizontalScrollBar()
+                    v_bar = self.verticalScrollBar()
+                    h_bar.setValue(int(round(h_bar.value() - dx)))
+                    v_bar.setValue(int(round(v_bar.value() - dy)))
+                    event.accept()
+                    return
+
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
-            if event.angleDelta().y() > 0:
-                self.scale_up_signal.emit()
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, 'position')
+                else event.pos()
+            )
+            pixel_delta = event.pixelDelta()
+            if not pixel_delta.isNull():
+                delta_y = pixel_delta.y()
+                factor = 1.0 + delta_y * 0.005
+                factor = max(0.8, min(1.25, factor))
             else:
-                self.scale_down_signal.emit()
+                factor = 1 + CANVAS_SCALE_SPEED if event.angleDelta().y() > 0 else 1 - CANVAS_SCALE_SPEED
+
+            if self.canvas is not None:
+                self.canvas.scaleImage(factor, anchor_pos=pos)
+            else:
+                if (not pixel_delta.isNull() and pixel_delta.y() > 0) or event.angleDelta().y() > 0:
+                    self.scale_up_signal.emit()
+                else:
+                    self.scale_down_signal.emit()
+            event.accept()
             return
         return super().wheelEvent(event)
 
@@ -188,10 +550,48 @@ class CustomGV(QGraphicsView):
         return super().hideEvent(event)
 
     def event(self, e: QEvent) -> bool:
+        etype = e.type()
+        if etype in (
+            QEvent.Type.TouchBegin,
+            QEvent.Type.TouchUpdate,
+            QEvent.Type.TouchEnd,
+            QEvent.Type.TouchCancel,
+        ):
+            if self._handle_touch_event(e):
+                return True
+
         if isinstance(e, QNativeGestureEvent):
             if e.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
-                self.scale_with_value.emit(e.value() + 1)
+                anchor = (
+                    e.position().toPoint()
+                    if hasattr(e, 'position')
+                    else e.pos()
+                )
+                if self.canvas is not None:
+                    self.canvas.scaleImage(e.value() + 1, anchor_pos=anchor)
+                else:
+                    self.scale_with_value.emit(e.value() + 1)
                 e.setAccepted(True)
+                return True
+            elif e.gestureType() == Qt.NativeGestureType.SmartZoomNativeGesture:
+                anchor = (
+                    e.position().toPoint()
+                    if hasattr(e, 'position')
+                    else e.pos()
+                )
+                if self.canvas is not None and self.canvas.imgtrans_proj is not None and self.canvas.imgtrans_proj.img_valid:
+                    self.canvas.toggle_zoom_fit_or_step(anchor_pos=anchor)
+                e.setAccepted(True)
+                return True
+            elif hasattr(Qt.NativeGestureType, 'PanNativeGesture') and e.gestureType() == Qt.NativeGestureType.PanNativeGesture:
+                delta_pos = e.delta() if hasattr(e, 'delta') else None
+                if delta_pos is not None:
+                    h_bar = self.horizontalScrollBar()
+                    v_bar = self.verticalScrollBar()
+                    h_bar.setValue(int(round(h_bar.value() - delta_pos.x())))
+                    v_bar.setValue(int(round(v_bar.value() - delta_pos.y())))
+                    e.setAccepted(True)
+                    return True
 
         return super().event(e)
     
@@ -281,6 +681,10 @@ class Canvas(QGraphicsScene):
         self.gv.hide_canvas.connect(self.on_hide_canvas)
         self.gv.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.gv.canvas = self
+        self.next_page_requested = self.gv.next_page_requested
+        self.prev_page_requested = self.gv.prev_page_requested
+        self.undo_requested = self.gv.undo_requested
+        self.redo_requested = self.gv.redo_requested
         self._magic_wand_hover_enabled = False
         self.magic_wand_hover = self.gv.magic_wand_hover
         self.magic_wand_hover_left = self.gv.magic_wand_hover_left
@@ -289,6 +693,10 @@ class Canvas(QGraphicsScene):
 
         self.gv.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.context_menu_requested.connect(self.on_create_contextmenu)
+        self.drawing_panel = None
+        self._last_tap_stroke_time: float = 0.0
+        self._last_tap_was_dragged: bool = False
+        self._suppress_next_release: bool = False
         
         if not shared.FLAG_QT6:
             # mitigate https://bugreports.qt.io/browse/QTBUG-93417
@@ -466,14 +874,14 @@ class Canvas(QGraphicsScene):
         self._text_creation_cursor_active = False
         self._restore_viewport_cursor()
 
-    def scaleUp(self) -> None:
-        self.scaleImage(1 + CANVAS_SCALE_SPEED)
+    def scaleUp(self, anchor_pos: Optional[QPointF] = None) -> None:
+        self.scaleImage(1 + CANVAS_SCALE_SPEED, anchor_pos=anchor_pos)
 
-    def scaleDown(self) -> None:
-        self.scaleImage(1 - CANVAS_SCALE_SPEED)
+    def scaleDown(self, anchor_pos: Optional[QPointF] = None) -> None:
+        self.scaleImage(1 - CANVAS_SCALE_SPEED, anchor_pos=anchor_pos)
 
-    def scaleBy(self, value: float) -> None:
-        self.scaleImage(value)
+    def scaleBy(self, value: float, anchor_pos: Optional[QPointF] = None) -> None:
+        self.scaleImage(value, anchor_pos=anchor_pos)
 
     def refresh_text_shape_control(self, *_args: object) -> None:
         # One view change can emit resize and both scrollbar signals.
@@ -713,8 +1121,94 @@ class Canvas(QGraphicsScene):
     def adjustScrollBar(self, scrollBar: QScrollBar, factor: float):
         scrollBar.setValue(int(factor * scrollBar.value() + ((factor - 1) * scrollBar.pageStep() / 2)))
 
-    def scaleImage(self, factor: float) -> None:
-        if not self.gv.isVisible() or not self.imgtrans_proj.img_valid:
+    @property
+    def touch_gesture_active(self) -> bool:
+        if self.gv is None:
+            return False
+        return (
+            getattr(self.gv, '_touch_active', False)
+            or (time.time() - getattr(self.gv, '_last_multi_touch_time', 0.0) < 0.4)
+        )
+
+    def cancel_active_gestures_and_strokes(self) -> None:
+        """Cancel any ongoing drawing strokes, textblock creation, or transient gestures."""
+        self._brush_stroke_button = Qt.MouseButton.NoButton
+        self._brush_line_drawing = False
+        self.brush_line_preview.hide()
+
+        if self.stroke_img_item is not None:
+            stroke = self.stroke_img_item
+            self.stroke_img_item = None
+            try:
+                stroke.finishPainting()
+            except Exception:
+                pass
+            if self.erase_img_key is not None:
+                try:
+                    self.drawingLayer.removeQImage(self.erase_img_key)
+                except Exception:
+                    pass
+                self.erase_img_key = None
+            if stroke.scene() is self:
+                try:
+                    super().removeItem(stroke)
+                except Exception:
+                    pass
+            try:
+                stroke.setParentItem(None)
+            except Exception:
+                pass
+            self.drawingLayer.updateDrawing()
+            if self.gv is not None:
+                self.gv.viewport().update()
+
+        if self.creating_textblock:
+            self.creating_textblock = False
+            if self._text_creation_cursor_active:
+                self._clear_text_creation_cursor()
+            self.txtblkShapeControl.hide()
+        if self._shape_fill_origin is not None:
+            self.cancel_shape_fill()
+        if self.rubber_band_origin is not None:
+            self.hide_rubber_band()
+        if self._path_reorder_active:
+            self.cancel_path_reorder()
+        self.text_move_session.cancel()
+
+    def get_fit_to_screen_scale(self) -> float:
+        img_size = self.img_window_size()
+        if img_size.width() <= 0 or img_size.height() <= 0:
+            return 1.0
+        vp_size = self.gv.viewport().size()
+        avail_w = max(10, vp_size.width() - 10)
+        avail_h = max(10, vp_size.height() - 10)
+        scale_w = avail_w / img_size.width()
+        scale_h = avail_h / img_size.height()
+        fit_scale = min(scale_w, scale_h)
+        return float(np.clip(fit_scale, CANVAS_SCALE_MIN, CANVAS_SCALE_MAX))
+
+    def fit_to_screen(self) -> None:
+        if not self.gv.isVisible() or self.imgtrans_proj is None or not self.imgtrans_proj.img_valid:
+            return
+        target_scale = self.get_fit_to_screen_scale()
+        if abs(self.scale_factor) > 1e-6:
+            factor = target_scale / self.scale_factor
+            self.scaleImage(factor)
+        else:
+            self._set_scene_scale(target_scale)
+        self.gv.centerOn(self.baseLayer.sceneBoundingRect().center())
+
+    def toggle_zoom_fit_or_step(self, anchor_pos: Optional[QPointF] = None) -> None:
+        if not self.gv.isVisible() or self.imgtrans_proj is None or not self.imgtrans_proj.img_valid:
+            return
+        fit_scale = self.get_fit_to_screen_scale()
+        if self.scale_factor <= fit_scale * 1.10:
+            self.scaleImage(1.5, anchor_pos=anchor_pos)
+        else:
+            self.fit_to_screen()
+
+    def scaleImage(self, factor: float, anchor_pos: Optional[QPointF] = None) -> None:
+        if not self.gv.isVisible() or self.imgtrans_proj is None or not self.imgtrans_proj.img_valid:
             return
         s_f = np.clip(
             self.scale_factor * factor,
@@ -727,19 +1221,35 @@ class Canvas(QGraphicsScene):
             # Scene-space gestures retain the scale from their starting frame.
             self.text_move_session.cancel()
             self.cancel_path_reorder()
+
+        old_scale = self.scale_factor
+        scene_anchor_before = None
+        if anchor_pos is not None:
+            vp_point = anchor_pos.toPoint() if hasattr(anchor_pos, 'toPoint') else QPoint(int(anchor_pos.x()), int(anchor_pos.y()))
+            scene_anchor_before = self.gv.mapToScene(vp_point)
+
         self.scale_factor = s_f
         self.baseLayer.setScale(self.scale_factor)
-
-        if scale_changed:
-            self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
-            self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
-            self.scalefactor_changed.emit()
         self.setSceneRect(
             0,
             0,
             self.baseLayer.sceneBoundingRect().width(),
             self.baseLayer.sceneBoundingRect().height(),
         )
+
+        if scale_changed:
+            if anchor_pos is not None and scene_anchor_before is not None:
+                actual_factor = s_f / old_scale
+                target_scene = scene_anchor_before * actual_factor
+                vp_point = anchor_pos.toPoint() if hasattr(anchor_pos, 'toPoint') else QPoint(int(anchor_pos.x()), int(anchor_pos.y()))
+                target_h = int(round(target_scene.x() - vp_point.x()))
+                target_v = int(round(target_scene.y() - vp_point.y()))
+                self.gv.horizontalScrollBar().setValue(target_h)
+                self.gv.verticalScrollBar().setValue(target_v)
+            else:
+                self.adjustScrollBar(self.gv.horizontalScrollBar(), factor)
+                self.adjustScrollBar(self.gv.verticalScrollBar(), factor)
+            self.scalefactor_changed.emit()
         self.refresh_text_shape_control()
 
     def onViewResized(self) -> None:
@@ -1185,6 +1695,9 @@ class Canvas(QGraphicsScene):
             self.path_reorder_finished.emit(touched_ids)
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if self.touch_gesture_active:
+            event.accept()
+            return
         if self.text_move_session.handle_mouse_move(event):
             event.accept()
             return
@@ -1322,7 +1835,52 @@ class Canvas(QGraphicsScene):
         origin = self.gv.viewport().mapFromGlobal(QCursor.pos())
         return self.gv.mapToScene(origin)
 
+    def handle_tablet_press(self, scene_pos: QPointF, is_eraser: bool = False, pressure: float = 1.0) -> None:
+        self._suppress_next_release = False
+        if self.imgtrans_proj is None or not self.imgtrans_proj.img_valid or not self.drawMode() or not self.painting:
+            return
+
+        self.cancel_active_gestures_and_strokes()
+        if hasattr(self, 'drawing_panel') and self.drawing_panel is not None:
+            self.drawing_panel.cancelPendingInpaint()
+
+        pos = self.inpaintLayer.mapFromScene(scene_pos)
+        self._tablet_is_erasing = is_eraser
+        erasing_layer = (self.image_edit_mode == ImageEditMode.PenTool and is_eraser)
+        pen = self.erasing_pen if is_eraser else self.painting_pen
+
+        self.addStrokeImageItem(pos, pen, erasing=erasing_layer)
+        if self.stroke_img_item is not None:
+            self.stroke_img_item.lineTo(pos, pressure=pressure)
+
+    def handle_tablet_move(self, scene_pos: QPointF, pressure: float = 1.0) -> None:
+        if self.stroke_img_item is not None and self.stroke_img_item.is_painting:
+            pos = self.inpaintLayer.mapFromScene(scene_pos)
+            erasing_layer = (self.image_edit_mode == ImageEditMode.PenTool and getattr(self, '_tablet_is_erasing', False))
+            if not erasing_layer:
+                self.stroke_img_item.lineTo(pos, pressure=pressure)
+            else:
+                rect = self.stroke_img_item.lineTo(pos, update=False, pressure=pressure)
+                if rect is not None:
+                    self.drawingLayer.updateDrawing(rect)
+
+    def handle_tablet_release(self, scene_pos: QPointF, is_eraser: bool = False) -> None:
+        finished_stroke = self.stroke_img_item
+        self.stroke_img_item = None
+        if finished_stroke is not None:
+            self._last_tap_stroke_time = time.time()
+            self._last_tap_was_dragged = getattr(finished_stroke, 'has_dragged', False)
+            if getattr(self, '_tablet_is_erasing', False):
+                self.finish_erasing.emit(finished_stroke)
+            else:
+                self.finish_painting.emit(finished_stroke)
+        self._tablet_is_erasing = False
+
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        self._suppress_next_release = False
+        if self.touch_gesture_active:
+            event.accept()
+            return
         btn = event.button()
         if self.text_move_session.handle_mouse_press(event):
             event.accept()
@@ -1449,6 +2007,15 @@ class Canvas(QGraphicsScene):
         return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        if getattr(self, '_suppress_next_release', False):
+            self._suppress_next_release = False
+            self.cancel_active_gestures_and_strokes()
+            event.accept()
+            return
+        if self.touch_gesture_active:
+            self.cancel_active_gestures_and_strokes()
+            event.accept()
+            return
         btn = event.button()
         if self.text_move_session.handle_mouse_release(event):
             event.accept()
@@ -1503,11 +2070,15 @@ class Canvas(QGraphicsScene):
             textblk_created = self.endCreateTextblock(btn=tgt)
         if btn == Qt.MouseButton.RightButton:
             if finished_stroke is not None:
+                self._last_tap_stroke_time = time.time()
+                self._last_tap_was_dragged = getattr(finished_stroke, 'has_dragged', False)
                 self.finish_erasing.emit(finished_stroke)
             if self.textEditMode() and not textblk_created:
                 self.context_menu_requested.emit(event.screenPos(), False)
         if btn == Qt.MouseButton.LeftButton:
             if finished_stroke is not None:
+                self._last_tap_stroke_time = time.time()
+                self._last_tap_was_dragged = getattr(finished_stroke, 'has_dragged', False)
                 self.finish_painting.emit(finished_stroke)
             elif self.scale_tool_mode:
                 self.end_scale_tool.emit()
