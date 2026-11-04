@@ -90,21 +90,9 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
     mask_merged = np.zeros_like(pred_mask)
     for ii, (candidate_mask, xor_sum) in enumerate(mask_list):
         num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(candidate_mask, connectivity, cv2.CV_16U)
-        for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
-            if label_index != 0: # skip background label
-                x, y, w, h, area = stat
-                if w * h < 3:
-                    continue
-                x1, y1, x2, y2 = x, y, x+w, y+h
-                label_local = labels[y1: y2, x1: x2]
-                label_cordinates = np.where(label_local==label_index)
-                tmp_merged = np.zeros_like(label_local, np.uint8)
-                tmp_merged[label_cordinates] = 255
-                tmp_merged = cv2.bitwise_or(mask_merged[y1: y2, x1: x2], tmp_merged)
-                xor_merged = cv2.bitwise_xor(tmp_merged, pred_mask[y1: y2, x1: x2]).sum()
-                xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
-                if xor_merged < xor_origin:
-                    mask_merged[y1: y2, x1: x2] = tmp_merged
+        eligible = stats[:, cv2.CC_STAT_WIDTH] * stats[:, cv2.CC_STAT_HEIGHT] >= 3
+        eligible[0] = False  # skip background label
+        _merge_improving_components(mask_merged, labels, num_labels, pred_mask, eligible)
 
     if refine_mode == REFINEMASK_INPAINT:
         mask_merged = cv2.dilate(mask_merged, np.ones((5, 5), np.uint8), iterations=1)
@@ -115,20 +103,31 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
         area_thresh = sorted_area[-2]
     else:
         area_thresh = sorted_area[-1]
-    for label_index, stat, centroid in zip(range(num_labels), stats, centroids):
-        x, y, w, h, area = stat
-        if area < area_thresh:
-            x1, y1, x2, y2 = x, y, x+w, y+h
-            label_local = labels[y1: y2, x1: x2]
-            label_cordinates = np.where(label_local==label_index)
-            tmp_merged = np.zeros_like(label_local, np.uint8)
-            tmp_merged[label_cordinates] = 255
-            tmp_merged = cv2.bitwise_or(mask_merged[y1: y2, x1: x2], tmp_merged)
-            xor_merged = cv2.bitwise_xor(tmp_merged, pred_mask[y1: y2, x1: x2]).sum()
-            xor_origin = cv2.bitwise_xor(mask_merged[y1: y2, x1: x2], pred_mask[y1: y2, x1: x2]).sum()
-            if xor_merged < xor_origin:
-                mask_merged[y1: y2, x1: x2] = tmp_merged
+    _merge_improving_components(mask_merged, labels, num_labels, pred_mask, stats[:, cv2.CC_STAT_AREA] < area_thresh)
     return mask_merged
+
+
+def _merge_improving_components(mask_merged: np.ndarray, labels: np.ndarray, num_labels: int, pred_mask: np.ndarray, eligible: np.ndarray) -> None:
+    """OR into ``mask_merged`` every eligible component that lowers its XOR with ``pred_mask``.
+
+    Equivalent to testing each component in turn: OR-ing a component into the
+    0/255 mask only changes its pixels that are still 0, and each such pixel
+    with prediction p moves the XOR sum by (255 - p) - p. The components of
+    one label image are disjoint, so accepting one never changes another's
+    score, and all of them can be decided at once.
+
+    >>> labels = np.array([[1, 1, 0, 2]], np.uint16)
+    >>> merged = np.zeros((1, 4), np.uint8)
+    >>> pred = np.array([[255, 255, 0, 0]], np.uint8)
+    >>> _merge_improving_components(merged, labels, 3, pred, np.array([False, True, True]))
+    >>> merged.tolist()
+    [[255, 255, 0, 0]]
+    """
+    new_px = mask_merged == 0
+    score = np.bincount(labels[new_px], weights=255.0 - 2.0 * pred_mask[new_px], minlength=num_labels)
+    accept = eligible & (score < 0)
+    if accept.any():
+        mask_merged[accept[labels]] = 255
 
 
 def refine_undetected_mask(img: np.ndarray, mask_pred: np.ndarray, mask_refined: np.ndarray, blk_list: List[TextBlock], refine_mode=REFINEMASK_INPAINT):
