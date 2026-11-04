@@ -88,6 +88,7 @@ from .commands import (
     handle_ffmt_change,
     restore_canvas_view_focus,
 )
+from .spacing_drag import bind_spacing_drag
 from ... import shared_widget as SW
 
 class LineEdit(QLineEdit):
@@ -902,14 +903,15 @@ class FontFormatPanel(Widget):
         
         self.lineSpacingLabel = SizeControlLabel(self, direction=1, transparent_bg=False)
         self.lineSpacingLabel.setObjectName("lineSpacingLabel")
-        self.lineSpacingLabel.size_ctrl_changed.connect(self.onLineSpacingCtrlChanged)
-        self.lineSpacingLabel.btn_released.connect(lambda : self.on_param_changed('line_spacing', self.lineSpacingBox.value()))
 
         self.lineSpacingBox = SizeComboBox([0, 100], 'line_spacing', self)
         self.lineSpacingBox.setObjectName("FontFormatSizeBox")
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
         self.lineSpacingBox.setToolTip(self.tr("Change line spacing"))
         self.lineSpacingBox.param_changed.connect(self.on_param_changed)
+        self.line_spacing_drag = bind_spacing_drag(
+            self, self.lineSpacingLabel, 'line_spacing', self.lineSpacingBox
+        )
 
         linesp_hlayout = QHBoxLayout()
         linesp_hlayout.addWidget(self.lineSpacingLabel)
@@ -964,8 +966,9 @@ class FontFormatPanel(Widget):
 
         self.letterSpacingLabel = SizeControlLabel(self, direction=0, transparent_bg=False)
         self.letterSpacingLabel.setObjectName("letterSpacingLabel")
-        self.letterSpacingLabel.size_ctrl_changed.connect(self.letterSpacingBox.changeByDelta)
-        self.letterSpacingLabel.btn_released.connect(lambda : self.on_param_changed('letter_spacing', self.letterSpacingBox.value()))
+        self.letter_spacing_drag = bind_spacing_drag(
+            self, self.letterSpacingLabel, 'letter_spacing', self.letterSpacingBox
+        )
 
         lettersp_hlayout = QHBoxLayout()
         lettersp_hlayout.addWidget(self.letterSpacingLabel)
