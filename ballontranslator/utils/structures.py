@@ -8,10 +8,8 @@ import numpy as np
 
 
 def get_annotations(obj):
-    if hasattr(obj, '__annotations__'):
-        return obj.__annotations__
-    else:
-        return inspect.get_annotations(obj)
+    target = obj if inspect.isclass(obj) or inspect.isfunction(obj) or inspect.ismodule(obj) else type(obj)
+    return inspect.get_annotations(target)
 
 
 # decorator to wrap original __init__
