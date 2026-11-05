@@ -3,6 +3,8 @@
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from qtpy.QtWidgets import QApplication
+
 from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
     GridTextTransform,
@@ -236,17 +238,6 @@ class TextTransformEditSession:
         self.items = items
         self._sync_transform_controller()
 
-    def _release_panel_edit_overlay(self) -> None:
-        """Drop the canvas overlay after an edit made from the panel.
-
-        The overlay's axis rings sit above the block's own rotation
-        handles, so a stage left selected blocks the usual way of rotating
-        the block. Only the canvas selection is released: the stage keeps
-        its controls, so values stay editable.
-        """
-        if getattr(self, 'selected_index', None) is not None:
-            self.select_transform(-1)
-
     def commit_value(self, index: int, param_name: str, value) -> None:
         before = self._current_states()
         if (
@@ -264,7 +255,11 @@ class TextTransformEditSession:
             self._sync_transform_ui()
             return
         self._commit_states(before, after)
-        self._release_panel_edit_overlay()
+        # A focus-loss commit must preserve the canvas handle being pressed.
+        if self.selected_index is not None and self.controls.isAncestorOf(
+            QApplication.focusWidget()
+        ):
+            self.select_transform(-1)
 
     def _prepare_structure_change(self) -> None:
         # A typed value owns an earlier transaction and must land before the
@@ -563,7 +558,8 @@ class TextTransformEditSession:
         self.drag_before = None
         self.drag_key = None
         self._commit_states(before, after)
-        self._release_panel_edit_overlay()
+        if self.selected_index is not None:
+            self.select_transform(-1)
 
     def cancel_preview(self, *_key) -> None:
         if self.drag_before is not None:

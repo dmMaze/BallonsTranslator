@@ -9,7 +9,7 @@ import numpy as np
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PIL import Image
-from qtpy.QtCore import QCoreApplication, QEvent, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QPoint, QPointF, Qt
 from qtpy.QtGui import QColor, QImage, QTextCursor
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QHBoxLayout, QWidget
@@ -22,6 +22,7 @@ from ballontranslator.ui.text_engine.editing.manager import (
     SceneTextManager, SceneTextReplacementReason, TextPanel,
 )
 from ballontranslator.ui.text_engine.editing.widgets import SourceTextEdit
+from ballontranslator.ui.text_engine.transforms.controls import CommittedTransformControl
 from ballontranslator.utils import config as C, shared
 from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
@@ -115,6 +116,112 @@ class CanvasSaveStateTests(unittest.TestCase):
         edit.setFocus()
         self.app.processEvents()
         return edit
+
+    def _transform_control(
+        self, kind: str, parameter: str,
+    ) -> CommittedTransformControl:
+        self.panel.formatpanel.text_transform_session.add_transform(kind)
+        panel = self.panel.formatpanel.texttransform_panel
+        panel.set_expend_area(True, set_config=False)
+        self.host.resize(1200, 900)
+        self.app.processEvents()
+        return panel.transform_panels[0].controls[parameter]
+
+    def test_transform_enter_keeps_focus_and_restores_shape_handles(self) -> None:
+        control = self._transform_control('projective', 'rotation_x')
+        initial = self.item.blk.fontformat.text_transform
+        control.editor.setFocus()
+        control.editor.selectAll()
+        QTest.keyClicks(control.editor, '12')
+        self.assertTrue(self.canvas.txtblkProjectiveControl.isVisible())
+        self.assertEqual(self.item.blk.fontformat.text_transform, initial)
+        QTest.keyClick(control.editor, Qt.Key.Key_Return)
+        changed = self.item.blk.fontformat.text_transform
+        self.assertEqual(changed[0].rotation_x, 12)
+        self.assertTrue(control.editor.hasFocus())
+        self.assertTrue(self.canvas.txtblkShapeControl.isVisible())
+        self.assertFalse(self.canvas.txtblkProjectiveControl.isVisible())
+        self.canvas.undo_textedit()
+        self.assertEqual(self.item.blk.fontformat.text_transform, initial)
+        self.canvas.redo_textedit()
+        self.assertEqual(self.item.blk.fontformat.text_transform, changed)
+        control.editor.selectAll()
+        QTest.keyClicks(control.editor, '15')
+        self.assertTrue(self.canvas.txtblkProjectiveControl.isVisible())
+        QTest.keyClick(control.editor, Qt.Key.Key_Escape)
+        self.assertEqual(self.item.blk.fontformat.text_transform, changed)
+
+    def test_transform_panel_drag_restores_shape_handles(self) -> None:
+        control = self._transform_control('grid', 'horizontal_divisions')
+        initial = self.item.blk.fontformat.text_transform
+        label = control.label
+        QTest.mousePress(label, Qt.MouseButton.LeftButton)
+        label.size_ctrl_changed.emit(8)
+        self.assertTrue(self.canvas.txtblkGridControl.isVisible())
+        self.assertEqual(self.item.blk.fontformat.text_transform, initial)
+        QTest.mouseRelease(label, Qt.MouseButton.LeftButton)
+        changed = self.item.blk.fontformat.text_transform
+        self.assertNotEqual(changed, initial)
+        self.assertFalse(self.canvas.txtblkGridControl.isVisible())
+        self.assertTrue(self.canvas.txtblkShapeControl.isVisible())
+        self.canvas.undo_textedit()
+        self.assertEqual(self.item.blk.fontformat.text_transform, initial)
+        self.canvas.redo_textedit()
+        self.assertEqual(self.item.blk.fontformat.text_transform, changed)
+
+    def test_pending_transform_value_preserves_clicked_canvas_handle(self) -> None:
+        session = self.panel.formatpanel.text_transform_session
+        cases = (
+            ('projective', 'rotation_x', '12'),
+            ('projective', 'rotation_x', '0'),
+            ('grid', 'horizontal_divisions', '2'),
+            ('grid', 'horizontal_divisions', '1'),
+        )
+        for kind, parameter, value in cases:
+            with self.subTest(kind=kind, value=value):
+                control = self._transform_control(kind, parameter)
+                control.editor.setFocus()
+                control.editor.selectAll()
+                QTest.keyClicks(control.editor, value)
+                self.app.processEvents()
+                if kind == 'projective':
+                    overlay = self.canvas.txtblkProjectiveControl
+                    point = overlay.mapToScene(
+                        overlay.rings['z'].path().pointAtPercent(0.0)
+                    )
+                else:
+                    overlay = self.canvas.txtblkGridControl
+                    point = overlay.handles[0].scenePos()
+                view = self.canvas.gv
+                view.centerOn(overlay)
+                self.app.processEvents()
+                start = view.mapFromScene(point)
+                self.assertTrue(view.viewport().rect().contains(start))
+                self.assertTrue(control.editor.hasFocus())
+                before_position = QPointF(self.item.pos())
+                before_angle = self.item.rotation()
+                end = start + QPoint(20, 20)
+                QTest.mousePress(view.viewport(), Qt.MouseButton.LeftButton,
+                                 Qt.KeyboardModifier.NoModifier, start)
+                QTest.mouseMove(view.viewport(), end)
+                QTest.mouseRelease(view.viewport(), Qt.MouseButton.LeftButton,
+                                   Qt.KeyboardModifier.NoModifier, end)
+                self.assertEqual(self.item.pos(), before_position)
+                self.assertEqual(self.item.rotation(), before_angle)
+                transform = self.item.blk.fontformat.text_transform[0]
+                self.assertEqual(getattr(transform, parameter), int(value))
+                if kind == 'projective':
+                    self.assertNotEqual(transform.rotation_z, 0)
+                else:
+                    self.assertNotEqual(transform.control_points[0], (0, 0))
+                self.canvas.undo_textedit()
+                transform = self.item.blk.fontformat.text_transform[0]
+                self.assertEqual(getattr(transform, parameter), int(value))
+                if kind == 'projective':
+                    self.assertEqual(transform.rotation_z, 0)
+                else:
+                    self.assertEqual(transform.control_points[0], (0, 0))
+                session.remove_transform(0)
 
     def test_replacement_color_is_saved_when_undo_branch_is_replaced(self) -> None:
         self.item.setFontColor((255, 0, 0))
