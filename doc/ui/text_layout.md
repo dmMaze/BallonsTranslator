@@ -73,7 +73,12 @@ vertical cells. Multi-character runs shape full-width forms as narrow equivalent
 without changing document text or UTF-16 positions. Single-character runs and
 unrelated compatibility characters stay unchanged. `TateChuYokoRun` owns index
 mapping between the isolated run and source block. Native IME composition remains
-authoritative until commit.
+authoritative authoritative until commit. A group covers only the characters the user combined:
+inserted text keeps the active insertion format for one grapheme typed at a
+caret, and pasted or replaced content is treated as fresh text so it cannot
+absorb the paragraph into one cell. With automatic TCY enabled, each insertion
+re-derives every run it touches, so typed and pasted text is combined without
+the project-wide Apply action while groups elsewhere keep their identity.
 
 TCY ignores authored letter spacing. Standard Roman mode keeps its natural
 shaped width; alternate mode shrinks excess width to one em. Visible ink is
@@ -107,6 +112,14 @@ Line spacing is owned by the destination row or column. The first visual row or
 column stays anchored without leading spacing; each later one uses its
 paragraph's spacing value and mode. Paragraph boundaries do not restart this
 visual leading-edge rule.
+
+A whole-style apply (`set_fontformat(set_char_format=True)`) replaces every
+fragment format, because a stored style owns font, colour, spacing, effects,
+alignment, and transform for the whole item. Inline annotations are not part of
+`FontFormat`, so tate-chu-yoko, Ruby, and emphasis are captured before the
+replacement and merged back afterwards. The replacement format is derived from
+one character's format and is stripped of annotation properties first; otherwise
+an annotation on that character would spread over the whole block.
 
 ## Alignment and resize
 
