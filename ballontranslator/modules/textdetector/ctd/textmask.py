@@ -69,7 +69,7 @@ def get_topk_masklist(im_grey, pred_mask):
         mask_list.append([threshed, xor_sum])
     return mask_list
 
-def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30, text_window=None, filter_with_lines=False, refine_mode=REFINEMASK_INPAINT):
+def merge_mask_list(mask_list, pred_mask: np.ndarray, blk: TextBlock = None, pred_thresh: int = 30, text_window=None, filter_with_lines: bool = False, refine_mode: int = REFINEMASK_INPAINT) -> np.ndarray:
     mask_list.sort(key=lambda x: x[1])
     linemask = None
     if blk is not None and filter_with_lines:
@@ -88,26 +88,26 @@ def merge_mask_list(mask_list, pred_mask, blk: TextBlock = None, pred_thresh=30,
         _, pred_mask = cv2.threshold(pred_mask, 60, 255, cv2.THRESH_BINARY)
     connectivity = 8
     mask_merged = np.zeros_like(pred_mask)
-    for ii, (candidate_mask, xor_sum) in enumerate(mask_list):
-        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(candidate_mask, connectivity, cv2.CV_16U)
+    for candidate_mask, _ in mask_list:
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(candidate_mask, connectivity, cv2.CV_16U)
         eligible = stats[:, cv2.CC_STAT_WIDTH] * stats[:, cv2.CC_STAT_HEIGHT] >= 3
         eligible[0] = False  # skip background label
-        _merge_improving_components(mask_merged, labels, num_labels, pred_mask, eligible)
+        _merge_improving_components(mask_merged, labels, stats, pred_mask, eligible)
 
     if refine_mode == REFINEMASK_INPAINT:
         mask_merged = cv2.dilate(mask_merged, np.ones((5, 5), np.uint8), iterations=1)
     # fill holes
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(255-mask_merged, connectivity, cv2.CV_16U)
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(255-mask_merged, connectivity, cv2.CV_16U)
     sorted_area = np.sort(stats[:, -1])
     if len(sorted_area) > 1:
         area_thresh = sorted_area[-2]
     else:
         area_thresh = sorted_area[-1]
-    _merge_improving_components(mask_merged, labels, num_labels, pred_mask, stats[:, cv2.CC_STAT_AREA] < area_thresh)
+    _merge_improving_components(mask_merged, labels, stats, pred_mask, stats[:, cv2.CC_STAT_AREA] < area_thresh)
     return mask_merged
 
 
-def _merge_improving_components(mask_merged: np.ndarray, labels: np.ndarray, num_labels: int, pred_mask: np.ndarray, eligible: np.ndarray) -> None:
+def _merge_improving_components(mask_merged: np.ndarray, labels: np.ndarray, stats: np.ndarray, pred_mask: np.ndarray, eligible: np.ndarray) -> None:
     """OR into ``mask_merged`` every eligible component that lowers its XOR with ``pred_mask``.
 
     Equivalent to testing each component in turn: OR-ing a component into the
@@ -116,18 +116,37 @@ def _merge_improving_components(mask_merged: np.ndarray, labels: np.ndarray, num
     one label image are disjoint, so accepting one never changes another's
     score, and all of them can be decided at once.
 
-    >>> labels = np.array([[1, 1, 0, 2]], np.uint16)
+    >>> candidate = np.array([[255, 255, 0, 255]], np.uint8)
+    >>> _, labels, stats, _ = cv2.connectedComponentsWithStats(candidate, 8, cv2.CV_16U)
     >>> merged = np.zeros((1, 4), np.uint8)
     >>> pred = np.array([[255, 255, 0, 0]], np.uint8)
-    >>> _merge_improving_components(merged, labels, 3, pred, np.array([False, True, True]))
+    >>> _merge_improving_components(merged, labels, stats, pred, np.array([False, True, True]))
     >>> merged.tolist()
     [[255, 255, 0, 0]]
     """
-    new_px = mask_merged == 0
-    score = np.bincount(labels[new_px], weights=255.0 - 2.0 * pred_mask[new_px], minlength=num_labels)
+    eligible_labels = np.flatnonzero(eligible)
+    if not eligible_labels.size:
+        return
+    # Small label sets are cheaper to score within their bounding boxes.
+    if eligible_labels.size <= 32:
+        for label_index in eligible_labels:
+            x, y, w, h, _ = stats[label_index]
+            merged = mask_merged[y:y+h, x:x+w]
+            new_px = (merged == 0) & (labels[y:y+h, x:x+w] == label_index)
+            prediction = pred_mask[y:y+h, x:x+w][new_px]
+            if 2 * prediction.sum(dtype=np.int64) > 255 * prediction.size:
+                merged[new_px] = 255
+        return
+    # Background and rejected components must not allocate per-pixel scores.
+    new_px = (mask_merged == 0) & eligible[labels]
+    new_labels = labels[new_px]
+    if not new_labels.size:
+        return
+    score = np.bincount(new_labels, weights=255.0 - 2.0 * pred_mask[new_px], minlength=len(eligible))
     accept = eligible & (score < 0)
     if accept.any():
-        mask_merged[accept[labels]] = 255
+        # These pixels were zero; rejected components stay zero without another label-map lookup.
+        mask_merged[new_px] = 255 * accept[new_labels]
 
 
 def refine_undetected_mask(img: np.ndarray, mask_pred: np.ndarray, mask_refined: np.ndarray, blk_list: List[TextBlock], refine_mode=REFINEMASK_INPAINT):
