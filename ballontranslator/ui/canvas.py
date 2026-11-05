@@ -491,7 +491,6 @@ class Canvas(QGraphicsScene):
         **callbacks: Callable[..., None],
     ) -> None:
         self.text_move_session.cancel()
-        self.alpha_mask_edit_session.deactivate()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
         self.txtblkProjectiveControl.clear()
@@ -502,7 +501,7 @@ class Canvas(QGraphicsScene):
             stack_index,
             **callbacks,
         )
-        self.txtblkShapeControl.hide()
+        self.txtblkShapeControl.show()
 
     def bind_text_projective_control(
         self,
@@ -511,7 +510,6 @@ class Canvas(QGraphicsScene):
         **callbacks: Callable[..., None],
     ) -> None:
         self.text_move_session.cancel()
-        self.alpha_mask_edit_session.deactivate()
         if self._rubber_band_target == 'grid':
             self.hide_rubber_band()
         self.txtblkGridControl.clear()
@@ -522,13 +520,13 @@ class Canvas(QGraphicsScene):
             stack_index,
             **callbacks,
         )
-        self.txtblkShapeControl.hide()
+        self.txtblkShapeControl.show()
 
     def _restore_shape_after_transform_control(
         self,
         had_binding: bool,
     ) -> None:
-        if not had_binding:
+        if not had_binding or not self.textEditMode():
             return
         selected = self.selected_text_items()
         if len(selected) == 1:
@@ -618,13 +616,12 @@ class Canvas(QGraphicsScene):
                     layer.setOpacity(1)
             for item in text_items:
                 item.set_ui_guide_suppressed(True)
+            for item in control_visibility:
+                item.hide()
             if self.textEditMode() and self.txtblkShapeControl.blk_item is not None:
                 blk_item = self.txtblkShapeControl.blk_item
                 if blk_item.isEditing():
                     blk_item.endEdit(keep_focus=False)
-
-            for item in control_visibility:
-                item.hide()
 
             for item in export_effect_items:
                 enabled_export_effect_items.append(item)
@@ -1528,10 +1525,11 @@ class Canvas(QGraphicsScene):
         if control.item is None or not control.isVisible():
             return False
         for item in self.items(scene_pos):
+            # The shared frame must not block Grid rubber-band selection.
+            if item is self.txtblkShapeControl:
+                continue
             if item in control.handles:
-                if allow_handles:
-                    continue
-                return False
+                return allow_handles
             if isinstance(item, TextBlkItem) and item is not control.item:
                 return False
             if item.data(CONTROL_ITEM_DATA_KEY) and item is not control:

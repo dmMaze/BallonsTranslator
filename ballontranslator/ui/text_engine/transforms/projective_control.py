@@ -147,7 +147,8 @@ class TextProjectiveTransformControl(QGraphicsPathItem):
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.setPen(QPen(Qt.PenStyle.NoPen))
         self.setData(CONTROL_ITEM_DATA_KEY, True)
-        self.setZValue(21.0)
+        # Keep the block's rectangle handles usable where rings overlap them.
+        self.setZValue(0.5)
 
         self.rings = {
             axis: ProjectiveRotationRing(self, axis)

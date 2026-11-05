@@ -484,9 +484,10 @@ class SceneTextManager(QObject):
         else:
             self.canvas.alpha_mask_edit_session.deactivate()
             self.canvas.cancel_path_reorder()
-            self.txtblkShapeControl.setBlkItem(None)
             self.textpanel.hide()
+            # Release the transform owner before ending editing can restore it.
             self.textpanel.formatpanel.set_textblk_item()
+            self.txtblkShapeControl.setBlkItem(None)
             self.canvas.textLayer.hide()
 
     def clearSceneTextitems(
@@ -645,9 +646,8 @@ class SceneTextManager(QObject):
         if item is self.formatpanel.textblk_item:
             self.formatpanel.sync_inline_format(item.get_fontformat())
 
-    def onTextBlkItemBeginEdit(self, blk_id: int):
+    def onTextBlkItemBeginEdit(self, blk_id: int) -> None:
         blk_item = self.textblk_item_list[blk_id]
-        self.formatpanel.text_transform_session.select_transform(-1)
         self.txtblkShapeControl.setBlkItem(blk_item)
         self.canvas.editing_textblkitem = blk_item
         self.formatpanel.set_textblk_item(blk_item)
@@ -682,10 +682,15 @@ class SceneTextManager(QObject):
             item._old_pos = item.pos()
         self.changeHoveringWidget(self.pairwidget_list[blk_id].e_trans)
 
-    def onTextBlkItemEndEdit(self, blk_id: int):
+    def onTextBlkItemEndEdit(self, blk_id: int) -> None:
+        blk_item = self.textblk_item_list[blk_id]
+        # Selection callbacks must still see editing, including during export.
+        blk_item.setSelected(True)
         self.canvas.editing_textblkitem = None
-        self.textblk_item_list[blk_id].setSelected(True)
         self.txtblkShapeControl.endEditing()
+        # Qt clears editing after this signal; hidden controls stay suspended.
+        if self.txtblkShapeControl.isVisible() and blk_item.isEditing():
+            self.formatpanel.text_transform_session._sync_transform_controller()
 
     def editingTextItem(self) -> TextBlkItem:
         if self.txtblkShapeControl.isVisible() and self.canvas.editing_textblkitem is not None:
@@ -696,17 +701,14 @@ class SceneTextManager(QObject):
         blk_item = self.txtblkShapeControl.blk_item
         return blk_item is not None and blk_item.isEditing()
 
-    def onTextBlkItemHoverEnter(self, blk_id: int):
+    def onTextBlkItemHoverEnter(self, blk_id: int) -> None:
         if self.is_editting():
             return
         blk_item = self.textblk_item_list[blk_id]
-        if self.canvas.active_transform_control_item() is blk_item:
-            shape = self.txtblkShapeControl
-            if shape.blk_item is not blk_item:
-                shape.setBlkItem(blk_item)
-            shape.hide()
-            return
-        if not blk_item.hasFocus():
+        if (
+            self.canvas.active_transform_control_item() is blk_item
+            or not blk_item.hasFocus()
+        ):
             self.txtblkShapeControl.setBlkItem(blk_item)
 
     def onTextBlkItemMoveFinished(self):

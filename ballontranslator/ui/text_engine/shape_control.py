@@ -938,8 +938,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self.finishProxyDrag()
         return preview_angle
 
-    def ctrlblockPressed(self):
-        self.scene().clearSelection()
+    def ctrlblockPressed(self) -> None:
+        # Keep a sole owner's card selected; Qt batches larger selection changes.
+        scene = self.scene()
+        if scene.selectedItems() != [self.blk_item]:
+            scene.clearSelection()
         if self.blk_item is not None:
             self.blk_item.endEdit()
 

@@ -13,7 +13,7 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPointF, QRectF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QColor,
     QCursor,
@@ -1233,6 +1233,9 @@ class TextTransformPanelTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_grid_control=lambda item, index, **callbacks:
             bindings.append((item, index, callbacks)),
+            editing_textblkitem=None,
+            textEditMode=lambda: True,
+            alpha_mask_edit_session=SimpleNamespace(active=False, deactivate=lambda: None),
             clear_text_transform_controls=lambda: clears.append(True),
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
@@ -1265,6 +1268,9 @@ class TextTransformPanelTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_projective_control=lambda item, index, **callbacks:
             bindings.append((item, index, callbacks)),
+            editing_textblkitem=None,
+            textEditMode=lambda: True,
+            alpha_mask_edit_session=SimpleNamespace(active=False, deactivate=lambda: None),
             clear_text_transform_controls=lambda: clears.append(True),
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
@@ -1300,6 +1306,7 @@ class TextTransformPanelTest(TextTransformTestBase):
         ):
             with self.subTest(transform=transform.transform_type):
                 canvas = Canvas()
+                canvas.editor_index = 1
                 item, pair = self._make_pair(0, TEST_LINES[0], False)
                 item.setParentItem(canvas.textLayer)
                 state = transform_state(transform)
@@ -1357,6 +1364,9 @@ class TextTransformPanelTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_grid_control=lambda item, index, **_callbacks:
             bindings.append((item, index)),
+            editing_textblkitem=None,
+            textEditMode=lambda: True,
+            alpha_mask_edit_session=SimpleNamespace(active=False, deactivate=lambda: None),
             clear_text_transform_controls=lambda: None,
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
@@ -4454,7 +4464,7 @@ class TextTransformGeometryTest(TextTransformTestBase):
             refresh_geometry.assert_called_once_with()
             control.finishResize()
 
-    def test_transform_preview_skips_hidden_shape_and_commit_rebind(self):
+    def test_transform_preview_refreshes_shape_once_without_commit_rebind(self):
         canvas = Canvas()
         item, _ = self._make_pair(0, TEST_LINES[0], False)
         item.setParentItem(canvas.textLayer)
@@ -4472,7 +4482,7 @@ class TextTransformGeometryTest(TextTransformTestBase):
             'cancel_edit': lambda _index: None,
         }
         canvas.bind_text_grid_control(item, 0, **callbacks)
-        self.assertFalse(canvas.txtblkShapeControl.isVisible())
+        self.assertTrue(canvas.txtblkShapeControl.isVisible())
         notifications = []
         item.visual_geometry_changed.connect(
             lambda: notifications.append(True)
@@ -4483,7 +4493,7 @@ class TextTransformGeometryTest(TextTransformTestBase):
                 canvas.txtblkShapeControl,
                 'updateBoundingRect',
                 wraps=canvas.txtblkShapeControl.updateBoundingRect,
-            ) as hidden_shape_refresh,
+            ) as shape_refresh,
             patch.object(
                 item.geometry_controller,
                 'grid_control_geometry',
@@ -4491,15 +4501,15 @@ class TextTransformGeometryTest(TextTransformTestBase):
             ) as grid_refresh,
         ):
             item.set_text_transform(after, preview=True)
-            hidden_shape_refresh.assert_not_called()
+            shape_refresh.assert_called_once_with()
             grid_refresh.assert_called_once_with(0)
 
-            hidden_shape_refresh.reset_mock()
+            shape_refresh.reset_mock()
             grid_refresh.reset_mock()
             notifications.clear()
             self.assertTrue(item.set_text_transform(after, preview=False))
             canvas.bind_text_grid_control(item, 0, **callbacks)
-            hidden_shape_refresh.assert_not_called()
+            shape_refresh.assert_not_called()
             grid_refresh.assert_not_called()
             self.assertEqual(notifications, [])
 
@@ -4950,6 +4960,9 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             push_undo_command=stack.push,
             bind_text_projective_control=lambda bound_item, index, **callbacks:
             controller.bind(bound_item, index, **callbacks),
+            editing_textblkitem=None,
+            textEditMode=lambda: True,
+            alpha_mask_edit_session=SimpleNamespace(active=False, deactivate=lambda: None),
             clear_text_transform_controls=controller.clear,
         )
         session = TextTransformEditSession(SimpleNamespace(), panel)
@@ -4998,96 +5011,6 @@ class TextTransformShapeControlTest(TextTransformTestBase):
         self.assertFalse(handle.shape().contains(painted.topLeft()))
 
         scene.removeItem(base)
-
-    def test_active_transform_hover_suppresses_shape_only_for_bound_item(self):
-        first = SimpleNamespace(hasFocus=lambda: False)
-        second = SimpleNamespace(hasFocus=lambda: False)
-        calls = []
-        shape = SimpleNamespace(blk_item=first)
-
-        def bind_shape(item):
-            calls.append(('bind', item))
-            shape.blk_item = item
-
-        shape.setBlkItem = bind_shape
-        shape.hide = lambda: calls.append(('hide', shape.blk_item))
-        manager = SimpleNamespace(
-            is_editting=lambda: False,
-            textblk_item_list=[first, second],
-            canvas=SimpleNamespace(
-                active_transform_control_item=lambda: first,
-            ),
-            txtblkShapeControl=shape,
-        )
-
-        SceneTextManager.onTextBlkItemHoverEnter(manager, 0)
-        SceneTextManager.onTextBlkItemHoverEnter(manager, 1)
-        SceneTextManager.onTextBlkItemHoverEnter(manager, 0)
-
-        self.assertEqual(
-            calls,
-            [
-                ('hide', first),
-                ('bind', second),
-                ('bind', first),
-                ('hide', first),
-            ],
-        )
-
-    def test_grid_binding_restores_selected_shape_owner_when_cleared(self):
-        selected = SimpleNamespace(isSelected=lambda: True)
-        hovered = SimpleNamespace(isSelected=lambda: False)
-        calls = []
-        shape = SimpleNamespace(blk_item=hovered)
-
-        def bind_shape(item):
-            calls.append(('shape', item))
-            shape.blk_item = item
-
-        shape.setBlkItem = bind_shape
-        shape.hide = lambda: calls.append(('hide', shape.blk_item))
-        shape.show = lambda: calls.append(('show', shape.blk_item))
-        shape.requestGeometryRefresh = lambda: calls.append(('refresh', None))
-        grid = SimpleNamespace(item=None)
-
-        def bind_grid(item, index, **_callbacks):
-            calls.append(('grid', item, index))
-            grid.item = item
-
-        grid.bind = bind_grid
-        grid.clear = lambda: setattr(grid, 'item', None)
-        projective = SimpleNamespace(item=None, clear=lambda: None)
-        canvas = SimpleNamespace(
-            txtblkShapeControl=shape,
-            txtblkGridControl=grid,
-            txtblkProjectiveControl=projective,
-            text_move_session=SimpleNamespace(cancel=lambda: None),
-            alpha_mask_edit_session=SimpleNamespace(
-                deactivate=lambda: calls.append(('mask', None))
-            ),
-            _rubber_band_target=None,
-            selected_text_items=lambda: [selected],
-        )
-        canvas._restore_shape_after_transform_control = (
-            lambda had_binding:
-            Canvas._restore_shape_after_transform_control(canvas, had_binding)
-        )
-
-        Canvas.bind_text_grid_control(canvas, selected, 2)
-        self.assertIn(('mask', None), calls)
-        shape.blk_item = hovered
-        Canvas.clear_text_transform_controls(canvas)
-
-        self.assertEqual(
-            calls,
-            [
-                ('mask', None),
-                ('shape', selected),
-                ('grid', selected, 2),
-                ('hide', selected),
-                ('shape', selected),
-            ],
-        )
 
     def test_grid_overlay_tracks_composed_stack_in_both_writing_modes(self):
         grid = GridTextTransform(2, 2, 'catmull_rom')
@@ -5191,143 +5114,6 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                 controller.clear()
                 item.geometry_controller.release_render_resources()
                 scene.removeItem(base)
-
-    def test_grid_controller_double_click_enters_edit_and_deselects(self):
-        scene = QGraphicsScene()
-        view = QGraphicsView(scene)
-        view.resize(800, 500)
-        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
-        scene.addItem(base)
-        item, _ = self._make_pair(0, TEST_LINES[0], False)
-        item.setParentItem(base)
-        item.set_text_transform(transform_state(
-            GridTextTransform()
-        ))
-        controller = TextGridTransformControl()
-        controller.setParentItem(base)
-        previous_register = getattr(shared, 'register_view_widget', None)
-        shared.register_view_widget = lambda *_args: None
-        self.addCleanup(
-            lambda: (
-                delattr(shared, 'register_view_widget')
-                if previous_register is None
-                else setattr(
-                    shared, 'register_view_widget', previous_register
-                )
-            )
-        )
-        panel = TextTransformPanel(
-            'Text Transform', 'test_transform', 'test_transform_expand'
-        )
-        self.addCleanup(panel.deleteLater)
-        stack = QUndoStack()
-        previous_canvas = getattr(SW, 'canvas', None)
-        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
-        SW.canvas = SimpleNamespace(
-            push_undo_command=stack.push,
-            bind_text_grid_control=lambda bound_item, index, **callbacks:
-            controller.bind(bound_item, index, **callbacks),
-            clear_text_transform_controls=controller.clear,
-        )
-        session = TextTransformEditSession(SimpleNamespace(), panel)
-        session.replace_targets([item])
-        panel.set_transform_items([item])
-        panel.transform_panels[0].card_clicked.emit(0)
-        item.begin_edit.connect(
-            lambda _index: session.select_transform(-1)
-        )
-        view.show()
-        self.app.processEvents()
-        self.addCleanup(view.close)
-
-        scene_pos = item.geometry_controller.map_source_to_scene(
-            item.boundingRect().center()
-        )
-        QTest.mouseDClick(
-            view.viewport(),
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-            view.mapFromScene(scene_pos),
-        )
-        self.app.processEvents()
-
-        self.assertTrue(item.isEditing())
-        self.assertIsNone(session.selected_index)
-        self.assertFalse(panel.transform_panels[0].property('selected'))
-        self.assertIsNone(controller.item)
-        self.assertFalse(controller.isVisible())
-
-        item.endEdit()
-        self.app.processEvents()
-        self.assertFalse(controller.isVisible())
-        item.geometry_controller.release_render_resources()
-        scene.removeItem(base)
-
-    def test_projective_ring_double_click_enters_edit_and_deselects(self):
-        scene = QGraphicsScene()
-        view = QGraphicsView(scene)
-        view.resize(800, 500)
-        base = QGraphicsRectItem(QRectF(0, 0, 800, 500))
-        scene.addItem(base)
-        item, _ = self._make_pair(0, TEST_LINES[0], False)
-        item.setParentItem(base)
-        item.set_text_transform(transform_state(ProjectiveTextTransform()))
-        controller = TextProjectiveTransformControl()
-        controller.setParentItem(base)
-        previous_register = getattr(shared, 'register_view_widget', None)
-        shared.register_view_widget = lambda *_args: None
-        self.addCleanup(
-            lambda: (
-                delattr(shared, 'register_view_widget')
-                if previous_register is None
-                else setattr(
-                    shared, 'register_view_widget', previous_register
-                )
-            )
-        )
-        panel = TextTransformPanel(
-            'Text Transform', 'test_transform', 'test_transform_expand'
-        )
-        self.addCleanup(panel.deleteLater)
-        previous_canvas = getattr(SW, 'canvas', None)
-        self.addCleanup(setattr, SW, 'canvas', previous_canvas)
-        SW.canvas = SimpleNamespace(
-            push_undo_command=QUndoStack().push,
-            bind_text_projective_control=
-            lambda bound_item, index, **callbacks:
-            controller.bind(bound_item, index, **callbacks),
-            clear_text_transform_controls=controller.clear,
-        )
-        session = TextTransformEditSession(SimpleNamespace(), panel)
-        session.replace_targets([item])
-        panel.set_transform_items([item])
-        panel.transform_panels[0].card_clicked.emit(0)
-        item.begin_edit.connect(
-            lambda _index: session.select_transform(-1)
-        )
-        view.show()
-        self.app.processEvents()
-        self.addCleanup(view.close)
-
-        ring_point = controller.rings['z'].path().pointAtPercent(0.0)
-        scene_pos = controller.mapToScene(ring_point)
-        QTest.mouseDClick(
-            view.viewport(),
-            Qt.MouseButton.LeftButton,
-            Qt.KeyboardModifier.NoModifier,
-            view.mapFromScene(scene_pos),
-        )
-        self.app.processEvents()
-
-        self.assertTrue(item.isEditing())
-        self.assertIsNone(session.selected_index)
-        self.assertFalse(panel.transform_panels[0].property('selected'))
-        self.assertIsNone(controller.item)
-        self.assertFalse(controller.isVisible())
-
-        item.endEdit()
-        item.geometry_controller.release_render_resources()
-        scene.removeItem(base)
 
     def test_grid_controller_group_drag_moves_selected_circle_handles(self):
         scene = QGraphicsScene()
@@ -5724,6 +5510,17 @@ class TextTransformShapeControlTest(TextTransformTestBase):
             canvas.gv.mapFromScene(inside_end),
         )
         self.app.processEvents()
+        self.assertEqual(controller.selected_indices, {0})
+        self.assertEqual(context_requests, [])
+        controller._set_selected_indices(set())
+        start_view = canvas.gv.mapFromScene(controller.handles[0].scenePos())
+        end_view = start_view - QPoint(10, 10)
+        QTest.mousePress(canvas.gv.viewport(), Qt.MouseButton.RightButton,
+                         Qt.KeyboardModifier.NoModifier, start_view)
+        self.assertTrue(canvas.rubber_band.isVisible())
+        QTest.mouseMove(canvas.gv.viewport(), end_view)
+        QTest.mouseRelease(canvas.gv.viewport(), Qt.MouseButton.RightButton,
+                           Qt.KeyboardModifier.NoModifier, end_view)
         self.assertEqual(controller.selected_indices, {0})
         self.assertEqual(context_requests, [])
         controller.clear()

@@ -1,9 +1,7 @@
 """Selection-scoped edit sessions for composable text transforms."""
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
-
-from qtpy.QtWidgets import QApplication
+from typing import Sequence, TYPE_CHECKING
 
 from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
@@ -138,7 +136,13 @@ class TextTransformEditSession:
         selected = getattr(self, 'selected_index', None)
         # Canvas overlays bind callbacks to one concrete item and stack index,
         # so they are valid only while that ownership remains unambiguous.
-        if selected is not None and len(self.items) == 1:
+        if (
+            selected is not None
+            and len(self.items) == 1
+            and canvas.textEditMode()
+            and canvas.editing_textblkitem is None
+            and not canvas.alpha_mask_edit_session.active
+        ):
             stack = self._state_for_item(self.items[0])
             if (
                 0 <= selected < len(stack)
@@ -166,13 +170,16 @@ class TextTransformEditSession:
                     cancel_edit=self.cancel_projective_edit,
                 )
                 return
-        # Deselection, multi-selection, or a stage without an overlay must
-        # release any controller that was bound by an earlier selection.
+        # Text editing suspends the gizmo without clearing the selected card.
+        # Other selection changes release controllers from earlier targets.
         canvas.clear_text_transform_controls()
 
     def select_transform(self, index: int) -> None:
         index = int(index)
         selected = index if index >= 0 else None
+        alpha_session = getattr(SW.canvas, 'alpha_mask_edit_session', None)
+        if selected is not None and alpha_session is not None:
+            alpha_session.deactivate()
         if getattr(self, 'selected_index', None) == selected:
             self._sync_transform_controller()
             return
@@ -189,12 +196,20 @@ class TextTransformEditSession:
         self.host.global_format.text_transform = state
         self.host.update_text_style_label()
 
-    def _commit_states(self, before, after) -> None:
+    def _commit_states(
+        self,
+        before: Sequence[TextTransformStack],
+        after: Sequence[TextTransformStack],
+    ) -> None:
         if not self.items:
             if before[0] != after[0]:
                 self._set_global_state(after[0])
             self._sync_transform_ui()
             return
+        # Explicit transform edits may take over from Eraser; UI refreshes may not.
+        alpha_session = getattr(SW.canvas, 'alpha_mask_edit_session', None)
+        if alpha_session is not None:
+            alpha_session.deactivate()
         command = SetTextTransformCommand.create(
             self.items,
             before,
@@ -255,11 +270,6 @@ class TextTransformEditSession:
             self._sync_transform_ui()
             return
         self._commit_states(before, after)
-        # A focus-loss commit must preserve the canvas handle being pressed.
-        if self.selected_index is not None and self.controls.isAncestorOf(
-            QApplication.focusWidget()
-        ):
-            self.select_transform(-1)
 
     def _prepare_structure_change(self) -> None:
         # A typed value owns an earlier transaction and must land before the
@@ -558,8 +568,6 @@ class TextTransformEditSession:
         self.drag_before = None
         self.drag_key = None
         self._commit_states(before, after)
-        if self.selected_index is not None:
-            self.select_transform(-1)
 
     def cancel_preview(self, *_key) -> None:
         if self.drag_before is not None:
