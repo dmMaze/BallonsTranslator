@@ -10,7 +10,6 @@ import numpy as np
 from ...custom_widget import ScrollBar, Widget, SeparatorWidget
 from ..item import TextBlock
 from .context_menu import create_text_edit_context_menu
-from .drop_sync import propagate_drop
 from ballontranslator.utils.config import pcfg
 from ...spellcheck import (
     SpellCheckHighlighter,
@@ -402,10 +401,10 @@ class SourceTextEdit(QTextEdit):
         self.paste_from = cursor.selectionStart()
         self.paste_removed = cursor.selectionEnd() - self.paste_from
 
-    def on_content_changing(self, from_: int, removed: int, added: int):
+    def on_content_changing(self, from_: int, removed: int, added: int) -> None:
         if not self.pre_editing:
             self.text_content_changed = True
-            if self.hasFocus():
+            if self.hasFocus() or self.in_acts:
                 self.change_from = from_
                 self.change_removed = removed
                 self.change_added = added
@@ -554,10 +553,14 @@ class SourceTextEdit(QTextEdit):
             self.input_method_text = ''
 
     def dropEvent(self, e: QDropEvent) -> None:
-        # A drop inserts text without giving the editor focus, so the
-        # focus-gated change path never reports it to the paired block.
-        drop = super().dropEvent
-        propagate_drop(self, lambda: drop(e))
+        # Capture Qt's range without focus and replay its grouped drop once.
+        was_in_acts = self.in_acts
+        self.in_acts = True
+        try:
+            super().dropEvent(e)
+            self.handle_content_change()
+        finally:
+            self.in_acts = was_in_acts
 
     def keyPressEvent(self, e: QKeyEvent) -> None:
         if e.matches(QKeySequence.StandardKey.Paste):
