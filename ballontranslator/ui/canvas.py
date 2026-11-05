@@ -228,10 +228,19 @@ class Canvas(QGraphicsScene):
     scale_tool = Signal(QPointF)
     end_scale_tool = Signal()
     magic_wand_clicked = Signal(QPointF, bool)
+
+    # Emitted while an editable rect tool preview is on screen, so the
+    # drawing panel can change which blobs the mask selects.
+    blob_selection_press = Signal(QPointF, int, bool)   # pos, button, shift
+    blob_selection_move = Signal(QPointF)
+    blob_selection_release = Signal(QPointF, int)
+    blob_rule_toggled = Signal()
     image_layers_updated = Signal()
     canvas_undostack_changed = Signal()
     
     imgtrans_proj: ProjImgTrans = None
+    # Set by DrawingPanel whenever an editable rect preview is on screen.
+    blob_selection_active: bool = False
     painting_pen = QPen()
     painting_shape = 0
     erasing_pen = QPen()
@@ -778,6 +787,15 @@ class Canvas(QGraphicsScene):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
 
+        # 'O' switches the marquee rule, but only while an editable rect
+        # preview is on screen, so it can never swallow a keystroke meant
+        # for anything else.
+        if key == QKEY.Key_O and self.blob_selection_active \
+                and not event.modifiers():
+            self.blob_rule_toggled.emit()
+            event.accept()
+            return
+
         if key == QKEY.Key_Escape and self.alpha_mask_edit_session.handle_escape():
             event.accept()
             return
@@ -1191,6 +1209,10 @@ class Canvas(QGraphicsScene):
         if self.alpha_mask_edit_session.handle_mouse_move(event):
             event.accept()
             return
+        if self.blob_selection_active:
+            self.blob_selection_move.emit(event.scenePos())
+            event.accept()
+            return
         if self._path_reorder_drawing:
             self._extend_path_reorder_stroke(event.scenePos())
             event.accept()
@@ -1330,6 +1352,20 @@ class Canvas(QGraphicsScene):
         if self.alpha_mask_edit_session.handle_mouse_press(event):
             event.accept()
             return
+        # A pending rect preview owns left and right clicks: they add or
+        # remove blobs from the mask rather than starting a new gesture.
+        # Middle button falls through so panning still works.
+        if self.blob_selection_active and btn in (
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.RightButton,
+        ):
+            self.blob_selection_press.emit(
+                event.scenePos(),
+                0 if btn == Qt.MouseButton.LeftButton else 1,
+                bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier),
+            )
+            event.accept()
+            return
         if self._path_reorder_active:
             if btn == Qt.MouseButton.LeftButton:
                 self._start_path_reorder_stroke(event.scenePos())
@@ -1454,6 +1490,16 @@ class Canvas(QGraphicsScene):
             event.accept()
             return
         if self.alpha_mask_edit_session.handle_mouse_release(event):
+            event.accept()
+            return
+        if self.blob_selection_active and btn in (
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.RightButton,
+        ):
+            self.blob_selection_release.emit(
+                event.scenePos(),
+                0 if btn == Qt.MouseButton.LeftButton else 1,
+            )
             event.accept()
             return
         if self._path_reorder_drawing and btn == Qt.MouseButton.LeftButton:
