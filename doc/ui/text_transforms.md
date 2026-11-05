@@ -212,9 +212,12 @@ The following details are easy to regress during otherwise local changes:
   Reusing geometry changed by an earlier sample creates feedback and can
   reverse or collapse an outward drag.
 - The panel and canvas overlays share one selected stack index. A selected Grid
-  or Projective stage for exactly one text block owns the transform overlay and
-  hides the normal shape overlay. These overlays are mutually exclusive,
-  follow selection and editing lifecycle, and never appear in export.
+  or Projective stage for exactly one text block shows its gizmo alongside the
+  normal rectangle controls. Panel commits and rectangle gestures retain that
+  selection. Text editing suspends the gizmo until editing ends; it does not
+  deselect the card. Automatic restoration stays within text mode and respects
+  an active Eraser; explicit transform selection or edits can reclaim input.
+  Overlays never appear in export.
 - Grid-owned right-button selection is consumed without opening the Canvas
   context menu.
 - The Canvas owns the only scene-space rubber-band gesture and visual. An

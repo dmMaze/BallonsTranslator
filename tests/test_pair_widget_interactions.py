@@ -53,6 +53,9 @@ class PairWidgetInteractionTest(unittest.TestCase):
                 (args, kwargs)
             ),
             cancel_text_transform_edits_for_scene_change=lambda: None,
+            text_transform_session=SimpleNamespace(
+                _sync_transform_controller=lambda: None,
+            ),
         )
         self.manager = _ManagerHarness()
         self.manager.app = self.app

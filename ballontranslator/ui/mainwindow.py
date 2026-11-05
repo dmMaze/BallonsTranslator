@@ -1620,7 +1620,14 @@ class MainWindow(mainwindow_cls):
             LOGGER.debug('Manually saving...')
             self.saveCurrentPage(update_scene_text=True, save_proj=True, restore_interface=True, save_rst_only=False)
 
-    def saveCurrentPage(self, update_scene_text=True, save_proj=True, restore_interface=False, save_rst_only=False, keep_exist_as_backup=False):
+    def saveCurrentPage(
+        self,
+        update_scene_text: bool = True,
+        save_proj: bool = True,
+        restore_interface: bool = False,
+        save_rst_only: bool = False,
+        keep_exist_as_backup: bool = False,
+    ) -> None:
         
         if not self.imgtrans_proj.img_valid:
             return
@@ -1702,10 +1709,11 @@ class MainWindow(mainwindow_cls):
                 self.canvas.block_selection_signal = True
                 for blk in sel_textitem:
                     blk.setSelected(True)
+                # Restore editing before selection refresh can rebuild its gizmo.
+                if editing_textitem is not None:
+                    editing_textitem.startEdit()
                 self.st_manager.on_incanvas_selection_changed()
                 self.canvas.block_selection_signal = False
-            if editing_textitem is not None:
-                editing_textitem.startEdit()
         
     def to_trans_config(self):
         self.show_module_param_dialog('translator', pcfg.module.translator)
