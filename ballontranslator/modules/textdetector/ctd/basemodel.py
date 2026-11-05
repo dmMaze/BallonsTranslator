@@ -208,6 +208,14 @@ def get_base_det_models(model_path, device='cpu', half=False, act='leaky'):
     text_seg.load_state_dict(textdetector_dict['text_seg'])
     text_det = DBHead(64, act=act)
     text_det.load_state_dict(textdetector_dict['text_det'])
+    # The checkpoint holds ~16M denormal floats. They round to exactly the same outputs as zero,
+    # but x86 CPUs handle them in microcode: 20 s instead of 1 s per 1024 forward pass on CPU.
+    tiny = torch.finfo(torch.float32).tiny
+    with torch.no_grad():
+        for m in (blk_det, text_seg, text_det):
+            for t in list(m.parameters()) + list(m.buffers()):
+                if t.is_floating_point():
+                    t[t.abs() < tiny] = 0
     if half:
         return blk_det.eval().half(), text_seg.eval().half(), text_det.eval().half()
     return blk_det.eval().to(device), text_seg.eval().to(device), text_det.eval().to(device)

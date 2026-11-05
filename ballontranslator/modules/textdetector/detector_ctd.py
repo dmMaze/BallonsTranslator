@@ -66,11 +66,14 @@ class ComicTextDetector(TextDetectorBase):
     def detect_size(self):
         return int(self.params['detect_size']['value'])
 
+    def _use_onnx(self) -> bool:
+        # The ONNX export has a fixed 1024 input, so it can only serve a 1024 run on CPU; any other
+        # Detect Size runs the torch weights on CPU too, instead of silently detecting at 1024.
+        return self.device == 'cpu' and self.detect_size == 1024
+
     def _load_model(self):
-        if self.device != 'cpu':
-            self.model = load_ctd_model(CTD_TORCH_PATH, self.device, self.detect_size)
-        else:
-            self.model = load_ctd_model(CTD_ONNX_PATH, self.device, self.detect_size)
+        path = CTD_ONNX_PATH if self._use_onnx() else CTD_TORCH_PATH
+        self.model = load_ctd_model(path, self.device, self.detect_size)
 
     def _detect(self, img: np.ndarray, proj: ProjImgTrans) -> Tuple[np.ndarray, List[TextBlock]]:
         _, mask, blk_list = self.model(img)
@@ -96,8 +99,14 @@ class ComicTextDetector(TextDetectorBase):
 
     def updateParam(self, param_key: str, param_content):
         super().updateParam(param_key, param_content)
-        device = self.device
-        if param_key == 'device' and self.all_model_loaded():
-            if self.model.device != device:
+        if not self.all_model_loaded():
+            return
+        if param_key == 'device' and self.model.device != self.device:
+            self.unload_model()
+            self.load_model()
+        elif param_key == 'detect_size':
+            if (self.model.backend == 'opencv') != self._use_onnx():
                 self.unload_model()
                 self.load_model()
+            else:
+                self.model.detect_size = self.detect_size
