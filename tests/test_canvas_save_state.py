@@ -11,10 +11,10 @@ import numpy as np
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PIL import Image
-from qtpy.QtCore import QCoreApplication, QEvent, QPoint, QPointF, Qt
-from qtpy.QtGui import QColor, QImage, QTextCursor
+from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, Qt
+from qtpy.QtGui import QColor, QDragEnterEvent, QDropEvent, QImage, QTextCursor
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QHBoxLayout, QStackedWidget, QWidget
+from qtpy.QtWidgets import QApplication, QHBoxLayout, QStackedWidget, QTextEdit, QWidget
 
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
@@ -484,6 +484,106 @@ class CanvasSaveStateTests(unittest.TestCase):
                              Qt.KeyboardModifier.NoModifier, point)
             self.assertEqual(self.canvas.selected_text_items(), [self.item])
             self.assertLessEqual(refresh.call_count, 2)
+
+    def _drop_text(self, edit: SourceTextEdit, position: int, text: str) -> None:
+        cursor = QTextCursor(edit.document())
+        cursor.setPosition(position)
+        point = edit.cursorRect(cursor).center()
+        mime = QMimeData()
+        mime.setText(text)
+        enter = QDragEnterEvent(
+            point, Qt.DropAction.CopyAction, mime,
+            Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+        )
+        self.app.sendEvent(edit.viewport(), enter)
+        event = QDropEvent(
+            QPointF(point), Qt.DropAction.CopyAction, mime,
+            Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+        )
+        self.app.sendEvent(edit.viewport(), event)
+        self.assertTrue(event.isAccepted())
+
+    def test_unfocused_drops_are_saved_and_undoable(self) -> None:
+        for source in (False, True):
+            with self.subTest(source=source):
+                edit = self._edit(source)
+                before = edit.toPlainText()
+                self.canvas.gv.setFocus()
+                self.app.processEvents()
+                self.assertFalse(edit.hasFocus())
+                self._save_page()
+                count = self.canvas.text_undo_stack.count()
+                self._drop_text(edit, 0, '\U0001f600new\n')
+                after = '\U0001f600new\n' + before
+                self.assertEqual(edit.toPlainText(), after)
+                self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
+                self.assertTrue(self.canvas.projstate_unsaved)
+                if not source:
+                    self.assertEqual(self.item.toPlainText(), after)
+                self.canvas.undo_textedit()
+                self.assertEqual(edit.toPlainText(), before)
+                self.assertFalse(self.canvas.projstate_unsaved)
+                if not source:
+                    self.assertEqual(self.item.toPlainText(), before)
+                self.canvas.redo_textedit()
+                self._save_page()
+                reopened = ProjImgTrans(self.directory.name).pages['01.png'][0]
+                saved = reopened.get_text() if source else reopened.translation
+                self.assertEqual(saved, after)
+
+    def test_internal_drops_keep_paired_undo_and_redo_synchronized(self) -> None:
+        def move_selection(edit: QTextEdit, event: QDropEvent) -> None:
+            target = QTextCursor(edit.document())
+            target.movePosition(QTextCursor.MoveOperation.End)
+            target.beginEditBlock()
+            edit.textCursor().removeSelectedText()
+            edit.setTextCursor(target)
+            edit.insertFromMimeData(event.mimeData())
+            target.endEditBlock()
+            event.acceptProposedAction()
+
+        edit = self._edit()
+        for before, after in (('abcd', 'bcda'), ('aaaa', 'aaaa')):
+            with self.subTest(before=before):
+                previous = edit.toPlainText()
+                edit.selectAll()
+                edit.insertPlainText(before)
+                cursor = edit.textCursor()
+                cursor.setPosition(0)
+                cursor.setPosition(1, QTextCursor.MoveMode.KeepAnchor)
+                edit.setTextCursor(cursor)
+                # Offscreen Qt cannot start native drags; retain its grouped move.
+                with patch.object(QTextEdit, 'dropEvent', move_selection):
+                    self._drop_text(edit, len(before), before[0])
+                for operation, expected in (
+                    (self.canvas.undo_textedit, before),
+                    (self.canvas.undo_textedit, previous),
+                    (self.canvas.redo_textedit, before),
+                    (self.canvas.redo_textedit, after),
+                ):
+                    operation()
+                    self.assertEqual(edit.toPlainText(), expected)
+                    self.assertEqual(self.item.toPlainText(), expected)
+
+    def test_repeated_text_drop_preserves_inline_formatting(self) -> None:
+        edit = self._edit()
+        edit.selectAll()
+        edit.insertPlainText('aabb')
+        self.item.startEdit()
+        cursor = self.item.textCursor()
+        cursor.setPosition(1)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        self.item.setTextCursor(cursor)
+        self.item.setFontColor((255, 0, 0), set_selected=True)
+        self.item.endEdit()
+        edit.setFocus()
+        self.app.processEvents()
+        self._drop_text(edit, 1, 'a')
+        self.assertEqual(self.item.toPlainText(), 'aaabb')
+        for position, color in enumerate(('black', 'black', 'red', 'black', 'black')):
+            cursor.setPosition(position)
+            cursor.setPosition(position + 1, QTextCursor.MoveMode.KeepAnchor)
+            self.assertEqual(cursor.charFormat().foreground().color(), QColor(color))
 
     def test_replacement_color_is_saved_when_undo_branch_is_replaced(self) -> None:
         self.item.setFontColor((255, 0, 0))
