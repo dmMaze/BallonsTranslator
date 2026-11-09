@@ -1627,10 +1627,11 @@ class MainWindow(mainwindow_cls):
         restore_interface: bool = False,
         save_rst_only: bool = False,
         keep_exist_as_backup: bool = False,
-    ) -> None:
+        save_result: bool = True,
+    ) -> bool:
         
         if not self.imgtrans_proj.img_valid:
-            return
+            return True
 
         if update_scene_text or save_proj:
             # Resolve text-transform editor state before both the canonical
@@ -1648,23 +1649,8 @@ class MainWindow(mainwindow_cls):
         
         if update_scene_text:
             self.st_manager.updateTextBlkList()
-        
-        if self.rightComicTransStackPanel.isHidden():
-            self.bottomBar.texteditChecker.click()
 
-        restore_textblock_mode = False
-        if pcfg.imgtrans_textblock:
-            restore_textblock_mode = True
-            self.bottomBar.textblockChecker.click()
-
-        hide_tsc = False
-        if self.st_manager.txtblkShapeControl.isVisible():
-            hide_tsc = True
-            self.st_manager.txtblkShapeControl.hide()
-
-        if not osp.exists(self.imgtrans_proj.result_dir()):
-            os.makedirs(self.imgtrans_proj.result_dir())
-
+        save_failed = False
         if save_proj:
             try:
                 self.imgtrans_proj.save(keep_exist_as_backup=keep_exist_as_backup)
@@ -1684,18 +1670,43 @@ class MainWindow(mainwindow_cls):
                         inpainted = self.imgtrans_proj.inpainted_array
                     if inpainted is not None:
                         self.imsave_thread.saveImg(inpainted_path, inpainted, save_params={'ext': pcfg.intermediate_imgsave_ext}, keep_alpha=self.imgtrans_proj.current_has_alpha())
-            except Exception as e:
-                LOGGER.error(f"Failed to save project files: {e}")
+            except Exception as error:
+                save_failed = True
+                LOGGER.error(f"Failed to save project files: {error}")
+                if not save_result:
+                    create_error_dialog(error, self.tr('Failed to save project files.'))
+
+        # Batch rendering writes the result later; keep dirty markers until IO finishes.
+        if not save_result:
+            return not save_failed
+
+        if self.rightComicTransStackPanel.isHidden():
+            self.bottomBar.texteditChecker.click()
+
+        restore_textblock_mode = False
+        if pcfg.imgtrans_textblock:
+            restore_textblock_mode = True
+            self.bottomBar.textblockChecker.click()
+
+        hide_tsc = False
+        if self.st_manager.txtblkShapeControl.isVisible():
+            hide_tsc = True
+            self.st_manager.txtblkShapeControl.hide()
+
+        if not osp.exists(self.imgtrans_proj.result_dir()):
+            os.makedirs(self.imgtrans_proj.result_dir())
 
         # Render the final result image properly
         try:
             img = self.canvas.render_result_img()
             imsave_path = self.imgtrans_proj.get_result_path(self.imgtrans_proj.current_img)
             self.imsave_thread.saveImg(imsave_path, img, self.imgtrans_proj.current_img, save_params={'ext': pcfg.imgsave_ext, 'quality': pcfg.imgsave_quality}, keep_alpha=self.imgtrans_proj.current_has_alpha())
-            self.canvas.setProjSaveState(False)
-            self.canvas.update_saved_undostep()
+            if not save_failed:
+                self.canvas.setProjSaveState(False)
+                self.canvas.update_saved_undostep()
         
         except Exception as e:
+            save_failed = True
             LOGGER.error(f"Failed to render and save result image: {e}")
 
         if restore_interface:
@@ -1714,6 +1725,7 @@ class MainWindow(mainwindow_cls):
                     editing_textitem.startEdit()
                 self.st_manager.on_incanvas_selection_changed()
                 self.canvas.block_selection_signal = False
+        return not save_failed
         
     def to_trans_config(self):
         self.show_module_param_dialog('translator', pcfg.module.translator)
@@ -2224,12 +2236,48 @@ class MainWindow(mainwindow_cls):
         finally:
             dialog.deleteLater()
 
+    def _save_before_render(self) -> bool:
+        self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
+        project = self.imgtrans_proj
+        if not project.img_valid:
+            return self.imsave_thread.wait_for_saves(self)
+        page = project.current_img
+        draw_step = self.canvas.draw_undo_stack.index()
+        text_step = self.canvas.text_undo_stack.index()
+        current_paths = {
+            osp.splitext(project.get_mask_path())[0],
+            osp.splitext(project.get_inpainted_path())[0],
+        }
+        retry_background = bool(current_paths & self.imsave_thread.failed_paths)
+        if not self.saveCurrentPage(
+            save_proj=self.canvas.projstate_unsaved or retry_background,
+            save_rst_only=not (self.canvas.draw_change_unsaved() or retry_background),
+            save_result=False,
+        ):
+            return False
+        if not self.imsave_thread.wait_for_saves(self):
+            return False
+        input_dirs = {project.mask_dir(), project.inpainted_dir()}
+        if any(osp.dirname(path) in input_dirs for path in self.imsave_thread.failed_paths):
+            self.canvas.draw_undo_stack.resetClean()
+            self.canvas.setProjSaveState(True)
+            return False
+        # Worker results can still edit the page while the modal save dialog runs.
+        if (project is not self.imgtrans_proj or page != project.current_img
+                or draw_step != self.canvas.draw_undo_stack.index()
+                or text_step != self.canvas.text_undo_stack.index()):
+            LOGGER.warning('Page changed while saving; rendering was cancelled.')
+            return False
+        self.canvas.setProjSaveState(False)
+        self.canvas.update_saved_undostep()
+        return True
+
     def on_run_imgtrans(
         self,
-        continue_mode=False,
-        render_only=False,
-        pages_to_process=None,
-    ):
+        continue_mode: bool = False,
+        render_only: bool = False,
+        pages_to_process: Optional[List[str]] = None,
+    ) -> None:
         self.backup_blkstyles.clear()
         self._render_only = render_only
         self._render_global_format = (
@@ -2293,7 +2341,13 @@ class MainWindow(mainwindow_cls):
                 if not pcfg.module.keep_exist_textlines and not continue_mode:
                     self.imgtrans_proj.pages[page].clear()
         else:
-            self.st_manager.updateTextBlkList()
+            if all_disabled:
+                if not self._save_before_render():
+                    self._render_only = False
+                    self._render_global_format = None
+                    return
+            else:
+                self.st_manager.updateTextBlkList()
             for page_name in requested_pages:
                 blklist = self.imgtrans_proj.pages[page_name]
                 ffmt_list = []

@@ -1,11 +1,13 @@
 import numpy as np
 import os.path as osp
 import traceback
+from typing import Optional
 
 from qtpy.QtCore import Qt, Signal, QUrl, QThread
 from qtpy.QtGui import QImage, QPixmap
-from qtpy.QtWidgets import QDialog, QMessageBox, QFileDialog
+from qtpy.QtWidgets import QDialog, QMessageBox, QFileDialog, QWidget
 
+from ballontranslator.utils import shared
 from ballontranslator.utils.logger import logger as LOGGER
 from ballontranslator.utils.io_utils import imread, imwrite
 from ballontranslator.utils.message import create_error_dialog
@@ -41,9 +43,44 @@ class ImgSaveThread(ThreadBase):
     _thread_exception_type = 'ImgSaveThread'
     _thread_error_msg = 'Failed to save image.'
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.im_save_list = []
+        # Track image stems so saving in another format can recover a failure.
+        self.failed_paths: set[str] = set()
+
+    def wait_for_saves(self, parent: Optional[QWidget]) -> bool:
+        """Drain queued writes without freezing Qt; cancellation leaves them running.
+
+        >>> writer = ImgSaveThread()
+        >>> writer.wait_for_saves(None)
+        True
+        """
+        if not self.isRunning() and not self.im_save_list:
+            return True
+        progress = None
+        if not shared.HEADLESS:
+            progress = ProgressMessageBox(self.tr('Saving image...'), False, parent)
+            progress.task_progress_bar.progressbar.setRange(0, 0)
+            self.finished.connect(progress.accept)
+        try:
+            while self.isRunning() or self.im_save_list:
+                if not self.isRunning():
+                    self.wait()
+                    if not self.im_save_list:
+                        break
+                    # Enqueues during thread exit can miss saveImg's job check.
+                    self.job = self._save_img
+                    self.start()
+                if progress is None:
+                    self.wait()
+                elif progress.exec_() != QDialog.DialogCode.Accepted:
+                    return False
+            return True
+        finally:
+            if progress is not None:
+                self.finished.disconnect(progress.accept)
+                progress.deleteLater()
 
     def saveImg(self, save_path: str, img: QImage, pagename_in_proj: str = '', save_params: dict = None, keep_alpha=False):
         self.im_save_list.append((save_path, img, pagename_in_proj, save_params, keep_alpha))
@@ -51,7 +88,7 @@ class ImgSaveThread(ThreadBase):
             self.job = self._save_img
             self.start()
 
-    def _save_img(self):
+    def _save_img(self) -> None:
         while True:
             if len(self.im_save_list) == 0:
                 break
@@ -61,11 +98,13 @@ class ImgSaveThread(ThreadBase):
             if isinstance(img, QImage) or isinstance(img, QPixmap):
                 img = pixmap2ndarray(img, keep_alpha=keep_alpha)
             imwrite(save_path, img, **save_params)
+            self.failed_paths.discard(osp.splitext(save_path)[0])
             self.img_writed.emit(pagename_in_proj)
             self.im_save_list.pop(0)
 
-    def on_exec_failed(self):
+    def on_exec_failed(self) -> None:
         if len(self.im_save_list) > 0:
+            self.failed_paths.add(osp.splitext(self.im_save_list[0][0])[0])
             self.im_save_list.pop(0)
             if len(self.im_save_list) == 0:
                 self.job = None

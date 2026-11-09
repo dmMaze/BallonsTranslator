@@ -1,5 +1,7 @@
+import gc
 import os
 import tempfile
+import threading
 import unittest
 import weakref
 from itertools import product
@@ -11,16 +13,20 @@ import numpy as np
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PIL import Image
-from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, Qt, QTimer
 from qtpy.QtGui import QColor, QDragEnterEvent, QDropEvent, QImage, QTextCursor
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QHBoxLayout, QStackedWidget, QTextEdit, QWidget
+from qtpy.QtWidgets import QApplication, QHBoxLayout, QListWidget, QStackedWidget, QTextEdit, QWidget
 
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
-from ballontranslator.ui.drawing_commands import RunBlkTransCommand, StrokeItemUndoCommand
+from ballontranslator.ui.drawing_commands import InpaintUndoCommand, RunBlkTransCommand, StrokeItemUndoCommand
+from ballontranslator.ui.custom_widget import ProgressMessageBox
+from ballontranslator.ui.io_thread import ImgSaveThread
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.mainwindowbars import BottomBar
+from ballontranslator.ui.misc import pixmap2ndarray
+from ballontranslator.ui.module_manager import ModuleManager
 from ballontranslator.ui.text_engine.editing.manager import (
     SceneTextManager, SceneTextReplacementReason, TextPanel,
 )
@@ -29,6 +35,7 @@ from ballontranslator.ui.text_engine.transforms import grid_control
 from ballontranslator.ui.text_engine.transforms.controls import TransformParameterPanel
 from ballontranslator.utils import config as C, shared
 from ballontranslator.utils.fontformat import FontFormat
+from ballontranslator.utils.io_utils import imread, imwrite
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock
 
@@ -330,6 +337,238 @@ class CanvasSaveStateTests(unittest.TestCase):
                 self.assertEqual(overlay.isVisible(), not erasing)
                 self.canvas.alpha_mask_edit_session.deactivate()
                 session.remove_transform(0)
+
+    def _setup_render_pipeline(self) -> ImgSaveThread:
+        self.host.imgtrans_proj = self.project
+        self.host.st_manager = self.manager
+        self.host.textPanel = self.panel
+        self.host.backup_blkstyles = []
+        self.host._run_imgtrans_wo_textstyle_update = True
+        self.host.save_on_page_changed = True
+        self.host.rightComicTransStackPanel = self.panel
+        self.host.bottomBar = Mock()
+        self.host.bottomBar.textblockChecker.isChecked.return_value = False
+        self.host.llmContextEditor = Mock()
+        self.host.titleBar = Mock()
+        self.host.drawingPanel = Mock()
+        self.host.pageList = QListWidget(self.host)
+        self.host.pageList.addItems(self.project.pages)
+        self.host.pageList.setCurrentRow(0)
+        self.host.imsave_thread = writer = ImgSaveThread(self.host)
+        self.host.module_manager = ModuleManager(self.project, self.host)
+        self.host.module_manager.terminateRunningThread = Mock()
+        self.host.module_manager.handle_page_changed = Mock()
+        for name in (
+            'saveCurrentPage', 'conditional_save', 'pageListCurrentItemChanged',
+            'on_pagtrans_finished', 'postprocess_translations',
+            '_save_before_render',
+        ):
+            setattr(self.host, name, MethodType(getattr(MainWindow, name), self.host))
+        self.host.pageList.currentItemChanged.connect(self.host.pageListCurrentItemChanged)
+        self.host.module_manager.page_trans_finished.connect(self.host.on_pagtrans_finished)
+        return writer
+
+    def _check_render_preserves_manual_edits(
+        self, page: str, *, pending_save: bool = False, render_only: bool = True,
+    ) -> None:
+        writer = self._setup_render_pipeline()
+        with patch.multiple(
+            C.pcfg, intermediate_imgsave_ext='.png', imgsave_ext='.png',
+            imgtrans_textblock=False,
+        ), patch.multiple(
+            C.pcfg.module, enable_detect=render_only, enable_ocr=render_only,
+            enable_translate=render_only, enable_inpaint=render_only,
+        ):
+            if page != '01.png':
+                self.project.pages[page] = [self.project.pages['01.png'].pop()]
+                self.host.pageList.setCurrentRow(self.project.pagename2idx(page))
+            self.item = self.manager.textblk_item_list[0]
+            self.project.inpainted_array[:] = 210
+            self.project.mask_array[:] = 255
+            self.project.save_inpainted(page, self.project.inpainted_array)
+            self.project.save_mask(page, self.project.mask_array)
+            self.canvas.updateCanvas()
+            # Restore one region, erase another, and paint a translucent stroke.
+            for x, color, mask in ((10, 255, 0), (30, 90, 255)):
+                self.canvas.push_draw_command(InpaintUndoCommand(
+                    self.canvas, np.full((10, 10, 3), color, np.uint8),
+                    np.full((10, 10), mask, np.uint8), [x, 150, x + 10, 160],
+                ))
+            stroke = QImage(10, 10, QImage.Format.Format_ARGB32_Premultiplied)
+            stroke.fill(QColor(200, 30, 50, 128))
+            self.canvas.push_draw_command(StrokeItemUndoCommand(
+                self.canvas.drawingLayer, (50, 150, 10, 10), stroke,
+            ))
+            self.item.setPos(24, 16)
+            self.item.setPlainText('Manually edited translation')
+            expected_rect = self.item.absBoundingRect()
+            expected_mask = self.project.mask_array.copy()
+            expected = pixmap2ndarray(self.canvas.render_result_img(), keep_alpha=False)
+
+            started = threading.Event()
+            release = threading.Event()
+            wait = writer.wait
+            timer = QTimer(self.host)
+            timer.setSingleShot(True)
+            timer.timeout.connect(release.set)
+
+            def delayed_write(*args, **kwargs) -> None:
+                started.set()
+                if not release.wait(5):
+                    raise TimeoutError('Image save was not released')
+                imwrite(*args, **kwargs)
+
+            with patch('ballontranslator.ui.io_thread.imwrite', side_effect=delayed_write), \
+                    patch.object(writer, 'saveImg', wraps=writer.saveImg) as enqueue:
+                try:
+                    if pending_save:
+                        self.host.saveCurrentPage()
+                        self.assertTrue(started.wait(5))
+                        self.assertFalse(self.canvas.projstate_unsaved)
+                        enqueue.reset_mock()
+                    timer.start(10)
+                    MainWindow.on_run_imgtrans(self.host, render_only=render_only)
+                    self.assertTrue(release.is_set(), 'Qt must keep processing events while saving')
+                finally:
+                    release.set()
+                    self.assertTrue(wait(5000))
+
+                paths = [call.args[0] for call in enqueue.call_args_list]
+                self.assertEqual(paths.count(self.project.get_result_path(page)), 1)
+                self.assertEqual(paths.count(self.project.get_inpainted_path(page)), int(not pending_save))
+                self.assertEqual(paths.count(self.project.get_mask_path(page)), int(not pending_save))
+
+            np.testing.assert_array_equal(imread(self.project.get_result_path(page)), expected)
+            self.host.pageList.setCurrentRow(self.project.pagename2idx(page))
+            np.testing.assert_array_equal(self.project.mask_array, expected_mask)
+            np.testing.assert_array_equal(self.project.inpainted_array[140:], expected[140:])
+            np.testing.assert_array_equal(
+                pixmap2ndarray(self.canvas.render_result_img(), keep_alpha=False), expected,
+            )
+            self.assertEqual(self.manager.textblk_item_list[0].absBoundingRect(), expected_rect)
+            reloaded = ProjImgTrans(self.directory.name)
+            reloaded.set_current_img(page)
+            np.testing.assert_array_equal(reloaded.mask_array, expected_mask)
+            np.testing.assert_array_equal(reloaded.inpainted_array[140:], expected[140:])
+            self.assertTrue(np.all(reloaded.img_array == 255))
+
+    def test_render_only_preserves_manual_edits_on_first_page(self) -> None:
+        self._check_render_preserves_manual_edits('01.png')
+
+    def test_render_only_preserves_manual_edits_on_later_page(self) -> None:
+        self._check_render_preserves_manual_edits('02.png')
+
+    def test_render_only_waits_for_pending_save_on_clean_page(self) -> None:
+        self._check_render_preserves_manual_edits('01.png', pending_save=True)
+
+    def test_render_with_all_modules_disabled_preserves_manual_edits(self) -> None:
+        self._check_render_preserves_manual_edits('01.png', render_only=False)
+
+    def test_render_aborts_on_save_failure_and_can_retry(self) -> None:
+        writer = self._setup_render_pipeline()
+        self.canvas.updateCanvas()
+        self.canvas.push_draw_command(InpaintUndoCommand(
+            self.canvas, np.full((10, 10, 3), 80, np.uint8),
+            np.full((10, 10), 255, np.uint8), [10, 150, 20, 160],
+        ))
+        expected = self.project.inpainted_array.copy()
+        with patch.object(self.host.module_manager, 'runImgtransPipeline') as pipeline, \
+                patch('ballontranslator.ui.mainwindow.create_error_dialog') as project_error, \
+                patch('ballontranslator.ui.io_thread.create_error_dialog') as image_error:
+            with patch.object(self.project, 'save', side_effect=OSError('Disk full')):
+                self.assertFalse(self.host.saveCurrentPage())
+                self.assertTrue(writer.wait(5000))
+                self.assertTrue(self.canvas.draw_change_unsaved())
+                self.assertTrue(self.canvas.projstate_unsaved)
+                MainWindow.on_run_imgtrans(self.host, render_only=True)
+            project_error.assert_called_once()
+            pipeline.assert_not_called()
+            self.assertTrue(self.canvas.draw_change_unsaved())
+            np.testing.assert_array_equal(self.project.inpainted_array, expected)
+
+            with patch('ballontranslator.ui.io_thread.imwrite', side_effect=OSError('Disk full')):
+                MainWindow.on_run_imgtrans(self.host, render_only=True)
+            self.assertTrue(image_error.called)
+            pipeline.assert_not_called()
+            self.assertTrue(self.canvas.projstate_unsaved)
+            self.assertTrue(writer.failed_paths)
+            np.testing.assert_array_equal(self.project.inpainted_array, expected)
+
+            MainWindow.on_run_imgtrans(self.host, render_only=True)
+            pipeline.assert_called_once()
+            self.assertFalse(writer.failed_paths)
+            self.assertFalse(self.canvas.projstate_unsaved)
+            reloaded = ProjImgTrans(self.directory.name)
+            reloaded.set_current_img('01.png')
+            np.testing.assert_array_equal(reloaded.inpainted_array, expected)
+
+    def test_render_cancels_if_worker_edits_arrive_while_saving(self) -> None:
+        writer = self._setup_render_pipeline()
+        self.canvas.updateCanvas()
+        self.canvas.setProjSaveState(True)
+        self.canvas.draw_undo_stack.resetClean()
+        command = InpaintUndoCommand(
+            self.canvas, np.full((10, 10, 3), 80, np.uint8),
+            np.full((10, 10), 255, np.uint8), [10, 150, 20, 160],
+        )
+
+        def finish_with_edit(parent: QWidget) -> bool:
+            self.assertTrue(writer.wait(5000))
+            self.canvas.push_draw_command(command)
+            return True
+
+        with patch.object(writer, 'wait_for_saves', side_effect=finish_with_edit), \
+                patch.object(self.host.module_manager, 'runImgtransPipeline') as pipeline:
+            MainWindow.on_run_imgtrans(self.host, render_only=True)
+        pipeline.assert_not_called()
+        self.assertTrue(self.canvas.draw_change_unsaved())
+        np.testing.assert_array_equal(self.project.inpainted_array[150:160, 10:20], 80)
+
+    def test_render_save_wait_drains_queue_and_releases_dialog(self) -> None:
+        image = np.full((8, 8, 3), 80, np.uint8)
+        first = os.path.join(self.directory.name, 'saved.png')
+        second = os.path.join(self.directory.name, 'queued.png')
+        for headless in (False, True):
+            with self.subTest(headless=headless):
+                writer = ImgSaveThread(self.host)
+                drained, release = threading.Event(), threading.Event()
+                save = writer._save_img
+                dialogs = []
+
+                def progress(*args) -> ProgressMessageBox:
+                    dialog = ProgressMessageBox(*args)
+                    dialogs.append(weakref.ref(dialog))
+                    return dialog
+
+                def finish_later() -> None:
+                    save()
+                    drained.set()
+                    if not release.wait(5):
+                        raise TimeoutError('Writer was not released')
+
+                with patch.object(writer, '_save_img', side_effect=finish_later), \
+                        patch.object(shared, 'HEADLESS', headless), \
+                        patch('ballontranslator.ui.io_thread.ProgressMessageBox', side_effect=progress):
+                    try:
+                        writer.saveImg(first, image)
+                        self.assertTrue(drained.wait(5))
+                        writer.saveImg(second, image + 1)
+                        if headless:
+                            release.set()
+                        else:
+                            QTimer.singleShot(10, release.set)
+                        self.assertTrue(writer.wait_for_saves(self.host))
+                        self.assertFalse(writer.im_save_list)
+                    finally:
+                        release.set()
+                        self.assertTrue(writer.wait(5000))
+                np.testing.assert_array_equal(imread(first), image)
+                np.testing.assert_array_equal(imread(second), image + 1)
+                self.assertEqual(len(dialogs), int(not headless))
+                QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+                gc.collect()
+                self.assertTrue(all(ref() is None for ref in dialogs))
+                self.assertEqual(writer.receivers(writer.finished), 0)
 
     def test_explicit_transform_edits_exit_eraser(self) -> None:
         session = self.panel.formatpanel.text_transform_session

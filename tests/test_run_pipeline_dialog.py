@@ -1476,6 +1476,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             ),
             imgtrans_proj=SimpleNamespace(pages={}),
             st_manager=SimpleNamespace(updateTextBlkList=lambda: None),
+            _save_before_render=Mock(return_value=True),
             module_manager=SimpleNamespace(
                 runImgtransPipeline=lambda *args, **kwargs: calls.append(
                     (args, kwargs)
