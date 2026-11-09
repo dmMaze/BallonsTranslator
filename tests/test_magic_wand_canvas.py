@@ -199,5 +199,158 @@ class MagicWandCanvasTests(unittest.TestCase):
                 release.set()
 
 
+    def test_ctrl_click_accumulates_magic_wand_selections_and_commits_on_release(self) -> None:
+        self.project.inpainted_array[:] = 180
+        self.project.inpainted_array[10:30, 10:30] = 60
+        self.project.inpainted_array[60:80, 60:80] = 60
+        self.canvas.updateLayers()
+        submit = self.panel.module_manager.canvas_inpaint
+
+        QTest.keyPress(self.canvas.gv, Qt.Key.Key_Control)
+        # Click first object
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        submit.assert_not_called()
+        self.assertTrue(self.panel.magic_wand_accumulated_item.isVisible())
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 400)
+
+        # Overlay excluded from export
+        rendered = pixmap2ndarray(self.canvas.render_result_img())
+        self.assertEqual(rendered[20, 20, 0], 60)
+
+        # Click second object
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(70, 70)),
+        )
+        submit.assert_not_called()
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 800)
+
+        # Release Control commits both objects
+        QTest.keyRelease(self.canvas.gv, Qt.Key.Key_Control)
+        submit.assert_called_once()
+        self.assertFalse(self.panel.magic_wand_accumulated_item.isVisible())
+        self.assertIsNone(self.panel._magic_wand_accumulated_mask)
+        request = submit.call_args.args[0]
+        self.assertEqual(np.count_nonzero(request['mask']), 800)
+
+    def test_ctrl_right_click_removes_from_accumulated_wand_mask(self) -> None:
+        self.project.inpainted_array[:] = 180
+        self.project.inpainted_array[10:30, 10:30] = 60
+        self.project.inpainted_array[60:80, 60:80] = 60
+        self.canvas.updateLayers()
+        submit = self.panel.module_manager.canvas_inpaint
+
+        QTest.keyPress(self.canvas.gv, Qt.Key.Key_Control)
+        # Select both objects
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(70, 70)),
+        )
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 800)
+
+        # Right click on first object to deselect it
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.RightButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        submit.assert_not_called()
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 400)
+
+        # Release Control commits remaining object
+        QTest.keyRelease(self.canvas.gv, Qt.Key.Key_Control)
+        submit.assert_called_once()
+        request = submit.call_args.args[0]
+        self.assertEqual(np.count_nonzero(request['mask']), 400)
+
+    def test_switching_tool_clears_accumulated_wand_mask(self) -> None:
+        self.project.inpainted_array[:] = 180
+        self.project.inpainted_array[10:30, 10:30] = 60
+        self.canvas.updateLayers()
+
+        QTest.keyPress(self.canvas.gv, Qt.Key.Key_Control)
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        self.assertTrue(self.panel.magic_wand_accumulated_item.isVisible())
+        self.panel.setCurrentToolByName('rect')
+        self.assertFalse(self.panel.magic_wand_accumulated_item.isVisible())
+        self.assertIsNone(self.panel._magic_wand_accumulated_mask)
+        QTest.keyRelease(self.canvas.gv, Qt.Key.Key_Control)
+        self.panel.module_manager.canvas_inpaint.assert_not_called()
+
+    def test_ctrl_click_without_gv_focus_accumulates_and_commits_on_release(self) -> None:
+        self.project.inpainted_array[:] = 180
+        self.project.inpainted_array[10:30, 10:30] = 60
+        self.project.inpainted_array[60:80, 60:80] = 60
+        self.canvas.updateLayers()
+        submit = self.panel.module_manager.canvas_inpaint
+
+        # Focus is on a panel button, NOT on canvas.gv
+        self.panel.inpaintConfigPanel.toleranceSlider.setFocus()
+        self.assertFalse(self.canvas.gv.hasFocus())
+
+        # Click first object with ControlModifier in mouse event
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        submit.assert_not_called()
+        self.assertTrue(self.panel.magic_wand_accumulated_item.isVisible())
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 400)
+
+        # Click second object with ControlModifier
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(70, 70)),
+        )
+        submit.assert_not_called()
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 800)
+
+        # Release Control anywhere in the application
+        QTest.keyRelease(self.window, Qt.Key.Key_Control)
+        submit.assert_called_once()
+        self.assertFalse(self.panel.magic_wand_accumulated_item.isVisible())
+        self.assertIsNone(self.panel._magic_wand_accumulated_mask)
+        request = submit.call_args.args[0]
+        self.assertEqual(np.count_nonzero(request['mask']), 800)
+
+    def test_accumulated_wand_mask_committed_by_enter_and_cancelled_by_escape(self) -> None:
+        self.project.inpainted_array[:] = 180
+        self.project.inpainted_array[10:30, 10:30] = 60
+        self.canvas.updateLayers()
+        submit = self.panel.module_manager.canvas_inpaint
+
+        # Accumulate an object
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 400)
+
+        # Press Escape cancels accumulation
+        QTest.keyClick(self.canvas.gv, Qt.Key.Key_Escape)
+        self.assertIsNone(self.panel._magic_wand_accumulated_mask)
+        self.assertFalse(self.panel.magic_wand_accumulated_item.isVisible())
+        submit.assert_not_called()
+
+        # Accumulate again and commit with Enter
+        QTest.mouseClick(
+            self.canvas.gv.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ControlModifier,
+            self.canvas.gv.mapFromScene(QPointF(20, 20)),
+        )
+        self.assertEqual(np.count_nonzero(self.panel._magic_wand_accumulated_mask), 400)
+        QTest.keyClick(self.canvas.gv, Qt.Key.Key_Return)
+        submit.assert_called_once()
+        self.assertIsNone(self.panel._magic_wand_accumulated_mask)
+
+
 if __name__ == '__main__':
     unittest.main()
