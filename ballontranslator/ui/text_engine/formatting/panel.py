@@ -49,7 +49,6 @@ from ballontranslator.utils import config as C
 from ballontranslator.utils.fontformat import (
     FontFormat,
     FontWeight,
-    LineSpacingType,
     coerce_font_weight,
     font_weight_to_qt,
 )
@@ -88,6 +87,7 @@ from .commands import (
     handle_ffmt_change,
     restore_canvas_view_focus,
 )
+from .spacing_drag import SpacingDragSession
 from ... import shared_widget as SW
 
 class LineEdit(QLineEdit):
@@ -462,16 +462,9 @@ class FontSizeComboBox(SizeComboBox):
         super().keyPressEvent(event)
 
 
-class FontSizeDragLabel(SizeControlLabel):
+class FormattingDragLabel(SizeControlLabel):
     drag_started = Signal()
     drag_canceled = Signal()
-
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent, transparent_bg=False)
-        self.setObjectName('fontSizeDragLabel')
-        self.setFixedSize(24, 24)
-        self.setToolTip(self.tr('Drag to resize text'))
-        self.setAccessibleName(self.tr('Resize text'))
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         super().mousePressEvent(event)
@@ -500,6 +493,10 @@ class FontSizeDragLabel(SizeControlLabel):
             return
         super().keyPressEvent(event)
 
+    def focusOutEvent(self, event: QFocusEvent) -> None:
+        self.cancel_drag()
+        super().focusOutEvent(event)
+
     def hideEvent(self, event: QHideEvent) -> None:
         self.cancel_drag()
         super().hideEvent(event)
@@ -515,7 +512,12 @@ class FontSizeBox(QFrame):
         self.downBtn.setObjectName("FsizeIncrementDown")
         self.upBtn.clicked.connect(self.onUpBtnClicked)
         self.downBtn.clicked.connect(self.onDownBtnClicked)
-        self.drag_label = FontSizeDragLabel(self)
+        self.drag_label = FormattingDragLabel(self, transparent_bg=False)
+        self.drag_label.setObjectName('fontSizeDragLabel')
+        self.drag_label.setFixedSize(24, 24)
+        # Keep existing translation catalogs after sharing the drag label.
+        self.drag_label.setToolTip(QApplication.translate('FontSizeDragLabel', 'Drag to resize text'))
+        self.drag_label.setAccessibleName(QApplication.translate('FontSizeDragLabel', 'Resize text'))
         self.fcombobox = FontSizeComboBox(self)
         self.fcombobox.setObjectName("FontFormatSizeBox")
         self.fcombobox.addItems([
@@ -900,16 +902,17 @@ class FontFormatPanel(Widget):
         self.fontsizebox.fcombobox.setToolTip(self.tr("Change font size"))
         self.fontsizebox.param_changed.connect(self.on_param_changed)
         
-        self.lineSpacingLabel = SizeControlLabel(self, direction=1, transparent_bg=False)
+        self.lineSpacingLabel = FormattingDragLabel(self, direction=1, transparent_bg=False)
         self.lineSpacingLabel.setObjectName("lineSpacingLabel")
-        self.lineSpacingLabel.size_ctrl_changed.connect(self.onLineSpacingCtrlChanged)
-        self.lineSpacingLabel.btn_released.connect(lambda : self.on_param_changed('line_spacing', self.lineSpacingBox.value()))
 
         self.lineSpacingBox = SizeComboBox([0, 100], 'line_spacing', self)
         self.lineSpacingBox.setObjectName("FontFormatSizeBox")
         self.lineSpacingBox.addItems(["1.0", "1.1", "1.2"])
         self.lineSpacingBox.setToolTip(self.tr("Change line spacing"))
         self.lineSpacingBox.param_changed.connect(self.on_param_changed)
+        self.line_spacing_drag = SpacingDragSession(
+            self, self.lineSpacingLabel, 'line_spacing', self.lineSpacingBox
+        )
 
         linesp_hlayout = QHBoxLayout()
         linesp_hlayout.addWidget(self.lineSpacingLabel)
@@ -962,10 +965,11 @@ class FontFormatPanel(Widget):
         self.letterSpacingBox.setMinimumWidth(int(self.letterSpacingBox.height() * 2.5))
         self.letterSpacingBox.param_changed.connect(self.on_param_changed)
 
-        self.letterSpacingLabel = SizeControlLabel(self, direction=0, transparent_bg=False)
+        self.letterSpacingLabel = FormattingDragLabel(self, direction=0, transparent_bg=False)
         self.letterSpacingLabel.setObjectName("letterSpacingLabel")
-        self.letterSpacingLabel.size_ctrl_changed.connect(self.letterSpacingBox.changeByDelta)
-        self.letterSpacingLabel.btn_released.connect(lambda : self.on_param_changed('letter_spacing', self.letterSpacingBox.value()))
+        self.letter_spacing_drag = SpacingDragSession(
+            self, self.letterSpacingLabel, 'letter_spacing', self.letterSpacingBox
+        )
 
         lettersp_hlayout = QHBoxLayout()
         lettersp_hlayout.addWidget(self.letterSpacingLabel)
@@ -1108,7 +1112,9 @@ class FontFormatPanel(Widget):
         else:
             return None
 
-    def on_param_changed(self, param_name: str, value):
+    def on_param_changed(self, param_name: str, value) -> None:
+        self.line_spacing_drag.cancel()
+        self.letter_spacing_drag.cancel()
         func = handle_ffmt_change.get(param_name)
         func_kwargs = {}
         if param_name in {'font_size', 'rel_font_size'}:
@@ -1301,6 +1307,8 @@ class FontFormatPanel(Widget):
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
+        self.line_spacing_drag.cancel()
+        self.letter_spacing_drag.cancel()
         self.fontsizebox.fcombobox.finish_edit()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_save()
@@ -1315,6 +1323,8 @@ class FontFormatPanel(Widget):
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
+        self.line_spacing_drag.cancel()
+        self.letter_spacing_drag.cancel()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_history_change()
         self.text_transform_session.resolve_for_history_change()
@@ -1324,6 +1334,8 @@ class FontFormatPanel(Widget):
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
+        self.line_spacing_drag.cancel()
+        self.letter_spacing_drag.cancel()
         self.fontsizebox.fcombobox.finish_edit()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_page_change()
@@ -1334,6 +1346,8 @@ class FontFormatPanel(Widget):
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
+        self.line_spacing_drag.cancel()
+        self.letter_spacing_drag.cancel()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.cancel_for_scene_change()
         self.text_effect_session.cancel_for_scene_change()
@@ -1360,13 +1374,6 @@ class FontFormatPanel(Widget):
 
     def on_apply_color(self, param_name, rgb):
         self.on_param_changed(param_name, rgb)
-
-    def onLineSpacingCtrlChanged(self, delta: int):
-        if C.active_format.line_spacing_type == LineSpacingType.Distance:
-            mul = 0.1
-        else:
-            mul = 0.01
-        self.lineSpacingBox.setValue(self.lineSpacingBox.value() + delta * mul)
 
     def sync_inline_format(
         self,
@@ -1404,10 +1411,14 @@ class FontFormatPanel(Widget):
             )
         ):
             self.colorPicker.setPickerColor(foreground)
-        if not preserve_focused_editors or not self.lineSpacingBox.hasFocus():
+        if not self.line_spacing_drag.active and (
+            not preserve_focused_editors or not self.lineSpacingBox.hasFocus()
+        ):
             with QSignalBlocker(self.lineSpacingBox):
                 self.lineSpacingBox.setValue(font_format.line_spacing)
-        if not preserve_focused_editors or not self.letterSpacingBox.hasFocus():
+        if not self.letter_spacing_drag.active and (
+            not preserve_focused_editors or not self.letterSpacingBox.hasFocus()
+        ):
             with QSignalBlocker(self.letterSpacingBox):
                 self.letterSpacingBox.setValue(font_format.letter_spacing)
         self.formatBtnGroup.underlineBtn.setChecked(font_format.underline)
@@ -1563,6 +1574,8 @@ class FontFormatPanel(Widget):
         if not preserve_local_owner:
             if transform_items != self.text_transform_session.items:
                 self.font_size_session.cancel()
+                self.line_spacing_drag.cancel()
+                self.letter_spacing_drag.cancel()
                 self.fontsizebox.fcombobox.finish_edit()
             # A real selection transition settles edits against the old target
             # list. A transient clear from a nested color dialog is not one.
