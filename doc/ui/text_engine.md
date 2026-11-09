@@ -124,6 +124,7 @@ on undo and redo; they must not retain commands owned by the drawing stack.
 | --- | --- |
 | [`move_session.py`](../../ballontranslator/ui/text_engine/editing/move_session.py) | Position-only movement; no transform stage. Cancel before zoom changes or competing geometry capture. |
 | [`size_edit_session.py`](../../ballontranslator/ui/text_engine/formatting/size_edit_session.py) | Whole-item drags preview geometry, then commit rich-text sizes and bounds together. Text-selection edits remain numeric drafts; held drags cancel at save/target/history changes. |
+| [`spacing_drag.py`](../../ballontranslator/ui/text_engine/formatting/spacing_drag.py) | Spacing drags reuse scratch text items for live layout without touching source documents or defaults. Release commits spacing and bounds in one canvas command; cancellation preserves the original undo/redo branch. |
 | Effect/transform sessions | Complete-stack snapshots; matching targets and commands are defined in their owning guides. |
 
 Formatting focus includes child controls and the parent chain of top-level Qt
