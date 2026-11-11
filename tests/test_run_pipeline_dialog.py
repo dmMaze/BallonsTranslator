@@ -48,6 +48,7 @@ from ballontranslator.ui.text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
 )
+from ballontranslator.utils import shared
 from ballontranslator.utils.config import (
     AutoTateChuYokoConfig,
     LLMTranslateContext,
@@ -73,6 +74,30 @@ from ballontranslator.utils.textblock import TextBlock
 from ballontranslator.modules.translators import base as translator_base
 from ballontranslator.modules.translators.base import postprocess_translation_text
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
+
+
+# Dialogs persist their settings when they are destroyed, and that happens
+# after the per-test save_config patch is stopped. Point CONFIG_PATH at a
+# scratch file for the whole module, otherwise such a stray save dumps pcfg
+# defaults over the developer's real config/config.json.
+_config_dir = None
+_original_config_path = None
+
+
+def setUpModule():
+    global _config_dir, _original_config_path
+    _original_config_path = shared.CONFIG_PATH
+    _config_dir = tempfile.TemporaryDirectory()
+    shared.CONFIG_PATH = os.path.join(_config_dir.name, 'config.json')
+
+
+def tearDownModule():
+    # Collect leftover dialogs while the scratch path is still in place, then
+    # restore the real path so later modules are unaffected.
+    get_app().processEvents()
+    gc.collect()
+    shared.CONFIG_PATH = _original_config_path
+    _config_dir.cleanup()
 
 
 def get_app():
