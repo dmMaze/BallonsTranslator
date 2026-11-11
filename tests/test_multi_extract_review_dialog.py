@@ -2,6 +2,7 @@ import unittest
 
 from qtpy.QtCore import QEvent, Qt
 from qtpy.QtGui import QKeyEvent
+from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui.multi_extract_review_dialog import (
@@ -185,6 +186,115 @@ class ReviewDialogTest(unittest.TestCase):
         )
 
         self.assertEqual(dialog.chosen_row(), 1)
+
+
+class ReadingHighlightTest(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.app = get_app()
+
+    def _dialog(self, pages):
+        dialog = MultiExtractReviewDialog(FakeProject(pages))
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    @staticmethod
+    def _outlined_fragments(label):
+        """Text fragments whose char format has the red review outline."""
+        found = []
+        text_block = label._document.begin()
+        while text_block.isValid():
+            iterator = text_block.begin()
+            while not iterator.atEnd():
+                fragment = iterator.fragment()
+                if fragment.isValid():
+                    color = fragment.charFormat().textOutline().color()
+                    if color.red() > 200 and color.green() < 100:
+                        found.append(fragment.text())
+                iterator += 1
+            text_block = text_block.next()
+        return found
+
+    def test_readings_are_split_with_the_difference_flagged(self):
+        block = make_block('そういえば', candidates=['そういえは'])
+        dialog = self._dialog({'a.jpg': [block]})
+
+        labels = dialog._reading_labels
+        self.assertEqual(len(labels), 2)
+        self.assertEqual(labels[0].plain_text(), 'そういえば')
+        self.assertEqual(labels[1].plain_text(), 'そういえは')
+        self.assertEqual(
+            labels[0]._segments,
+            [('そういえ', False), ('ば', True)],
+        )
+        self.assertEqual(
+            labels[1]._segments,
+            [('そういえ', False), ('は', True)],
+        )
+
+    def test_differing_characters_are_painted_with_a_red_outline(self):
+        block = make_block('そういえば', candidates=['そういえは'])
+        dialog = self._dialog({'a.jpg': [block]})
+
+        self.assertEqual(
+            self._outlined_fragments(dialog._reading_labels[0]), ['ば']
+        )
+        self.assertEqual(
+            self._outlined_fragments(dialog._reading_labels[1]), ['は']
+        )
+
+    def test_long_reading_is_shown_in_full(self):
+        text = 'あ' * 40
+        block = make_block(text, candidates=['い' * 40])
+        dialog = self._dialog({'a.jpg': [block]})
+
+        self.assertEqual(dialog._reading_labels[0].plain_text(), text)
+        self.assertNotIn('…', dialog._reading_labels[0].plain_text())
+
+    def test_identical_readings_have_no_outline(self):
+        block = make_block('あいう', candidates=['あいう'])
+        dialog = self._dialog({'a.jpg': [block]})
+
+        self.assertEqual(self._outlined_fragments(dialog._reading_labels[0]), [])
+        self.assertEqual(self._outlined_fragments(dialog._reading_labels[1]), [])
+
+    def test_single_pass_reading_has_no_outline(self):
+        block = make_block('い', support=(1,))
+        dialog = self._dialog({'a.jpg': [block]})
+
+        self.assertEqual(len(dialog._reading_labels), 1)
+        self.assertEqual(self._outlined_fragments(dialog._reading_labels[0]), [])
+        self.assertFalse(dialog._radio_buttons[0].isEnabled())
+
+    def test_clicking_the_reading_text_selects_its_radio(self):
+        block = make_block('そういえば', candidates=['そういえは'])
+        dialog = self._dialog({'a.jpg': [block]})
+        dialog.show()
+        self.app.processEvents()
+
+        QTest.mouseClick(
+            dialog._reading_labels[1], Qt.MouseButton.LeftButton
+        )
+
+        self.assertEqual(dialog.chosen_row(), 1)
+
+    def test_switching_entries_rebuilds_the_reading_rows(self):
+        pages = {
+            'a.jpg': [
+                make_block('あ', candidates=['あ1']),
+                make_block('い', support=(1,)),
+            ],
+        }
+        dialog = self._dialog(pages)
+        self.assertEqual(len(dialog._reading_labels), 2)
+
+        dialog.list_widget.setCurrentRow(1)
+        self.app.processEvents()
+
+        self.assertEqual(len(dialog._reading_labels), 1)
+        self.assertEqual(len(dialog._radio_buttons), 1)
+        self.assertEqual(dialog._reading_labels[0].plain_text(), 'い')
 
 
 class PrefixedTest(unittest.TestCase):

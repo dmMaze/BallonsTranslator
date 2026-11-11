@@ -4,6 +4,7 @@ from ballontranslator.utils.multi_extract import (
     box_iou,
     conflict_count,
     conflict_payload,
+    diff_readings,
     group_regions,
     has_conflict,
     iter_conflicts,
@@ -264,6 +265,51 @@ class ProjectConflictScanTest(unittest.TestCase):
 
         self.assertEqual(conflict_count(pages), 1)
         self.assertEqual(iter_conflicts(pages), [('a.jpg', pending)])
+
+
+class DiffReadingsTest(unittest.TestCase):
+
+    def test_replaced_characters_are_flagged_in_both_readings(self):
+        self.assertEqual(
+            diff_readings(['そういえば', 'そういえは']),
+            [
+                [('そういえ', False), ('ば', True)],
+                [('そういえ', False), ('は', True)],
+            ],
+        )
+
+    def test_identical_readings_have_no_highlights(self):
+        self.assertEqual(
+            diff_readings(['あ', 'あ']),
+            [[('あ', False)], [('あ', False)]],
+        )
+
+    def test_insertion_flags_only_the_added_characters(self):
+        rows = diff_readings(['abc', 'abXc'])
+
+        self.assertEqual(rows[0], [('abc', False)])
+        self.assertEqual(
+            rows[1],
+            [('ab', False), ('X', True), ('c', False)],
+        )
+
+    def test_deletion_flags_the_reference_only(self):
+        rows = diff_readings(['abc', 'ac'])
+
+        self.assertEqual(rows[0], [('a', False), ('b', True), ('c', False)])
+        self.assertEqual(rows[1], [('ac', False)])
+
+    def test_reference_unions_every_candidates_changes(self):
+        rows = diff_readings(['abcde', 'abXde', 'abcYe'])
+
+        self.assertEqual(
+            rows[0],
+            [('ab', False), ('cd', True), ('e', False)],
+        )
+
+    def test_no_readings_and_a_single_reading(self):
+        self.assertEqual(diff_readings([]), [])
+        self.assertEqual(diff_readings(['abc']), [[('abc', False)]])
 
 
 if __name__ == '__main__':

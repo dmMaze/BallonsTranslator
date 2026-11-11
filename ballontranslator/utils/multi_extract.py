@@ -17,6 +17,7 @@ passes, which keeps neighbouring bubbles from chaining into one group.
 
 from copy import deepcopy
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import List, Sequence, Tuple
 
 from .textblock import TextBlock, sort_regions
@@ -320,6 +321,59 @@ def readings(block: TextBlock) -> List[Tuple[int, List[str]]]:
     for candidate in payload.get('candidates', []):
         options.append((candidate['pass'], _as_lines(candidate['text'])))
     return options
+
+
+def _merge_segments(parts: Sequence[Tuple[str, bool]]) -> List[Tuple[str, bool]]:
+    """Join adjacent chunks that share the same highlight state."""
+    merged: List[Tuple[str, bool]] = []
+    for text, differs in parts:
+        if not text:
+            continue
+        if merged and merged[-1][1] == differs:
+            merged[-1] = (merged[-1][0] + text, differs)
+        else:
+            merged.append((text, differs))
+    return merged
+
+
+def diff_readings(texts: Sequence[str]) -> List[List[Tuple[str, bool]]]:
+    """Split readings into chunks, flagging the characters that disagree.
+
+    The first reading is the reference, already written to the block. Its
+    flagged chunks are the characters another pass replaced or dropped; each
+    following reading flags its own insertions and replacements. Deletions have
+    no text to outline, so they only mark the reference.
+
+    >>> diff_readings(['そういえば', 'そういえは'])
+    [[('そういえ', False), ('ば', True)], [('そういえ', False), ('は', True)]]
+    >>> diff_readings(['あ', 'あ'])
+    [[('あ', False)], [('あ', False)]]
+    """
+    if not texts:
+        return []
+    reference = texts[0]
+    changed = [False] * len(reference)
+    for text in texts[1:]:
+        matcher = SequenceMatcher(None, reference, text, autojunk=False)
+        for tag, start, end, _, _ in matcher.get_opcodes():
+            if tag != 'equal':
+                for position in range(start, end):
+                    changed[position] = True
+    rows = [
+        _merge_segments(
+            [(char, changed[index]) for index, char in enumerate(reference)]
+        )
+    ]
+    for text in texts[1:]:
+        matcher = SequenceMatcher(None, reference, text, autojunk=False)
+        rows.append(
+            _merge_segments([
+                (text[j1:j2], tag != 'equal')
+                for tag, _, _, j1, j2 in matcher.get_opcodes()
+                if tag != 'delete' and j1 < j2
+            ])
+        )
+    return rows
 
 
 def resolve(block: TextBlock, pass_index: int) -> Tuple[List[str], dict]:
