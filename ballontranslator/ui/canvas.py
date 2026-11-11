@@ -16,7 +16,7 @@ except:
     from qtpy.QtGui import QUndoStack, QUndoCommand
 
 from .misc import ndarray2pixmap, QKEY, QNUMERIC_KEYS, ARROWKEY2DIRECTION
-from .text_engine.item import TextBlkItem, TextBlock
+from .text_engine.item import TextBlkItem, TextBlock, _ConflictBadgeItem
 from .text_engine.shape_control import (
     CONTROL_ITEM_DATA_KEY,
     TextBlkShapeControl,
@@ -272,6 +272,8 @@ class Canvas(QGraphicsScene):
         self._path_reorder_items: List[TextBlkItem] = []
         self._path_reorder_touched: List[TextBlkItem] = []
         self._path_reorder_last_pos: Optional[QPointF] = None
+        # A review badge press is answered here so no tool can claim the corner.
+        self._conflict_badge_click: Optional[_ConflictBadgeItem] = None
 
         self.gv = CustomGV(self)
         self.gv.scale_down_signal.connect(self.scaleDown)
@@ -1321,6 +1323,16 @@ class Canvas(QGraphicsScene):
 
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        badge = self._conflict_badge_at(event.scenePos())
+        if badge is not None and btn == Qt.MouseButton.LeftButton:
+            # The badge sits on the block's reshape corner, where handles,
+            # drawing tools, and transform controls also want the press. Give
+            # the review marker the first claim on its own pixels.
+            self._conflict_badge_click = badge
+            badge.activate()
+            event.accept()
+            return
+        self._conflict_badge_click = None
         if self.text_move_session.handle_mouse_press(event):
             event.accept()
             return
@@ -1445,8 +1457,23 @@ class Canvas(QGraphicsScene):
     def creating_normal_rect(self) -> bool:
         return self.image_edit_mode == ImageEditMode.RectTool and self.editor_index == 0
 
+    def _conflict_badge_at(
+        self, scene_pos: QPointF
+    ) -> Optional[_ConflictBadgeItem]:
+        """Return the review badge under ``scene_pos``, if any."""
+        for item in self.items(scene_pos)[:6]:
+            if isinstance(item, _ConflictBadgeItem) and item.isVisible():
+                return item
+        return None
+
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         btn = event.button()
+        if self._conflict_badge_click is not None:
+            # The press opened the review dialog; keep its release out of the
+            # selection, drawing, and transform paths.
+            self._conflict_badge_click = None
+            event.accept()
+            return
         if self.text_move_session.handle_mouse_release(event):
             event.accept()
             return

@@ -80,37 +80,37 @@
 <context>
     <name>BottomBar</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="606"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="614"/>
         <source>Text Detector</source>
         <translation>文本检测</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="610"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="618"/>
         <source>OCR</source>
         <translation>OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="611"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="619"/>
         <source>Inpaint</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="613"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="621"/>
         <source>Translator</source>
         <translation>翻译器</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="621"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="629"/>
         <source>Enable/disable paint mode</source>
         <translation>启用/禁用画板</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="625"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="633"/>
         <source>Enable/disable text edit mode</source>
         <translation>启用/禁用文本编辑</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="631"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="639"/>
         <source>Original image opacity</source>
         <translation>原图不透明度</translation>
     </message>
@@ -163,7 +163,7 @@
         <translation type="vanished">嵌字层不透明度</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="635"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="643"/>
         <source>Editing layer opacity</source>
         <translation>编辑图层不透明度</translation>
     </message>
@@ -2871,301 +2871,316 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="228"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="696"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="245"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="727"/>
         <source>Updating: </source>
         <translation>更新中: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="354"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="375"/>
         <source>Keyword substitution for source text</source>
         <translation>替换原文关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="358"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="379"/>
         <source>Keyword substitution for machine translation source text</source>
         <translation>替换机翻前文本关键字</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="362"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="383"/>
         <source>Keyword substitution for machine translation</source>
         <translation>替换机翻结果中的关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="665"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="696"/>
         <source>Checking...</source>
         <translation>检查中...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="674"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="688"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="689"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="690"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="705"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="719"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="720"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="721"/>
         <source>Downloading update: </source>
         <translation>下载更新: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="687"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="718"/>
         <source>Backing up current version: </source>
         <translation>备份当前版本:</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="691"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="722"/>
         <source>Saving local changes: </source>
         <translation>保存本地更改: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="692"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="693"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="694"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="723"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="724"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="725"/>
         <source>Installing update: </source>
         <translation>安装更新: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="719"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="750"/>
         <source>Already up-to-date.</source>
         <translation>版本已是最新</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="740"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="771"/>
         <source>Failed to check for updates.</source>
         <translation>更新检查失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="817"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="849"/>
         <source>Failed to load project </source>
         <translation>项目加载失败 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="864"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="896"/>
         <source>Failed to load project from</source>
         <translation>无法从所选路径加载项目：</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="946"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="978"/>
         <source>Restart to apply changes? 
 </source>
         <translation>重启程序以应用更改?\n</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1283"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1315"/>
         <source>No project is open.</source>
         <translation>未打开项目</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1293"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1325"/>
         <source>The project could not be saved before opening Photoshop.</source>
         <translation>打开 Photoshop 前无法保存项目</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1310"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1342"/>
         <source>BallonsTranslator has unsaved changes. Save them, then check for the Photoshop update again.</source>
         <translation>有未保存的更改。请先保存，然后重新检查 Photoshop 更改。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1317"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1349"/>
         <source>The project file changed outside BallonsTranslator. Reload it before applying Photoshop changes.</source>
         <translation></translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1362"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1394"/>
         <source>Failed to save Photoshop changes: {error}</source>
         <translation>保存 Photoshop 更改失败：{error}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="1691"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="1723"/>
         <source>Failed to save project files.</source>
         <translation>保存项目文件失败。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2139"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2176"/>
         <source>unsaved</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2139"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2176"/>
         <source>saved</source>
         <translation>已保存</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2210"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2247"/>
         <source>Saving image...</source>
         <translation>保存中...</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2423"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2320"/>
+        <source>Enable at least two passes before running multi-pass extraction.</source>
+        <translation>请至少启用两路后再运行多重文本提取。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2455"/>
+        <source>Multi-pass extraction finished: {passes} passes merged, {conflicts} regions to review.</source>
+        <translation>多重文本提取完成：已合并 {passes} 路结果，有 {conflicts} 处待复核。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2649"/>
         <source>Import Text Styles</source>
         <translation>导入字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2437"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2663"/>
         <source>Save Text Styles</source>
         <translation>导出字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2480"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2706"/>
         <source>Text file exported to </source>
         <translation>文本文件已导出到</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2482"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2708"/>
         <source>Failed to export as TEXT file</source>
         <translation>文本文件导出失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2488"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2714"/>
         <source>Import *.md/*.txt</source>
         <translation>导入*.md/*.txt</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2531"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2748"/>
+        <source>No multi-pass conflicts to review.</source>
+        <translation>没有需要复核的多重文本提取冲突。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2817"/>
         <source>Source text imported and matched successfully.</source>
         <translation>原文已导入且匹配成功</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2535"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2821"/>
         <source>Failed to import source text from </source>
         <translation>从目标文件导入原文失败 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2555"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2841"/>
         <source>Translation imported and matched successfully.</source>
         <translation>译文已导入且匹配成功</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2496"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2722"/>
         <source>Imported txt file not fully matched with current project, please make sure source txt file structured like results from &quot;export TXT/markdown&quot;</source>
         <translation>导入文件当前项目没能完全匹配，请确保导入文件格式和导出文件一致</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2498"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2724"/>
         <source>Missing pages: </source>
         <translation>缺失页: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2501"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2727"/>
         <source>Unexpected pages: </source>
         <translation>额外页: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2504"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2730"/>
         <source>Unmatched pages: </source>
         <translation>未匹配页: </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2565"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2851"/>
         <source>Failed to import translation from </source>
         <translation>从目标文件导入失败 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2587"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2873"/>
         <source>Export to </source>
         <translation>导出至 </translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2621"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2907"/>
         <source>Failed to copy source text</source>
         <translation>原文复制失败</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2716"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3002"/>
         <source>API key required</source>
         <translation>需要 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2717"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3003"/>
         <source>The selected LLM profile requires an API key.</source>
         <translation>选中的配置卡需要 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2719"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3005"/>
         <source>Fill the API key before running this LLM task for: {profile_name}</source>
         <translation>运行任务前请为配置卡 {profile_name} 填入 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2721"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3007"/>
         <source>Fill API Key</source>
         <translation>填入 API 密钥</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2742"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3028"/>
         <source>Model required</source>
         <translation>配置卡的模型不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2743"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3029"/>
         <source>Vision model required</source>
         <translation>配置卡的视觉模型不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2744"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3030"/>
         <source>Image model required</source>
         <translation>配置卡的图像模型不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2747"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3033"/>
         <source>model</source>
         <translation>模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2748"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3034"/>
         <source>vision model</source>
         <translation>视觉模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2749"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3035"/>
         <source>image model</source>
         <translation>图像模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2753"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2803"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3039"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3089"/>
         <source>LLM Profile</source>
         <translation>LLM 配置卡</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2758"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3044"/>
         <source>The selected LLM profile requires a {field_name}.</source>
         <translation>所选配置卡需要 {field_name}.</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2761"/>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2811"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3047"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3097"/>
         <source>Fill the {field_name} before running this LLM task for: {profile_name}</source>
         <translation>运行前请为配置 {profile_name} 填入 {field_name}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2766"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3052"/>
         <source>Fill Model</source>
         <translation>填入模型</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2794"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3080"/>
         <source>Base URL required</source>
         <translation>基础 URL 是必填项</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2795"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3081"/>
         <source>Image base URL required</source>
         <translation>基础图像 URL 是必填项</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2798"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3084"/>
         <source>base URL</source>
         <translation>基础 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2799"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3085"/>
         <source>image base URL</source>
         <translation>图像基础 URL</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2808"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3094"/>
         <source>The selected LLM profile requires this field: {field_name}.</source>
         <translation>所选配置卡 {field_name} 不能为空</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2816"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="3102"/>
         <source>Fill URL</source>
         <translation>填入 URL</translation>
     </message>
@@ -3174,12 +3189,12 @@
         <translation type="vanished">替换OCR文本中的关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2433"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2659"/>
         <source>Failed to load from {p}</source>
         <translation>无法导入{p}</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="2454"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="2680"/>
         <source>Failed save to {savep}</source>
         <translation>无法保存到{savep}</translation>
     </message>
@@ -4435,6 +4450,79 @@ All existing translation results will be cleared!</source>
     </message>
 </context>
 <context>
+    <name>MultiExtractReviewDialog</name>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="74"/>
+        <source>Review Multi-Pass Extraction</source>
+        <translation>多重文本提取复核</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="83"/>
+        <source>All</source>
+        <translation>全部</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="84"/>
+        <source>Text conflicts</source>
+        <translation>文本冲突</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="85"/>
+        <source>Single-pass regions</source>
+        <translation>单路检出区域</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="112"/>
+        <source>Readings</source>
+        <translation>识别结果</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="130"/>
+        <source>Apply to source text</source>
+        <translation>覆盖为原文</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="132"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="185"/>
+        <source>single pass</source>
+        <translation>单路检出</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="185"/>
+        <source>differs</source>
+        <translation>结果不一致</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="192"/>
+        <source>{shown} shown · {pending} pending</source>
+        <translation>显示 {shown} 项 · 待复核 {pending} 项</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="209"/>
+        <source>Nothing left to review.</source>
+        <translation>没有待复核的内容。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="237"/>
+        <source>Pass {pass}</source>
+        <translation>第 {pass} 路</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="247"/>
+        <source>Only one pass detected this region. Nothing to choose; the text is kept as detected.</source>
+        <translation>该区域只有一路检出，没有可选结果，文本按检出内容保留。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/multi_extract_review_dialog.py" line="254"/>
+        <source>Applying overwrites the source text of this block.</source>
+        <translation>应用后会覆盖该文本框的原文。</translation>
+    </message>
+</context>
+<context>
     <name>OCRConfigPanel</name>
     <message>
         <source>Keyword substitution for OCR results</source>
@@ -4475,7 +4563,7 @@ All existing translation results will be cleared!</source>
 <context>
     <name>PageListView</name>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindow.py" line="113"/>
+        <location filename="../../ballontranslator/ui/mainwindow.py" line="124"/>
         <source>Reveal in File Explorer</source>
         <translation>在文件管理器中显示</translation>
     </message>
@@ -4809,8 +4897,8 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>PipelineModuleActivator</name>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="209"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="210"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="211"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="212"/>
         <source>Config</source>
         <translation>设置</translation>
     </message>
@@ -5445,113 +5533,132 @@ Then restart Photoshop. Explorer will now open the source file and destination l
 <context>
     <name>RunPipelineDialog</name>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="379"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="406"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="454"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="381"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="408"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="458"/>
         <source>Run</source>
         <translation>运行</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="414"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="416"/>
         <source>Pipeline</source>
         <translation>自动化流程</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="415"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="417"/>
         <source>Rendering</source>
         <translation>文本渲染</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="458"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="462"/>
         <source>Continue</source>
         <translation>继续</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="465"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="469"/>
         <source>Render</source>
         <translation>渲染</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="601"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="605"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="739"/>
         <source>Activate Modules</source>
         <translation>启用模块</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="709"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="713"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="750"/>
         <source>Text Detection</source>
         <translation>文本检测</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="625"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="710"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="629"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="714"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="751"/>
         <source>OCR</source>
         <translation>文本识别</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="416"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="418"/>
         <source>Text Extraction</source>
         <translation>文本提取</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="615"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="419"/>
+        <source>Multi-Pass Extraction</source>
+        <translation>多重文本提取</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="619"/>
         <source>Detection</source>
         <translation>检测</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="635"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="711"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="639"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="715"/>
         <source>Inpainting</source>
         <translation>图像修复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="645"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="712"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="649"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="716"/>
         <source>Translation</source>
         <translation>翻译</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="690"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1575"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="694"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="795"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1719"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="777"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="749"/>
+        <source>Enable</source>
+        <translation>启用</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="784"/>
+        <source>Each enabled pass runs detection and OCR with its own models. Regions are merged as a union with the first pass supplying the geometry; disagreements are marked and can be resolved from Edit &gt; Review Multi-Pass Extraction.</source>
+        <translation>每个启用的分支都会用自己的检测与识别模型各跑一遍。区域取并集、几何以第 1 路为准；识别不一致的文本会被标记，可在「编辑 → 多重文本提取复核」中处理。</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="900"/>
         <source>Keep Existing Lines</source>
         <translation>保留已有文本</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="788"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="911"/>
         <source>Remove empty textblocks</source>
         <translation>移除空文本块</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="797"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="920"/>
         <source>Font Detection</source>
         <translation>字体检测</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="812"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="935"/>
         <source>Page-level LLM OCR</source>
         <translation>页面级 LLM OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="821"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="944"/>
         <source>Mask non-text areas</source>
         <translation>遮罩非文本区域</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="830"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="953"/>
         <source>Use LLM reading order</source>
         <translation>使用 LLM 阅读顺序</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="852"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="975"/>
         <source>Letter Case</source>
         <translation>大小写转换</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="863"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="986"/>
         <source>None</source>
         <translation>无</translation>
     </message>
@@ -5564,59 +5671,59 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="vanished">全大写</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="914"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1037"/>
         <source>Skip simple cases</source>
         <translation>跳过简单区域</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="923"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1046"/>
         <source>Filter mask by text boxes</source>
         <translation>仅修复文本框内区域</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="956"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1079"/>
         <source>Source</source>
         <translation>源语言</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="975"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1098"/>
         <source>Target</source>
         <translation>目标语言</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="997"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1016"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1120"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1139"/>
         <source>Context</source>
         <translation>上下文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1003"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1126"/>
         <source>textblock</source>
         <translation>文本块</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1004"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1023"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1127"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1146"/>
         <source>page</source>
         <translation>单页</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1068"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1191"/>
         <source>Token budget shared by prior translation history, saved page summaries, and compact memory. The current translation input, instructions, glossary, image, and generated reply are not included.</source>
         <translation>由翻译历史、已保存的页面摘要和记忆共享的 Token 预算。不包括当前翻译输入、指令、术语表、图像和生成回复。</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1144"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1267"/>
         <source>LLM Context</source>
         <translation>LLM 上下文</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1027"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1150"/>
         <source>+history</source>
         <translation>翻译历史</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1047"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1170"/>
         <source>Token budget</source>
         <translation>Token 预算</translation>
     </message>
@@ -5625,98 +5732,98 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation type="vanished">翻译历史占用的 token 上限，不包括当前页，提示词，术语表和生成的回复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1084"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1207"/>
         <source>Glossary</source>
         <translation>术语表</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1095"/>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1359"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1218"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1482"/>
         <source>Select Glossary File</source>
         <translation>选择术语表文件</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1104"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1227"/>
         <source>Matching</source>
         <translation>仅匹配</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1108"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1231"/>
         <source>All</source>
         <translation>全表</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1125"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1248"/>
         <source>Mode</source>
         <translation>模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1156"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1279"/>
         <source>Vision</source>
         <translation>视觉</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1164"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1287"/>
         <source>Summary</source>
         <translation>摘要</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1205"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1328"/>
         <source>Overwrite Existing Summary</source>
         <translation>覆盖已有摘要</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1219"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1342"/>
         <source>Attach the current page image to the translation request.</source>
         <translation>翻译时发送待翻译图像</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1222"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1345"/>
         <source>Generate editable page summaries and compact older summaries into reusable project memory when the context budget fills.</source>
         <translation>生成可编辑的页面摘要，在上下文预算不足时将旧摘要压缩为项目记忆</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1226"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1349"/>
         <source>Ignore and replace the current page summary when translating it again.</source>
         <translation>重新翻译当前页面时忽略并替换其已有摘要</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1361"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1484"/>
         <source>Glossary Files (*.json *.txt *.tsv)</source>
         <translation>术语表文件 (*.txt *.dic)</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1593"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1737"/>
         <source>Render without update text style</source>
         <translation>不覆盖已有字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="868"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="991"/>
         <source>Capitalize</source>
         <translation>句首大写</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="855"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="978"/>
         <source>Choose how OCR text letter case is adjusted after keyword substitution.</source>
         <translation>关键词替换后如何调整 OCR 文本中的字母大小写</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="877"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="1000"/>
         <source>Convert OCR text to uppercase.</source>
         <translation>将 OCR 文本转换为大写</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="865"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="988"/>
         <source>Keep OCR text letter case unchanged.</source>
         <translation>保持 OCR 文本中的字母大小写不变</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="871"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="994"/>
         <source>Lowercase OCR text, then capitalize the first letter of each sentence.</source>
         <translation>先将 OCR 文本转换为小写，再将每个句子的首字母大写</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="875"/>
+        <location filename="../../ballontranslator/ui/run_pipeline_dialog.py" line="998"/>
         <source>Uppercase</source>
         <translation>全部大写</translation>
     </message>
@@ -6204,6 +6311,14 @@ Then restart Photoshop. Explorer will now open the source file and destination l
     <message>
         <source>Shadow</source>
         <translation type="vanished">阴影</translation>
+    </message>
+</context>
+<context>
+    <name>TextBlkItem</name>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/item.py" line="210"/>
+        <source>Review the conflicting readings</source>
+        <translation>复核相互冲突的识别结果</translation>
     </message>
 </context>
 <context>
@@ -7213,102 +7328,107 @@ Then restart Photoshop. Explorer will now open the source file and destination l
         <translation>替换原文关键词</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="340"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="332"/>
+        <source>Review Multi-Pass Extraction</source>
+        <translation>多重文本提取复核</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="348"/>
         <source>View</source>
         <translation>视图</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="344"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="352"/>
         <source>Display Language</source>
         <translation>界面语言</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="358"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="366"/>
         <source>Drawing Board</source>
         <translation>画板</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="360"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="368"/>
         <source>Text Editor</source>
         <translation>编辑器</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="362"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="370"/>
         <source>Import Text Styles</source>
         <translation>导入字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="363"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="371"/>
         <source>Export Text Styles</source>
         <translation>导出字体样式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="364"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="372"/>
         <source>Dark Mode</source>
         <translation>深色模式</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="368"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="376"/>
         <source>Show Text Detection</source>
         <translation>显示文本检测</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="369"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="377"/>
         <source>Show OCR</source>
         <translation>显示 OCR</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="370"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="378"/>
         <source>Show Translation</source>
         <translation>显示翻译</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="371"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="379"/>
         <source>Show Inpainting</source>
         <translation>显示图像修复</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="399"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="407"/>
         <source>Go</source>
         <translation>转到</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="400"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="408"/>
         <source>Previous Page</source>
         <translation>上一页</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="402"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="410"/>
         <source>Next Page</source>
         <translation>下一页</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="413"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="421"/>
         <source>Tools</source>
         <translation>工具</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="421"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="429"/>
         <source>Photoshop Bridge</source>
         <translation>Photoshop 桥接</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="425"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="433"/>
         <source>Path Reorder</source>
         <translation>路径重排</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="429"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="437"/>
         <source>Font Exclusion</source>
         <translation>字体排除</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="442"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="450"/>
         <source>Sponsor</source>
         <translation>赞助</translation>
     </message>
     <message>
-        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="455"/>
+        <location filename="../../ballontranslator/ui/mainwindowbars.py" line="463"/>
         <source>Afdian</source>
         <translation>爱发电</translation>
     </message>

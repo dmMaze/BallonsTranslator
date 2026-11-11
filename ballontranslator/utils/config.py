@@ -34,6 +34,10 @@ class RunStatus:
     FIN_ALL = 15
 
 
+# A multi-pass extraction run compares at most this many detector/OCR pairs.
+MULTI_EXTRACT_MAX_SLOTS = 3
+
+
 class TranslateContext:
     """Canonical translation grouping values stored in module config.
 
@@ -124,6 +128,34 @@ class ModuleConfig(Config):
     check_need_inpaint: bool = True
     empty_runcache: bool = False
     finish_code: int = 15
+
+    # Multi-pass text extraction: up to MULTI_EXTRACT_MAX_SLOTS dicts of
+    # {'enabled': bool, 'textdetector': name, 'ocr': name}.
+    multi_extract_slots: List[Dict] = field(default_factory=list)
+
+    def normalized_multi_extract_slots(self) -> List[dict]:
+        """Always return exactly MULTI_EXTRACT_MAX_SLOTS complete slots.
+
+        Empty or missing entries fall back to the active selection, so a config
+        written by an older version still yields a usable second and third pass.
+
+        >>> config = ModuleConfig()
+        >>> slots = config.normalized_multi_extract_slots()
+        >>> len(slots), slots[0]['enabled'], slots[0]['textdetector'] == config.textdetector
+        (3, True, True)
+        """
+        source = self.multi_extract_slots or []
+        slots = []
+        for index in range(MULTI_EXTRACT_MAX_SLOTS):
+            raw = source[index] if index < len(source) else {}
+            if not isinstance(raw, dict):
+                raw = {}
+            slots.append({
+                'enabled': bool(raw.get('enabled', index == 0)),
+                'textdetector': str(raw.get('textdetector') or self.textdetector),
+                'ocr': str(raw.get('ocr') or self.ocr),
+            })
+        return slots
 
     def get_params(self, module_key: str, for_saving=False) -> dict:
         d = self[module_key + '_params']

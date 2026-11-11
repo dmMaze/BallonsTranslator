@@ -469,7 +469,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(selector.currentIndex(), 0)
         self.assertEqual(
             [selector.itemText(i) for i in range(selector.count())],
-            ['Pipeline', 'Rendering', 'Text Extraction'],
+            ['Pipeline', 'Rendering', 'Text Extraction', 'Multi-Pass Extraction'],
         )
         module_buttons = dialog.findChildren(PipelineModuleButton, 'RunPipelineModuleButton')
         self.assertEqual(len(module_buttons), 4)
@@ -1140,6 +1140,8 @@ class RunPipelineDialogTests(unittest.TestCase):
             result = 0
             preserve_style = False
             extract_only = False
+            multi_extract = False
+            multi_slots = []
             pages = ['page-2']
             deleted_count = 0
 
@@ -1164,6 +1166,12 @@ class RunPipelineDialogTests(unittest.TestCase):
 
             def is_extraction_mode(self):
                 return self.extract_only
+
+            def is_multi_extract_mode(self):
+                return self.multi_extract
+
+            def enabled_multi_extract_slots(self):
+                return self.multi_slots
 
             def setModuleSelection(self, _module_type, _module_name):
                 pass

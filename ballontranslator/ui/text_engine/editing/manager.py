@@ -5,7 +5,7 @@ import numpy as np
 import copy
 
 from qtpy.QtWidgets import QApplication, QWidget
-from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF
+from qtpy.QtCore import QObject, QRectF, Qt, Signal, QPointF, QTimer
 from qtpy.QtGui import QKeyEvent, QTextCursor, QFontMetricsF, QFont, QTextCharFormat, QClipboard
 try:
     from qtpy.QtWidgets import QUndoCommand
@@ -366,6 +366,7 @@ class TextPanel(Widget):
 
 class SceneTextManager(QObject):
     new_textblk = Signal(int)
+    review_multi_extract_requested = Signal()
     def __init__(self, 
                  app: QApplication,
                  mainwindow: QWidget,
@@ -587,6 +588,9 @@ class SceneTextManager(QObject):
         textblk_item.end_edit.connect(self.onTextBlkItemEndEdit)
         textblk_item.hover_enter.connect(self.onTextBlkItemHoverEnter)
         textblk_item.leftbutton_pressed.connect(self.onLeftbuttonPressed)
+        textblk_item.review_multi_extract.connect(
+            self.on_review_multi_extract_requested
+        )
         textblk_item.move_interaction_finished.connect(
             self.onTextBlkItemMoveFinished
         )
@@ -667,6 +671,14 @@ class SceneTextManager(QObject):
             else:
                 self.textEditList.ensureWidgetVisible(pw, yMargin=h)
             edit.setHoverEffect(True)
+
+    def on_review_multi_extract_requested(self) -> None:
+        """Forward a badge click once the scene finished its mouse handling.
+
+        Opening the modal review dialog inside the item's own release event
+        would leave the scene half-way through a press; let it unwind first.
+        """
+        QTimer.singleShot(0, self.review_multi_extract_requested.emit)
 
     def onLeftbuttonPressed(self, blk_id: int):
         blk_item = self.textblk_item_list[blk_id]

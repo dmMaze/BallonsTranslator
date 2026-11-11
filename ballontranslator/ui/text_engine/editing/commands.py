@@ -23,6 +23,7 @@ from ..shape_control import TextBlkShapeControl
 from ...page_search_widget import PageSearchWidget, Matched
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.text_processing import capitalize_sentences
+from ballontranslator.utils.multi_extract import resolve
 
 
 def propagate_user_edit(
@@ -914,3 +915,41 @@ class MultiPasteCommand(QUndoCommand):
         for blkitem, etran in zip(self.blkitems, self.etrans):
             blkitem.undo()
             etran.undo()
+
+class MultiExtractResolveCommand(QUndoCommand):
+    """Apply a reviewed multi-pass reading to a block's source text.
+
+    The conflict payload travels with the text: undoing the choice must bring
+    the badge back, otherwise the block would look reviewed with stale text.
+    """
+
+    def __init__(
+        self,
+        block: TextBlock,
+        pass_index: int,
+        refresh: Optional[Callable[[TextBlock], None]] = None,
+    ) -> None:
+        super().__init__()
+        self.block = block
+        self.refresh = refresh
+        self.old_text = list(block.text) if isinstance(block.text, list) else block.text
+        self.old_payload = dict(getattr(block, 'multi_extract', None) or {})
+        resolve(block, pass_index)
+        self.new_text = list(block.text) if isinstance(block.text, list) else block.text
+        self.new_payload = {}
+        self.op_counter = 0
+
+    def _apply(self, text, payload) -> None:
+        self.block.text = list(text) if isinstance(text, list) else text
+        self.block.multi_extract = dict(payload)
+        if self.refresh is not None:
+            self.refresh(self.block)
+
+    def redo(self) -> None:
+        if self.op_counter == 0:
+            self.op_counter += 1
+            return
+        self._apply(self.new_text, self.new_payload)
+
+    def undo(self) -> None:
+        self._apply(self.old_text, self.old_payload)

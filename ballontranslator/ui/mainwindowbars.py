@@ -329,10 +329,18 @@ class TitleBar(Widget):
         replaceOCRkeyword = QAction(self.tr("Keyword substitution for source text"), self)
         self.replaceOCRkeyword_trigger = replaceOCRkeyword.triggered
 
+        actionReviewMultiExtract = QAction(self.tr('Review Multi-Pass Extraction'), self)
+        # Nothing to review until a multi-pass run leaves disagreements behind.
+        actionReviewMultiExtract.setEnabled(False)
+        self.reviewMultiExtractAction = actionReviewMultiExtract
+        self.review_multi_extract_trigger = actionReviewMultiExtract.triggered
+
         editMenu = QMenu(self.editToolBtn)
         editMenu.addActions([undoAction, redoAction])
         editMenu.addSeparator()
         editMenu.addActions([pageSearchAction, globalSearchAction, replaceOCRkeyword, replacePreMTkeyword, replaceMTkeyword])
+        editMenu.addSeparator()
+        editMenu.addAction(actionReviewMultiExtract)
         self.editToolBtn.setMenu(editMenu)
         self.editToolBtn.setPopupMode(QToolButton.InstantPopup)
 
