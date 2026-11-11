@@ -205,6 +205,7 @@ class LLMContextEditorTest(unittest.TestCase):
             canvas=canvas,
             titleBar=title_bar,
             _llm_context_dirty=True,
+            _imported_text_dirty=False,
             tr=lambda text: text,
         )
 
@@ -226,6 +227,7 @@ class LLMContextEditorTest(unittest.TestCase):
             imgtrans_proj=project,
             opening_dir=False,
             _llm_context_dirty=True,
+            _imported_text_dirty=False,
             saveCurrentPage=Mock(),
         )
 

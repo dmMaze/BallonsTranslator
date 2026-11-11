@@ -164,6 +164,9 @@ class MainWindow(mainwindow_cls):
         self._render_only = False
         self._render_global_format = None
         self._llm_context_dirty = False
+        # Text imported from TXT/markdown bypasses the undo stack, so it needs
+        # its own dirty source to reach the normal project-save flow.
+        self._imported_text_dirty = False
 
         self.setupThread()
         self.setupUi()
@@ -274,6 +277,7 @@ class MainWindow(mainwindow_cls):
         self.leftBar.export_trans_txt.connect(lambda : self.on_export_txt(dump_target='translation'))
         self.leftBar.export_src_md.connect(lambda : self.on_export_txt(dump_target='source', suffix='.md'))
         self.leftBar.export_trans_md.connect(lambda : self.on_export_txt(dump_target='translation', suffix='.md'))
+        self.leftBar.import_src_txt.connect(self.on_import_src_txt)
         self.leftBar.import_trans_txt.connect(self.on_import_trans_txt)
 
         self.pageList = PageListView()
@@ -804,6 +808,7 @@ class MainWindow(mainwindow_cls):
             self.titleBar.setTitleContent(osp.basename(directory))
             self.updatePageList()
             self._llm_context_dirty = False
+            self._imported_text_dirty = False
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
@@ -850,6 +855,7 @@ class MainWindow(mainwindow_cls):
             self.updatePageList()
             self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
             self._llm_context_dirty = False
+            self._imported_text_dirty = False
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
@@ -952,7 +958,7 @@ class MainWindow(mainwindow_cls):
             update_scene_text = self.canvas.text_change_unsaved()
             draw_changed = self.canvas.draw_change_unsaved()
             if (
-                self._llm_context_dirty
+                (self._llm_context_dirty or self._imported_text_dirty)
                 and not update_scene_text
                 and not draw_changed
             ):
@@ -962,14 +968,19 @@ class MainWindow(mainwindow_cls):
                     )
                 except Exception as error:
                     LOGGER.error(
-                        'Failed to save LLM context edits: %s',
+                        'Failed to save edits made outside the undo history: %s',
                         error,
                     )
                     return
                 self._llm_context_dirty = False
+                self._imported_text_dirty = False
                 self.canvas.setProjSaveState(False)
                 return
-            save_proj = update_scene_text or self._llm_context_dirty
+            save_proj = (
+                update_scene_text
+                or self._llm_context_dirty
+                or self._imported_text_dirty
+            )
             save_rst_only = not draw_changed
             if not save_rst_only:
                 save_proj = True
@@ -1655,6 +1666,7 @@ class MainWindow(mainwindow_cls):
             try:
                 self.imgtrans_proj.save(keep_exist_as_backup=keep_exist_as_backup)
                 self._llm_context_dirty = False
+                self._imported_text_dirty = False
                 if not save_rst_only:
                     mask_path = self.imgtrans_proj.get_mask_path()
                     mask_array = self.imgtrans_proj.mask_array
@@ -2111,13 +2123,14 @@ class MainWindow(mainwindow_cls):
         # save proj file on page trans finished
         self.imgtrans_proj.save()
         self._llm_context_dirty = False
+        self._imported_text_dirty = False
 
         self.saveCurrentPage(False, False)
 
     def on_savestate_changed(self, unsaved: bool) -> None:
-        if not unsaved and self._llm_context_dirty:
-            # Canvas stack state and direct context edits are independent dirty
-            # sources; clearing one must not hide unsaved changes in the other.
+        if not unsaved and (self._llm_context_dirty or self._imported_text_dirty):
+            # Canvas stack state, direct context edits, and imported text are
+            # independent dirty sources; clearing one must not hide the others.
             self.canvas.setProjSaveState(True)
             return
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')
@@ -2437,11 +2450,63 @@ class MainWindow(mainwindow_cls):
         except Exception as e:
             create_error_dialog(e, self.tr('Failed to export as TEXT file'))
 
-    def on_import_trans_txt(self):
+    def _pick_txt_file(self) -> str:
+        dialog = QFileDialog()
+        return str(dialog.getOpenFileUrl(
+            self.parent(),
+            self.tr('Import *.md/*.txt'),
+            filter="*.txt *.md *.TXT *.MD",
+        )[0].toLocalFile())
+
+    def _txt_import_message(self, all_matched: bool, match_rst: dict, success_msg: str) -> str:
+        if all_matched:
+            return success_msg
+
+        msg = self.tr('Imported txt file not fully matched with current project, please make sure source txt file structured like results from \"export TXT/markdown\"')
+        if len(match_rst['missing_pages']) > 0:
+            msg += '\n' + self.tr('Missing pages: ') + '\n'
+            msg += '\n'.join(match_rst['missing_pages'])
+        if len(match_rst['unexpected_pages']) > 0:
+            msg += '\n' + self.tr('Unexpected pages: ') + '\n'
+            msg += '\n'.join(match_rst['unexpected_pages'])
+        if len(match_rst['unmatched_pages']) > 0:
+            msg += '\n' + self.tr('Unmatched pages: ') + '\n'
+            msg += '\n'.join(match_rst['unmatched_pages'])
+        return msg.strip()
+
+    def _apply_txt_import(self, match_rst: dict) -> None:
+        """Refresh the current page and route imported text through project save."""
+        if self.imgtrans_proj.current_img in match_rst['matched_pages']:
+            self.canvas.clear_undostack(update_saved_step=True)
+            self.st_manager.updateSceneTextitems()
+        if match_rst['matched_pages']:
+            # Imported text never enters the undo stack, so it cannot mark the
+            # project dirty on its own; conditional_save consults this flag.
+            self._imported_text_dirty = True
+            self.canvas.setProjSaveState(True)
+
+    def on_import_src_txt(self):
+        selected_file = ''
         try:
-            selected_file = ''
-            dialog = QFileDialog()
-            selected_file = str(dialog.getOpenFileUrl(self.parent(), self.tr('Import *.md/*.txt'), filter="*.txt *.md *.TXT *.MD")[0].toLocalFile())
+            selected_file = self._pick_txt_file()
+            if not osp.exists(selected_file):
+                return
+
+            all_matched, match_rst = self.imgtrans_proj.load_source_from_txt(selected_file)
+            self._apply_txt_import(match_rst)
+            create_info_dialog(self._txt_import_message(
+                all_matched,
+                match_rst,
+                self.tr('Source text imported and matched successfully.'),
+            ))
+
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to import source text from ') + selected_file)
+
+    def on_import_trans_txt(self):
+        selected_file = ''
+        try:
+            selected_file = self._pick_txt_file()
             if not osp.exists(selected_file):
                 return
 
@@ -2451,24 +2516,13 @@ class MainWindow(mainwindow_cls):
             )
             matched_pages = match_rst['matched_pages']
 
-            if self.imgtrans_proj.current_img in matched_pages:
-                self.canvas.clear_undostack(update_saved_step=True)
-                self.st_manager.updateSceneTextitems()
+            self._apply_txt_import(match_rst)
 
-            if all_matched:
-                msg = self.tr('Translation imported and matched successfully.')
-            else:
-                msg = self.tr('Imported txt file not fully matched with current project, please make sure source txt file structured like results from \"export TXT/markdown\"')
-                if len(match_rst['missing_pages']) > 0:
-                    msg += '\n' + self.tr('Missing pages: ') + '\n'
-                    msg += '\n'.join(match_rst['missing_pages'])
-                if len(match_rst['unexpected_pages']) > 0:
-                    msg += '\n' + self.tr('Unexpected pages: ') + '\n'
-                    msg += '\n'.join(match_rst['unexpected_pages'])
-                if len(match_rst['unmatched_pages']) > 0:
-                    msg += '\n' + self.tr('Unmatched pages: ') + '\n'
-                    msg += '\n'.join(match_rst['unmatched_pages'])
-                msg = msg.strip()
+            msg = self._txt_import_message(
+                all_matched,
+                match_rst,
+                self.tr('Translation imported and matched successfully.'),
+            )
 
             for pagename in matched_pages:
                 for blk in self.imgtrans_proj.pages[pagename]:

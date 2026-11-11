@@ -142,6 +142,9 @@ class LeftBar(Widget):
         actionExportTranslationMD = QAction(self.tr("Export translation as markdown"), self)
         self.export_trans_md = actionExportTranslationMD.triggered
 
+        actionImportSourceTxt = QAction(self.tr("Import source text from TXT/markdown"), self)
+        self.import_src_txt = actionImportSourceTxt.triggered
+
         actionImportTranslationTxt = QAction(self.tr("Import translation from TXT/markdown"), self)
         self.import_trans_txt = actionImportTranslationTxt.triggered
 
@@ -162,6 +165,7 @@ class LeftBar(Widget):
             actionExportTranslationTxt,
             actionExportSrcMD,
             actionExportTranslationMD,
+            actionImportSourceTxt,
             actionImportTranslationTxt,
         ])
         self.openBtn.setMenu(openMenu)
