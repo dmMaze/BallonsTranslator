@@ -167,6 +167,8 @@ class MainWindow(mainwindow_cls):
         # Text imported from TXT/markdown bypasses the undo stack, so it needs
         # its own dirty source to reach the normal project-save flow.
         self._imported_text_dirty = False
+        # Stage flags saved by a text-extraction run, restored when it ends.
+        self._extract_stage_backup = None
 
         self.setupThread()
         self.setupUi()
@@ -1958,6 +1960,7 @@ class MainWindow(mainwindow_cls):
         return True
 
     def on_imgtrans_pipeline_finished(self) -> None:
+        self._end_extract_only_run()
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
@@ -2216,6 +2219,9 @@ class MainWindow(mainwindow_cls):
             self.set_display_lang(lang)
     
     def run_imgtrans(self) -> None:
+        # A preparation failure can end a run without a finish signal; clear any
+        # stage override it left behind before the user can start another run.
+        self._end_extract_only_run()
         dialog = RunPipelineDialog(
             self,
             project=self.imgtrans_proj,
@@ -2232,20 +2238,28 @@ class MainWindow(mainwindow_cls):
         )
         try:
             result = dialog.exec_()
-            if result == RunPipelineDialog.CONTINUE:
-                self._run_imgtrans_wo_textstyle_update = False
-                self.on_run_imgtrans(continue_mode=True)
-                return
             if result == RunPipelineDialog.RENDER:
                 self._run_imgtrans_wo_textstyle_update = (
                     dialog.render_without_text_style_update.isChecked()
                 )
                 self.on_run_imgtrans(render_only=True)
                 return
-            if result != RunPipelineDialog.RUN:
+            if result not in (RunPipelineDialog.RUN, RunPipelineDialog.CONTINUE):
                 return
             self._run_imgtrans_wo_textstyle_update = False
-            self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
+            # Text extraction reuses the pipeline without rewriting or
+            # translating the image, so those stages stay off for this run only.
+            extract_only = dialog.is_extraction_mode()
+            if extract_only:
+                self._begin_extract_only_run()
+            try:
+                if result == RunPipelineDialog.CONTINUE:
+                    self.on_run_imgtrans(continue_mode=True)
+                else:
+                    self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
+            finally:
+                if not self.module_manager.is_pipeline_busy():
+                    self._end_extract_only_run()
         finally:
             dialog.deleteLater()
 
@@ -2284,6 +2298,23 @@ class MainWindow(mainwindow_cls):
         self.canvas.setProjSaveState(False)
         self.canvas.update_saved_undostep()
         return True
+
+    def _begin_extract_only_run(self) -> None:
+        """Disable the stages a text-extraction run never runs."""
+        self._end_extract_only_run()
+        self._extract_stage_backup = (
+            pcfg.module.enable_inpaint,
+            pcfg.module.enable_translate,
+        )
+        pcfg.module.enable_inpaint = False
+        pcfg.module.enable_translate = False
+
+    def _end_extract_only_run(self) -> None:
+        backup = self._extract_stage_backup
+        if backup is None:
+            return
+        self._extract_stage_backup = None
+        pcfg.module.enable_inpaint, pcfg.module.enable_translate = backup
 
     def on_run_imgtrans(
         self,

@@ -350,6 +350,11 @@ class RunPipelineDialog(QDialog):
     RUN = 1
     CONTINUE = 2
     RENDER = 3
+    # Workflow order matches the selector and the persisted run_pipeline_mode.
+    WORKFLOW_MODES = ('pipeline', 'rendering', 'extraction')
+    # Display indexes (see _build_pipeline_page) of the stages text extraction
+    # never runs: inpainting rewrites the image and translation adds target text.
+    EXTRACTION_HIDDEN_STAGES = (2, 3)
     translate_source_changed = Signal(str)
     translate_target_changed = Signal(str)
     module_selected = Signal(str, str)
@@ -405,11 +410,20 @@ class RunPipelineDialog(QDialog):
         title_row.addSpacing(12)
         self.workflow_selector = BottomBorderComboBox(surface)
         self.workflow_selector.setObjectName('RunPipelineWorkflowSelector')
-        self.workflow_selector.addItems((self.tr('Pipeline'), self.tr('Rendering')))
+        self.workflow_selector.addItems((
+            self.tr('Pipeline'),
+            self.tr('Rendering'),
+            self.tr('Text Extraction'),
+        ))
         pipeline_mode = str(pcfg.run_pipeline_mode).lower()
-        mode_indexes = {'pipeline': 0, 'rendering': 1}
+        mode_indexes = {
+            mode: index for index, mode in enumerate(self.WORKFLOW_MODES)
+        }
         self.workflow_selector.setCurrentIndex(mode_indexes.get(pipeline_mode, 0))
-        self.workflow_selector.setFixedWidth(126)
+        # Fit the widest workflow name; a fixed width clipped "Text Extraction".
+        self.workflow_selector.setFixedWidth(
+            max(126, self.workflow_selector.sizeHint().width())
+        )
         title_row.addWidget(self.workflow_selector)
         title_row.addStretch()
         self.close_button = DialogCloseButton(surface)
@@ -1586,15 +1600,43 @@ class RunPipelineDialog(QDialog):
 
     def _set_pipeline_page(self, index: int, persist: bool = True):
         rendering = index == 1
+        extract_only = index == 2
         if persist:
-            pcfg.run_pipeline_mode = 'rendering' if rendering else 'pipeline'
+            pcfg.run_pipeline_mode = self.WORKFLOW_MODES[index]
         self.content_stack.setCurrentIndex(1 if rendering else 0)
+        self._apply_stage_visibility(extract_only)
         self.run_button.setVisible(not rendering)
         self.continue_button.setVisible(not rendering)
         self.render_button.setVisible(rendering)
         self.render_button.setDefault(rendering)
         self.continue_button.setDefault(not rendering)
         self._fit_to_current_workflow()
+
+    def _apply_stage_visibility(self, extract_only: bool) -> None:
+        """Show only the stages the selected workflow can actually run."""
+        for display_index, (activator, button) in enumerate(
+            zip(self.module_activators, self.module_buttons)
+        ):
+            hidden = extract_only and display_index in self.EXTRACTION_HIDDEN_STAGES
+            activator.setVisible(not hidden)
+            section = self.settings_sections.get(display_index)
+            if section is None:
+                continue
+            body = self.module_settings_bodies.get(display_index)
+            section.setVisible(
+                not hidden
+                and button.isChecked()
+                and body is not None
+                and self._settings_section_has_content(body)
+            )
+
+    def is_extraction_mode(self) -> bool:
+        """True when the text-extraction workflow is selected.
+
+        >>> RunPipelineDialog.WORKFLOW_MODES[2]
+        'extraction'
+        """
+        return self.workflow_selector.currentIndex() == 2
 
     def _on_render_without_text_style_update_changed(self, checked: bool):
         pcfg.render_without_text_style_update = checked
