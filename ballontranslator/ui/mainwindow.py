@@ -1,5 +1,6 @@
 import os.path as osp
 import os, re, traceback, sys
+from copy import deepcopy
 from typing import List, Optional, Tuple, Union
 from pathlib import Path
 import subprocess
@@ -58,7 +59,10 @@ from .run_pipeline_dialog import RunPipelineDialog
 from .custom_widget import ScrollBar, Widget, ViewWidget
 from .global_search_widget import GlobalSearchWidget
 from .llm_context_editor import LLMContextEditor
-from .text_engine.editing.commands import GlobalRepalceAllCommand
+from .text_engine.editing.commands import (
+    GlobalRepalceAllCommand,
+    MultiExtractResolveCommand,
+)
 from .text_engine.transforms.grid import start_grid_numba_warmup
 from .text_engine.effects.paint import (
     start_effect_paint_numba_warmup,
@@ -71,6 +75,13 @@ from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
 from .keywordsubwidget import KeywordSubWidget
 from .module_parse_widgets import ModuleParamDialog
+from .multi_extract_review_dialog import MultiExtractReviewDialog
+from ballontranslator.utils.multi_extract import (
+    apply_conflict_payloads,
+    conflict_count,
+    merge_passes,
+    resolve,
+)
 from . import shared_widget as SW
 from .custom_widget import MessageBox, FrameLessMessageBox, ImgtransProgressMessageBox, ProgressMessageBox
 
@@ -127,6 +138,10 @@ class MainWindow(mainwindow_cls):
     save_on_page_changed = True
     opening_dir = False
     page_changing = False
+    # How long to wait for the previous pass's worker thread to exit before the
+    # next multi-pass run may start (50 ms x 100 = 5 s).
+    MULTI_EXTRACT_START_RETRY_MS = 50
+    MULTI_EXTRACT_START_RETRIES = 100
 
     translator = None
 
@@ -164,6 +179,13 @@ class MainWindow(mainwindow_cls):
         self._render_only = False
         self._render_global_format = None
         self._llm_context_dirty = False
+        # Text imported from TXT/markdown bypasses the undo stack, so it needs
+        # its own dirty source to reach the normal project-save flow.
+        self._imported_text_dirty = False
+        # Stage flags saved by a text-extraction run, restored when it ends.
+        self._extract_stage_backup = None
+        # Pass queue of an in-flight multi-pass extraction run.
+        self._multi_extract_state = None
 
         self.setupThread()
         self.setupUi()
@@ -274,6 +296,7 @@ class MainWindow(mainwindow_cls):
         self.leftBar.export_trans_txt.connect(lambda : self.on_export_txt(dump_target='translation'))
         self.leftBar.export_src_md.connect(lambda : self.on_export_txt(dump_target='source', suffix='.md'))
         self.leftBar.export_trans_md.connect(lambda : self.on_export_txt(dump_target='translation', suffix='.md'))
+        self.leftBar.import_src_txt.connect(self.on_import_src_txt)
         self.leftBar.import_trans_txt.connect(self.on_import_trans_txt)
 
         self.pageList = PageListView()
@@ -307,6 +330,10 @@ class MainWindow(mainwindow_cls):
         self.titleBar = TitleBar(self)
         self.titleBar.closebtn_clicked.connect(self.on_closebtn_clicked)
         self.titleBar.display_lang_changed.connect(self.on_display_lang_changed)
+        # The review entry lives in the Edit menu, which belongs to the title bar.
+        self.titleBar.review_multi_extract_trigger.connect(
+            self.on_review_multi_extract
+        )
         self.bottomBar = BottomBar(self)
         self.bottomBar.textedit_checkchanged.connect(self.setTextEditMode)
         self.bottomBar.paintmode_checkchanged.connect(self.setPaintMode)
@@ -360,6 +387,9 @@ class MainWindow(mainwindow_cls):
 
         SW.st_manager = self.st_manager = SceneTextManager(self.app, self, self.canvas, self.textPanel)
         self.st_manager.new_textblk.connect(self.canvas.search_widget.on_new_textblk)
+        self.st_manager.review_multi_extract_requested.connect(
+            self.on_review_multi_extract
+        )
         self.canvas.search_widget.pairwidget_list = self.st_manager.pairwidget_list
         self.canvas.search_widget.textblk_item_list = self.st_manager.textblk_item_list
         self.canvas.search_widget.replace_one.connect(self.st_manager.on_page_replace_one)
@@ -488,6 +518,13 @@ class MainWindow(mainwindow_cls):
             self.configPanel,
             self.imgtrans_progress_msgbox,
             parent_widget=self,
+        )
+        # Multi-pass extraction advances on the worker's own finished signal:
+        # imgtrans_pipeline_finished is emitted from a progress callback while
+        # the thread is still unwinding, and starting a running QThread is a
+        # silent no-op.
+        module_manager.imgtrans_thread.finished.connect(
+            self._on_imgtrans_thread_finished
         )
         module_manager.module_selection_changed.connect(self.on_module_selection_changed)
         module_manager.progress_msgbox.showed.connect(self.on_imgtrans_progressbox_showed)
@@ -754,9 +791,10 @@ class MainWindow(mainwindow_cls):
             self.openDir(proj_path)
         else:
             self.openJsonProj(proj_path)
-        
+
         if pcfg.let_textstyle_indep_flag and not shared.HEADLESS:
             self.load_textstyle_from_proj_dir(from_proj=True)
+        self._refresh_multi_extract_review_action()
 
     def load_textstyle_from_proj_dir(self, from_proj=False):
         if from_proj:
@@ -804,6 +842,7 @@ class MainWindow(mainwindow_cls):
             self.titleBar.setTitleContent(osp.basename(directory))
             self.updatePageList()
             self._llm_context_dirty = False
+            self._imported_text_dirty = False
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
@@ -850,6 +889,7 @@ class MainWindow(mainwindow_cls):
             self.updatePageList()
             self.titleBar.setTitleContent(osp.basename(self.imgtrans_proj.proj_path))
             self._llm_context_dirty = False
+            self._imported_text_dirty = False
             self.opening_dir = False
         except Exception as e:
             self.opening_dir = False
@@ -952,7 +992,7 @@ class MainWindow(mainwindow_cls):
             update_scene_text = self.canvas.text_change_unsaved()
             draw_changed = self.canvas.draw_change_unsaved()
             if (
-                self._llm_context_dirty
+                (self._llm_context_dirty or self._imported_text_dirty)
                 and not update_scene_text
                 and not draw_changed
             ):
@@ -962,14 +1002,19 @@ class MainWindow(mainwindow_cls):
                     )
                 except Exception as error:
                     LOGGER.error(
-                        'Failed to save LLM context edits: %s',
+                        'Failed to save edits made outside the undo history: %s',
                         error,
                     )
                     return
                 self._llm_context_dirty = False
+                self._imported_text_dirty = False
                 self.canvas.setProjSaveState(False)
                 return
-            save_proj = update_scene_text or self._llm_context_dirty
+            save_proj = (
+                update_scene_text
+                or self._llm_context_dirty
+                or self._imported_text_dirty
+            )
             save_rst_only = not draw_changed
             if not save_rst_only:
                 save_proj = True
@@ -1655,6 +1700,7 @@ class MainWindow(mainwindow_cls):
             try:
                 self.imgtrans_proj.save(keep_exist_as_backup=keep_exist_as_backup)
                 self._llm_context_dirty = False
+                self._imported_text_dirty = False
                 if not save_rst_only:
                     mask_path = self.imgtrans_proj.get_mask_path()
                     mask_array = self.imgtrans_proj.mask_array
@@ -1946,6 +1992,12 @@ class MainWindow(mainwindow_cls):
         return True
 
     def on_imgtrans_pipeline_finished(self) -> None:
+        if self._multi_extract_state is not None:
+            # The pass chain owns the end of a pass. It advances on the worker
+            # thread's own finished signal, which is the only point where the
+            # next QThread.start() is guaranteed to take effect.
+            return
+        self._end_extract_only_run()
         self.backup_blkstyles.clear()
         self._run_imgtrans_wo_textstyle_update = False
         self._render_only = False
@@ -2111,13 +2163,14 @@ class MainWindow(mainwindow_cls):
         # save proj file on page trans finished
         self.imgtrans_proj.save()
         self._llm_context_dirty = False
+        self._imported_text_dirty = False
 
         self.saveCurrentPage(False, False)
 
     def on_savestate_changed(self, unsaved: bool) -> None:
-        if not unsaved and self._llm_context_dirty:
-            # Canvas stack state and direct context edits are independent dirty
-            # sources; clearing one must not hide unsaved changes in the other.
+        if not unsaved and (self._llm_context_dirty or self._imported_text_dirty):
+            # Canvas stack state, direct context edits, and imported text are
+            # independent dirty sources; clearing one must not hide the others.
             self.canvas.setProjSaveState(True)
             return
         save_state = self.tr('unsaved') if unsaved else self.tr('saved')
@@ -2203,6 +2256,9 @@ class MainWindow(mainwindow_cls):
             self.set_display_lang(lang)
     
     def run_imgtrans(self) -> None:
+        # A preparation failure can end a run without a finish signal; clear any
+        # stage override it left behind before the user can start another run.
+        self._end_extract_only_run()
         dialog = RunPipelineDialog(
             self,
             project=self.imgtrans_proj,
@@ -2219,22 +2275,219 @@ class MainWindow(mainwindow_cls):
         )
         try:
             result = dialog.exec_()
-            if result == RunPipelineDialog.CONTINUE:
-                self._run_imgtrans_wo_textstyle_update = False
-                self.on_run_imgtrans(continue_mode=True)
-                return
             if result == RunPipelineDialog.RENDER:
                 self._run_imgtrans_wo_textstyle_update = (
                     dialog.render_without_text_style_update.isChecked()
                 )
                 self.on_run_imgtrans(render_only=True)
                 return
-            if result != RunPipelineDialog.RUN:
+            if result not in (RunPipelineDialog.RUN, RunPipelineDialog.CONTINUE):
                 return
             self._run_imgtrans_wo_textstyle_update = False
-            self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
+            # Text extraction reuses the pipeline without rewriting or
+            # translating the image, so those stages stay off for this run only.
+            if dialog.is_multi_extract_mode():
+                self._start_multi_extract_run(
+                    dialog.selected_pages(),
+                    dialog.enabled_multi_extract_slots(),
+                )
+                return
+            extract_only = dialog.is_extraction_mode()
+            if extract_only:
+                self._begin_extract_only_run()
+            try:
+                if result == RunPipelineDialog.CONTINUE:
+                    self.on_run_imgtrans(continue_mode=True)
+                else:
+                    self.on_run_imgtrans(pages_to_process=dialog.selected_pages())
+            finally:
+                if not self.module_manager.is_pipeline_busy():
+                    self._end_extract_only_run()
         finally:
             dialog.deleteLater()
+
+    def _start_multi_extract_run(self, pages: List[str], slots: List[dict]) -> None:
+        """Run each enabled slot in turn, then merge what they read.
+
+        The passes are serial: switching detector/OCR between them unloads the
+        previous models, so only one pair is resident at a time.
+        """
+        if not pages:
+            return
+        if len(slots) < 2:
+            create_info_dialog(
+                self.tr(
+                    'Enable at least two passes before running multi-pass extraction.'
+                )
+            )
+            return
+        self._multi_extract_state = {
+            'slots': list(slots),
+            'pages': list(pages),
+            'index': 0,
+            'snapshots': {page: [] for page in pages},
+            'pass_pending': False,
+            'stage_flags': (pcfg.module.enable_detect, pcfg.module.enable_ocr),
+            'modules': (pcfg.module.textdetector, pcfg.module.ocr),
+        }
+        pcfg.module.enable_detect = True
+        pcfg.module.enable_ocr = True
+        # A stop from an earlier run must not abort this one before it starts.
+        self.module_manager.imgtrans_thread.clearStopRequest()
+        self._begin_extract_only_run()
+        self._run_multi_extract_pass()
+
+    def _run_multi_extract_pass(self, attempt: int = 0) -> None:
+        state = self._multi_extract_state
+        if state is None:
+            return
+        try:
+            self._launch_multi_extract_pass(state, attempt)
+        except Exception:
+            LOGGER.exception('Multi-pass extraction could not start its next pass.')
+            self._finish_multi_extract_run(merge=False)
+
+    def _launch_multi_extract_pass(self, state: dict, attempt: int = 0) -> None:
+        thread = self.module_manager.imgtrans_thread
+        if thread.isRunning():
+            # The pipeline-finished signal is emitted from a progress update,
+            # while the worker thread is still unwinding. Starting a QThread
+            # that is already running is a silent no-op, which would drop every
+            # pass after the first one.
+            if attempt >= self.MULTI_EXTRACT_START_RETRIES:
+                LOGGER.error(
+                    'Multi-pass extraction: worker thread did not stop; '
+                    'giving up on pass %d.',
+                    state['index'] + 1,
+                )
+                self._finish_multi_extract_run(merge=False)
+                return
+            QTimer.singleShot(
+                self.MULTI_EXTRACT_START_RETRY_MS,
+                lambda: self._run_multi_extract_pass(attempt + 1),
+            )
+            return
+        slot = state['slots'][state['index']]
+        if thread.isStopRequested():
+            # Stop pressed while the previous pass was unwinding.
+            LOGGER.info('Multi-pass extraction stopped before its next pass.')
+            self._finish_multi_extract_run(merge=False)
+            return
+        state['pass_pending'] = True
+        LOGGER.info(
+            'Multi-pass extraction pass %d/%d: %s + %s',
+            state['index'] + 1,
+            len(state['slots']),
+            slot['textdetector'],
+            slot['ocr'],
+        )
+        self.module_manager.selectTextDetector(slot['textdetector'])
+        self.module_manager.selectOCR(slot['ocr'])
+        pages = state['pages']
+        # Queue the run itself too: this is normally reached from a signal.
+        QTimer.singleShot(0, lambda: self.on_run_imgtrans(pages_to_process=pages))
+
+    def _on_imgtrans_thread_finished(self) -> None:
+        """Worker thread is really done; only here may the next pass start."""
+        if self._multi_extract_state is None:
+            return
+        try:
+            self._advance_multi_extract_run()
+        except Exception:
+            # Never leave the run stuck at 100% with no visible reason.
+            LOGGER.exception('Multi-pass extraction could not advance; stopping.')
+            self._finish_multi_extract_run(merge=False)
+
+    def _advance_multi_extract_run(self) -> bool:
+        """Snapshot the pass that just ended, then queue the next or merge.
+
+        True means another pass is queued, so the run is not over yet.
+        """
+        state = self._multi_extract_state
+        if state is None:
+            return False
+        if not state['pass_pending']:
+            # Duplicate of a finish event we already snapshotted; advancing
+            # twice would skip a pass and merge stale pages.
+            LOGGER.info('Ignoring a repeated pipeline-finished event.')
+            return True
+        if self.module_manager.imgtrans_thread.isStopRequested():
+            LOGGER.info('Multi-pass extraction stopped; keeping the last pass.')
+            self._finish_multi_extract_run(merge=False)
+            return False
+        state['pass_pending'] = False
+        for page in state['pages']:
+            state['snapshots'][page].append(
+                deepcopy(self.imgtrans_proj.pages.get(page, []))
+            )
+        state['index'] += 1
+        if state['index'] < len(state['slots']):
+            self._run_multi_extract_pass()
+            return True
+        self._finish_multi_extract_run(merge=True)
+        return False
+
+    def _finish_multi_extract_run(self, merge: bool) -> None:
+        state = self._multi_extract_state
+        if state is None:
+            return
+        self._multi_extract_state = None
+        try:
+            conflicts = self._merge_multi_extract_pages(state) if merge else 0
+        except Exception:
+            # A merge failure must not leave the run half restored: the flags,
+            # module selection and cleanup below still have to happen.
+            LOGGER.exception('Multi-pass extraction merge failed; its pages were left as the last pass.')
+            conflicts = 0
+            merge = False
+        pcfg.module.enable_detect, pcfg.module.enable_ocr = state['stage_flags']
+        # Put the user's own selection back: the slots only shaped this run.
+        self.module_manager.selectTextDetector(state['modules'][0])
+        self.module_manager.selectOCR(state['modules'][1])
+        # The progress-driven handler was suppressed while the chain was alive,
+        # so the usual end-of-run bookkeeping still has to happen here.
+        self.on_imgtrans_pipeline_finished()
+        self._refresh_multi_extract_review_action()
+        if not merge:
+            return
+        create_info_dialog(
+            self.tr(
+                'Multi-pass extraction finished: {passes} passes merged, '
+                '{conflicts} regions to review.'
+            ).format(passes=len(state['slots']), conflicts=conflicts)
+        )
+
+    def _merge_multi_extract_pages(self, state: dict) -> int:
+        """Write the merged blocks back; returns how many regions need review."""
+        marked = 0
+        for page, passes in state['snapshots'].items():
+            passes = [blocks for blocks in passes if blocks]
+            if not passes or page not in self.imgtrans_proj.pages:
+                continue
+            result = merge_passes(passes)
+            if not result.blocks:
+                continue
+            marked += apply_conflict_payloads(result)
+            self.imgtrans_proj.pages[page] = result.blocks
+            self.imgtrans_proj.update_page_progress(
+                page,
+                RunStatus.FIN_DET | RunStatus.FIN_OCR,
+            )
+        self.canvas.clear_undostack(update_saved_step=True)
+        if self.imgtrans_proj.current_img in state['snapshots']:
+            self.st_manager.updateSceneTextitems()
+        # Each pass saved its own page while running, so the merged text has to
+        # reach the project file as well.
+        self.canvas.setProjSaveState(True)
+        self._imported_text_dirty = True
+        try:
+            self.imgtrans_proj.save()
+        except Exception as error:
+            LOGGER.error('Failed to save the multi-pass result: %s', error)
+        else:
+            self._imported_text_dirty = False
+            self.canvas.setProjSaveState(False)
+        return marked
 
     def _save_before_render(self) -> bool:
         self.st_manager.formatpanel.resolve_text_transform_edits_for_save()
@@ -2271,6 +2524,23 @@ class MainWindow(mainwindow_cls):
         self.canvas.setProjSaveState(False)
         self.canvas.update_saved_undostep()
         return True
+
+    def _begin_extract_only_run(self) -> None:
+        """Disable the stages a text-extraction run never runs."""
+        self._end_extract_only_run()
+        self._extract_stage_backup = (
+            pcfg.module.enable_inpaint,
+            pcfg.module.enable_translate,
+        )
+        pcfg.module.enable_inpaint = False
+        pcfg.module.enable_translate = False
+
+    def _end_extract_only_run(self) -> None:
+        backup = self._extract_stage_backup
+        if backup is None:
+            return
+        self._extract_stage_backup = None
+        pcfg.module.enable_inpaint, pcfg.module.enable_translate = backup
 
     def on_run_imgtrans(
         self,
@@ -2437,11 +2707,123 @@ class MainWindow(mainwindow_cls):
         except Exception as e:
             create_error_dialog(e, self.tr('Failed to export as TEXT file'))
 
-    def on_import_trans_txt(self):
+    def _pick_txt_file(self) -> str:
+        dialog = QFileDialog()
+        return str(dialog.getOpenFileUrl(
+            self.parent(),
+            self.tr('Import *.md/*.txt'),
+            filter="*.txt *.md *.TXT *.MD",
+        )[0].toLocalFile())
+
+    def _txt_import_message(self, all_matched: bool, match_rst: dict, success_msg: str) -> str:
+        if all_matched:
+            return success_msg
+
+        msg = self.tr('Imported txt file not fully matched with current project, please make sure source txt file structured like results from \"export TXT/markdown\"')
+        if len(match_rst['missing_pages']) > 0:
+            msg += '\n' + self.tr('Missing pages: ') + '\n'
+            msg += '\n'.join(match_rst['missing_pages'])
+        if len(match_rst['unexpected_pages']) > 0:
+            msg += '\n' + self.tr('Unexpected pages: ') + '\n'
+            msg += '\n'.join(match_rst['unexpected_pages'])
+        if len(match_rst['unmatched_pages']) > 0:
+            msg += '\n' + self.tr('Unmatched pages: ') + '\n'
+            msg += '\n'.join(match_rst['unmatched_pages'])
+        return msg.strip()
+
+    def _apply_txt_import(self, match_rst: dict) -> None:
+        """Refresh the current page and route imported text through project save."""
+        if self.imgtrans_proj.current_img in match_rst['matched_pages']:
+            self.canvas.clear_undostack(update_saved_step=True)
+            self.st_manager.updateSceneTextitems()
+        if match_rst['matched_pages']:
+            # Imported text never enters the undo stack, so it cannot mark the
+            # project dirty on its own; conditional_save consults this flag.
+            self._imported_text_dirty = True
+            self.canvas.setProjSaveState(True)
+
+    def on_review_multi_extract(self) -> None:
+        pending = conflict_count(self.imgtrans_proj.pages)
+        if pending == 0:
+            create_info_dialog(self.tr('No multi-pass conflicts to review.'))
+            return
+        dialog = MultiExtractReviewDialog(
+            self.imgtrans_proj,
+            apply_callback=self._apply_multi_extract_reading,
+            parent=self,
+        )
         try:
-            selected_file = ''
-            dialog = QFileDialog()
-            selected_file = str(dialog.getOpenFileUrl(self.parent(), self.tr('Import *.md/*.txt'), filter="*.txt *.md *.TXT *.MD")[0].toLocalFile())
+            dialog.exec_()
+        finally:
+            dialog.deleteLater()
+        self._refresh_multi_extract_review_action()
+
+    def _apply_multi_extract_reading(self, page: str, blk, pass_index: int) -> None:
+        """Write one reviewed reading to the block's source text.
+
+        The panel mirrors the block, so it is the field a later
+        updateTextBlkList() sync would overwrite; refresh it together.
+        """
+        refresh = partial(self._refresh_resolved_block, page)
+
+        if self.imgtrans_proj.current_img == page and self.canvas.textEditMode():
+            self.canvas.push_text_command(
+                MultiExtractResolveCommand(blk, pass_index, refresh)
+            )
+        else:
+            resolve(blk, pass_index)
+            refresh(blk)
+            # Not every review path has an undo entry to mark the project dirty.
+            self.canvas.setProjSaveState(True)
+        self._refresh_multi_extract_review_action()
+
+    def _refresh_resolved_block(self, page: str, blk) -> None:
+        if self.imgtrans_proj.current_img != page:
+            return
+        blocks = self.imgtrans_proj.pages.get(page, [])
+        index = next(
+            (position for position, candidate in enumerate(blocks)
+             if candidate is blk),
+            None,
+        )
+        if index is None:
+            return
+        if index < len(self.st_manager.textblk_item_list):
+            self.st_manager.textblk_item_list[index].refresh_conflict_badge()
+        if index < len(self.st_manager.pairwidget_list):
+            pair = self.st_manager.pairwidget_list[index]
+            pair.e_source.setPlainText(blk.get_text())
+        self.canvas.update()
+
+    def _refresh_multi_extract_review_action(self) -> None:
+        title_bar = getattr(self, 'titleBar', None)
+        action = getattr(title_bar, 'reviewMultiExtractAction', None)
+        if action is None:
+            return
+        action.setEnabled(conflict_count(self.imgtrans_proj.pages) > 0)
+
+    def on_import_src_txt(self):
+        selected_file = ''
+        try:
+            selected_file = self._pick_txt_file()
+            if not osp.exists(selected_file):
+                return
+
+            all_matched, match_rst = self.imgtrans_proj.load_source_from_txt(selected_file)
+            self._apply_txt_import(match_rst)
+            create_info_dialog(self._txt_import_message(
+                all_matched,
+                match_rst,
+                self.tr('Source text imported and matched successfully.'),
+            ))
+
+        except Exception as e:
+            create_error_dialog(e, self.tr('Failed to import source text from ') + selected_file)
+
+    def on_import_trans_txt(self):
+        selected_file = ''
+        try:
+            selected_file = self._pick_txt_file()
             if not osp.exists(selected_file):
                 return
 
@@ -2451,24 +2833,13 @@ class MainWindow(mainwindow_cls):
             )
             matched_pages = match_rst['matched_pages']
 
-            if self.imgtrans_proj.current_img in matched_pages:
-                self.canvas.clear_undostack(update_saved_step=True)
-                self.st_manager.updateSceneTextitems()
+            self._apply_txt_import(match_rst)
 
-            if all_matched:
-                msg = self.tr('Translation imported and matched successfully.')
-            else:
-                msg = self.tr('Imported txt file not fully matched with current project, please make sure source txt file structured like results from \"export TXT/markdown\"')
-                if len(match_rst['missing_pages']) > 0:
-                    msg += '\n' + self.tr('Missing pages: ') + '\n'
-                    msg += '\n'.join(match_rst['missing_pages'])
-                if len(match_rst['unexpected_pages']) > 0:
-                    msg += '\n' + self.tr('Unexpected pages: ') + '\n'
-                    msg += '\n'.join(match_rst['unexpected_pages'])
-                if len(match_rst['unmatched_pages']) > 0:
-                    msg += '\n' + self.tr('Unmatched pages: ') + '\n'
-                    msg += '\n'.join(match_rst['unmatched_pages'])
-                msg = msg.strip()
+            msg = self._txt_import_message(
+                all_matched,
+                match_rst,
+                self.tr('Translation imported and matched successfully.'),
+            )
 
             for pagename in matched_pages:
                 for blk in self.imgtrans_proj.pages[pagename]:

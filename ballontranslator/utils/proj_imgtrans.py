@@ -870,7 +870,16 @@ class ProjImgTrans:
         """Discard only the optional project-wide LLM memory."""
         self._llm_compact_memory = None
 
-    def load_translation_from_txt(self, file_path: str, target_language=None):
+    def _load_text_from_txt(self, file_path: str, target: str):
+        """Overwrite page text from a TXT/markdown dump exported by this project.
+
+        ``target`` selects the overwritten field: ``'translation'`` replaces the
+        translation and drops its rich-text payload, ``'source'`` replaces the
+        recognized source text. Blocks are matched by position, so a dump must
+        come from the same block layout. Page completion state is left to the
+        callers; this only writes text and reports how well the dump matched.
+        """
+        assert target in {'source', 'translation'}
         page_list = parse_txt_translation(file_path)
         missing_pages = []
         unmatched_pages = []
@@ -892,21 +901,35 @@ class ProjImgTrans:
                 unmatched_pages.append(page_name)
             for blkid in range(min(n_blk, n_src_blk)):
                 blk = blklist[blkid]
-                blk.rich_text = ''
-                blk.translation = src_blk_list[blkid]
+                text = src_blk_list[blkid]
+                if target == 'translation':
+                    blk.rich_text = ''
+                    blk.translation = text
+                else:
+                    blk.text = text
 
         matched_pages = set(matched_pages)
         if len(matched_pages) != self.num_pages:
             for page_name in self.pages:
                 if page_name not in matched_pages:
                     missing_pages.append(page_name)
-        
+
         all_matched = (
             len(missing_pages) == 0
             and len(unmatched_pages) == 0
             and len(unexpected_pages) == 0
         )
-        unmatched_page_set = set(unmatched_pages)
+        return all_matched, {
+            'missing_pages': missing_pages,
+            'unmatched_pages': unmatched_pages,
+            'unexpected_pages': unexpected_pages,
+            'matched_pages': matched_pages,
+        }
+
+    def load_translation_from_txt(self, file_path: str, target_language=None):
+        all_matched, match_rst = self._load_text_from_txt(file_path, 'translation')
+        matched_pages = match_rst['matched_pages']
+        unmatched_page_set = set(match_rst['unmatched_pages'])
         for page_name in matched_pages - unmatched_page_set:
             if target_language is None:
                 self.update_page_progress(page_name, RunStatus.FIN_TRANSLATE)
@@ -918,12 +941,33 @@ class ProjImgTrans:
         # while project pages absent from the import retain their existing state.
         for page_name in unmatched_page_set:
             self.clear_page_progress(page_name, RunStatus.FIN_TRANSLATE)
-        return all_matched, {
-            'missing_pages': missing_pages,
-            'unmatched_pages': unmatched_pages,
-            'unexpected_pages': unexpected_pages,
-            'matched_pages': matched_pages,
-        }
+        return all_matched, match_rst
+
+    def load_source_from_txt(self, file_path: str):
+        """Overwrite source text from a TXT/markdown dump.
+
+        Imported source replaces the OCR result, so the affected pages count as
+        OCR-complete while their previous translations no longer describe the
+        page content and are invalidated. Pages whose block count differs keep
+        the partial import but are reset like any other malformed import.
+
+        >>> project = ProjImgTrans()  # doctest: +SKIP
+        >>> project.load_source_from_txt('dump.txt')  # doctest: +SKIP
+        (True, {'missing_pages': [], 'unmatched_pages': [],
+                'unexpected_pages': [], 'matched_pages': {'001.png'}})
+        """
+        all_matched, match_rst = self._load_text_from_txt(file_path, 'source')
+        unmatched_page_set = set(match_rst['unmatched_pages'])
+        for page_name in match_rst['matched_pages']:
+            # Overwritten source no longer describes the page the existing
+            # translation was made from, so that translation is invalidated for
+            # every touched page, including partially imported ones.
+            self.invalidate_translation(page_name)
+            if page_name in unmatched_page_set:
+                self.clear_page_progress(page_name, RunStatus.FIN_OCR)
+            else:
+                self.update_page_progress(page_name, RunStatus.FIN_OCR)
+        return all_matched, match_rst
 
     def load_from_json(self, json_path: str):
         old_dir = self.directory

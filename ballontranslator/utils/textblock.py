@@ -137,6 +137,9 @@ class TextBlock:
 
     deprecated_attributes: dict = field(default_factory = lambda: dict())
     text_layout_version: int = 0
+    # Unresolved multi-pass extraction disagreement; see utils/multi_extract.py.
+    # Empty for blocks that came from a single detection+OCR pass.
+    multi_extract: dict = field(default_factory = lambda: dict())
 
     @property
     def vertical(self):

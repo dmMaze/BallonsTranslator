@@ -1,5 +1,7 @@
 import os
 
+from typing import List
+
 from qtpy.QtCore import (
     QEvent,
     QObject,
@@ -350,6 +352,11 @@ class RunPipelineDialog(QDialog):
     RUN = 1
     CONTINUE = 2
     RENDER = 3
+    # Workflow order matches the selector and the persisted run_pipeline_mode.
+    WORKFLOW_MODES = ('pipeline', 'rendering', 'extraction', 'multi_extraction')
+    # Display indexes (see _build_pipeline_page) of the stages text extraction
+    # never runs: inpainting rewrites the image and translation adds target text.
+    EXTRACTION_HIDDEN_STAGES = (2, 3)
     translate_source_changed = Signal(str)
     translate_target_changed = Signal(str)
     module_selected = Signal(str, str)
@@ -405,11 +412,21 @@ class RunPipelineDialog(QDialog):
         title_row.addSpacing(12)
         self.workflow_selector = BottomBorderComboBox(surface)
         self.workflow_selector.setObjectName('RunPipelineWorkflowSelector')
-        self.workflow_selector.addItems((self.tr('Pipeline'), self.tr('Rendering')))
+        self.workflow_selector.addItems((
+            self.tr('Pipeline'),
+            self.tr('Rendering'),
+            self.tr('Text Extraction'),
+            self.tr('Multi-Pass Extraction'),
+        ))
         pipeline_mode = str(pcfg.run_pipeline_mode).lower()
-        mode_indexes = {'pipeline': 0, 'rendering': 1}
+        mode_indexes = {
+            mode: index for index, mode in enumerate(self.WORKFLOW_MODES)
+        }
         self.workflow_selector.setCurrentIndex(mode_indexes.get(pipeline_mode, 0))
-        self.workflow_selector.setFixedWidth(126)
+        # Fit the widest workflow name; a fixed width clipped "Text Extraction".
+        self.workflow_selector.setFixedWidth(
+            max(126, self.workflow_selector.sizeHint().width())
+        )
         title_row.addWidget(self.workflow_selector)
         title_row.addStretch()
         self.close_button = DialogCloseButton(surface)
@@ -421,6 +438,7 @@ class RunPipelineDialog(QDialog):
         self.content_stack.setObjectName('RunPipelineContentStack')
         self.content_stack.addWidget(self._build_pipeline_page())
         self.content_stack.addWidget(self._build_rendering_page())
+        self.content_stack.addWidget(self._build_multi_extract_page())
 
         self.content_dock = QDockWidget(surface)
         self.content_dock.setObjectName('RunPipelineContentDock')
@@ -709,6 +727,125 @@ class RunPipelineDialog(QDialog):
                 and self._settings_section_has_content(section_body)
             )
         return page
+
+    def _build_multi_extract_page(self) -> QWidget:
+        """Configure up to three detector/OCR pairs for one extraction run."""
+        page = QWidget(self)
+        page.setObjectName('RunPipelineMultiExtractPage')
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 12, 0, 0)
+        layout.setSpacing(10)
+
+        self._add_section_divider(layout, self.tr('Activate Modules'))
+
+        slots_frame = QFrame(page)
+        slots_frame.setObjectName('RunPipelineMultiExtractSlots')
+        slot_layout = QGridLayout(slots_frame)
+        slot_layout.setContentsMargins(2, 4, 2, 2)
+        slot_layout.setHorizontalSpacing(12)
+        slot_layout.setVerticalSpacing(8)
+
+        headers = (
+            self.tr('Enable'),
+            self.tr('Text Detection'),
+            self.tr('OCR'),
+        )
+        for column, text in enumerate(headers):
+            header = QLabel(text, slots_frame)
+            header.setObjectName('RunPipelineMultiExtractHeader')
+            slot_layout.addWidget(header, 0, column)
+
+        valid_detectors = GET_VALID_TEXTDETECTORS()
+        valid_ocr = GET_VALID_OCR()
+        self.multi_extract_slot_rows = []
+        for index, slot in enumerate(pcfg.module.normalized_multi_extract_slots()):
+            enabled = QCheckBox(slots_frame)
+            enabled.setObjectName('RunPipelineMultiExtractSlotEnabled')
+            enabled.setChecked(slot['enabled'])
+            detector = self._multi_extract_combo(slots_frame, valid_detectors, slot['textdetector'])
+            ocr = self._multi_extract_combo(slots_frame, valid_ocr, slot['ocr'])
+            for column, widget in enumerate((enabled, detector, ocr)):
+                slot_layout.addWidget(widget, index + 1, column)
+            # Slots configure a run, never the project's active modules.
+            enabled.toggled.connect(self._on_multi_extract_slot_changed)
+            detector.currentTextChanged.connect(self._on_multi_extract_slot_changed)
+            ocr.currentTextChanged.connect(self._on_multi_extract_slot_changed)
+            self.multi_extract_slot_rows.append({
+                'enabled': enabled,
+                'textdetector': detector,
+                'ocr': ocr,
+            })
+        slot_layout.setColumnStretch(1, 1)
+        slot_layout.setColumnStretch(2, 1)
+        layout.addWidget(slots_frame)
+
+        hint = QLabel(
+            self.tr(
+                'Each enabled pass runs detection and OCR with its own models. '
+                'Regions are merged as a union with the first pass supplying the '
+                'geometry; disagreements are marked and can be resolved from '
+                'Edit > Review Multi-Pass Extraction.'
+            ),
+            page,
+        )
+        hint.setObjectName('RunPipelineMultiExtractHint')
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self._add_section_divider(layout, self.tr('Settings'))
+
+        range_section = QWidget(page)
+        range_layout = QVBoxLayout(range_section)
+        range_layout.setContentsMargins(16, 0, 16, 0)
+        range_layout.setSpacing(10)
+        self.multi_range_progress = PageRangeProgressWidget(
+            self._project_page_names(),
+            parent=range_section,
+        )
+        self.multi_range_start = self.multi_range_progress.range_start
+        self.multi_range_end = self.multi_range_progress.range_end
+        # Distinct names: the pipeline page owns the plain ones, and lookup by
+        # object name must not reach across pages.
+        self.multi_range_progress.setObjectName('RunPipelineMultiExtractPageRange')
+        self.multi_range_start.setObjectName('RunPipelineMultiRangeStart')
+        self.multi_range_end.setObjectName('RunPipelineMultiRangeEnd')
+        range_layout.addWidget(self.multi_range_progress)
+        layout.addWidget(range_section)
+        return page
+
+    def multi_extract_slot_configs(self) -> List[dict]:
+        """Current slot table, in display order."""
+        return [
+            {
+                'enabled': row['enabled'].isChecked(),
+                'textdetector': row['textdetector'].currentText(),
+                'ocr': row['ocr'].currentText(),
+            }
+            for row in self.multi_extract_slot_rows
+        ]
+
+    def enabled_multi_extract_slots(self) -> List[dict]:
+        """Slots the next multi-pass run will execute, first pass first."""
+        return [
+            slot for slot in self.multi_extract_slot_configs() if slot['enabled']
+        ]
+
+    def _on_multi_extract_slot_changed(self, *_args) -> None:
+        pcfg.module.multi_extract_slots = self.multi_extract_slot_configs()
+
+    @staticmethod
+    def _multi_extract_combo(parent: QWidget, options, current: str) -> QComboBox:
+        """Slot combo: fits the dialog width but grows into the free space."""
+        combo = QComboBox(parent)
+        combo.addItems(options)
+        if current in options:
+            combo.setCurrentText(current)
+        # Long module names must not force the dialog wider than its layout.
+        combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        combo.setMinimumContentsLength(7)
+        return combo
 
     def _build_general_settings(self, section: QWidget, layout: QVBoxLayout):
         start, end = type(self)._page_range
@@ -1414,7 +1551,18 @@ class RunPipelineDialog(QDialog):
         pages = self._project_page_names()
         if not pages:
             return []
-        return pages[self.range_start.value() - 1 : self.range_end.value()]
+        start, end = self._active_range()
+        return pages[start.value() - 1 : end.value()]
+
+    def _active_range(self):
+        """Page range of the workflow currently on screen.
+
+        The multi-pass page owns a range of its own: switching workflow must not
+        carry a half-typed range over to the other one.
+        """
+        if self.is_multi_extract_mode():
+            return self.multi_range_start, self.multi_range_end
+        return self.range_start, self.range_end
 
     def _on_page_range_changed(self, start: int, end: int):
         type(self)._page_range = (start, end)
@@ -1499,6 +1647,16 @@ class RunPipelineDialog(QDialog):
         target_height = self.sizeHint().height()
         self.resize(self.width(), target_height)
         self.setMinimumHeight(target_height)
+        # The page range row alone asks for more than the base width, so a fixed
+        # dialog clipped the right-hand column. Grow to fit whichever workflow
+        # is showing instead of cutting its last control.
+        target_width = max(
+            RUN_PIPELINE_DIALOG_WIDTH,
+            current_page.minimumSizeHint().width() + 44,
+        )
+        if self.width() < target_width:
+            self.setMinimumWidth(target_width)
+            self.resize(target_width, target_height)
 
     def _create_expanding_header(
         self,
@@ -1586,15 +1744,53 @@ class RunPipelineDialog(QDialog):
 
     def _set_pipeline_page(self, index: int, persist: bool = True):
         rendering = index == 1
+        extract_only = index == 2
+        multi_extract = index == 3
         if persist:
-            pcfg.run_pipeline_mode = 'rendering' if rendering else 'pipeline'
-        self.content_stack.setCurrentIndex(1 if rendering else 0)
+            pcfg.run_pipeline_mode = self.WORKFLOW_MODES[index]
+        stack_index = 1 if rendering else (2 if multi_extract else 0)
+        self.content_stack.setCurrentIndex(stack_index)
+        self._apply_stage_visibility(extract_only)
         self.run_button.setVisible(not rendering)
-        self.continue_button.setVisible(not rendering)
+        self.continue_button.setVisible(not rendering and not multi_extract)
         self.render_button.setVisible(rendering)
         self.render_button.setDefault(rendering)
         self.continue_button.setDefault(not rendering)
         self._fit_to_current_workflow()
+
+    def _apply_stage_visibility(self, extract_only: bool) -> None:
+        """Show only the stages the selected workflow can actually run."""
+        for display_index, (activator, button) in enumerate(
+            zip(self.module_activators, self.module_buttons)
+        ):
+            hidden = extract_only and display_index in self.EXTRACTION_HIDDEN_STAGES
+            activator.setVisible(not hidden)
+            section = self.settings_sections.get(display_index)
+            if section is None:
+                continue
+            body = self.module_settings_bodies.get(display_index)
+            section.setVisible(
+                not hidden
+                and button.isChecked()
+                and body is not None
+                and self._settings_section_has_content(body)
+            )
+
+    def is_extraction_mode(self) -> bool:
+        """True when the text-extraction workflow is selected.
+
+        >>> RunPipelineDialog.WORKFLOW_MODES[2]
+        'extraction'
+        """
+        return self.workflow_selector.currentIndex() == 2
+
+    def is_multi_extract_mode(self) -> bool:
+        """True when the multi-pass extraction workflow is selected.
+
+        >>> RunPipelineDialog.WORKFLOW_MODES[3]
+        'multi_extraction'
+        """
+        return self.workflow_selector.currentIndex() == 3
 
     def _on_render_without_text_style_update_changed(self, checked: bool):
         pcfg.render_without_text_style_update = checked

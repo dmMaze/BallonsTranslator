@@ -48,6 +48,7 @@ from ballontranslator.ui.text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
 )
+from ballontranslator.utils import shared
 from ballontranslator.utils.config import (
     AutoTateChuYokoConfig,
     LLMTranslateContext,
@@ -75,11 +76,46 @@ from ballontranslator.modules.translators.base import postprocess_translation_te
 from ballontranslator.modules.translators.trans_llm import LLMTranslator
 
 
+# Dialogs persist their settings when they are destroyed, and that happens
+# after the per-test save_config patch is stopped. Point CONFIG_PATH at a
+# scratch file for the whole module, otherwise such a stray save dumps pcfg
+# defaults over the developer's real config/config.json.
+_config_dir = None
+_original_config_path = None
+
+
+def setUpModule():
+    global _config_dir, _original_config_path
+    _original_config_path = shared.CONFIG_PATH
+    _config_dir = tempfile.TemporaryDirectory()
+    shared.CONFIG_PATH = os.path.join(_config_dir.name, 'config.json')
+
+
+def tearDownModule():
+    # Collect leftover dialogs while the scratch path is still in place, then
+    # restore the real path so later modules are unaffected.
+    get_app().processEvents()
+    gc.collect()
+    shared.CONFIG_PATH = _original_config_path
+    _config_dir.cleanup()
+
+
 def get_app():
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
     return app
+
+
+class _MainWindowHost(SimpleNamespace):
+    """Stub host that can run the dialog-entry extraction stage override."""
+
+    def _begin_extract_only_run(self) -> None:
+        MainWindow._begin_extract_only_run(self)
+
+    def _end_extract_only_run(self) -> None:
+        MainWindow._end_extract_only_run(self)
+
 
 
 class RunPipelineDialogTests(unittest.TestCase):
@@ -433,7 +469,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(selector.currentIndex(), 0)
         self.assertEqual(
             [selector.itemText(i) for i in range(selector.count())],
-            ['Pipeline', 'Rendering'],
+            ['Pipeline', 'Rendering', 'Text Extraction', 'Multi-Pass Extraction'],
         )
         module_buttons = dialog.findChildren(PipelineModuleButton, 'RunPipelineModuleButton')
         self.assertEqual(len(module_buttons), 4)
@@ -1080,12 +1116,14 @@ class RunPipelineDialogTests(unittest.TestCase):
             def connect(self, _slot):
                 pass
 
-        owner = SimpleNamespace(
+        owner = _MainWindowHost(
             imgtrans_proj=SimpleNamespace(is_all_pages_no_text=True),
+            _extract_stage_backup=None,
             on_run_imgtrans=lambda **kwargs: calls.append(kwargs),
             module_manager=SimpleNamespace(
                 translator_metadata=lambda: {},
                 module_selection_changed=FakeSignal(),
+                is_pipeline_busy=lambda: False,
             ),
             on_trans_src_changed=lambda _source: None,
             on_trans_tgt_changed=lambda _target: None,
@@ -1101,6 +1139,9 @@ class RunPipelineDialogTests(unittest.TestCase):
             RENDER = RunPipelineDialog.RENDER
             result = 0
             preserve_style = False
+            extract_only = False
+            multi_extract = False
+            multi_slots = []
             pages = ['page-2']
             deleted_count = 0
 
@@ -1122,6 +1163,15 @@ class RunPipelineDialogTests(unittest.TestCase):
 
             def selected_pages(self):
                 return self.pages
+
+            def is_extraction_mode(self):
+                return self.extract_only
+
+            def is_multi_extract_mode(self):
+                return self.multi_extract
+
+            def enabled_multi_extract_slots(self):
+                return self.multi_slots
 
             def setModuleSelection(self, _module_type, _module_name):
                 pass
@@ -1146,6 +1196,17 @@ class RunPipelineDialogTests(unittest.TestCase):
             self.assertEqual(calls, [{'pages_to_process': ['page-2']}])
 
             calls.clear()
+            FakeDialog.extract_only = True
+            pcfg.module.set_stage_enabled(2, True)
+            pcfg.module.set_stage_enabled(3, True)
+            MainWindow.run_imgtrans(owner)
+            self.assertEqual(calls, [{'pages_to_process': ['page-2']}])
+            # The dialog entry restores what the extraction workflow disabled.
+            self.assertTrue(pcfg.module.enable_translate)
+            self.assertTrue(pcfg.module.enable_inpaint)
+            FakeDialog.extract_only = False
+
+            calls.clear()
             FakeDialog.result = FakeDialog.RENDER
             FakeDialog.preserve_style = True
             MainWindow.run_imgtrans(owner)
@@ -1156,7 +1217,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             FakeDialog.result = 0
             MainWindow.run_imgtrans(owner)
             self.assertEqual(calls, [])
-            self.assertEqual(FakeDialog.deleted_count, 4)
+            self.assertEqual(FakeDialog.deleted_count, 5)
 
     def test_view_actions_only_control_bottom_bar_visibility(self):
         window = QMainWindow()
@@ -1279,6 +1340,39 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(dialog.workflow_selector.currentText(), 'Pipeline')
         self.assertEqual(pcfg.run_pipeline_mode, 'automation')
         dialog.close()
+
+    def test_text_extraction_workflow_hides_image_rewriting_stages(self):
+        dialog = RunPipelineDialog()
+        dialog.show()
+        self.addCleanup(dialog.close)
+
+        dialog.workflow_selector.setCurrentIndex(2)
+
+        self.assertTrue(dialog.is_extraction_mode())
+        self.assertEqual(pcfg.run_pipeline_mode, 'extraction')
+        self.assertEqual(dialog.content_stack.currentIndex(), 0)
+        for display_index in RunPipelineDialog.EXTRACTION_HIDDEN_STAGES:
+            self.assertFalse(dialog.module_activators[display_index].isVisible())
+            self.assertFalse(dialog.settings_sections[display_index].isVisible())
+        self.assertTrue(dialog.module_activators[0].isVisible())
+        self.assertTrue(dialog.module_activators[1].isVisible())
+        self.assertTrue(dialog.run_button.isVisible())
+        self.assertTrue(dialog.continue_button.isVisible())
+        self.assertFalse(dialog.render_button.isVisible())
+
+    def test_leaving_text_extraction_restores_stage_visibility(self):
+        dialog = RunPipelineDialog()
+        dialog.show()
+        self.addCleanup(dialog.close)
+
+        dialog.workflow_selector.setCurrentIndex(2)
+        dialog.workflow_selector.setCurrentIndex(0)
+
+        self.assertFalse(dialog.is_extraction_mode())
+        self.assertEqual(pcfg.run_pipeline_mode, 'pipeline')
+        for display_index in RunPipelineDialog.EXTRACTION_HIDDEN_STAGES:
+            self.assertTrue(dialog.module_activators[display_index].isVisible())
+            self.assertTrue(dialog.settings_sections[display_index].isVisible())
 
     def test_fresh_run_only_resets_and_dispatches_selected_pages(self):
         pcfg.module.set_stage_enabled(3, False)
@@ -2085,6 +2179,73 @@ class RunPipelineDialogTests(unittest.TestCase):
 
         self.assertEqual(pages, [0, 1, 2])
         self.assertEqual(finished, [True])
+
+
+class TextExtractionRunOverrideTest(unittest.TestCase):
+    """Text extraction borrows the pipeline but must not keep its overrides."""
+
+    def setUp(self):
+        self._stages = [pcfg.module.stage_enabled(idx) for idx in range(4)]
+
+    def tearDown(self):
+        for idx, enabled in enumerate(self._stages):
+            pcfg.module.set_stage_enabled(idx, enabled)
+
+    def _enable_image_stages(self) -> None:
+        pcfg.module.set_stage_enabled(2, True)
+        pcfg.module.set_stage_enabled(3, True)
+
+    def test_begin_disables_and_end_restores_image_stages(self):
+        self._enable_image_stages()
+        owner = _MainWindowHost(_extract_stage_backup=None)
+
+        MainWindow._begin_extract_only_run(owner)
+
+        self.assertFalse(pcfg.module.enable_translate)
+        self.assertFalse(pcfg.module.enable_inpaint)
+        self.assertIsNotNone(owner._extract_stage_backup)
+
+        MainWindow._end_extract_only_run(owner)
+
+        self.assertTrue(pcfg.module.enable_translate)
+        self.assertTrue(pcfg.module.enable_inpaint)
+        self.assertIsNone(owner._extract_stage_backup)
+
+    def test_end_without_begin_leaves_stage_flags_untouched(self):
+        self._enable_image_stages()
+        owner = _MainWindowHost(_extract_stage_backup=None)
+
+        MainWindow._end_extract_only_run(owner)
+
+        self.assertTrue(pcfg.module.enable_translate)
+        self.assertTrue(pcfg.module.enable_inpaint)
+
+    def test_repeated_begin_keeps_the_original_stage_flags(self):
+        self._enable_image_stages()
+        owner = _MainWindowHost(_extract_stage_backup=None)
+
+        MainWindow._begin_extract_only_run(owner)
+        MainWindow._begin_extract_only_run(owner)
+        MainWindow._end_extract_only_run(owner)
+
+        self.assertTrue(pcfg.module.enable_translate)
+        self.assertTrue(pcfg.module.enable_inpaint)
+
+    def test_pipeline_busy_covers_module_preparation(self):
+        manager = SimpleNamespace(
+            imgtrans_thread=SimpleNamespace(isRunning=lambda: False),
+            _module_preparation_running=lambda: True,
+        )
+
+        self.assertTrue(ModuleManager.is_pipeline_busy(manager))
+
+    def test_pipeline_busy_is_false_when_idle(self):
+        manager = SimpleNamespace(
+            imgtrans_thread=SimpleNamespace(isRunning=lambda: False),
+            _module_preparation_running=lambda: False,
+        )
+
+        self.assertFalse(ModuleManager.is_pipeline_busy(manager))
 
 
 if __name__ == '__main__':

@@ -13,7 +13,16 @@ from qtpy.QtWidgets import (
     QStyleOptionGraphicsItem,
     QGraphicsSceneMouseEvent,
 )
-from qtpy.QtCore import Qt, QRect, QRectF, QPoint, QPointF, QMimeData, Signal
+from qtpy.QtCore import (
+    QCoreApplication,
+    Qt,
+    QRect,
+    QRectF,
+    QPoint,
+    QPointF,
+    QMimeData,
+    Signal,
+)
 from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
                        QInputMethodEvent, QFocusEvent, QPainter, QColor, QTextCharFormat,
                        QBrush, QFontMetrics, QPen,
@@ -167,6 +176,120 @@ class _OrderBadgeItem(QGraphicsItem):
         self.update()
 
 
+class _ConflictBadgeItem(QGraphicsItem):
+    """Mark a block whose multi-pass extraction readings disagree.
+
+    Drawn as a fixed-size dot straddling the block's bottom-right corner, so it
+    stays legible at any zoom and never covers the text. A left click is the
+    review entry point: it asks the owner to open the review dialog.
+
+    >>> _ConflictBadgeItem.DIAMETER
+    15.6
+    """
+
+    DIAMETER = 15.6
+    FILL_COLOR = QColor(214, 48, 49)
+
+    def __init__(
+        self,
+        parent: QGraphicsItem,
+        activate: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(parent)
+        self._font = QFont()
+        self._font.setBold(True)
+        self._font.setPixelSize(12)
+        self._activate = activate
+        self._hovered = False
+        # Take the press here: passing it to the block would start a drag and
+        # never reach the badge's own release.
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
+        self.setAcceptHoverEvents(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(
+            QCoreApplication.translate(
+                'TextBlkItem', 'Review the conflicting readings'
+            )
+        )
+        self.setFlag(
+            QGraphicsItem.GraphicsItemFlag.ItemIgnoresTransformations,
+            True,
+        )
+        # Keep the badge out of the parent's cached paint surface.
+        self.setCacheMode(QGraphicsItem.CacheMode.NoCache)
+        self.setZValue(101.0)
+        self.hide()
+
+    def boundingRect(self) -> QRectF:
+        return QRectF(0, 0, self.DIAMETER, self.DIAMETER)
+
+    def paint(
+        self,
+        painter: QPainter,
+        _option: QStyleOptionGraphicsItem,
+        _widget: Optional[QWidget] = None,
+    ) -> None:
+        painter.save()
+        try:
+            painter.setCompositionMode(
+                QPainter.CompositionMode.CompositionMode_SourceOver
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(self.FILL_COLOR)
+            painter.drawEllipse(
+                QRectF(0, 0, self.DIAMETER, self.DIAMETER)
+            )
+            if self._hovered:
+                inset = 1.0
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor(255, 255, 255), 1.4))
+                painter.drawEllipse(
+                    QRectF(
+                        inset,
+                        inset,
+                        self.DIAMETER - 2 * inset,
+                        self.DIAMETER - 2 * inset,
+                    )
+                )
+            painter.setPen(Qt.GlobalColor.white)
+            painter.setFont(self._font)
+            painter.drawText(
+                QRectF(0, 0, self.DIAMETER, self.DIAMETER),
+                Qt.AlignmentFlag.AlignCenter,
+                '!',
+            )
+        finally:
+            painter.restore()
+
+    def activate(self) -> None:
+        """Ask the owner to open the review dialog."""
+        if self._activate is not None:
+            self._activate()
+
+    def _set_hovered(self, hovered: bool) -> None:
+        if self._hovered == hovered:
+            return
+        self._hovered = hovered
+        self.update()
+
+    def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+        self._set_hovered(True)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
+        self._set_hovered(False)
+        super().hoverLeaveEvent(event)
+
+    def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        # Keep the press away from the block underneath.
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+        event.accept()
+        if self.boundingRect().contains(event.pos()):
+            self.activate()
+
+
 class TextBlkItem(QGraphicsTextItem):
 
     begin_edit = Signal(int)
@@ -184,6 +307,7 @@ class TextBlkItem(QGraphicsTextItem):
     propagate_user_edited = Signal(int, int, str, bool)
     visual_geometry_changed = Signal()
     inline_format_changed = Signal()
+    review_multi_extract = Signal()
 
     def __init__(self, blk: TextBlock = None, idx: int = 0, set_format=True, show_rect=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -201,6 +325,7 @@ class TextBlkItem(QGraphicsTextItem):
         self._order_badge_visible = False
         self._order_number_override: Optional[int] = None
         self._order_badge_item: Optional[_OrderBadgeItem] = None
+        self._conflict_badge_item: Optional[_ConflictBadgeItem] = None
         self.old_ffmt_values = None
         
         self.idx = idx
@@ -238,8 +363,13 @@ class TextBlkItem(QGraphicsTextItem):
         )
         self.geometry_controller.finish_initialization()
         self._order_badge_item = _OrderBadgeItem(self)
+        self._conflict_badge_item = _ConflictBadgeItem(
+            self, self._on_conflict_badge_activated
+        )
         self.visual_geometry_changed.connect(self._sync_order_badge)
+        self.visual_geometry_changed.connect(self._sync_conflict_badge)
         self._sync_order_badge()
+        self._sync_conflict_badge()
 
     def inputMethodEvent(self, e: QInputMethodEvent) -> None:
         if self._resetting_ime:
@@ -1250,6 +1380,31 @@ class TextBlkItem(QGraphicsTextItem):
                 )
         badge.setVisible(visible)
 
+    def refresh_conflict_badge(self) -> None:
+        """Refresh the review marker after the block's payload changes."""
+        self._sync_conflict_badge()
+
+    def _on_conflict_badge_activated(self) -> None:
+        self.review_multi_extract.emit()
+
+    def _sync_conflict_badge(self) -> None:
+        badge = self._conflict_badge_item
+        if badge is None:
+            return
+        visible = (
+            not self._ui_guide_suppressed
+            and not self.isEditing()
+            and bool(getattr(self.blk, 'multi_extract', None))
+        )
+        if visible:
+            outline = self.geometry_controller.visual_outline_in_item()
+            visible = not outline.isEmpty()
+            if visible:
+                anchor = outline.boundingRect().bottomRight()
+                half = badge.DIAMETER / 2
+                badge.setPos(anchor - QPointF(half, half))
+        badge.setVisible(visible)
+
     def set_order_number_override(self, order_number: Optional[int]) -> None:
         """Set a transient order preview without changing project state."""
         if order_number is not None:
@@ -1296,6 +1451,7 @@ class TextBlkItem(QGraphicsTextItem):
             return
         self._ui_guide_suppressed = suppressed
         self._sync_order_badge()
+        self._sync_conflict_badge()
         self.update()
 
 
@@ -1304,6 +1460,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.refresh_cache_policy()
         self._sync_order_badge()
+        self._sync_conflict_badge()
         self.setFocus()
         self.begin_edit.emit(self.idx)
         if pos is not None:
@@ -1321,6 +1478,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self.refresh_cache_policy()
         self._sync_order_badge()
+        self._sync_conflict_badge()
         if keep_focus:
             self.setFocus()
 

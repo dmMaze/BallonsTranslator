@@ -2047,6 +2047,14 @@ class ModuleManager(QObject):
         package_running = self.package_install_thread is not None and self.package_install_thread.isRunning()
         return package_running or any(thread.isRunning() for thread in module_threads)
 
+    def is_pipeline_busy(self) -> bool:
+        """True while page-pipeline modules prepare or pages are being processed.
+
+        Run-scoped stage overrides must outlive this window: preparation loads
+        modules asynchronously before the pipeline thread itself starts.
+        """
+        return self.imgtrans_thread.isRunning() or self._module_preparation_running()
+
     def _selected_modules(self) -> List[tuple]:
         return [
             ('textdetector', cfg_module.textdetector),

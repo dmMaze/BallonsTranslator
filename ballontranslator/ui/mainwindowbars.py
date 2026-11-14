@@ -142,6 +142,9 @@ class LeftBar(Widget):
         actionExportTranslationMD = QAction(self.tr("Export translation as markdown"), self)
         self.export_trans_md = actionExportTranslationMD.triggered
 
+        actionImportSourceTxt = QAction(self.tr("Import source text from TXT/markdown"), self)
+        self.import_src_txt = actionImportSourceTxt.triggered
+
         actionImportTranslationTxt = QAction(self.tr("Import translation from TXT/markdown"), self)
         self.import_trans_txt = actionImportTranslationTxt.triggered
 
@@ -162,6 +165,7 @@ class LeftBar(Widget):
             actionExportTranslationTxt,
             actionExportSrcMD,
             actionExportTranslationMD,
+            actionImportSourceTxt,
             actionImportTranslationTxt,
         ])
         self.openBtn.setMenu(openMenu)
@@ -325,10 +329,18 @@ class TitleBar(Widget):
         replaceOCRkeyword = QAction(self.tr("Keyword substitution for source text"), self)
         self.replaceOCRkeyword_trigger = replaceOCRkeyword.triggered
 
+        actionReviewMultiExtract = QAction(self.tr('Review Multi-Pass Extraction'), self)
+        # Nothing to review until a multi-pass run leaves disagreements behind.
+        actionReviewMultiExtract.setEnabled(False)
+        self.reviewMultiExtractAction = actionReviewMultiExtract
+        self.review_multi_extract_trigger = actionReviewMultiExtract.triggered
+
         editMenu = QMenu(self.editToolBtn)
         editMenu.addActions([undoAction, redoAction])
         editMenu.addSeparator()
         editMenu.addActions([pageSearchAction, globalSearchAction, replaceOCRkeyword, replacePreMTkeyword, replaceMTkeyword])
+        editMenu.addSeparator()
+        editMenu.addAction(actionReviewMultiExtract)
         self.editToolBtn.setMenu(editMenu)
         self.editToolBtn.setPopupMode(QToolButton.InstantPopup)
 

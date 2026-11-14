@@ -413,5 +413,103 @@ class ProjectTranslationTargetTest(unittest.TestCase):
         self.assertTrue(missing_info['finish_code'] & RunStatus.FIN_TRANSLATE)
         self.assertEqual(missing_info['translation_target'], 'stale-target')
 
+class ProjectSourceTextImportTest(unittest.TestCase):
+    """Source import overwrites OCR text and invalidates stale translations."""
+
+    @staticmethod
+    def _project(page_texts):
+        project = ProjImgTrans()
+        project.pages = {
+            page_name: [
+                TextBlock(text=[text], translation='旧译文')
+                for text in texts
+            ]
+            for page_name, texts in page_texts.items()
+        }
+        project._image_info = {
+            page_name: {
+                'finish_code': RunStatus.FIN_OCR | RunStatus.FIN_TRANSLATE,
+                'translation_target': 'stale-target',
+            }
+            for page_name in page_texts
+        }
+        return project
+
+    def test_import_overwrites_source_and_invalidates_translation(self):
+        imported_pages = [
+            {'page_name': '001.png', 'blk_list': ['新原文']},
+            {'page_name': '002.png', 'blk_list': ['第一条', '第二条']},
+        ]
+        project = self._project({
+            '001.png': ['旧原文'],
+            '002.png': ['旧一', '旧二'],
+        })
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages,
+        ):
+            all_matched, match_rst = project.load_source_from_txt('source.md')
+
+        self.assertTrue(all_matched)
+        self.assertEqual(match_rst['matched_pages'], {'001.png', '002.png'})
+        self.assertEqual(
+            [blk.get_text() for blk in project.pages['001.png']],
+            ['新原文'],
+        )
+        self.assertEqual(
+            [blk.get_text() for blk in project.pages['002.png']],
+            ['第一条', '第二条'],
+        )
+
+        # Importing source must not touch the translation payload itself.
+        for page_blocks in project.pages.values():
+            for blk in page_blocks:
+                self.assertEqual(blk.translation, '旧译文')
+
+        for info in project._image_info.values():
+            self.assertTrue(info['finish_code'] & RunStatus.FIN_OCR)
+            self.assertFalse(info['finish_code'] & RunStatus.FIN_TRANSLATE)
+            self.assertNotIn('translation_target', info)
+
+    def test_partial_import_reports_mismatches_and_resets_pages(self):
+        imported_pages = [
+            {'page_name': '001.png', 'blk_list': ['ok']},
+            {'page_name': '002.png', 'blk_list': ['只够第一块']},
+            {'page_name': '999.png', 'blk_list': ['多余页']},
+        ]
+        project = self._project({
+            '001.png': ['a'],
+            '002.png': ['b', 'c'],
+            '003.png': ['d'],
+        })
+
+        with patch(
+            'ballontranslator.utils.proj_imgtrans.parse_txt_translation',
+            return_value=imported_pages,
+        ):
+            all_matched, match_rst = project.load_source_from_txt('partial.md')
+
+        self.assertFalse(all_matched)
+        self.assertEqual(match_rst['missing_pages'], ['003.png'])
+        self.assertEqual(match_rst['unmatched_pages'], ['002.png'])
+        self.assertEqual(match_rst['unexpected_pages'], ['999.png'])
+
+        self.assertEqual(project.pages['002.png'][0].get_text(), '只够第一块')
+        self.assertEqual(project.pages['002.png'][1].get_text(), 'c')
+
+        imported_info = project._image_info['001.png']
+        self.assertTrue(imported_info['finish_code'] & RunStatus.FIN_OCR)
+
+        malformed_info = project._image_info['002.png']
+        self.assertFalse(malformed_info['finish_code'] & RunStatus.FIN_OCR)
+        self.assertFalse(malformed_info['finish_code'] & RunStatus.FIN_TRANSLATE)
+
+        # Pages absent from the import keep whatever state they had.
+        missing_info = project._image_info['003.png']
+        self.assertTrue(missing_info['finish_code'] & RunStatus.FIN_OCR)
+        self.assertEqual(project.pages['003.png'][0].get_text(), 'd')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -86,6 +86,7 @@ class CanvasSaveStateTests(unittest.TestCase):
         self.host.canvas = self.canvas
         self.host.opening_dir = False
         self.host._llm_context_dirty = False
+        self.host._imported_text_dirty = False
         # Exercise the actual page-change dirty check; isolate image rendering.
         self.host.saveCurrentPage = Mock(side_effect=self._save_page)
         self._save_page()
