@@ -2101,6 +2101,8 @@ class MainWindow(mainwindow_cls):
 
         if not enable_detect and enable_translate:
             for blkitem in self.st_manager.textblk_item_list:
+                if not blkitem.blk.get_text():
+                    continue
                 blkitem.squeezeBoundingRect()
 
         if page_index + 1 == self.imgtrans_proj.num_pages:
