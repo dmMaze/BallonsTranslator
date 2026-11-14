@@ -1154,7 +1154,15 @@ class ImgtransThread(QThread):
                 try:
                     # full_page is an LLMOCR-only extension; preserve the
                     # historical two-argument contract for custom OCR modules.
-                    if getattr(self.ocr, 'name', '') == LLM_OCR_KEY:
+                    if getattr(self.ocr, '_line_only', False):
+                        # Line-oriented models need the same split as the
+                        # manual OCR action for multiline text blocks.
+                        ocr_result = self.ocr.run_ocr(
+                            img,
+                            blk_list,
+                            split_textblk=True,
+                        )
+                    elif getattr(self.ocr, 'name', '') == LLM_OCR_KEY:
                         ocr_result = self.ocr.run_ocr(
                             img,
                             blk_list,
