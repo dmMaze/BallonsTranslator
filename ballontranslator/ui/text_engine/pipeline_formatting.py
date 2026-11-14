@@ -22,6 +22,7 @@ from .annotations import (
     apply_auto_text_combine_upright,
     apply_letter_spacing,
     apply_line_spacing,
+    has_auto_text_combine_character,
     load_rich_text_html,
     to_rich_text_html,
 )
@@ -102,9 +103,8 @@ def apply_auto_tate_chu_yoko(
             and (
                 not block.vertical
                 or not allowed_characters
-                or not any(
-                    character in allowed_characters
-                    for character in block.translation
+                or not has_auto_text_combine_character(
+                    block.translation, allowed_characters
                 )
             )
         ):
