@@ -1,6 +1,8 @@
 from typing import Tuple, List, Union
 import numpy as np
 import cv2
+import math
+
 
 from qtpy.QtCore import QRect, QRectF, Qt, QPointF, QSize
 from qtpy.QtWidgets import QStyleOptionGraphicsItem, QGraphicsPixmapItem, QWidget, QGraphicsItem
@@ -105,6 +107,7 @@ class StrokeImgItem(QGraphicsItem):
             pen.setJoinStyle(Qt.PenJoinStyle.MiterJoin)
             
         self.pen = pen
+        self.base_width = pen.widthF()
         self._d = d = pen.widthF()
         self._d_rect = d // 32
         self._r = d / 2
@@ -124,6 +127,8 @@ class StrokeImgItem(QGraphicsItem):
         self.cur_point = point
         self._br = QRectF(0, 0, size.width(), size.height())
         self.is_painting = True
+        self.has_dragged = False
+        self._total_distance = 0.0
 
         min_x = self.cur_point.x() - self._r
         min_y = self.cur_point.y() - self._r
@@ -178,7 +183,7 @@ class StrokeImgItem(QGraphicsItem):
         shape_rect = QRectF(pnt1.x() - self._r, pnt1.y() - self._r, self._d, self._d)
         self.painter.drawRect(shape_rect)
 
-    def lineTo(self, new_pnt: QPointF, update: bool = True, straight: bool = False) -> QRectF | None:
+    def lineTo(self, new_pnt: QPointF, update: bool = True, straight: bool = False, pressure: float = None) -> QRectF | None:
         """Extend the stroke; explicit straight segments also sweep square tips.
 
         >>> stroke = StrokeImgItem(QPen(Qt.GlobalColor.black, 4), QPointF(10, 10), QSize(40, 40))
@@ -186,7 +191,19 @@ class StrokeImgItem(QGraphicsItem):
         24.0
         >>> stroke.finishPainting()
         """
+        if pressure is not None and pressure > 0:
+            dyn_width = max(1.0, self.base_width * (0.2 + 0.8 * float(pressure)))
+            if abs(dyn_width - self.pen.widthF()) > 0.3:
+                self.pen.setWidthF(dyn_width)
+                self._d = dyn_width
+                self._r = dyn_width / 2.0
+                if self.shape == PenShape.Circle:
+                    self.painter.setPen(self.pen)
+
         delta = self.cur_point - new_pnt
+        self._total_distance += math.hypot(delta.x(), delta.y())
+        if self._total_distance > 10.0:
+            self.has_dragged = True
         delta_w, delta_h = abs(delta.x()),  abs(delta.y())
         rect = None
         if delta_w + delta_h > 1:
