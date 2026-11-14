@@ -1,7 +1,7 @@
 # modified from https://github.com/kha-white/manga-ocr/blob/master/manga_ocr/ocr.py
 import re
 import jaconv
-from transformers import AutoFeatureExtractor, AutoTokenizer, VisionEncoderDecoderModel
+from transformers import AutoFeatureExtractor, AutoTokenizer, LogitsProcessor, LogitsProcessorList, VisionEncoderDecoderModel
 import numpy as np
 import torch
 from typing import List
@@ -9,11 +9,48 @@ from typing import List
 from .base import OCRBase, register_OCR, DEFAULT_DEVICE, DEVICE_SELECTOR, TextBlock
 
 MANGA_OCR_PATH = r'data/models/manga-ocr-base'
+
+
+class VectorizedNoRepeatNGramLogitsProcessor(LogitsProcessor):
+    """Tensor-only ``no_repeat_ngram_size`` blocking, backported from transformers main.
+
+    The pinned transformers version builds Python dicts from ``.tolist()`` at
+    every generation step, which forces a device sync per token. This bans the
+    same tokens with tensor ops only: token t is banned for a row exactly when
+    some earlier n-gram in that row starts with the row's last n-1 tokens and
+    ends with t.
+
+    >>> p = VectorizedNoRepeatNGramLogitsProcessor(2)
+    >>> torch.isinf(p(torch.tensor([[1, 2, 1]]), torch.zeros(1, 4))).nonzero().tolist()
+    [[0, 2]]
+    """
+
+    def __init__(self, ngram_size: int) -> None:
+        self.ngram_size = ngram_size
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        cur_len = input_ids.shape[-1]
+        if cur_len < self.ngram_size:
+            return scores
+        prefix = input_ids[:, cur_len + 1 - self.ngram_size:]
+        windows = input_ids.unfold(dimension=1, size=self.ngram_size, step=1)
+        matches = (windows[..., :-1] == prefix.unsqueeze(1)).all(dim=-1)
+        vocab_size = scores.shape[-1]
+        # Non-matching windows scatter into a spare column past the vocabulary.
+        banned = scores.new_zeros((scores.shape[0], vocab_size + 1), dtype=torch.bool)
+        banned.scatter_(1, torch.where(matches, windows[..., -1].clamp(max=vocab_size), vocab_size), True)
+        return scores.masked_fill(banned[:, :vocab_size], -float('inf'))
+
+
 class MangaOcr:
     def __init__(self, pretrained_model_name_or_path=MANGA_OCR_PATH, device='cpu'):
         self.feature_extractor = AutoFeatureExtractor.from_pretrained(pretrained_model_name_or_path)
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
         self.model = VisionEncoderDecoderModel.from_pretrained(pretrained_model_name_or_path)
+        # Swap the model's built-in n-gram blocker for the equivalent tensor-only one.
+        ngram_size = self.model.generation_config.no_repeat_ngram_size or 0
+        self.model.generation_config.no_repeat_ngram_size = 0
+        self.logits_processor = LogitsProcessorList([VectorizedNoRepeatNGramLogitsProcessor(ngram_size)] if ngram_size > 0 else [])
         self.to(device)
         
     def to(self, device):
@@ -22,7 +59,7 @@ class MangaOcr:
     @torch.no_grad()
     def __call__(self, img: np.ndarray):
         x = self.feature_extractor(img, return_tensors="pt").pixel_values.squeeze()
-        x = self.model.generate(x[None].to(self.model.device))[0].cpu()
+        x = self.model.generate(x[None].to(self.model.device), logits_processor=self.logits_processor)[0].cpu()
         x = self.tokenizer.decode(x, skip_special_tokens=True)
         x = post_process(x)
         return x
