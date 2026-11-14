@@ -7,7 +7,7 @@ PACKAGE_IMPORT_NAMES = {
     'gguf': ['gguf'],
     'httpx': ['httpx'],
     'jaconv': ['jaconv'],
-    'msl-loadlib': ['msl'],
+    'msl-loadlib': ['msl.loadlib'],
     'openai': ['openai'],
     'onnxruntime': ['onnxruntime'],
     'onnxruntime-gpu': ['onnxruntime'],
