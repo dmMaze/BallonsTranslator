@@ -2,6 +2,12 @@ from typing import Mapping, Tuple
 
 ModuleParamKey = Tuple[str, str, str, str]
 
+
+def module_display_name(module_key: str) -> str:
+    """Keep presentation names separate from persisted module keys."""
+    return {'koharu': 'koharu-layout-highres'}.get(module_key, module_key)
+
+
 try:
     from ._generated.module_param_dialog_i18n_catalog import MODULE_PARAM_CATALOG
 except Exception:

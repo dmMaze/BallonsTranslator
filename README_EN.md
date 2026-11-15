@@ -216,6 +216,7 @@ This project is heavily dependent upon [manga-image-translator](https://github.c
  
  * `YSGDetector` models are trained by [lhj5426](https://github.com/lhj5426), these models would filter out onomatopoeia in CGs/Manga, download checkpoints from [YSGYoloDetector](https://huggingface.co/YSGforMTL/YSGYoloDetector) and put into `data/models`. 
  * Select `ysg_ctd` to combine YSG text boxes with CTD glyph masks. Lines missed by CTD keep their box masks; CTD inference failure falls back to YSG masks. Its settings are independent of `ysgyolo` and `ctd`, and selecting it prepares both models.
+ * Select `koharu-layout-highres` for local [Koharu Layout HighRes](https://huggingface.co/mayocream/koharu-layout-highres) text regions and segmentation masks, with separate text/onomatopoeia filters and a default inference size of 1152. Requires Python 3.10+ and Transformers 5; place `model.safetensors` and `config.json` in `data/models/koharu-layout-highres`.
 
 
 ## OCR

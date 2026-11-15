@@ -27,6 +27,7 @@ from .llm_modality import (
     LLM_MODALITY_VISION_COLOR,
 )
 from .misc import themed_icon_path
+from .module_param_i18n import module_display_name
 from ballontranslator.utils import shared
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils.llm_profiles import (
@@ -317,7 +318,7 @@ class ModuleSelectionMenu(QMenu):
                 continue
             _add_bottom_menu_action(
                 self,
-                module,
+                module_display_name(module),
                 module == current_module,
                 module,
                 self._select_module_action,
@@ -438,7 +439,7 @@ class ModuleSelectionMenu(QMenu):
         return _simplify_llm_model_name(model) or profile.name or self.llm_key
 
     def selectedText(self) -> str:
-        name = self.selector.currentText()
+        name = module_display_name(self.selector.currentText())
         is_llm = self.isCurrentLLM()
         if is_llm:
             profile = profile_by_id(pcfg.module.llm_profiles, self.selectedProfileId())
