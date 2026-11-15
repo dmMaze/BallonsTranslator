@@ -7,7 +7,10 @@ import os.path as osp
 import os
 import shutil
 import subprocess
+import threading
 from platform import platform
+from types import TracebackType
+from typing import Optional, Type
 
 
 git = os.environ.get('GIT', "git")
@@ -251,7 +254,38 @@ def core_requirements_env(config_path: str) -> dict:
     return installer_env_with_pypi_mirror(os.environ.copy(), read_saved_pypi_mirror(config_path))
 
 
-def main():
+def install_exception_hooks() -> None:
+    """Route uncaught Python failures through the existing error reporting path.
+
+    >>> callable(install_exception_hooks)
+    True
+    """
+    from ballontranslator.utils.logger import logger as LOGGER
+    from ballontranslator.utils.message import create_error_dialog
+
+    original_hook = sys.excepthook
+
+    def exception_hook(
+        exception_type: Type[BaseException],
+        exception: BaseException,
+        traceback: Optional[TracebackType],
+    ) -> None:
+        if issubclass(exception_type, KeyboardInterrupt):
+            original_hook(exception_type, exception, traceback)
+            return
+        LOGGER.error('Unhandled Python exception', exc_info=(exception_type, exception, traceback))
+        # Before UI initialization the shared dialog dispatcher safely does nothing.
+        create_error_dialog(exception, exception_type='UnhandledPythonException')
+
+    def thread_exception_hook(args: threading.ExceptHookArgs) -> None:
+        LOGGER.error('Unhandled Python thread exception',
+                     exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+
+    sys.excepthook = exception_hook
+    threading.excepthook = thread_exception_hook
+
+
+def main() -> None:
 
     if args.debug:
         os.environ['BALLOONTRANS_DEBUG'] = '1'
@@ -274,6 +308,7 @@ def main():
     from ballontranslator.utils.logger import setup_logging, logger as LOGGER
     from ballontranslator.utils.network_mirrors import auto_fill_network_mirrors
     setup_logging(shared.LOGGING_PATH)
+    install_exception_hooks()
     ensure_resource_theme_files(APP_DIR, LOGGER)
     updated_mirrors = auto_fill_network_mirrors(args.config_path, LOGGER)
 

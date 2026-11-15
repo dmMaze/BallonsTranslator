@@ -767,6 +767,8 @@ class ImgtransThread(QThread):
         self.translate_thread = translate_thread
         self.translate_thread.module_thread_stopped.connect(self.on_module_thread_stopped)
         self.translate_thread.finished.connect(self.on_module_thread_stopped)
+        # The translator can finish while this worker is still unwinding.
+        self.finished.connect(self.on_module_thread_stopped)
         self.inpaint_thread = inpaint_thread
         self.job = None
         self.imgtrans_proj: ProjImgTrans = None
@@ -775,7 +777,7 @@ class ImgtransThread(QThread):
         self.pages_to_process = None
         register_global_callback('user_request_stop', self.isStopRequested)
 
-    def on_module_thread_stopped(self):
+    def on_module_thread_stopped(self) -> None:
         self._emit_pipeline_stopped_if_ready(imgtrans_running=self.isRunning())
 
     def isStopRequested(self):
@@ -787,7 +789,7 @@ class ImgtransThread(QThread):
         self.stop_event = threading.Event()
         self._pipeline_stop_emitted = False
 
-    def _emit_pipeline_stopped_if_ready(self, imgtrans_running: bool):
+    def _emit_pipeline_stopped_if_ready(self, imgtrans_running: bool) -> None:
         if not self.isStopRequested() or self._pipeline_stop_emitted:
             return
         if imgtrans_running or self.translate_thread.isRunning():
@@ -1335,7 +1337,7 @@ class ImgtransThread(QThread):
             return True
         return self.inpaint_counter == self.num_pages or not cfg_module.enable_inpaint
 
-    def run(self):
+    def run(self) -> None:
         try:
             if self.job is not None:
                 self.job()
@@ -1352,6 +1354,8 @@ class ImgtransThread(QThread):
             self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         except Exception as e:
             create_error_dialog(e, self.tr('Image translation failed.'), 'ImageTranslationFailed')
+            self.requestStop()
+            self._emit_pipeline_stopped_if_ready(imgtrans_running=False)
         finally:
             self.job = None
 
@@ -1639,7 +1643,7 @@ class ModuleManager(QObject):
         missing_modules: List[MissingModuleRequirements],
         on_success: Callable,
         on_failure: Callable = None,
-    ):
+    ) -> None:
         requirements = self._combined_missing_requirements(missing_modules)
         missing_text = self._missing_modules_text(missing_modules)
 
@@ -1657,8 +1661,13 @@ class ModuleManager(QObject):
             self._install_batch_missing_packages(queue, requirements, on_success, on_failure)
             return
 
+        self._show_dependency_install_cancelled()
         if on_failure is not None:
             on_failure()
+
+    def _show_dependency_install_cancelled(self) -> None:
+        if not shared.HEADLESS:
+            create_info_dialog(self.tr('Run cancelled: required packages were not installed.'))
 
     def _ask_install_missing_package_batch(
         self,
@@ -1689,7 +1698,7 @@ class ModuleManager(QObject):
         requirements: List[str],
         on_success: Callable,
         on_failure: Callable = None,
-    ):
+    ) -> None:
         if self.package_install_thread is None:
             raise RuntimeError('Package install thread is not initialized.')
         if self.package_install_thread.isRunning():
@@ -1699,6 +1708,7 @@ class ModuleManager(QObject):
             return
         accepted, torch_device, torch_cuda_version = self._confirm_torch_install_device(requirements)
         if not accepted:
+            self._show_dependency_install_cancelled()
             if on_failure is not None:
                 on_failure()
             return
@@ -2073,9 +2083,9 @@ class ModuleManager(QObject):
 
     def runImgtransPipeline(
         self,
-        pages_to_process=None,
-        render_only=False,
-    ):
+        pages_to_process: Optional[List[str]] = None,
+        render_only: bool = False,
+    ) -> None:
         _reset_llm_key_required_dialogs()
         if self.imgtrans_proj.is_empty:
             LOGGER.info('proj file is empty, nothing to do')
@@ -2118,8 +2128,12 @@ class ModuleManager(QObject):
             lambda: self._startImgtransPipeline(
                 pages_to_process,
             ),
-            on_failure=lambda: self.imgtrans_pipeline_finished.emit() if shared.HEADLESS else None,
+            on_failure=self._on_imgtrans_prepare_failed,
         )
+
+    def _on_imgtrans_prepare_failed(self) -> None:
+        if shared.HEADLESS:
+            self.imgtrans_pipeline_finished.emit()
 
     def _startImgtransPipeline(
         self,

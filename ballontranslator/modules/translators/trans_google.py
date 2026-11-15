@@ -13,6 +13,12 @@ class TranslateError(ProviderError):
     pass
 
 
+GOOGLE_TRANSLATE_FAILURE = (
+    "Google Translate is unreachable or returned no result. "
+    "Check your network/proxy, or choose another translator."
+)
+
+
 # --- Constants for Google Translate ---
 USER_AGENT_BROWSER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
 # Use the API key from your example as a constant
@@ -77,7 +83,7 @@ class GoogleTranslateProviderPython:
 
     def translate(
         self, text_list: List[str], target_language: str, source_language: str = "auto"
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Union[str, List[str]]]:
         """
         Переводит список текстов.
         source_language: 'auto' или код языка (например, 'en')
@@ -87,11 +93,15 @@ class GoogleTranslateProviderPython:
             return {"lang": target_language, "translations": []}
 
         translations_result = []
+        failed_count = 0
+        source_count = 0
+        last_error: Optional[ProviderError] = None
         for text_item in text_list:
             if not text_item or not text_item.strip():
                 translations_result.append("")
                 continue
 
+            source_count += 1
             payload = [[[text_item], source_language, target_language], "wt_lib"]
 
             try:
@@ -114,12 +124,20 @@ class GoogleTranslateProviderPython:
                         ):
                             extracted_text = first_inner_item[0]
 
-                if extracted_text:
-                    translations_result.append(html.unescape(extracted_text))
-                else:
-                    translations_result.append("")
-            except ProviderError:
+                translated_text = html.unescape(extracted_text or "")
+                if not translated_text.strip():
+                    raise ProviderError("Google Translate returned an empty or invalid response.")
+                translations_result.append(translated_text)
+            except ProviderError as e:
+                failed_count += 1
+                last_error = e
                 translations_result.append("")
+
+        if failed_count:
+            if failed_count == source_count:
+                raise TranslateError(GOOGLE_TRANSLATE_FAILURE) from last_error
+            LOGGER.warning("Google Translate failed for %d of %d non-empty source items.",
+                           failed_count, source_count)
 
         return {"lang": target_language, "translations": translations_result}
 
@@ -162,8 +180,8 @@ class TransGoogle(BaseTranslator):
         self.lang_map["Tamil"] = "ta"
 
     def _translate(self, src_list: List[str]) -> List[str]:
-        if not src_list:
-            return []
+        if not any(text and text.strip() for text in src_list):
+            return [""] * len(src_list)
 
         try:
             source_lang_code = self.lang_map.get(self.lang_source, "auto")
@@ -178,14 +196,14 @@ class TransGoogle(BaseTranslator):
             if response_data and isinstance(response_data.get("translations"), list):
                 translated_texts = response_data["translations"]
                 if len(translated_texts) == len(src_list):
+                    if not any(source and source.strip() and translated.strip()
+                               for source, translated in zip(src_list, translated_texts)):
+                        raise ProviderError("Google Translate returned no translated source items.")
                     return translated_texts
 
-            # In case of mismatch or error, we return empty strings
-            return [""] * len(src_list)
+            raise ProviderError("Google Translate returned an invalid translation count or response.")
 
-        except ProviderError as e:
-            LOGGER.error(f"Google Translate provider error: {e}")
-            return [""] * len(src_list)
+        except TranslateError:
+            raise
         except Exception as e:
-            LOGGER.error(f"An unexpected error occurred in Google Translate: {e}")
-            return [""] * len(src_list)
+            raise TranslateError(GOOGLE_TRANSLATE_FAILURE) from e
