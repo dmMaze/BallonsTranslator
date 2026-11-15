@@ -382,7 +382,7 @@ class Flux2Klein(InpainterBase):
         'torch',
         'diffusers>=0.37.1',
         'safetensors',
-        'transformers==4.57.6',
+        'transformers>=5.1,<6',
         'gguf>=0.10.0',
         'accelerate>=0.26.0',
         'hf_transfer'
