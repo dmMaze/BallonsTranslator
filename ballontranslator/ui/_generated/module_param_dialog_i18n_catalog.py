@@ -223,6 +223,30 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'hayai_ocr_v2', 'max_num_patches', 'display_name'): {
         "source": 'Max Num Patches', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Num Patches'),
     },
+    ('ocr', 'hayai_ocr_v2_7_supernova', '', 'description'): {
+        "source": 'Hayai OCR v2.7 Supernova recognizes Japanese, Chinese, Korean, and English text crops. Uses automatic precision and greedy decoding with repetition penalty 1.0. Pair with a text detector for full pages.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Hayai OCR v2.7 Supernova recognizes Japanese, Chinese, Korean, and English text crops. Uses automatic precision and greedy decoding with repetition penalty 1.0. Pair with a text detector for full pages.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_new_tokens', 'description'): {
+        "source": 'Maximum output tokens per crop. Recommended: 128.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Maximum output tokens per crop. Recommended: 128.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_new_tokens', 'display_name'): {
+        "source": 'Max New Tokens', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max New Tokens'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_patches', 'description'): {
+        "source": '256 is recommended. Use 384 or 512 for unusually dense multi-line blocks or tiny glyphs; larger budgets are slower.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '256 is recommended. Use 384 or 512 for unusually dense multi-line blocks or tiny glyphs; larger budgets are slower.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_patches', 'display_name'): {
+        "source": 'Max Patches', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Patches'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'use_cuda_graph', 'description'): {
+        "source": 'Enable CUDA graphs for faster decoding (recommended). Automatically ignored on non-CUDA devices.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Enable CUDA graphs for faster decoding (recommended). Automatically ignored on non-CUDA devices.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'use_cuda_graph', 'display_name'): {
+        "source": 'Use CUDA Graphs', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Use CUDA Graphs'),
+    },
     ('ocr', 'manga_ocr', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
     },
