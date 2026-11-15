@@ -28,6 +28,7 @@ from .text_effects import (
     with_primary_stroke,
 )
 from .text_alpha_mask import TextAlphaMask, load_text_alpha_mask
+from .bubble_shape import BubbleShape, load_bubble_shape
 
 
 LANG_LIST = ['eng', 'ja', 'unknown']
@@ -124,6 +125,8 @@ class TextBlock:
     _detected_font_size: float = -1
     det_model: str = None
     label: str = None # ysg yolo label
+    bubble_shape: Optional[BubbleShape] = None
+    bubble_layout: bool = False
 
     region_mask: np.ndarray = None
     region_inpaint_dict: Dict = None
@@ -283,6 +286,13 @@ class TextBlock:
 
     def __post_init__(self) -> None:
         self.text_alpha_mask = load_text_alpha_mask(self.text_alpha_mask)
+        self.bubble_shape = load_bubble_shape(self.bubble_shape)
+        if not isinstance(self.bubble_layout, bool):
+            LOGGER.warning('Ignoring invalid bubble layout flag %r', self.bubble_layout)
+            self.bubble_layout = False
+        if self.bubble_layout and self.bubble_shape is None:
+            LOGGER.warning('Ignoring bubble layout without a valid bubble shape')
+            self.bubble_layout = False
         if self.xyxy is not None:
             self.xyxy = [int(num) for num in self.xyxy]
         if self.distance is not None:
@@ -553,6 +563,10 @@ class TextBlock:
         return self.lines[idx]
 
     def to_dict(self, deep_copy=False):
+        if self.bubble_shape is not None and not isinstance(self.bubble_shape, BubbleShape):
+            raise TypeError('bubble_shape must be a BubbleShape or None')
+        if not isinstance(self.bubble_layout, bool) or (self.bubble_layout and self.bubble_shape is None):
+            raise ValueError('bubble_layout requires a boolean and an attached shape when enabled')
         blk_dict = vars(self)
         if deep_copy:
             blk_dict = copy.deepcopy(blk_dict)
@@ -726,6 +740,8 @@ class TextBlock:
         if self._bounding_rect is not None:
             self._bounding_rect[0] += dx
             self._bounding_rect[1] += dy
+        if self.bubble_shape is not None:
+            self.bubble_shape = self.bubble_shape.translated(dx, dy)
 
     def line_coord_valid(self, rect):
         if self.det_model is None:

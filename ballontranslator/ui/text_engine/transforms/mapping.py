@@ -608,6 +608,31 @@ class CompositeTextTransformMapper:
             depth + 1,
         )
 
+    def map_path(self, path: QPainterPath) -> QPainterPath:
+        """Flatten curves with Qt, then adapt edges to the nonlinear mapping.
+
+        >>> rect = QRectF(0, 0, 10, 20)
+        >>> mapper = CompositeTextTransformMapper((), rect, rect, False)
+        >>> path = QPainterPath()
+        >>> path.addRect(rect)
+        >>> mapper.map_path(path).boundingRect() == rect
+        True
+        """
+        mapped = QPainterPath()
+        mapped.setFillRule(path.fillRule())
+        for polygon in path.toSubpathPolygons():
+            if not polygon:
+                continue
+            points = [self.forward_point(polygon[0])]
+            for start, end in zip(polygon, polygon[1:]):
+                self._append_mapped_edge(points, start, end, points[-1], self.forward_point(end), 0)
+            mapped.moveTo(points[0])
+            for point in points[1:]:
+                mapped.lineTo(point)
+            if polygon.isClosed():
+                mapped.closeSubpath()
+        return mapped
+
     def map_rect_path(self, rect: QRectF) -> QPainterPath:
         rect = QRectF(rect)
         cacheable = (

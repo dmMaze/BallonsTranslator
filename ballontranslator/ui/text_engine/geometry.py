@@ -300,6 +300,18 @@ class TextItemGeometryController:
     def visual_outline_in_scene(self) -> QPainterPath:
         return self.item.sceneTransform().map(self.visual_outline_in_item())
 
+    def bubble_outline_in_item(self) -> QPainterPath:
+        """Map the live wrapping path, including an uncommitted anchor preview."""
+        from .bubble_layout import bubble_path
+
+        profile = self.item.layout.flow_profile
+        if profile is None:
+            return QPainterPath()
+        path = bubble_path(profile.shape.nodes, self.logical_rect())
+        if self.visual_mapper is None:
+            return path
+        return self.visual_mapper.map_path(path)
+
     def map_source_to_visual(self, point: QPointF) -> QPointF:
         mapper = self.visual_mapper
         return QPointF(point) if mapper is None else mapper.forward_point(point)

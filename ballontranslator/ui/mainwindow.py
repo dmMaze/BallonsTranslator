@@ -66,6 +66,7 @@ from .text_engine.effects.paint import (
 from .text_engine.pipeline_formatting import (
     AutoTateChuYokoThread,
     apply_auto_tate_chu_yoko,
+    apply_pipeline_font_size,
 )
 from .framelesswindow import FramelessWindow, FramelessMoveResize
 from .drawing_commands import RunBlkTransCommand
@@ -1139,6 +1140,10 @@ class MainWindow(mainwindow_cls):
     def shortcutSelectAll(self):
         if self.centralStackWidget.currentIndex() == 0:
             if self.textPanel.isVisible():
+                if self.canvas.txtblkShapeControl.bubble_control.handle_shortcut(
+                    QKEY.Key_A, Qt.KeyboardModifier.ControlModifier,
+                ):
+                    return
                 self.st_manager.set_blkitems_selection(True)
 
     def shortcutSpace(self):
@@ -1153,6 +1158,10 @@ class MainWindow(mainwindow_cls):
 
     def shortcutDelete(self):
         if self.canvas.gv.isVisible():
+            if self.canvas.txtblkShapeControl.bubble_control.handle_shortcut(
+                QKEY.Key_Delete, Qt.KeyboardModifier.NoModifier,
+            ):
+                return
             self.canvas.delete_textblks.emit(1)
 
     def shortcutItalic(self):
@@ -2006,6 +2015,7 @@ class MainWindow(mainwindow_cls):
                     if override_fnt_size or \
                         blk.font_size < 0:  # fall back to global font size if font size is not valid, it will be set to -1 for detected blocks
                         blk.font_size = gf.font_size
+                        apply_pipeline_font_size(blk)
                     elif blk._detected_font_size > 0 and not enable_detect:
                         blk.font_size = blk._detected_font_size
                     if override_fnt_stroke:
@@ -2040,6 +2050,7 @@ class MainWindow(mainwindow_cls):
                         blk.vertical = gf.vertical
                     if override_alignment:
                         blk.alignment = gf.alignment
+                        blk.fontformat.vertical_alignment = gf.vertical_alignment
                     elif enable_detect:
                         if blk.vertical:
                             blk.alignment = TextAlignment.Center
@@ -2087,23 +2098,28 @@ class MainWindow(mainwindow_cls):
                     pcfg.auto_tate_chu_yoko,
                 )
 
-            self.st_manager.auto_textlayout_flag = pcfg.let_autolayout_flag and \
-                (enable_detect or enable_translate)
-        
-        if page_index != self.pageList.currentIndex().row():
-            self.pageList.setCurrentRow(page_index)
-        else:
-            self.imgtrans_proj.set_current_img_byidx(page_index)
-            self.canvas.updateCanvas()
-            self.st_manager.updateSceneTextitems()
+        self.st_manager.auto_textlayout_flag = not inpaint_only and pcfg.let_autolayout_flag and \
+            (enable_detect or enable_translate or (self._render_only and not self._run_imgtrans_wo_textstyle_update))
+        # Render-only fitting must not rewrite ordinary blocks with legacy wrapping.
+        self.st_manager.auto_textlayout_legacy = not self._render_only
+        try:
+            if page_index != self.pageList.currentIndex().row():
+                self.pageList.setCurrentRow(page_index)
+            else:
+                self.imgtrans_proj.set_current_img_byidx(page_index)
+                self.canvas.updateCanvas()
+                self.st_manager.updateSceneTextitems()
 
-        if not enable_detect and enable_translate:
-            for blkitem in self.st_manager.textblk_item_list:
-                if not blkitem.blk.get_text():
-                    continue
-                blkitem.squeezeBoundingRect()
-
-        if page_index + 1 == self.imgtrans_proj.num_pages:
+            if not enable_detect and enable_translate:
+                for blkitem in self.st_manager.textblk_item_list:
+                    if not blkitem.blk.get_text():
+                        continue
+                    # Shrinking the measured frame would change the fitted flow.
+                    if self.st_manager.auto_textlayout_flag and (blkitem.blk.det_model == 'koharu' or blkitem.blk.bubble_layout):
+                        continue
+                    blkitem.squeezeBoundingRect()
+        finally:
+            # Partial or stopped runs must not refit later manual page reloads.
             self.st_manager.auto_textlayout_flag = False
 
         self.llmContextEditor.refresh_context()

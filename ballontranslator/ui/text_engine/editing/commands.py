@@ -1,8 +1,8 @@
 from difflib import SequenceMatcher
-from typing import Callable, List, Optional, Sequence, Union
+from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 from qtpy.QtGui import QTextCharFormat, QTextCursor, QTextDocument
-from qtpy.QtCore import QPointF
+from qtpy.QtCore import QPointF, QRectF
 try:
     from qtpy.QtWidgets import QUndoCommand
 except:
@@ -18,6 +18,7 @@ from ballontranslator.utils.fontformat import (
 )
 from ballontranslator.utils.text_effects import TextEffectStack
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
+from ballontranslator.utils.bubble_shape import BubbleShape
 from ...misc import doc_replace, doc_replace_no_shift
 from ..shape_control import TextBlkShapeControl
 from ...page_search_widget import PageSearchWidget, Matched
@@ -138,6 +139,30 @@ def _replace_changed_text(
     finally:
         cursor.endEditBlock()
     return True
+
+
+BubbleShapeState = Tuple[Optional[BubbleShape], bool, Tuple[float, float, float, float]]
+
+
+class SetBubbleShapeCommand(QUndoCommand):
+    """Restore constraint activation, cubic nodes and logical frame together."""
+
+    def __init__(self, items: Sequence[TextBlkItem], before: Sequence[BubbleShapeState],
+                 after: Sequence[BubbleShapeState]) -> None:
+        super().__init__()
+        self.items, self.before, self.after = tuple(items), tuple(before), tuple(after)
+        if len(self.items) != len(self.before) or len(self.items) != len(self.after):
+            raise ValueError('bubble edit state must match its targets')
+
+    def _apply(self, states: Sequence[BubbleShapeState]) -> None:
+        for item, (shape, enabled, rect) in zip(self.items, states):
+            item.set_bubble_shape(shape, enabled, QRectF(*rect))
+
+    def redo(self) -> None:
+        self._apply(self.after)
+
+    def undo(self) -> None:
+        self._apply(self.before)
 
 
 class SetTextTransformCommand(QUndoCommand):
@@ -478,35 +503,64 @@ class RotateItemCommand(QUndoCommand):
 
 
 class AutoLayoutCommand(QUndoCommand):
-    def __init__(self, items: List[TextBlkItem], old_rect_lst: List, old_html_lst: List, trans_widget_lst: List[TransTextEdit]):
-        super(AutoLayoutCommand, self).__init__()
-        self.items = items
-        self.old_html_lst = old_html_lst
-        self.old_rect_lst = old_rect_lst
-        self.trans_widget_lst = trans_widget_lst
-        self.new_rect_lst = []
-        self.new_html_lst = []
-        for item in items:
-            self.new_html_lst.append(item.toHtml())
-            self.new_rect_lst.append(item.absBoundingRect(qrect=True))
-        self.counter = 0
+    """Group layout edits in native document history and restore their frames.
 
-    def redo(self):
-        self.counter += 1
-        if self.counter <= 1:
+    >>> callable(AutoLayoutCommand.undo)
+    True
+    """
+
+    def __init__(self, items: Sequence[TextBlkItem], editors: Sequence[TransTextEdit],
+                 layout: Callable[[TextBlkItem], Optional[bool]]) -> None:
+        super().__init__()
+        self.items, self.editors = tuple(items), tuple(editors)
+        self.before = [(item.absBoundingRect(qrect=True), item.fontformat.font_size) for item in items]
+        self.after: list[tuple[QRectF, float]] = []
+        self.changed: list[tuple[bool, bool]] = []
+        for item, editor in zip(self.items, self.editors):
+            old_steps = (item.document().availableUndoSteps(), editor.document().availableUndoSteps())
+            replaying = item.in_redo_undo, editor.in_redo_undo
+            item.in_redo_undo = editor.in_redo_undo = True
+            cursors = QTextCursor(item.document()), QTextCursor(editor.document())
+            for cursor in cursors:
+                cursor.beginEditBlock()
+            try:
+                layout(item)
+            finally:
+                for cursor in cursors:
+                    cursor.endEditBlock()
+                item.in_redo_undo, editor.in_redo_undo = replaying
+                item.updateUndoSteps()
+                editor.updateUndoSteps()
+            self.changed.append((item.old_undo_steps != old_steps[0], editor.old_undo_steps != old_steps[1]))
+            self.after.append((item.absBoundingRect(qrect=True), item.fontformat.font_size))
+        self.initial_redo = True
+
+    def _restore(self, states: Sequence[tuple[QRectF, float]], redo: bool) -> None:
+        for item, editor, (rect, size), changes in zip(self.items, self.editors, states, self.changed):
+            replaying = item.in_redo_undo, editor.in_redo_undo
+            item.in_redo_undo = editor.in_redo_undo = True
+            try:
+                item.fontformat.font_size = size
+                for target, changed in zip((item, editor), changes):
+                    if changed:
+                        if redo:
+                            target.document().redo()
+                        else:
+                            target.document().undo()
+                item.setRect(rect)
+            finally:
+                item.in_redo_undo, editor.in_redo_undo = replaying
+                item.updateUndoSteps()
+                editor.updateUndoSteps()
+
+    def redo(self) -> None:
+        if self.initial_redo:
+            self.initial_redo = False
             return
-        for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.new_html_lst, self.new_rect_lst):
-            trans_widget.setPlainText(item.toPlainText())
-            item.setPlainText('')
-            item.setRect(rect, repaint=False)
-            item.load_rich_text_html(html)
-            
-    def undo(self):
-        for item, trans_widget, html, rect  in zip(self.items, self.trans_widget_lst, self.old_html_lst, self.old_rect_lst):
-            trans_widget.setPlainText(item.toPlainText())
-            item.setPlainText('')
-            item.setRect(rect, repaint=False)
-            item.load_rich_text_html(html)
+        self._restore(self.after, True)
+
+    def undo(self) -> None:
+        self._restore(self.before, False)
 
 
 class SqueezeCommand(QUndoCommand):

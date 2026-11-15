@@ -37,6 +37,17 @@ def prediction() -> dict:
     return {'pred_logits': logits, 'pred_boxes': boxes, 'pred_masks': masks}
 
 
+def text_strips(vertical: bool = False, angle: float = 0) -> np.ndarray:
+    """Three short lines whose overall bounds suggest the opposite writing mode."""
+    y, x = np.mgrid[:160, :160].astype(np.float64) + 0.5 - 80
+    radians = np.deg2rad(angle)
+    inline = x * np.cos(radians) + y * np.sin(radians)
+    block = -x * np.sin(radians) + y * np.cos(radians)
+    if vertical:
+        inline, block = block, inline
+    return (np.abs(inline) < 30) & (np.min(np.abs(block[..., None] - [-40, 0, 40]), axis=-1) < 2)
+
+
 class KoharuTests(unittest.TestCase):
     def setUp(self) -> None:
         self.log = patch.object(KoharuDetector.logger, 'info')
@@ -70,6 +81,74 @@ class KoharuTests(unittest.TestCase):
             self.assertEqual(restored.label, block.label)
             self.assertEqual(restored.lines, block.lines)
             self.assertEqual(restored.xyxy, block.xyxy)
+
+    def test_bubble_association_chooses_smallest_containing_mask(self) -> None:
+        self.detector.num_select = 4
+        masks = np.zeros((4, 80, 120), np.uint8)
+        masks[0, 30:45, 20:35] = 1
+        masks[1, 60:68, 100:110] = 1
+        masks[2, 10:60, 10:55] = 1
+        masks[3, 5:75, 5:90] = 1
+        logits = torch.full((1, 4, 5), -20.)
+        logits[0, [0, 1, 2, 3], [0, 0, 2, 2]] = 20
+        self.detector.model.return_value = {
+            'pred_logits': logits,
+            'pred_boxes': torch.tensor([[[.23, .47, .13, .19], [.875, .8, .09, .1],
+                                          [.27, .44, .38, .63], [.4, .5, .72, .88]]]),
+            'pred_masks': torch.from_numpy(np.where(masks[None], 2., -2.)).float(),
+        }
+        mask, blocks = self.detector.detect(np.zeros((80, 120, 3), np.uint8))
+        np.testing.assert_array_equal(mask, np.maximum(masks[0], masks[1]) * 255)
+        bubble_block = next(b for b in blocks if b.xyxy[0] < 50)
+        self.assertIsNotNone(bubble_block.bubble_shape)
+        self.assertTrue(bubble_block.bubble_layout)
+        self.assertLess(bubble_block.bubble_shape.frame[2], 55)
+        self.assertIsNone(next(b for b in blocks if b.xyxy[0] > 50).bubble_shape)
+        self.assertFalse(next(b for b in blocks if b.xyxy[0] > 50).bubble_layout)
+        self.assertEqual(bubble_block._detected_font_size, -1)
+
+    def test_joined_bubble_allocates_separate_flow_shapes(self) -> None:
+        self.detector.num_select = 3
+        masks = np.zeros((3, 100, 180), np.uint8)
+        masks[0, 40:60, 35:55] = 1
+        masks[1, 40:60, 125:145] = 1
+        cv2.ellipse(masks[2], (45, 50), (40, 45), 0, 0, 360, 1, -1)
+        cv2.ellipse(masks[2], (135, 50), (40, 45), 0, 0, 360, 1, -1)
+        masks[2, 45:55, 70:110] = 1
+        logits = torch.full((1, 3, 5), -20.)
+        logits[0, [0, 1, 2], [0, 0, 2]] = 20
+        self.detector.model.return_value = {
+            'pred_logits': logits,
+            'pred_boxes': torch.tensor([[[.25, .5, .12, .2], [.75, .5, .12, .2], [.5, .5, .98, .96]]]),
+            'pred_masks': torch.from_numpy(np.where(masks[None], 2., -2.)).float(),
+        }
+        mask, blocks = self.detector.detect(np.zeros((100, 180, 3), np.uint8))
+        self.assertEqual(len(blocks), 2)
+        frames = sorted(block.bubble_shape.frame for block in blocks)
+        self.assertTrue(all(block.bubble_layout for block in blocks))
+        self.assertLessEqual(frames[0][0] + frames[0][2], frames[1][0] + 1)
+        np.testing.assert_array_equal(mask, np.maximum(masks[0], masks[1]) * 255)
+
+    def test_disconnected_bubble_uses_the_component_containing_its_text(self) -> None:
+        self.detector.num_select = 2
+        masks = np.zeros((2, 100, 200), np.uint8)
+        masks[0, 20:40, 15:30] = 1
+        masks[1, 10:60, 5:45] = 1
+        masks[1, 5:95, 70:190] = 1
+        logits = torch.full((1, 2, 5), -20.)
+        logits[0, 0, 0] = logits[0, 1, 2] = 20
+        self.detector.model.return_value = {
+            'pred_logits': logits,
+            'pred_boxes': torch.tensor([[[.1125, .3, .075, .2], [.5, .5, .98, .98]]]),
+            'pred_masks': torch.from_numpy(np.where(masks[None], 2., -2.)).float(),
+        }
+        _, blocks = self.detector.detect(np.zeros((100, 200, 3), np.uint8))
+        self.assertEqual(len(blocks), 1)
+        x, y, width, height = blocks[0].bubble_shape.frame
+        self.assertLess(x, 20)
+        self.assertLess(x + width, 50)
+        self.assertLess(y, 25)
+        self.assertGreater(y + height, 40)
 
     def test_labels_filter_both_blocks_and_masks(self) -> None:
         for index, label in enumerate(('text', 'onomatopoeia')):
@@ -126,7 +205,7 @@ class KoharuTests(unittest.TestCase):
         np.testing.assert_array_equal(mask, cv2.dilate(self.expected_mask(0) | self.expected_mask(1), kernel))
         for before, after in zip(original, blocks):
             self.assertEqual(after.font_size, before.font_size * 1.5)
-            self.assertEqual(after._detected_font_size, after.font_size)
+            self.assertEqual(after._detected_font_size, -1)
 
     def test_default_cleanup_matches_disk_morphology_at_edges_and_overlaps(self) -> None:
         detector = KoharuDetector(device='cpu')
@@ -193,6 +272,76 @@ class KoharuTests(unittest.TestCase):
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0].xyxy, [0, 0, 20, 10])
         np.testing.assert_array_equal(mask, self.expected_mask(0))
+
+    def test_mask_lines_determine_direction_rotation_and_ocr_geometry(self) -> None:
+        self.detector.num_select = 1
+        for vertical, angle in ((False, 0), (True, 0), (False, -22),
+                                (True, -8.5), (False, 12.5), (True, 12.5), (False, 2)):
+            with self.subTest(vertical=vertical, angle=angle):
+                foreground = text_strips(vertical, angle)
+                box_size = [.75, .5] if vertical else [.5, .75]
+                self.detector.model.return_value = {
+                    'pred_logits': torch.tensor([[[20., -20., -20., -20., -20.]]]),
+                    'pred_boxes': torch.tensor([[[.5, .5, *box_size]]]),
+                    'pred_masks': torch.from_numpy(np.where(foreground, 2., -2.)[None, None]).float(),
+                }
+                image = np.repeat(np.where(foreground, 0, 255).astype(np.uint8)[..., None], 3, axis=2)
+                mask, (block,) = self.detector.detect(image)
+                np.testing.assert_array_equal(mask, foreground.astype(np.uint8) * 255)
+                self.assertEqual(block.src_is_vertical, vertical)
+                self.assertEqual(block.vertical, vertical)
+                expected_angle = 0 if abs(angle) < 3 else angle
+                self.assertAlmostEqual(block.angle, expected_angle, delta=.75)
+                line = block.lines_array()[0]
+                edge = line[1] - line[0]
+                self.assertAlmostEqual(np.rad2deg(np.arctan2(edge[1], edge[0])), block.angle, delta=1)
+                crop = block.get_transformed_region(image, 0, 48)
+                self.assertEqual(crop.shape[0], 48)
+                self.assertGreater(crop.shape[1], 0)
+                self.assertTrue(np.any(crop < 128))
+                restored = TextBlock(**json.loads(json_dump_nested_obj(block.to_dict())))
+                self.assertEqual((restored.angle, restored.src_is_vertical, restored.vertical),
+                                 (block.angle, vertical, vertical))
+
+    def test_each_instance_uses_its_own_mask_before_cleanup(self) -> None:
+        self.detector.num_select = 2
+        self.detector.model.return_value = {
+            'pred_logits': torch.tensor([[[20., -20., -20., -20., -20.],
+                                          [-20., 20., -20., -20., -20.]]]),
+            'pred_boxes': torch.tensor([[[.5, .5, .9, .9], [.5, .5, .9, .9]]]),
+            'pred_masks': torch.from_numpy(np.where(np.stack([text_strips(), text_strips(True)]),
+                                                    2., -2.)[None]).float(),
+        }
+        self.detector.updateParam('mask postprocessing', 'koharu')
+        image = np.full((160, 160, 3), 255, np.uint8)
+        _, blocks = self.detector.detect(image)
+        self.assertEqual({block.label: block.src_is_vertical for block in blocks},
+                         {'text': False, 'onomatopoeia': True})
+
+    def test_ambiguous_or_empty_masks_fall_back_to_box_shape(self) -> None:
+        mask = np.zeros((80, 80), bool)
+        for populated in (False, True):
+            if populated:
+                mask[30:50, 30:50] = True
+            for box, vertical in (([10, 0, 50, 80], True), ([0, 10, 80, 50], False),
+                                  ([0, 0, 80, 80], False)):
+                with self.subTest(populated=populated, box=box):
+                    self.assertEqual(detector_koharu._mask_angle(mask, np.array(box)), (0., vertical))
+        # A nearly square mask uses the box inside the 2% tie margin, but not beyond it.
+        for width, vertical in ((49, False), (48, True)):
+            mask = np.zeros((160, 160), bool)
+            mask[30:80, 30:30 + width] = True
+            self.assertEqual(detector_koharu._mask_angle(mask, np.array([10, 20, 150, 100])),
+                             (0., vertical))
+
+    def test_direction_samples_only_the_box_margin_and_clips_page_edges(self) -> None:
+        foreground = np.zeros((160, 160), bool)
+        foreground[1:4, :35] = foreground[25:28, :35] = foreground[49:52, :35] = True
+        box = np.array([-1.25, -1.5, 36.25, 54.5])
+        expected = detector_koharu._mask_angle(foreground, box)
+        self.assertEqual(expected, (0., False))
+        foreground[:, 45:150] = True
+        self.assertEqual(detector_koharu._mask_angle(foreground, box), expected)
 
     def test_rgba_and_inference_failures_use_shared_entrypoint(self) -> None:
         mask, blocks = self.detector.detect(np.dstack((self.img, np.full((40, 80), 255, np.uint8))))

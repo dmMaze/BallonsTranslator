@@ -11,10 +11,56 @@ import numpy as np
 
 from .base import DEVICE_SELECTOR, TextBlock, TextDetectorBase, register_textdetectors
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
-from ballontranslator.utils.textblock import examine_textblk, sort_pnts, sort_regions
+from ballontranslator.utils.textblock import examine_textblk, sort_regions
+from ballontranslator.utils.bubble_shape import partition_bubble, trace_bubble
 
 if TYPE_CHECKING:
     import torch
+
+
+def _mask_angle(mask: np.ndarray, box: np.ndarray) -> Tuple[float, bool]:
+    """Infer rotation and vertical writing from Koharu's mask projection profiles.
+
+    >>> mask = np.zeros((90, 60), bool)
+    >>> mask[10:14, 10:50] = mask[40:44, 10:50] = mask[70:74, 10:50] = True
+    >>> _mask_angle(mask, np.array([0, 0, 60, 90]))
+    (0.0, False)
+    """
+    # Match koharu-pipeline/stages/detection.rs: sample pixel centers within a 2px margin.
+    left, top, right, bottom = box
+    height, width = mask.shape
+    x1, y1 = max(0, math.floor(left - 2)), max(0, math.floor(top - 2))
+    x2, y2 = min(width, math.ceil(right + 2)), min(height, math.ceil(bottom + 2))
+    y, x = np.nonzero(mask[y1:y2, x1:x2])
+    fallback_vertical = bool(bottom - top > right - left)
+    if not len(x):
+        return 0.0, fallback_vertical
+    x = x.astype(np.float64) + x1 + 0.5
+    y = y.astype(np.float64) + y1 + 0.5
+    min_x, max_x, min_y, max_y = x.min(), x.max(), y.min(), y.max()
+    scores = [float('-inf'), float('-inf')]
+    angles = [0.0, 0.0]
+    for step in range(-90, 91):
+        angle = step * 0.5
+        radians = math.radians(angle)
+        sin, cos = math.sin(radians), math.cos(radians)
+        for direction, (axis_x, axis_y) in enumerate(((-sin, cos), (cos, sin))):
+            minimum = (min_x if axis_x >= 0 else max_x) * axis_x + (min_y if axis_y >= 0 else max_y) * axis_y
+            maximum = (max_x if axis_x >= 0 else min_x) * axis_x + (max_y if axis_y >= 0 else min_y) * axis_y
+            origin = math.floor(minimum)
+            length = math.ceil(maximum) - origin + 2
+            projection = x * axis_x + y * axis_y - origin
+            indices = projection.astype(np.intp)
+            fraction = projection - indices
+            histogram = np.bincount(indices, weights=1 - fraction, minlength=length)
+            histogram += np.bincount(indices + 1, weights=fraction, minlength=length)
+            score = float(histogram @ histogram) / len(x)
+            if score > scores[direction]:
+                scores[direction], angles[direction] = score, angle
+    close = abs(scores[0] - scores[1]) <= max(scores) * 0.02
+    vertical = fallback_vertical if close else scores[1] > scores[0]
+    angle = angles[int(vertical)]
+    return (0.0 if abs(angle) < 3 else angle), vertical
 
 
 @register_textdetectors('koharu')
@@ -88,10 +134,14 @@ class KoharuDetector(TextDetectorBase):
             'value': 2, 'display_name': 'Mask dilation radius',
             'description': 'Extra expansion in page pixels for dilate/ctd; 0 disables this expansion. Ignored by koharu.',
         },
-        'font size multiplier': {'value': 1.0, 'display_name': 'Font size multiplier'},
+        'font size multiplier': {
+            'value': 1.0, 'display_name': 'Font size multiplier',
+            'description': 'Scales the fallback size. Auto layout instead fits translated text to the flow area.',
+        },
         'description': (
             'Koharu Layout HighRes (RF-DETR). Requires Python 3.10+ and Transformers 5. '
             'Uses local weights, region boxes and segmentation masks; no CTD model is needed. '
+            'Text direction and rotation are inferred from each instance mask. '
             'Some short dialogue may be classified as onomatopoeia.'
         ),
     }
@@ -260,7 +310,7 @@ class KoharuDetector(TextDetectorBase):
         thresholds = scores.new_tensor([
             self.get_param_value('text threshold') if enabled['text'] else float('inf'),
             self.get_param_value('onomatopoeia threshold') if enabled['onomatopoeia'] else float('inf'),
-            float('inf'), float('inf'), float('inf'),
+            .5, float('inf'), float('inf'),
         ])
         keep = scores > thresholds[labels]
         queries = queries[keep]
@@ -270,9 +320,15 @@ class KoharuDetector(TextDetectorBase):
         boxes = (boxes * boxes.new_tensor([width, height, width, height])).cpu().numpy()
         # Transfer native masks once; projecting one at a time avoids an N-by-page allocation.
         masks = output['pred_masks'][0, queries].cpu()
+        native_masks = masks.numpy() > 0
+        bubbles = sorted((i for i, label in enumerate(labels) if label == 2),
+                         key=lambda i: np.count_nonzero(native_masks[i]))
+        associations = {i: [] for i in bubbles}
         blocks = []
         multiplier = self.get_param_value('font size multiplier')
-        for label, box, instance in zip(labels, boxes, masks):
+        for index, (label, box, instance) in enumerate(zip(labels, boxes, masks)):
+            if label == 2:
+                continue
             if not np.isfinite(box).all():
                 raise ValueError('Koharu returned non-finite box coordinates')
             x1, y1 = np.maximum(np.floor(box[:2]), 0).astype(int)
@@ -280,17 +336,43 @@ class KoharuDetector(TextDetectorBase):
             if x2 <= x1 or y2 <= y1:
                 continue
             projected = F.interpolate(instance[None, None], image_shape, mode='bilinear', align_corners=False)
-            mask[projected[0, 0].numpy() > 0] = 255
-            points, vertical = sort_pnts([[x1, y1], [x2, y1], [x2, y2], [x1, y2]])
+            foreground = projected[0, 0].numpy() > 0
+            mask[foreground] = 255
+            angle, vertical = _mask_angle(foreground, box)
             block = TextBlock(
-                xyxy=[x1, y1, x2, y2], lines=[points], src_is_vertical=vertical,
+                xyxy=[x1, y1, x2, y2], src_is_vertical=vertical,
                 label=('text', 'onomatopoeia')[label],
             )
+            block.set_lines_by_xywh([x1, y1, x2 - x1, y2 - y1], angle=-angle)
             block.vertical = vertical
             examine_textblk(block, width, height)
-            block.font_size *= multiplier
-            block._detected_font_size = block.font_size
+            # Keep half-degree precision after the integer line-geometry estimates.
+            block.angle = angle
+            # The OCR crop is a region, not a measured source line. Keep a
+            # numeric fallback; automatic typesetting measures its own range.
+            block.font_size = max(1., min(x2 - x1, y2 - y1) * .25) * multiplier
+            block._detected_font_size = -1
             blocks.append(block)
+            foreground_y, foreground_x = np.nonzero(native_masks[index])
+            foreground_count = len(foreground_x)
+            if foreground_count:
+                for bubble in bubbles:
+                    if np.count_nonzero(native_masks[bubble, foreground_y, foreground_x]) >= .9 * foreground_count:
+                        associations[bubble].append(block)
+                        break
+        for bubble, members in associations.items():
+            if not members:
+                continue
+            bubble_mask = native_masks[bubble]
+            if len(members) == 1:
+                members[0].bubble_shape = trace_bubble(
+                    bubble_mask, (width, height), members[0].angle, tuple(members[0].center()))
+                members[0].bubble_layout = members[0].bubble_shape is not None
+                continue
+            anchors = np.array([(np.array(b.xyxy[:2]) + b.xyxy[2:]) / 2 for b in members])
+            for block, cell in zip(members, partition_bubble(bubble_mask, (width, height), anchors)):
+                block.bubble_shape = trace_bubble(cell, (width, height), block.angle, tuple(block.center()))
+                block.bubble_layout = block.bubble_shape is not None
         return mask, sort_regions(blocks)
 
     def _refine_mask(self, img: np.ndarray, mask: np.ndarray, blocks: List[TextBlock]) -> np.ndarray:

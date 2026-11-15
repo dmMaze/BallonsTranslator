@@ -28,6 +28,7 @@ from .raster_assets import (
 )
 from .rgba import premultiply_rgba_in_place
 from .text_alpha_mask import AlphaBrushStroke, TextAlphaMask
+from .bubble_shape import BubbleShape
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -127,7 +128,7 @@ class TextBlkEncoder(NumpyEncoder):
             return obj.to_dict()
         elif isinstance(obj, FontFormat):
             return obj.to_serializable_dict()
-        elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke)):
+        elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke, BubbleShape)):
             return obj.to_serializable_dict()
         return NumpyEncoder.default(self, obj)
 

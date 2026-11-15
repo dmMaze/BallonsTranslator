@@ -224,6 +224,15 @@ def ffmt_change_line_spacing_type(param_name: str, values: float, act_ffmt: Font
         blkitem.setLineSpacingType(value)
 
 
+@font_formating(push_undostack=True)
+def ffmt_change_vertical_alignment(
+    param_name: str, values: List[int], act_ffmt: FontFormat,
+    is_global: bool, blkitems: List[TextBlkItem], **kwargs,
+) -> None:
+    for blkitem, value in zip(blkitems, values):
+        blkitem.setVerticalAlignment(value)
+
+
 handle_ffmt_change = {
     name: globals().get(f'ffmt_change_{name}', empty_func)
     for name in (*FontFormat.params(), 'rel_font_size')

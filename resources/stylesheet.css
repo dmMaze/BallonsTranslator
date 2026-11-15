@@ -1484,7 +1484,8 @@ AlignmentChecker::indicator:disabled {
     background-color: transparent;
 }
 
-AlignmentChecker#AlignLeftChecker::indicator {
+AlignmentChecker#AlignLeftChecker::indicator,
+AlignmentChecker#AlignTopChecker::indicator {
     border-right: none;
     min-width: 32px;
     max-width: 32px;
@@ -1495,7 +1496,8 @@ AlignmentChecker#AlignLeftChecker::indicator:checked {
     image: url(resources/icons/fontfmt_alignl_activate.svg);
 }
 
-AlignmentChecker#AlignCenterChecker::indicator {
+AlignmentChecker#AlignCenterChecker::indicator,
+AlignmentChecker#AlignMiddleChecker::indicator {
     border-right: none;
     border-left: none;
     min-width: 32px;
@@ -1507,7 +1509,8 @@ AlignmentChecker#AlignCenterChecker::indicator:checked {
     image: url(resources/icons/fontfmt_alignc_activate.svg);
 }
 
-AlignmentChecker#AlignRightChecker::indicator {
+AlignmentChecker#AlignRightChecker::indicator,
+AlignmentChecker#AlignBottomChecker::indicator {
     border-left: none;
     min-width: 32px;
     max-width: 32px;
@@ -1516,6 +1519,30 @@ AlignmentChecker#AlignRightChecker::indicator {
 
 AlignmentChecker#AlignRightChecker::indicator:checked {
     image: url(resources/icons/fontfmt_alignr_activate.svg);
+}
+
+AlignmentChecker#AlignTopChecker::indicator {
+    image: url(resources/icons/fontfmt_alignt.svg);
+}
+
+AlignmentChecker#AlignTopChecker::indicator:checked {
+    image: url(resources/icons/fontfmt_alignt_activate.svg);
+}
+
+AlignmentChecker#AlignMiddleChecker::indicator {
+    image: url(resources/icons/fontfmt_alignm.svg);
+}
+
+AlignmentChecker#AlignMiddleChecker::indicator:checked {
+    image: url(resources/icons/fontfmt_alignm_activate.svg);
+}
+
+AlignmentChecker#AlignBottomChecker::indicator {
+    image: url(resources/icons/fontfmt_alignb.svg);
+}
+
+AlignmentChecker#AlignBottomChecker::indicator:checked {
+    image: url(resources/icons/fontfmt_alignb_activate.svg);
 }
 
 QFontChecker {
@@ -1630,6 +1657,14 @@ QFontChecker#FontVerticalChecker::indicator {
 
 QFontChecker#FontVerticalChecker::indicator:checked {
     image: url(resources/icons/fontfmt_vertical_activate.svg);
+}
+
+QFontChecker#FontBubbleShapeChecker::indicator {
+    image: url(resources/icons/fontfmt_bubble_shape.svg);
+}
+
+QFontChecker#FontBubbleShapeChecker::indicator:checked {
+    image: url(resources/icons/fontfmt_bubble_shape_activate.svg);
 }
 
 QFontChecker#FontTateChuYokoChecker::indicator {

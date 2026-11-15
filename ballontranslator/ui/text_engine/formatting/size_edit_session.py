@@ -95,11 +95,6 @@ class ResizeTextItemsCommand(QUndoCommand):
                     block = item.document().firstBlock()
                     while block.isValid():
                         cursor.setPosition(block.position())
-                        block_size = block.charFormat().fontPointSize()
-                        if block_size > 0:
-                            char_format = QTextCharFormat()
-                            char_format.setFontPointSize(block_size * self.ratio)
-                            cursor.mergeBlockCharFormat(char_format)
                         spacing, kind = line_spacing_values(
                             block.blockFormat(), self.old_spacing[index],
                             item.fontformat.line_spacing_type,

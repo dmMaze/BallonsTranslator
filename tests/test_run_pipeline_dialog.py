@@ -1459,6 +1459,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             frgb=[1, 2, 3],
             srgb=[4, 5, 6],
             alignment=2,
+            vertical_alignment=2,
             vertical=True,
             opacity=0.75,
         )
@@ -1494,6 +1495,7 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(snapshot.frgb, [1, 2, 3])
         self.assertEqual(snapshot.srgb, [4, 5, 6])
         self.assertEqual(snapshot.alignment, 2)
+        self.assertEqual(snapshot.vertical_alignment, 2)
         self.assertTrue(snapshot.vertical)
         self.assertEqual(snapshot.opacity, 0.75)
         global_format.font_size = 12
@@ -1501,11 +1503,13 @@ class RunPipelineDialogTests(unittest.TestCase):
         self.assertEqual(calls, [((None,), {'render_only': True})])
 
     def test_render_only_applies_typesetting_flags_to_every_block(self):
+        auto_layout_at_render = []
         global_format = FontFormat(
             font_family='Render Font',
             font_size=47,
             frgb=[1, 2, 3],
             alignment=2,
+            vertical_alignment=2,
             vertical=True,
             text_effects=TextEffectStack(
                 0.75,
@@ -1571,7 +1575,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             ),
             st_manager=SimpleNamespace(
                 auto_textlayout_flag=False,
-                updateSceneTextitems=lambda: None,
+                updateSceneTextitems=lambda: auto_layout_at_render.append(owner.st_manager.auto_textlayout_flag),
                 textblk_item_list=[],
             ),
             pageList=SimpleNamespace(
@@ -1589,6 +1593,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             'let_fnteffect_flag',
             'let_writing_mode_flag',
             'let_family_flag',
+            'let_autolayout_flag',
         )
         old_flags = {name: getattr(pcfg, name) for name in flag_names}
         try:
@@ -1599,12 +1604,15 @@ class RunPipelineDialogTests(unittest.TestCase):
             for name, value in old_flags.items():
                 setattr(pcfg, name, value)
 
+        self.assertEqual(auto_layout_at_render, [True])
+
         for block, extra in zip(blocks, extra_strokes):
             self.assertEqual(block.font_size, 47)
             self.assertEqual(block.stroke_width, 0.18)
             self.assertEqual(block.fontformat.frgb, [1, 2, 3])
             self.assertEqual(block.fontformat.srgb, [4, 5, 6])
             self.assertEqual(block.alignment, 2)
+            self.assertEqual(block.fontformat.vertical_alignment, 2)
             self.assertTrue(block.vertical)
             self.assertEqual(block.font_family, 'Render Font')
             self.assertEqual(block.fontformat.opacity, 0.75)
@@ -1988,7 +1996,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             pcfg.auto_tate_chu_yoko = original_settings
 
     def test_detected_vertical_alignment_defaults_to_center(self):
-        global_format = FontFormat(alignment=0, vertical=True)
+        global_format = FontFormat(alignment=0, vertical=True, vertical_alignment=2)
         blocks = []
         project = SimpleNamespace(
             num_pages=1,
@@ -2046,6 +2054,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             detected_vertical.alignment = 2
             run(detected_vertical)
             self.assertEqual(detected_vertical.alignment, 1)
+            self.assertEqual(detected_vertical.fontformat.vertical_alignment, 0)
 
             pcfg.let_alignment_flag = 1
             global_alignment = TextBlock(text_layout_version=1)
@@ -2054,6 +2063,7 @@ class RunPipelineDialogTests(unittest.TestCase):
             global_alignment.alignment = 2
             run(global_alignment)
             self.assertEqual(global_alignment.alignment, 0)
+            self.assertEqual(global_alignment.fontformat.vertical_alignment, 2)
 
             pcfg.let_alignment_flag = 0
             pcfg.let_writing_mode_flag = 1

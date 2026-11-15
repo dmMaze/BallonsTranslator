@@ -21,7 +21,7 @@ from qtpy.QtGui import (
 
 from ballontranslator.utils import shared as C
 from ballontranslator.utils.config import pcfg
-from ballontranslator.utils.fontformat import FontFormat, TextAlignment
+from ballontranslator.utils.fontformat import FontFormat, TextAlignment, VerticalAlignment
 from .annotations import (
     FONT_FEATURES_AVAILABLE,
     emphasis_values,
@@ -391,7 +391,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         True
         """
         cached = self._plain_column_cache.get(block.blockNumber())
-        if cached is None or self.render_delegate is not None:
+        if cached is None or self.render_delegate is not None or self.flow_profile is not None:
             return False
         # Transient outline ranges can make Qt announce a whole-document edit
         # for one changed character. Validate actual block inputs and live lines
@@ -535,6 +535,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         return max(0.0, self.x_offset_lst[0] - self.layout_left)
 
     def _alignment_column_shift(self) -> float:
+        if self.flow_profile is not None:
+            return 0.0
         slack = max(0.0, self.available_width - self._column_content_width())
         if self.fontformat.alignment == TextAlignment.Left:
             target_left = self._effect_padding
@@ -546,6 +548,9 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
     def apply_alignment(self) -> bool:
         """Translate settled columns without reshaping or resizing the box."""
+        if self.flow_profile is not None:
+            self.reLayout()
+            return True
         x_shift = self._alignment_column_shift()
         if abs(x_shift) <= 1e-9:
             return False
@@ -674,30 +679,31 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             self._plain_column_context = context
         self._plain_column_reused.clear()
         self._selection_geometry_cache.clear()
-        self.min_height = 0
-        self.layout_left = 0
-        self.line_spaces_lst = []
-        self.per_char_records = []
-        self.text_combine_ranges = []
-        self._tate_chu_yoko_runs.clear()
-        self._ruby_metrics = []
-        self.shrink_height = 0
-        self.shrink_width = 0
-        self.text_padding = 0
         doc_margin = self._effect_padding
-        block = doc.firstBlock()
-        while block.isValid():
-            self.layoutBlock(block)
-            block = block.next()
+        for _ in self.flow_layout_passes(vertical=True):
+            self.min_height = 0
+            self.layout_left = 0
+            self.line_spaces_lst = []
+            self.per_char_records = []
+            self.text_combine_ranges = []
+            self._tate_chu_yoko_runs.clear()
+            self._ruby_metrics = []
+            self.shrink_height = 0
+            self.shrink_width = 0
+            self.text_padding = 0
+            block = doc.firstBlock()
+            while block.isValid():
+                self.layoutBlock(block)
+                block = block.next()
 
         enlarged = False
         x_shift = 0
-        if self.layout_left < doc_margin:
+        if self.layout_left < doc_margin and self.flow_profile is None:
             x_shift = doc_margin - self.layout_left
             self.max_width += x_shift
             self.available_width = self.max_width - 2*doc_margin
             enlarged = True
-        if self.min_height - doc_margin > self.available_height:
+        if self.min_height - doc_margin > self.available_height and self.flow_profile is None:
             self.available_height = self.min_height - doc_margin
             self.max_height = self.available_height + doc_margin * 2
             enlarged = True
@@ -706,17 +712,73 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self._translate_columns(x_shift)
         self._translate_columns(self._alignment_column_shift())
         self.updateDrawOffsets()
+        self._align_column_ink()
         self._refresh_base_ink_bounds()
         self._refresh_annotation_ink_bounds()
-        self._resize_layout_max_width = self.max_width
+        # A contour layout cannot seed the rectangular resize shortcut after disabling it.
+        self._resize_layout_max_width = self.max_width if self.flow_profile is None else None
         self._resize_layout_available_height = self.available_height
         self._resize_layout_padding = self._effect_padding
         self.documentSizeChanged.emit(QSizeF(self.max_width, self.max_height))
 
+    def _align_column_ink(self) -> None:
+        """Align column ink while keeping caret and whitespace cells attached.
+
+        >>> callable(VerticalTextDocumentLayout._align_column_ink)
+        True
+        """
+        alignment = self.fontformat.vertical_alignment
+        # Overset columns remain editable and must follow the selected alignment.
+        if self.flow_profile is None and alignment == VerticalAlignment.Top:
+            return
+        columns: dict[float, list[tuple[QTextBlock, int]]] = {}
+        bounds: dict[float, QRectF] = {}
+        block = self.document().firstBlock()
+        while block.isValid():
+            layout = block.layout()
+            for number in range(layout.lineCount()):
+                source = layout.lineAt(number)
+                x = source.x()
+                columns.setdefault(x, []).append((block, number))
+                placement = self.vertical_line_placement(block, number)
+                if placement is not None:
+                    line, offset, orientation = placement
+                    ink = glyph_geometry(line, line.textStart(), line.textLength(), offset, orientation, 0.).bounds
+                    if not ink.isEmpty():
+                        bounds[x] = bounds.get(x, QRectF()).united(ink)
+            block = block.next()
+        if self.flow_profile is None:
+            top, bottom = self._effect_padding, self._effect_padding + self.available_height
+        else:
+            top = self._effect_padding + max(slot.top() for slot in self.flow_slots)
+            bottom = self._effect_padding + min(slot.bottom() for slot in self.flow_slots)
+        for x, ink in bounds.items():
+            if alignment == VerticalAlignment.Top:
+                shift = top - ink.top()
+            elif alignment == VerticalAlignment.Bottom:
+                shift = bottom - ink.bottom()
+            else:
+                shift = (top + bottom) / 2 - ink.center().y()
+            for block, number in columns[x]:
+                line = block.layout().lineAt(number)
+                before = line.y()
+                line.setPosition(QPointF(x, before + shift))
+                actual = line.y() - before
+                offsets = self.line_spaces_lst[block.blockNumber()][number][2]
+                offsets[:] = [value + actual for value in offsets]
+        if self.flow_overflow and bounds:
+            # The planned slots omit overflow columns; align the full group.
+            left = min(ink.left() for ink in bounds.values())
+            right = max(ink.right() for ink in bounds.values())
+            slack = self.available_width - (right - left)
+            target = self._effect_padding + slack * int(self.fontformat.alignment) / 2
+            self._translate_columns(target - left)
+
     def reLayoutForResize(self):
         """Translate a width-only resize; height changes still reflow columns."""
         if (
-            self._resize_layout_max_width is None
+            self.flow_profile is not None
+            or self._resize_layout_max_width is None
             or self.available_height
             != self._resize_layout_available_height
             or self._effect_padding != self._resize_layout_padding
@@ -1265,10 +1327,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         return QRectF(self._base_ink_bounds)
 
     def _refresh_base_ink_bounds(self) -> None:
-        """Cache exact neutral ink for rotated lines and upright Hangul.
+        """Cache vertical ink that can extend beyond the logical frame.
 
-        Hangul preserves font bearings and can exceed the legacy CJK cell.
-        Its overflow must reach effects and interaction bounds too.
+        Bubble flow keeps its frame even when upright columns overflow. Normal
+        layout grows its frame, but rotated lines and Hangul can still overhang.
 
         >>> callable(VerticalTextDocumentLayout._refresh_base_ink_bounds)
         True
@@ -1283,7 +1345,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 if placement is None:
                     continue
                 line, offset, orientation = placement
-                if orientation.isIdentity() and not _is_hangul(
+                if self.flow_profile is None and orientation.isIdentity() and not _is_hangul(
                     _utf16_slice(
                         block_text, line.textStart(), line.textLength()
                     ).lstrip()
@@ -2216,6 +2278,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         clear_horizontal_ruby_layout(block)
         doc_margin = self._effect_padding
         line_y_offset = doc_margin
+        if self.flow_profile is not None:
+            line_y_offset += self.flow_rect(self.flow_line).top()
         blk_char_yoffset = []
         blk_line_spaces = []
 
@@ -2364,6 +2428,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                         inseparable_run_range = (run_start, run_end)
 
             available_height = self.available_height + doc_margin
+            if self.flow_profile is not None:
+                available_height = doc_margin + self.flow_rect(self.flow_line).bottom()
             text_len = line.textLength()
             end_char = char_idx + text_len >= blk_text_len
             if char_idx + text_len > blk_text_len:
@@ -2448,13 +2514,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 self.min_height = max(
                     self.min_height, doc_margin + ruby_flow_extent
                 )
-            available_height = max(available_height, doc_margin + ruby_flow_extent)
+            if self.flow_profile is None:
+                available_height = max(available_height, doc_margin + ruby_flow_extent)
             force_ruby_wrap = (
                 ruby_metric is not None
                 and char_idx <= ruby_unit_start
                 and line_y_offset > doc_margin + 1e-6
                 and line_y_offset + ruby_flow_extent
-                > self.available_height + doc_margin
+                > available_height
             )
 
             is_first_lbracket = False
@@ -2607,8 +2674,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             blk_line_spaces.append([num_rspaces, num_lspaces, char_yoffset_lst, char_idx - num_lspaces])
 
             char_bottom = char_yoffset_lst[-1] + tbr_h
+            planned_break = (self.flow_breaks is not None and self.flow_line < len(self.flow_breaks)
+                             and block.position() + char_idx >= self.flow_breaks[self.flow_line])
             out_of_vspace = (
-                force_ruby_wrap
+                force_ruby_wrap or planned_break
                 or (
                     not group_ruby
                     and char_bottom + ruby_space_gap + ruby_trailing
@@ -2641,6 +2710,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     self.min_height = doc_margin + tbr_h
 
                 line_y_offset = doc_margin
+                if self.flow_profile is not None:
+                    line_y_offset += self.flow_rect(self.flow_line + 1).top()
                 line_position_y = line_y_offset + ruby_leading
                 if ruby_metric is not None and num_lspaces:
                     char_yoffset_lst[:] = [
@@ -2666,6 +2737,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
 
             ypos_list.append(line_position_y)
             line_not_set.append(line)
+            if self.flow_profile is not None and out_of_vspace and len(line_not_set) == 1:
+                self.flow_overflow = True  # A planned column must hold at least one unit.
             if out_of_vspace or end_char:
                 if is_first_line:
                     line_spacing = self.identity_linespacing(
@@ -2719,6 +2792,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                     block_line_spacing_type,
                 )
                 x_offset -= column_advance
+                if self.flow_profile is not None:
+                    slot = self.flow_rect(self.flow_line)
+                    x_offset = doc_margin + slot.left()
+                    if idea_line_width > slot.width() + .1:
+                        self.flow_overflow = True
+                    self.flow_line += 1
+                    self.flow_actual_ends.append(block.position() + end_line.textStart()
+                                                 + (0 if out_of_vspace else end_line.textLength()))
 
                 for line, ypos in zip(line_not_set[:-1], ypos_list[:-1]):
                     line.setPosition(QPointF(x_offset, ypos))
@@ -2738,6 +2819,10 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                                 block_line_spacing,
                                 block_line_spacing_type,
                             )
+                        if self.flow_profile is not None:
+                            x_offset = doc_margin + self.flow_rect(self.flow_line).left()
+                            self.flow_line += 1
+                            self.flow_actual_ends.append(block.position() + end_line.textStart() + end_line.textLength())
                         end_line.setPosition(QPointF(x_offset, end_ypos))
                         char_records.setdefault(end_char_id, {}).update({
                             'line_width': end_width,
@@ -2790,7 +2875,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.line_spaces_lst.append(blk_line_spaces)
         self.per_char_records.append(char_records)
         if (
-            not custom_rendering and 0 < blk_text_len <= 128
+            not custom_rendering and self.flow_profile is None and 0 < blk_text_len <= 128
             and '\ufffc' not in blk_text
             and not column_overflow and not text_combine_ranges
             and not ruby_metrics and not tl.preeditAreaText()
