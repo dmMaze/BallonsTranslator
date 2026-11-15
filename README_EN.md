@@ -185,7 +185,7 @@ OCR & Translate Selected Area
 * Set parameters of automatic modules in the config panel.  
 * ```Ctrl++```/```Ctrl+-``` (Also ```Ctrl+Shift+=```) to resize image.
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
-* ```0-9``` to adjust opacity of text layer
+* On the text canvas, `1`-`9` activate the first nine text styles in displayed order and apply them to selected text blocks; `0` uses the tenth.
 * For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
 * Set text shadow and transparency in the text style panel -> Effect.  
 * ```Alt+Arrow Keys``` or ```Alt+WASD``` (```pageDown``` or ```pageUp``` while in text editing mode) to switch between text blocks.

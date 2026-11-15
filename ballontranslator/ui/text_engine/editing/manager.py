@@ -403,6 +403,9 @@ class SceneTextManager(QObject):
         self.textEditList.selection_changed.connect(self.on_transwidget_selection_changed)
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
+        self.canvas.apply_text_style.connect(
+            self.formatpanel.textstyle_panel.activate_and_apply_style
+        )
         self.formatpanel.textstyle_panel.apply_fontfmt.connect(self.onFormatTextblks)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj

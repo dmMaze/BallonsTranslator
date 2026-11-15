@@ -3,7 +3,7 @@ from typing import Callable, List, Optional, Union
 from uuid import uuid4
 import os
 
-from qtpy.QtWidgets import QApplication, QSlider, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
+from qtpy.QtWidgets import QApplication, QMenu, QGraphicsScene, QGraphicsSceneDragDropEvent , QGraphicsView, QGraphicsSceneDragDropEvent, QGraphicsRectItem, QGraphicsItem, QScrollBar, QGraphicsPixmapItem, QGraphicsSceneMouseEvent, QGraphicsSceneContextMenuEvent, QRubberBand
 from qtpy.QtCore import Qt, QRectF, QPointF, QPoint, Signal, QSize, QSizeF, QEvent, QTimer
 from qtpy.QtGui import QKeySequence, QPixmap, QImage, QHideEvent, QKeyEvent, QMouseEvent, QWheelEvent, QResizeEvent, QPainter, QPen, QPainterPath, QCursor, QNativeGestureEvent
 from qtpy.QtWidgets import QGraphicsLineItem, QGraphicsPathItem
@@ -218,6 +218,7 @@ class Canvas(QGraphicsScene):
     paste_src_signal = Signal()
 
     format_textblks = Signal()
+    apply_text_style = Signal(int)
     layout_textblks = Signal()
     reset_angle = Signal()
     squeeze_blk = Signal()
@@ -399,8 +400,6 @@ class Canvas(QGraphicsScene):
         im_rect = QRectF(0, 0, shared.SCREEN_W, shared.SCREEN_H)
         self.baseLayer.setRect(im_rect)
 
-        self.editing_layer_opacity_slider: QSlider = None
-        self.originallayer_trans_slider: QSlider = None
         self.alpha_mask_edit_session = TextAlphaMaskEditSession(self)
         self.text_move_session = TextItemMoveSession(self)
 
@@ -831,9 +830,17 @@ class Canvas(QGraphicsScene):
                 self.push_undo_command(cmd)
                 event.setAccepted(True)
                 return
-        elif key in QNUMERIC_KEYS:
-            value = QNUMERIC_KEYS[key]
-            self.set_active_layer_transparency(value * 10)
+        elif (
+            self.textEditMode()
+            and key in QNUMERIC_KEYS
+            and modifiers in (
+                Qt.KeyboardModifier.NoModifier,
+                Qt.KeyboardModifier.KeypadModifier,
+            )
+        ):
+            self.apply_text_style.emit((QNUMERIC_KEYS[key] - 1) % 10)
+            event.accept()
+            return
         return super().keyPressEvent(event)
 
     def handle_transform_modal_shortcut(
@@ -879,15 +886,6 @@ class Canvas(QGraphicsScene):
             and control.handle_shortcut(QKEY.Key_S)
         )
     
-    def set_active_layer_transparency(self, value: int) -> None:
-        if self.textEditMode():
-            opacity = self.textLayer.opacity() * 100
-            if value == 0 and opacity == 0:
-                value = 100
-            self.editing_layer_opacity_slider.setValue(value)
-            self.originallayer_trans_slider.setValue(100 - value)
-            self.updateLayers()
-
     def addStrokeImageItem(self, pos: QPointF, pen: QPen, erasing: bool = False) -> None:
         if self.painting_shape == PenShape.MagicWand:
             return

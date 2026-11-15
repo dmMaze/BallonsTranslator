@@ -329,8 +329,6 @@ class MainWindow(mainwindow_cls):
         self.canvas.textstack_changed.connect(self.on_textstack_changed)
         self.canvas.run_blktrans.connect(self.on_run_blktrans)
         self.canvas.drop_open_folder.connect(self.dropOpenDir)
-        self.canvas.originallayer_trans_slider = self.bottomBar.originalSlider
-        self.canvas.editing_layer_opacity_slider = self.bottomBar.editingLayerSlider
         self.canvas.copy_src_signal.connect(self.on_copy_src)
         self.canvas.paste_src_signal.connect(self.on_paste_src)
 

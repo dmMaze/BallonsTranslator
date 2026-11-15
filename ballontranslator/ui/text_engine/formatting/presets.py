@@ -100,7 +100,10 @@ class TextStyleLabel(Widget):
         self.stylelabel.edit_finished.connect(self.on_style_name_edited)
         self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Maximum)
 
-        self.setToolTip(self.tr('Click to set as Global format. Double click to edit name. Drag to reorder.'))
+        self.setToolTip(
+            self.tr('Click to set as Global format. Double click to edit name. Drag to reorder.')
+            + '\n' + self.tr('On the text canvas, 1-9 and 0 activate and apply the first 10 styles.')
+        )
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         BTN_SIZE = 14
@@ -429,6 +432,15 @@ class TextStylePresetPanel(PanelArea):
         textstylelabel.delete_btn_clicked.connect(self.on_deletebtn_clicked)
         textstylelabel.stylelabel_activated.connect(self.on_stylelabel_activated)
         textstylelabel.apply_fontfmt.connect(self.apply_fontfmt)
+
+    def activate_and_apply_style(self, index: int) -> None:
+        if not 0 <= index < self.count():
+            return
+        label: TextStyleLabel = self.flayout.itemAt(index).widget()
+        if not label.active:
+            label.setActive(True)
+            label.stylelabel_activated.emit(True)
+        label.on_applybtn_clicked()
 
     def _moveStyleLabelToIndex(self, source_index: int, target_index: int) -> None:
         if not 0 <= source_index < self.count():

@@ -47,8 +47,6 @@ class EditingLayerOpacityTests(unittest.TestCase):
         self.panel = DrawingPanel(self.canvas)
         self.panel.set_config(pcfg.drawpanel)
         self.bar = BottomBar(self.window)
-        self.canvas.editing_layer_opacity_slider = self.bar.editingLayerSlider
-        self.canvas.originallayer_trans_slider = self.bar.originalSlider
         self.bar.editingLayerSlider.valueChanged.connect(self.canvas.setEditingLayerOpacityBySlider)
         self.bar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         layout = QVBoxLayout(central)
@@ -128,13 +126,15 @@ class EditingLayerOpacityTests(unittest.TestCase):
             self.assertEqual(self.canvas.stroke_img_item.effectiveOpacity(), expected)
             self.canvas.removeItem(self.canvas.stroke_img_item)
 
-    def test_existing_numeric_opacity_toggle_updates_both_layers(self) -> None:
+    def test_numeric_shortcuts_preserve_review_opacity(self) -> None:
         self.canvas.editor_index = 1
-        for expected in (0, 1):
-            self.canvas.set_active_layer_transparency(0)
-            self.assertEqual(self.canvas.textLayer.opacity(), expected)
-            self.assertEqual(self.canvas.drawingLayer.opacity(), expected)
-            self.assertEqual(self.bar.editingLayerSlider.value(), expected * 100)
+        self.bar.editingLayerSlider.setValue(25)
+        original_opacity = self.bar.originalSlider.value()
+        QTest.keyClicks(self.canvas.gv, '12345678900')
+        self.assertEqual(self.canvas.textLayer.opacity(), 0.25)
+        self.assertEqual(self.canvas.drawingLayer.opacity(), 0.25)
+        self.assertEqual(self.bar.editingLayerSlider.value(), 25)
+        self.assertEqual(self.bar.originalSlider.value(), original_opacity)
 
     def test_zero_review_opacity_keeps_saved_images_and_reload_at_full_strength(self) -> None:
         self.canvas.undo()
