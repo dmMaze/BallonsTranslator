@@ -42,7 +42,9 @@ class KoharuTests(unittest.TestCase):
         self.log = patch.object(KoharuDetector.logger, 'info')
         self.log.start()
         self.addCleanup(self.log.stop)
-        self.detector = KoharuDetector(device='cpu', **{'detect size': 768, 'mask dilate size': 0})
+        self.detector = KoharuDetector(device='cpu', **{
+            'detect size': 768, 'mask postprocessing': 'dilate', 'mask dilate size': 0,
+        })
         self.output = prediction()
         self.detector.model = Mock(return_value=self.output)
         self.addCleanup(self.detector.unload_model)
@@ -99,6 +101,22 @@ class KoharuTests(unittest.TestCase):
         mask, blocks = self.detector.detect(self.img)
         self.assertEqual(blocks, [])
 
+    def test_disabling_types_drops_their_masks_after_every_cleanup_mode(self) -> None:
+        self.img[:] = 255
+        self.img[(self.expected_mask(0) | self.expected_mask(1)) > 0] = 0
+        self.detector.updateParam('mask dilate size', 2)
+        for mode in ('koharu', 'dilate', 'ctd'):
+            self.detector.updateParam('mask postprocessing', mode)
+            for text, sound_effects in ((True, True), (True, False), (False, True),
+                                        (False, False), (True, True)):
+                with self.subTest(mode=mode, text=text, sound_effects=sound_effects):
+                    enabled = {'text': text, 'onomatopoeia': sound_effects}
+                    self.detector.updateParam('label', enabled)
+                    mask, blocks = self.detector.detect(self.img)
+                    self.assertEqual({b.label for b in blocks}, {k for k, v in enabled.items() if v})
+                    self.assertEqual(bool(mask[:, :40].any()), text)
+                    self.assertEqual(bool(mask[:, 40:].any()), sound_effects)
+
     def test_dilation_and_font_multiplier_apply_once(self) -> None:
         _, original = self.detector.detect(self.img)
         self.detector.updateParam('font size multiplier', 1.5)
@@ -109,6 +127,64 @@ class KoharuTests(unittest.TestCase):
         for before, after in zip(original, blocks):
             self.assertEqual(after.font_size, before.font_size * 1.5)
             self.assertEqual(after._detected_font_size, after.font_size)
+
+    def test_default_cleanup_matches_disk_morphology_at_edges_and_overlaps(self) -> None:
+        detector = KoharuDetector(device='cpu')
+        detector.model = self.detector.model
+        self.addCleanup(detector.unload_model)
+        for shape, radius in [((40, 80), 1), ((100, 256), 2), ((100, 768), 5),
+                              ((100, 1024), 6), ((200, 2048), 12)]:
+            with self.subTest(shape=shape):
+                raw = np.zeros(shape, np.uint8)
+                raw[:12, :12] = 255
+                raw[-12:, -12:] = 255
+                raw[20:40, 30:50] = 255
+                raw[25:35, 35:45] = 0
+                raw[20:40, 52:70] = 255
+                instance = torch.from_numpy(np.where(raw > 0, 2., -2.).astype(np.float32))
+                self.output['pred_masks'] = instance[None, None].expand(1, 300, *shape)
+                detector.updateParam('label', {'text': True, 'onomatopoeia': False})
+                y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
+                disk = (x*x + y*y <= radius*radius).astype(np.uint8)
+                expected = cv2.morphologyEx(cv2.dilate(raw, disk), cv2.MORPH_CLOSE, disk)
+                mask, blocks = detector.detect(np.zeros((*shape, 3), np.uint8))
+                np.testing.assert_array_equal(mask, expected)
+                self.assertEqual([b.label for b in blocks], ['text'])
+                self.assertEqual(mask.dtype, np.uint8)
+                self.assertEqual(mask[0, 0], 255)
+                self.assertEqual(mask[-1, -1], 255)
+
+    def test_ctd_cleanup_uses_selected_predictions_and_applies_extra_radius_once(self) -> None:
+        from ballontranslator.modules.textdetector.ctd.textmask import refine_mask
+
+        self.img[:] = 255
+        raw = self.expected_mask(0)
+        self.img[raw > 0] = 0
+        self.detector.updateParam('label', {'text': True, 'onomatopoeia': False})
+        _, original = self.detector.detect(self.img)
+        self.detector.updateParam('mask postprocessing', 'ctd')
+        self.detector.updateParam('mask dilate size', 2)
+        mask, blocks = self.detector.detect(self.img)
+        expected = cv2.dilate(refine_mask(self.img, raw, original),
+                              cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+        np.testing.assert_array_equal(mask, expected)
+        self.assertTrue(mask.any())
+        self.assertFalse(mask[:, 50:].any())
+        self.assertEqual([b.xyxy for b in blocks], [b.xyxy for b in original])
+        self.assertEqual([b.label for b in blocks], ['text'])
+
+    def test_cleanup_modes_preserve_empty_predictions_and_disabled_labels(self) -> None:
+        for mode in ('dilate', 'koharu', 'ctd'):
+            with self.subTest(mode=mode):
+                self.detector.updateParam('mask postprocessing', mode)
+                for labels in ({'text': True, 'onomatopoeia': True},
+                               {'text': False, 'onomatopoeia': False}):
+                    self.detector.updateParam('label', labels)
+                    self.output['pred_masks'].fill_(-2.)
+                    mask, _ = self.detector.detect(self.img)
+                    self.assertFalse(mask.any())
+                    self.assertEqual(mask.dtype, np.uint8)
+                    self.assertEqual(mask.shape, self.img.shape[:2])
 
     def test_boxes_clip_to_page_and_degenerate_boxes_are_ignored(self) -> None:
         self.output['pred_boxes'][0, 0] = torch.tensor([0, 0, .5, .5])
@@ -131,6 +207,7 @@ class KoharuTests(unittest.TestCase):
                            ('onomatopoeia threshold', -.1), ('mask dilate size', -1),
                            ('mask dilate size', 2.5), ('detect size', 1024),
                            ('font size multiplier', 0), ('device', 'bad'),
+                           ('mask postprocessing', 'invalid'),
                            ('label', {'text': 'false'}), ('model path', None)]:
             with self.subTest(key=key, value=value):
                 previous = self.detector.get_param_value(key)
@@ -145,12 +222,14 @@ class KoharuTests(unittest.TestCase):
             detector = KoharuDetector(**{
                 'text threshold': {'value': .6}, 'onomatopoeia threshold': float('inf'),
                 'mask dilate size': -1, 'removed setting': 12,
+                'mask postprocessing': {'value': 'removed mode'},
                 'label': {'value': {'text': False, 'onomatopoeia': 'false', 'bubble': True}},
             })
         self.assertTrue(warning.called)
         self.assertEqual(detector.get_param_value('text threshold'), .6)
         self.assertEqual(detector.get_param_value('onomatopoeia threshold'), .3)
         self.assertEqual(detector.get_param_value('mask dilate size'), 2)
+        self.assertEqual(detector.get_param_value('mask postprocessing'), 'koharu')
         self.assertEqual(detector.get_param_value('label'), {'text': False, 'onomatopoeia': True})
         self.assertFalse(detector.all_model_loaded())
         self.assertEqual(KoharuDetector().get_param_value('text threshold'), .25)
@@ -161,6 +240,7 @@ class KoharuTests(unittest.TestCase):
             self.detector.updateParam('device', 'cpu')
             self.detector.updateParam('detect size', 1152)
             self.detector.updateParam('text threshold', '.4')
+            self.detector.updateParam('mask postprocessing', 'ctd')
             self.assertIs(self.detector.model, model)
             self.detector.updateParam('device', 'mps')
             self.assertIsNone(self.detector.model)
@@ -211,26 +291,38 @@ class KoharuMetadataTests(unittest.TestCase):
     def test_metadata_is_lazy(self) -> None:
         result = subprocess.run([sys.executable, '-c', '''
 import sys
+from pathlib import Path
 from ballontranslator.modules import TEXTDETECTORS
 from ballontranslator.modules.lazy_registry import validate_lazy_module_specs
 spec = TEXTDETECTORS.get_spec('koharu')
 assert spec is not None and not validate_lazy_module_specs([spec])
 assert spec.params['label']['value'] == {'text': True, 'onomatopoeia': True}
 assert spec.params['detect size']['value'] == 1152
+assert spec.params['mask postprocessing']['options'] == ['koharu', 'dilate', 'ctd']
+assert spec.params['mask postprocessing']['value'] == 'koharu'
 assert 'transformers>=5.1,<6' in spec.dependencies
+download, = spec.download_file_list
+assert download['files'] == ['model.safetensors', 'config.json']
+assert (Path(download['save_dir']) / download['files'][0]).as_posix() == spec.params['model path']['value']
+assert len(download['sha256_pre_calculated']) == 2
+assert all(len(digest) == 64 for digest in download['sha256_pre_calculated'])
 assert not any(name in sys.modules for name in ('torch', 'transformers', 'rfdetr',
     'ballontranslator.modules.textdetector.detector_koharu'))
 '''], capture_output=True, text=True, env=os.environ.copy())
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_older_config_gets_defaults_without_changing_ctd(self) -> None:
-        saved = {'ctd': {'mask dilate size': 4}}
+        saved = {'ctd': {'mask dilate size': 4}, 'koharu': {'mask dilate size': {'value': 7}}}
         merge_config_module_params(saved, ['ctd', 'koharu'], TEXTDETECTORS.get)
         self.assertEqual(saved['ctd']['mask dilate size'], 4)
         self.assertEqual(saved['koharu']['text threshold']['value'], .25)
+        self.assertEqual(saved['koharu']['mask postprocessing']['value'], 'koharu')
+        self.assertEqual(saved['koharu']['mask dilate size']['value'], 7)
         saved['koharu']['text threshold']['value'] = .7
+        saved['koharu']['mask postprocessing']['value'] = 'ctd'
         merge_config_module_params(saved, ['ctd', 'koharu'], TEXTDETECTORS.get)
         self.assertEqual(saved['koharu']['text threshold']['value'], .7)
+        self.assertEqual(saved['koharu']['mask postprocessing']['value'], 'ctd')
 
     def test_doctest(self) -> None:
         self.assertEqual(doctest.testmod(detector_koharu).failed, 0)

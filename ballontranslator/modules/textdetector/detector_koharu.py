@@ -31,6 +31,16 @@ class KoharuDetector(TextDetectorBase):
     dependencies = [
         'torch', 'torchvision', 'rfdetr==1.7.0', 'transformers>=5.1,<6', 'safetensors',
     ]
+    download_file_list = [{
+        'url': 'https://huggingface.co/mayocream/koharu-layout-highres/resolve/68077eb09401a46e548190ff2786bd405113ea8b/',
+        'files': ['model.safetensors', 'config.json'],
+        'sha256_pre_calculated': [
+            '03de2f77281974f5084cdd8652ace2b55dc15ac0378aed66654e62537cdda255',
+            'ef4697d18fcdab4e9237e1e6890ea6e7efe4efa063f0088e3600e43fb72a7c29',
+        ],
+        'save_dir': 'data/models/koharu-layout-highres',
+        'concatenate_url_filename': 1,
+    }]
     _load_model_keys = {'model'}
     params = {
         'model path': {
@@ -40,7 +50,7 @@ class KoharuDetector(TextDetectorBase):
             'editable': True, 'path_selector': True,
             'path_filter': '*.safetensors', 'size': 'median',
             'display_name': 'Model path',
-            'description': 'Local Koharu weights with config.json in the same folder.',
+            'description': 'Default files download automatically. Custom weights need config.json in the same folder.',
         },
         'device': DEVICE_SELECTOR(not_supported=['xpu', 'privateuseone']),
         'detect size': {
@@ -49,21 +59,34 @@ class KoharuDetector(TextDetectorBase):
             'description': '1152 by default. Larger sizes may recover small text but use more memory.',
         },
         'text threshold': {
-            'value': 0.25, 'display_name': 'Text confidence threshold',
+            'value': 0.25, 'display_name': 'Text threshold',
             'description': 'Minimum text confidence, from 0 to 1.',
         },
         'onomatopoeia threshold': {
-            'value': 0.3, 'display_name': 'Onomatopoeia confidence threshold',
+            'value': 0.3, 'display_name': 'SFX threshold',
             'description': 'Minimum sound-effect confidence, from 0 to 1.',
         },
         'label': {
             'type': 'check_group', 'value': {'text': True, 'onomatopoeia': True},
-            'display_name': 'Labels',
-            'description': 'Only enabled labels produce text blocks and inpainting masks. Bubbles and panels are excluded.',
+            'display_name': 'Types',
+            'description': (
+                'text: dialogue/captions. onomatopoeia: sound effects. '
+                'Unchecked types add no blocks or cleanup masks.'
+            ),
+        },
+        'mask postprocessing': {
+            'type': 'selector', 'options': ['koharu', 'dilate', 'ctd'], 'value': 'koharu',
+            'display_name': 'Mask postprocessing',
+            'description': (
+                'koharu (default): page-scaled dilation then closing, using 6 pixels per 1024 pixels of the long side. '
+                'These are fixed upstream settings; Mask dilation radius is ignored. '
+                'dilate: fixed-radius expansion. ctd: image-color refinement then fixed-radius expansion, '
+                'without loading a CTD model.'
+            ),
         },
         'mask dilate size': {
             'value': 2, 'display_name': 'Mask dilation radius',
-            'description': 'Expand the selected instance masks in page pixels; 0 disables dilation.',
+            'description': 'Extra expansion in page pixels for dilate/ctd; 0 disables this expansion. Ignored by koharu.',
         },
         'font size multiplier': {'value': 1.0, 'display_name': 'Font size multiplier'},
         'description': (
@@ -105,6 +128,10 @@ class KoharuDetector(TextDetectorBase):
                     or any(not isinstance(enabled, bool) for enabled in value.values())):
                 raise ValueError('Labels must specify true/false for text and onomatopoeia')
             return value.copy()
+        if key == 'mask postprocessing':
+            if value not in self.params[key]['options']:
+                raise ValueError('Mask postprocessing must be dilate, koharu or ctd')
+            return value
         if key in {'model path', 'device'}:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f'{key} must be a non-empty string')
@@ -151,9 +178,9 @@ class KoharuDetector(TextDetectorBase):
         config_path = path.with_name('config.json')
         if not path.is_file() or not config_path.is_file():
             raise FileNotFoundError(
-                f'Koharu needs model.safetensors and config.json together. '
-                f'Choose local weights in Model path (currently {path}). '
-                'Download from https://huggingface.co/mayocream/koharu-layout-highres.'
+                'Koharu needs model.safetensors and config.json together. '
+                f'Check Model path (currently {path}), or select the default path '
+                'and reload Koharu to download its files automatically.'
             )
         with config_path.open(encoding='utf-8') as handle:
             config = json.load(handle)
@@ -204,7 +231,8 @@ class KoharuDetector(TextDetectorBase):
             mean = pixels.new_tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
             std = pixels.new_tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
             output = self.model((pixels - mean) / std)
-            return self._postprocess(output, img.shape[:2])
+            mask, blocks = self._postprocess(output, img.shape[:2])
+        return self._refine_mask(img, mask, blocks), blocks
 
     def _postprocess(
         self, output: Dict[str, 'torch.Tensor'], image_shape: Tuple[int, int],
@@ -263,8 +291,35 @@ class KoharuDetector(TextDetectorBase):
             block.font_size *= multiplier
             block._detected_font_size = block.font_size
             blocks.append(block)
+        return mask, sort_regions(blocks)
+
+    def _refine_mask(self, img: np.ndarray, mask: np.ndarray, blocks: List[TextBlock]) -> np.ndarray:
+        """Clean the union of enabled instances without changing detection geometry.
+
+        >>> detector = KoharuDetector()
+        >>> mask = np.zeros((16, 16), np.uint8)
+        >>> mask[8, 8] = 255
+        >>> cleaned = detector._refine_mask(np.zeros((16, 16, 3), np.uint8), mask, [])
+        >>> int(np.count_nonzero(cleaned)), int(np.count_nonzero(mask))
+        (5, 1)
+        """
+        if not mask.any():
+            return mask
+        mode = self.get_param_value('mask postprocessing')
+        if mode == 'koharu':
+            radius = min(255, max(1, math.floor(max(mask.shape) * 6 / 1024 + 0.5)))
+            # Full-page L2 morphology preserves interactions and page-edge neighborhoods.
+            for _ in range(2):
+                distance = cv2.distanceTransform(255 - mask, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+                mask = (distance <= radius).astype(np.uint8) * 255
+            distance = cv2.distanceTransform(mask, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)
+            return (distance > radius).astype(np.uint8) * 255
+        if mode == 'ctd':
+            from .ctd.textmask import refine_mask
+
+            mask = refine_mask(img, mask, blocks)
         radius = self.get_param_value('mask dilate size')
         if radius > 0:
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * radius + 1, 2 * radius + 1))
             mask = cv2.dilate(mask, kernel)
-        return mask, sort_regions(blocks)
+        return mask
