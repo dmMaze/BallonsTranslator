@@ -1648,10 +1648,24 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         inverse, invertible = transform.inverted()
         if not invertible:
             return line_start
-        return line.xToCursor(
+        position = line.xToCursor(
             inverse.map(point).x(),
             QTextLine.CursorBetweenCharacters,
         )
+        if cell.left() <= min(start_x, end_x) and max(start_x, end_x) <= cell.right():
+            return position
+        # Ink centering can put a trailing-space caret beyond the cell. Match
+        # source_cursor_rect(), which clamps those end carets to its edges.
+        candidates = (
+            (position, transform.map(QPointF(
+                self._line_cursor_x(line, position), line.y()
+            )).x()),
+            (line_start, start_x),
+            (line_end, end_x),
+        )
+        return min(candidates, key=lambda candidate: abs(
+            point.x() - min(cell.right(), max(cell.left(), candidate[1]))
+        ))[0]
 
     def _tate_chu_yoko_hit_test(
         self,
@@ -2227,10 +2241,6 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         start = line.textStart()
         text_length = _utf16_length(text)
         end = start + text_length
-        # Even a single grapheme needs isolation when Qt absorbs spaces outside
-        # its authored range; those spaces must not affect normalization or fit.
-        if _grapheme_count(text) < 2 and text_length == line.textLength():
-            return line
         normalized_text = normalize_tate_chu_yoko_text(text)
 
         # Shape narrow and full-width forms in the same isolated context,
@@ -2363,7 +2373,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             if not line.isValid():
                 break
 
-            line.setLineWidth(block_width)
+            # Resizing a QTextLine retains ascent/descent from its first pass.
+            # Choose its cells directly so neighboring fonts cannot leak in.
             text_combine_length = text_combine_lengths.get(char_idx)
             is_text_combine = text_combine_length is not None
             if is_text_combine:

@@ -3,6 +3,7 @@
 from copy import deepcopy
 from dataclasses import dataclass
 import math
+import re
 from typing import Optional, TYPE_CHECKING
 import unicodedata
 
@@ -98,6 +99,30 @@ class FlowUnit:
     penalty: float
 
 
+def _flow_break_penalty(before: str, after: str) -> float:
+    """Prefer sentence pauses and keep short English function words attached.
+
+    >>> _flow_break_penalty('Stop! ', 'Now') < _flow_break_penalty('the ', 'book')
+    True
+    """
+    before, after = before.rstrip(), after.lstrip()
+    if before.endswith(('.', '!', '?', '…', '‼', '⁇', '⁈', '⁉', '。', '！', '？')):
+        return 0.
+    if before.endswith((',', ';', ':', '—', '–', '，', '、')):
+        return 20.
+    if re.match(r'[A-Za-z]*', after)[0].lower() in {
+        'and', 'but', 'or', 'so', 'because', 'although', 'while', 'then',
+    }:
+        return 40.
+    # These words have at most four letters; one extra rejects longer tokens
+    # without backtracking through a long mixed-script prefix.
+    if re.search(r'[A-Za-z]*$', before[-5:])[0].lower() in {
+        'a', 'an', 'the', 'to', 'of', 'for', 'in', 'on', 'at', 'with', 'from',
+    }:
+        return 300.
+    return 100.
+
+
 def measure_flow_units(layout: 'SceneTextLayout', vertical: bool) -> list[FlowUnit]:
     """Reuse Qt's first layout pass; never reshape text in a second model."""
     # shortcut: Ruby and bidi keep Qt wrapping; balance them when their shaped
@@ -141,12 +166,22 @@ def measure_flow_units(layout: 'SceneTextLayout', vertical: bool) -> list[FlowUn
             for start, stop, advance, trailing in pieces:
                 content = _utf16_slice(text, start, stop - start)
                 if not vertical and content.isspace():
+                    if content == ' ':
+                        cfmt = layout.get_char_fontfmt(block.blockNumber(), start)
+                        if cfmt is not None:
+                            # Qt clips hanging word separators at soft wraps;
+                            # balancing may put that separator inside another line.
+                            advance = max(0., float(cfmt.font_metrics.horizontalAdvance(' ')))
                     trailing = advance
                 final = stop >= block.length() - 1 or '\u2028' in content
-                penalty = (0. if content.rstrip().endswith(('.', '!', '?', '…', '。', '！', '？')) else
-                           20. if content.rstrip().endswith((',', ';', ':', '—', '–', '，', '、')) else 100.)
+                breakable = stop in legal or final
+                # English opportunities follow spaces; score the surrounding phrase,
+                # not the final whitespace grapheme of the measured unit.
+                penalty = (_flow_break_penalty(_utf16_slice(text, 0, stop),
+                                               _utf16_slice(text, stop, block.length() - 1 - stop))
+                           if breakable else 0.)
                 unit = FlowUnit(block.position() + stop, advance, trailing,
-                                stop in legal or final, final, penalty)
+                                breakable, final, penalty)
                 if units and not units[-1].breakable and not units[-1].mandatory:
                     previous = units.pop()
                     unit = FlowUnit(unit.end, previous.advance + unit.advance, unit.trailing,
@@ -219,6 +254,9 @@ def _ink_fits(item: 'TextBlkItem', rect: QRectF) -> bool:
     block = item.document().firstBlock()
     while block.isValid():
         text_layout = block.layout()
+        finder = None
+        if not item.fontformat.vertical and layout.flow_profile is None and text_layout.lineCount() > 1:
+            finder = QTextBoundaryFinder(QTextBoundaryFinder.BoundaryType.Line, block.text())
         for index in range(text_layout.lineCount()):
             if item.fontformat.vertical:
                 placement = layout.vertical_line_placement(block, index)
@@ -227,6 +265,12 @@ def _ink_fits(item: 'TextBlkItem', rect: QRectF) -> bool:
                 line, offset, orientation = placement
             else:
                 line, offset, orientation = text_layout.lineAt(index), QPointF(), QTransform()
+                if finder is not None:
+                    # Qt's editable fallback can split a long word anywhere. That
+                    # must not let automatic sizing claim a larger font fits.
+                    finder.setPosition(line.textStart() + line.textLength())
+                    if not finder.isAtBoundary():
+                        return False
             ink = glyph_geometry(line, line.textStart(), line.textLength(), offset, orientation, 0.).bounds
             if ink.isEmpty():
                 continue

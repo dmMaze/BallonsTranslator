@@ -541,7 +541,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                     bottom_target.x - bottom_source.x,
                 )
 
-    def test_mirrored_rotated_punctuation_keeps_the_same_column(self):
+    def test_mirrored_rotated_punctuation_keeps_the_same_column(self) -> None:
         item = self._make_item('（）', True)
         block = item.document().firstBlock()
         for angle in (-45.0, 45.0):
@@ -572,10 +572,11 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                     slanted.bounds.center().x()
                     - neutral.bounds.center().x()
                 )
-            self.assertAlmostEqual(shifts[0], shifts[1], places=6)
+            # Mirrored font outlines need not have bit-identical extrema.
+            self.assertAlmostEqual(shifts[0], shifts[1], delta=1 / 64)
             self.assertGreater(shifts[0] * angle, 0.0)
 
-    def test_glyph_slant_enlargement_uses_stable_bounds_and_anchor(self):
+    def test_glyph_slant_enlargement_uses_stable_bounds_and_anchor(self) -> None:
         block = TextBlock([0, 0, 90, 70])
         block._bounding_rect = [0, 0, 90, 70]
         block.translation = 'A'
@@ -583,22 +584,19 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         block.fontformat.alignment = TextAlignment.Right
         block.fontformat.standard_vertical_roman_alignment = False
         block.fontformat.glyph_slant_angle = 24.0
+        block.fontformat.font_size = 64.0
         item = TextBlkItem(block, 0)
         renderer = item.geometry_controller.layout_renderer
-        probes = []
+        old_width = item.logical_unpadded_rect().width()
         anchor = item.mapToScene(item.logical_unpadded_rect().topRight())
-
-        def probe_geometry() -> None:
-            probes.append(renderer.ink_bounds())
-
-        item.layout.size_enlarged.connect(probe_geometry)
         cursor = item.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertText('(—BCDEFGH')
         item.setTextCursor(cursor)
         self.app.processEvents()
 
-        self.assertTrue(probes)
+        self.assertGreater(item.logical_unpadded_rect().width(), old_width)
+        self.assertTrue(item.boundingRect().contains(renderer.ink_bounds()))
         self.assertEqual(
             item.mapToScene(item.logical_unpadded_rect().topRight()),
             anchor,
@@ -611,7 +609,9 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         wide_block.fontformat.alignment = TextAlignment.Right
         wide_block.fontformat.standard_vertical_roman_alignment = True
         wide_block.fontformat.glyph_slant_angle = 18.0
+        wide_block.fontformat.font_size = 64.0
         wide_item = TextBlkItem(wide_block, 1)
+        wide_width = wide_item.logical_unpadded_rect().width()
         wide_anchor = wide_item.mapToScene(
             wide_item.logical_unpadded_rect().topRight()
         )
@@ -620,6 +620,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         cursor.insertText('書き、句読点。（ABC）—テスト縦書き。')
         wide_item.setTextCursor(cursor)
         self.app.processEvents()
+        self.assertGreater(wide_item.logical_unpadded_rect().width(), wide_width)
         self.assertEqual(
             wide_item.mapToScene(
                 wide_item.logical_unpadded_rect().topRight()

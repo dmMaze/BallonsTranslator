@@ -232,6 +232,7 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.flow_overflow = False
         self.flow_vertical = False
         self.flow_step = 1.
+        self.flow_ink: Optional[QRectF] = None
         self.flow_breaks: Optional[List[int]] = None
         self.flow_actual_ends: List[int] = []
         self.line_spacing = fontformat.line_spacing
@@ -353,14 +354,29 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
 
         self.flow_overflow = False
         self.flow_breaks = None
+        self.flow_ink = None
         if self.flow_profile is None:
             yield
             return
         self.flow_vertical = vertical
+        if not vertical:
+            ink = QRectF()
+            block = self.document().firstBlock()
+            while block.isValid():
+                fragments = block.begin()
+                for cfmt in self.block_charfmt_lst[block.blockNumber()]:
+                    ink = ink.united(cfmt.font_metrics.tightBoundingRect(fragments.fragment().text()))
+                    fragments += 1
+                block = block.next()
+            if not ink.isEmpty():
+                self.flow_ink = ink
         # Match layoutBlock's tight column ink; ordinary font bounds can be
         # narrower on CoreText and falsely reject every candidate font size.
-        metrics = ([fmt.tbr.width() for formats in self.block_charfmt_lst for fmt in formats]
-                   if vertical else self.block_ideal_height)
+        metrics = self.block_ideal_height
+        if vertical:
+            metrics = [fmt.tbr.width() for formats in self.block_charfmt_lst for fmt in formats]
+        elif self.flow_ink is not None:
+            metrics = [self.flow_ink.height()]
         extent = max(max(metrics, default=self.max_font_size(to_px=True)), 1.) + .5
         formats = [fmt for block_formats in self.block_qcharfmt_lst for fmt in block_formats]
         if any(fmt.hasProperty(AnnotationProperty.RUBY_TEXT) for fmt in formats):

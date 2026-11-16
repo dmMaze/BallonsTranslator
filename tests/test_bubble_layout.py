@@ -11,7 +11,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import cv2
 import numpy as np
 from shapely.geometry import LinearRing
-from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt
+from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt, QTextBoundaryFinder
 from qtpy.QtGui import QColor, QImage, QPainter, QPainterPath, QTextCursor, QAbstractTextDocumentLayout, QTransform
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
@@ -22,7 +22,9 @@ from ballontranslator.utils import shared
 from ballontranslator.utils.fontformat import FontFormat, VerticalAlignment, LOGGER as FONT_LOGGER
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
 from ballontranslator.utils.textblock import TextBlock
-from ballontranslator.ui.text_engine.bubble_layout import BubbleProfile, FlowUnit, balanced_flow_breaks, fit_text_in_shape
+from ballontranslator.ui.text_engine.bubble_layout import (
+    BubbleProfile, FlowUnit, _flow_break_penalty, balanced_flow_breaks, fit_text_in_shape, measure_flow_units,
+)
 from ballontranslator.ui.text_engine.editing.commands import AutoLayoutCommand
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager
 from ballontranslator.ui.text_engine.editing.widgets import TransTextEdit
@@ -679,6 +681,87 @@ class BubbleLayoutTests(unittest.TestCase):
         self.assertEqual(balanced_flow_breaks(units, [10., 10.]), [1, 2])
         self.assertIsNone(balanced_flow_breaks(units, [9., 9.]))
         self.assertIsNone(balanced_flow_breaks(units, [19.]))
+
+    def test_english_breaks_score_phrases_across_spaces_and_emoji(self) -> None:
+        item = self.item('Stop! Now, go and find the notebook. 😀 Go home.')
+        item.setFontSize(14)
+        text = item.toPlainText().encode('utf-16-le')
+        scores = {text[:unit.end * 2].decode('utf-16-le').rstrip(): unit.penalty
+                  for unit in measure_flow_units(item.layout, False)}
+        self.assertLess(scores['Stop!'], scores['Stop! Now,'])
+        self.assertLess(scores['Stop! Now,'], scores['Stop! Now, go'])
+        self.assertLess(scores['Stop! Now, go'], scores['Stop! Now, go and find'])
+        self.assertLess(scores['Stop! Now, go and find'], scores['Stop! Now, go and find the'])
+        self.assertEqual(scores['Stop! Now, go and find the notebook.'], scores['Stop!'])
+        self.assertEqual(scores['Stop! Now, go and find the notebook. 😀 Go home.'], scores['Stop!'])
+
+    def test_english_word_measurements_keep_hanging_spaces_when_reflowing(self) -> None:
+        item = self.item('one two three four seven eight nine ten')
+        item.setFontSize(14)
+        item.setLetterSpacing(1.15)
+        measurements = []
+        for width in (180, 700):
+            item.setRect([0, 0, width, 500])
+            units = measure_flow_units(item.layout, False)
+            measurements.append([(unit.end, unit.advance, unit.trailing) for unit in units])
+        np.testing.assert_allclose(measurements[0], measurements[1], atol=.05)
+        self.assertTrue(all(trailing > 0 for _, _, trailing in measurements[0][:-1]))
+
+    def test_phrase_scoring_keeps_whole_words_after_long_mixed_script_tokens(self) -> None:
+        prefix = 'x' * 10000 + '文'
+        for word, expected in (('', 100.), ('within', 100.), ('thereof', 100.),
+                               (' FROM ', 300.), ('with', 300.), ('the', 300.)):
+            with self.subTest(word=word):
+                self.assertEqual(_flow_break_penalty(prefix + word, 'book'), expected)
+
+    def test_horizontal_free_text_fit_does_not_gain_capacity_by_splitting_words(self) -> None:
+        for family in ('Arial', 'Times New Roman', 'Comic Sans MS'):
+            with self.subTest(family=family):
+                item = self.item('Put the notebook beside the refrigerator.', shape=False)
+                item.setFontFamily(family)
+                item.setRect([0, 0, 140, 400])
+                original = item.toPlainText()
+                result = fit_text_in_shape(item, auto_size=True)
+                self.assertFalse(result.overflow)
+                self.assertEqual(item.toPlainText(), original)
+                item.layout.reLayout()
+                block = item.document().firstBlock()
+                finder = QTextBoundaryFinder(QTextBoundaryFinder.BoundaryType.Line, block.text())
+                for index in range(block.layout().lineCount()):
+                    line = block.layout().lineAt(index)
+                    finder.setPosition(line.textStart() + line.textLength())
+                    self.assertTrue(finder.isAtBoundary())
+
+    def test_horizontal_word_that_cannot_fit_reports_overflow_at_the_floor(self) -> None:
+        text = 'supercalifragilisticexpialidocious'
+        item = self.item(text, shape=False)
+        item.setRect([0, 0, 20, 400])
+        with patch('ballontranslator.ui.text_engine.bubble_layout.LOGGER.warning') as warning:
+            result = fit_text_in_shape(item, auto_size=True)
+        self.assertTrue(result.overflow)
+        self.assertAlmostEqual(result.font_size, 9., delta=.1)
+        self.assertEqual(item.toPlainText(), text)
+        warning.assert_called_once()
+
+    def test_horizontal_bubble_fits_and_centers_actual_ink_across_fonts(self) -> None:
+        for family in ('Arial', 'Times New Roman', 'Comic Sans MS'):
+            with self.subTest(family=family):
+                shape = BubbleShape.rectangle((0, 0, 260, 130))
+                block = TextBlock(
+                    _bounding_rect=list(shape.frame), translation='...',
+                    bubble_shape=shape, bubble_layout=True,
+                    fontformat=FontFormat(font_family=family, font_size=24, alignment=1),
+                )
+                item = TextBlkItem(block, 0)
+                self.addCleanup(item.deleteLater)
+                result = fit_text_in_shape(item, auto_size=True)
+                self.assertFalse(result.overflow)
+                self.assertGreater(result.font_size, shape.frame[3])
+                line = item.document().firstBlock().layout().lineAt(0)
+                ink = glyph_geometry(line, 0, line.textLength(), QPointF(), QTransform(), 0.).bounds
+                frame = item.logical_unpadded_rect()
+                self.assertTrue(frame.contains(ink))
+                self.assertAlmostEqual(ink.center().y(), frame.center().y(), delta=2.)
 
     def test_inline_hard_breaks_and_emoji_keep_their_authored_rows(self) -> None:
         item = self.item('placeholder')

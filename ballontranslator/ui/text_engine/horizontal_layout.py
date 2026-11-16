@@ -1109,7 +1109,11 @@ class HorizontalTextDocumentLayout(SceneTextLayout):
 
             dy = 0
             idea_height = -1
-            if nchar > 0:
+            if self.flow_ink is not None:
+                # Use the same actual-text ink band for contour planning and placement.
+                idea_height = self.flow_ink.height()
+                dy = -self.flow_ink.top() - line.ascent()
+            elif nchar > 0:
                 tgt_cfmt = self.largest_font_format(
                     blk_no, char_idx, char_idx + nchar
                 )

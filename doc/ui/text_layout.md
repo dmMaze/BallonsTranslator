@@ -141,11 +141,13 @@ bounded raster profile retained by each live layout, reused across font probes a
 resizes and replaced when the path changes. Both writing modes take the widest
 continuous contour spans and derive a shared alignment axis from them. Vertical
 columns follow the saved Top/Center/Bottom setting; whitespace/caret cells move
-with the glyphs. Insets reserve one ink band with a four-pixel floor. Balanced line
+with the glyphs. Insets reserve one ink band with a four-pixel floor; horizontal
+flow measures the actual document text for both that band and baseline placement. Balanced line
 breaks reuse Qt advances and legal boundaries and preserve mandatory paragraphs;
 Ruby, bidi text and unusually long documents retain their native wrapping.
 Automatic sizing probes detached Qt items before applying the result; fixed sizes
-are laid out directly. Fitting reports overflow and sizes below 9 page pixels.
+are laid out directly. Arbitrary mid-word wrapping cannot qualify as a successful
+automatic fit. Fitting reports overflow and sizes below 9 page pixels.
 The minimum is a readability floor, not a guarantee that every translation
 fits. Manual auto-layout groups native document edits and frame/size changes in
 one canvas command, preserving earlier typing history in both editors.
