@@ -3,14 +3,14 @@
 from copy import deepcopy
 from dataclasses import dataclass
 import math
-from typing import Optional, Sequence, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 import unicodedata
 
 import numpy as np
 from qtpy.QtCore import QPointF, QRectF, Qt, QTextBoundaryFinder
-from qtpy.QtGui import QImage, QPainter, QPainterPath, QTransform
+from qtpy.QtGui import QImage, QPainter, QTransform
 
-from ballontranslator.utils.bubble_shape import BubbleShape
+from ballontranslator.utils.bubble_shape import BubbleShape, bubble_path
 from ballontranslator.utils.logger import logger as LOGGER
 from .rendering.glyph import glyph_geometry
 from .rendering.indexing import _grapheme_ranges, _utf16_slice
@@ -18,21 +18,6 @@ from .rendering.indexing import _grapheme_ranges, _utf16_slice
 if TYPE_CHECKING:
     from .item import TextBlkItem
     from .layout import SceneTextLayout
-
-
-def bubble_path(nodes: Sequence[Sequence[float]], rect: Optional[QRectF] = None) -> QPainterPath:
-    """Build the same closed cubic path for wrapping, guides and anchor editing."""
-    path = QPainterPath()
-    path.moveTo(*nodes[0][:2])
-    for previous, node in zip(nodes, (*nodes[1:], nodes[0])):
-        path.cubicTo(*previous[4:], *node[2:4], *node[:2])
-    path.closeSubpath()
-    if rect is not None:
-        transform = QTransform()
-        transform.translate(rect.left(), rect.top())
-        transform.scale(rect.width(), rect.height())
-        path = transform.map(path)
-    return path
 
 
 class BubbleProfile:

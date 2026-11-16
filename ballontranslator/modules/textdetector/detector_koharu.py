@@ -321,6 +321,7 @@ class KoharuDetector(TextDetectorBase):
         # Transfer native masks once; projecting one at a time avoids an N-by-page allocation.
         masks = output['pred_masks'][0, queries].cpu()
         native_masks = masks.numpy() > 0
+        mask_scale = np.array([native_masks.shape[2] / width, native_masks.shape[1] / height])
         bubbles = sorted((i for i, label in enumerate(labels) if label == 2),
                          key=lambda i: np.count_nonzero(native_masks[i]))
         associations = {i: [] for i in bubbles}
@@ -353,25 +354,32 @@ class KoharuDetector(TextDetectorBase):
             block.font_size = max(1., min(x2 - x1, y2 - y1) * .25) * multiplier
             block._detected_font_size = -1
             blocks.append(block)
-            foreground_y, foreground_x = np.nonzero(native_masks[index])
+            if not bubbles:
+                continue
+            # Keep cells intersecting the text box; outliers must not guide bubble layout.
+            mx1, my1 = np.floor(np.array([x1, y1]) * mask_scale).astype(int)
+            mx2, my2 = np.ceil(np.array([x2, y2]) * mask_scale).astype(int)
+            text_mask = native_masks[index]
+            text_mask[:my1] = text_mask[my2:] = False
+            text_mask[:, :mx1] = text_mask[:, mx2:] = False
+            foreground_y, foreground_x = np.nonzero(text_mask)
             foreground_count = len(foreground_x)
             if foreground_count:
                 for bubble in bubbles:
                     if np.count_nonzero(native_masks[bubble, foreground_y, foreground_x]) >= .9 * foreground_count:
-                        associations[bubble].append(block)
+                        associations[bubble].append((block, index))
                         break
         for bubble, members in associations.items():
             if not members:
                 continue
             bubble_mask = native_masks[bubble]
             if len(members) == 1:
-                members[0].bubble_shape = trace_bubble(
-                    bubble_mask, (width, height), members[0].angle, tuple(members[0].center()))
-                members[0].bubble_layout = members[0].bubble_shape is not None
-                continue
-            anchors = np.array([(np.array(b.xyxy[:2]) + b.xyxy[2:]) / 2 for b in members])
-            for block, cell in zip(members, partition_bubble(bubble_mask, (width, height), anchors)):
-                block.bubble_shape = trace_bubble(cell, (width, height), block.angle, tuple(block.center()))
+                cells = [bubble_mask]
+            else:
+                anchors = np.array([(np.array(b.xyxy[:2]) + b.xyxy[2:]) / 2 for b, _ in members])
+                cells = partition_bubble(bubble_mask, (width, height), anchors)
+            for (block, index), cell in zip(members, cells):
+                block.bubble_shape = trace_bubble(cell, (width, height), block.angle, native_masks[index])
                 block.bubble_layout = block.bubble_shape is not None
         return mask, sort_regions(blocks)
 

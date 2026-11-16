@@ -100,11 +100,20 @@ rich-text ranges and the paired translation editor.
 
 [`BubbleShape`](../../ballontranslator/utils/bubble_shape.py) stores a closed cubic
 path as normalized `(anchor x/y, incoming handle x/y, outgoing handle x/y)` nodes
-and an initial page frame. Four nodes suffice for rectangles and ellipses;
-irregular contours use simplified corners with collapsed handles. Detection traces
-at mask resolution, selects the component containing the source text, and partitions
-shared bubbles at physical necks, with source bisectors as a fallback. Coincident
-source anchors receive separate strips.
+and an initial page frame. Tracing approximates the usable body, removing narrow
+tails and spikes before preferring four-node rectangles or ellipses. Clipped and
+compound bodies use short cubic chains with redundant anchors merged; bounded
+fit error preserves significant concavities. Intricate contours retain simplified
+corners when a short curve cannot represent them safely. Coverage of each block's
+native text segmentation, clipped to its detected text box, is a separate adjustment
+after fitting: keep a covering fit unchanged; otherwise tune its anchors and tangent
+handles, splitting at most four additional anchors for difficult concavities. Full
+retained foreground cells, including disconnected strokes, guide coverage; empty
+bounding-box corners do not. Masks remain temporary detector data. The adjustment
+never selects another fit.
+Detection works on native mask crops, selects the component containing the source
+text, and partitions shared bubbles at physical necks, with source bisectors as a fallback.
+Coincident source anchors receive separate strips.
 `TextBlock.bubble_layout` records whether that path is active for wrapping. Koharu
 enables it when a bubble was detected; missing fields use ordinary defaults.
 Resizing scales the local path without retracing. Automatic fitting honors this

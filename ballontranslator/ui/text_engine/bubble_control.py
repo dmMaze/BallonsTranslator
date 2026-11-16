@@ -10,8 +10,7 @@ from qtpy.QtWidgets import (
     QMenu, QStyleOptionGraphicsItem, QWidget,
 )
 
-from ballontranslator.utils.bubble_shape import BubbleShape
-from .bubble_layout import bubble_path
+from ballontranslator.utils.bubble_shape import BubbleShape, bubble_path
 from .editing.commands import BubbleShapeState, SetBubbleShapeCommand
 from .shape_control import CONTROL_ITEM_DATA_KEY, device_pixels_to_local
 

@@ -17,11 +17,11 @@ from qtpy.QtWidgets import QApplication, QHBoxLayout, QMenu, QWidget
 from ballontranslator.ui import shared_widget as SW
 from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.mainwindow import MainWindow
-from ballontranslator.ui.text_engine.bubble_layout import bubble_path, fit_text_in_shape
+from ballontranslator.ui.text_engine.bubble_layout import fit_text_in_shape
 from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.editing.manager import SceneTextManager, TextPanel
 from ballontranslator.utils import config as C, shared
-from ballontranslator.utils.bubble_shape import BubbleShape
+from ballontranslator.utils.bubble_shape import BubbleShape, bubble_path
 from ballontranslator.utils.fontformat import BendTextTransform, FontFormat, TextTransformStack
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock

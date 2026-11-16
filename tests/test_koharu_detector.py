@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 import torch
 import torch.nn.functional as F
+from qtpy.QtCore import QRectF
+from qtpy.QtGui import QTransform
 
 from ballontranslator.modules import TEXTDETECTORS
 from ballontranslator.modules.base import merge_config_module_params
@@ -20,6 +22,7 @@ from ballontranslator.modules.exceptions import ModuleRunError
 from ballontranslator.modules.textdetector import detector_koharu
 from ballontranslator.modules.textdetector.detector_koharu import KoharuDetector
 from ballontranslator.utils.io_utils import json_dump_nested_obj
+from ballontranslator.utils.bubble_shape import _text_mask_path, bubble_path
 from ballontranslator.utils.textblock import TextBlock
 
 
@@ -149,6 +152,74 @@ class KoharuTests(unittest.TestCase):
         self.assertLess(x + width, 50)
         self.assertLess(y, 25)
         self.assertGreater(y + height, 40)
+
+    def test_single_and_shared_bubbles_cover_only_their_box_clipped_text(self) -> None:
+        for shared in (False, True):
+            with self.subTest(shared=shared):
+                text_boxes = ([[.275, .5, .35, .9], [.725, .5, .35, .9]] if shared
+                              else [[.5, .5, .55, .92]])
+                count = len(text_boxes)
+                self.detector.num_select = count + 1
+                masks = np.zeros((count + 1, 120, 200), np.uint8)
+                if shared:
+                    masks[0, 40:80, 45:65] = masks[1, 40:80, 135:155] = 1
+                    masks[0, 8, 55] = 1
+                else:
+                    masks[0, 35:85, 75:125] = 1
+                    masks[0, 8, 100] = 1
+                expected_text = masks[:count].copy()
+                masks[:count, :3] = masks[:count, -3:] = 1
+                masks[:count, :, :5] = masks[:count, :, -5:] = 1
+                cv2.ellipse(masks[-1], (100, 60), (90, 45), 0, 0, 360, 1, -1)
+                logits = torch.full((1, count + 1, 5), -20.)
+                logits[0, :count, 0] = logits[0, count, 2] = 20
+                self.detector.model.return_value = {
+                    'pred_logits': logits,
+                    'pred_boxes': torch.tensor([text_boxes + [[.5, .5, .9, .75]]]),
+                    'pred_masks': torch.from_numpy(np.where(masks[None], 2., -2.)).float(),
+                }
+                mask, blocks = self.detector.detect(np.zeros((120, 200, 3), np.uint8))
+                np.testing.assert_array_equal(mask, masks[:count].max(axis=0) * 255)
+                self.assertEqual(len(blocks), count)
+                for block in blocks:
+                    self.assertTrue(block.bubble_layout)
+                    shape = block.bubble_shape
+                    path = bubble_path(shape.nodes, QRectF(*shape.frame))
+                    center = QRectF(*shape.frame).center()
+                    transform = QTransform().translate(center.x(), center.y()).rotate(block.angle)
+                    transform.translate(-center.x(), -center.y())
+                    index = int(shared and block.xyxy[0] > 100)
+                    required = _text_mask_path(expected_text[index]).translated(.5, .5)
+                    page_path = transform.map(path)
+                    self.assertTrue(required.subtracted(page_path).isEmpty())
+                    x1, y1, x2, y2 = block.xyxy
+                    self.assertFalse(page_path.contains(QRectF(x1, y1, x2 - x1, y2 - y1)))
+                    if shared:
+                        other = _text_mask_path(expected_text[1 - index]).translated(.5, .5)
+                        self.assertFalse(page_path.intersects(other))
+
+    def test_box_clipping_uses_native_coordinates_before_bubble_association(self) -> None:
+        # The 8x8 masks project onto an 80x40 page, with fractional native x bounds.
+        self.output['pred_masks'][0, 2] = -2
+        self.output['pred_masks'][0, 2, 1:7, :4] = 2
+        _, baseline = self.detector.detect(self.img)
+        original = next(b for b in baseline if b.label == 'text').bubble_shape
+        self.assertIsNotNone(original)
+        self.output['pred_masks'][0, 0] = 2
+        saved_masks = self.output['pred_masks'].clone()
+        mask, blocks = self.detector.detect(self.img)
+        block = next(b for b in blocks if b.label == 'text')
+        self.assertEqual(block.bubble_shape, original)
+        self.assertTrue(block.bubble_layout)
+        self.assertTrue(np.all(mask == 255))
+        torch.testing.assert_close(self.output['pred_masks'], saved_masks)
+        # An instance with foreground only outside its box has no layout constraint.
+        self.output['pred_masks'][0, 0] = -2
+        self.output['pred_masks'][0, 0, 0] = 2
+        _, blocks = self.detector.detect(self.img)
+        block = next(b for b in blocks if b.label == 'text')
+        self.assertIsNone(block.bubble_shape)
+        self.assertFalse(block.bubble_layout)
 
     def test_labels_filter_both_blocks_and_masks(self) -> None:
         for index, label in enumerate(('text', 'onomatopoeia')):

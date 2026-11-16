@@ -302,7 +302,7 @@ class TextItemGeometryController:
 
     def bubble_outline_in_item(self) -> QPainterPath:
         """Map the live wrapping path, including an uncommitted anchor preview."""
-        from .bubble_layout import bubble_path
+        from ballontranslator.utils.bubble_shape import bubble_path
 
         profile = self.item.layout.flow_profile
         if profile is None:

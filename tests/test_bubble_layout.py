@@ -1,5 +1,8 @@
 import json
 import os
+import subprocess
+import sys
+import textwrap
 import unittest
 from unittest.mock import patch
 
@@ -7,11 +10,14 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import cv2
 import numpy as np
+from shapely.geometry import LinearRing
 from qtpy.QtCore import QCoreApplication, QEvent, QPointF, QRectF, Qt
-from qtpy.QtGui import QColor, QImage, QPainter, QTextCursor, QAbstractTextDocumentLayout
+from qtpy.QtGui import QColor, QImage, QPainter, QPainterPath, QTextCursor, QAbstractTextDocumentLayout, QTransform
 from qtpy.QtWidgets import QApplication, QGraphicsScene
 
-from ballontranslator.utils.bubble_shape import BubbleShape, load_bubble_shape, partition_bubble, trace_bubble
+from ballontranslator.utils.bubble_shape import (
+    BubbleShape, _cover_text_region, _text_mask_path, bubble_path, load_bubble_shape, partition_bubble, trace_bubble,
+)
 from ballontranslator.utils import shared
 from ballontranslator.utils.fontformat import FontFormat, VerticalAlignment, LOGGER as FONT_LOGGER
 from ballontranslator.utils.proj_imgtrans import TextBlkEncoder
@@ -121,12 +127,246 @@ class BubbleLayoutTests(unittest.TestCase):
         mask = np.zeros((160, 200), np.uint8)
         cv2.ellipse(mask, (30, 15), (90, 70), 0, 0, 360, 1, -1)
         shape = trace_bubble(mask, (200, 160))
-        self.assertGreater(len(shape.nodes), 4)
+        self.assertLessEqual(len(shape.nodes), 6)
         x, y, width, height = shape.frame
         self.assertGreaterEqual(x, 0)
         self.assertGreaterEqual(y, 0)
         self.assertLessEqual(x + width, 200)
         self.assertLessEqual(y + height, 160)
+        path = bubble_path(shape.nodes, QRectF(*shape.frame))
+        self.assertTrue(path.contains(QPointF(30, 30)))
+        self.assertFalse(path.contains(QPointF(115, 80)))
+
+    def test_tracing_covers_text_cells_after_scaling_rotation_and_save(self) -> None:
+        mask = np.zeros((160, 200), np.uint8)
+        cv2.ellipse(mask, (100, 80), (80, 60), 0, 0, 360, 1, -1)
+        # Text extends below the bubble, including isolated pixels on page edges.
+        for box in ((35, 20, 165, 155), (0, 0, 165, 160)):
+            text_mask = np.zeros_like(mask)
+            x1, y1, x2, y2 = box
+            text_mask[y1:y2, 95:105] = 1
+            text_mask[y1, x1] = text_mask[y2 - 1, x2 - 1] = 1
+            required = QTransform().scale(10, 7.5).translate(.5, .5).map(_text_mask_path(text_mask))
+            for angle in (0, 27, -73.5):
+                with self.subTest(box=box, angle=angle):
+                    shape = trace_bubble(mask, (2000, 1200), angle, text_mask)
+                    restored = TextBlock(**json.loads(json.dumps(TextBlock(
+                        angle=angle, bubble_shape=shape, bubble_layout=True,
+                    ), cls=TextBlkEncoder)))
+                    shape = restored.bubble_shape
+                    self.assertLessEqual(len(shape.nodes), 8)
+                    path = bubble_path(shape.nodes, QRectF(*shape.frame))
+                    center = QRectF(*shape.frame).center()
+                    transform = QTransform().translate(center.x(), center.y()).rotate(restored.angle)
+                    transform.translate(-center.x(), -center.y())
+                    self.assertTrue(required.subtracted(transform.map(path)).isEmpty())
+
+    def test_text_mask_coverage_includes_thin_strokes_and_disconnected_components(self) -> None:
+        mask = np.zeros((120, 160), np.uint8)
+        cv2.fillPoly(mask, [np.array([[10, 10], [150, 10], [150, 40], [80, 40],
+                                     [80, 80], [150, 80], [150, 110], [10, 110]])], 1)
+        text_mask = np.zeros_like(mask)
+        text_mask[25, 25:136] = text_mask[95, 25:136] = 1
+        text_mask[60, 25:136] = 1
+        required = _text_mask_path(text_mask).translated(.5, .5)
+        original = trace_bubble(mask, (160, 120))
+        original_path = bubble_path(original.nodes, QRectF(*original.frame))
+        self.assertTrue(all(original_path.contains(QPointF(x, y))
+                            for x in (25, 135) for y in (25, 95)))
+        self.assertFalse(required.subtracted(original_path).isEmpty())
+        shape = trace_bubble(mask, (160, 120), text_mask=text_mask)
+        self.assertTrue(required.subtracted(bubble_path(shape.nodes, QRectF(*shape.frame))).isEmpty())
+        self.assertLessEqual(len(shape.nodes), len(original.nodes) + 4)
+
+    def test_tracing_rejects_mismatched_text_masks(self) -> None:
+        mask = np.ones((30, 30), np.uint8)
+        for shape in ((30,), (30, 29), (30, 30, 1)):
+            with self.subTest(shape=shape), self.assertRaises(ValueError):
+                trace_bubble(mask, (30, 30), text_mask=np.zeros(shape, np.uint8))
+
+    def test_text_mask_path_covers_full_pixels_without_filling_empty_centers(self) -> None:
+        for bits in range(16):
+            mask = np.array([(bits >> i) & 1 for i in range(4)], np.uint8).reshape(2, 2)
+            path = _text_mask_path(mask)
+            for y in range(2):
+                for x in range(2):
+                    self.assertEqual(path.contains(QPointF(x, y)), bool(mask[y, x]))
+                    if mask[y, x]:
+                        cell = QPainterPath()
+                        cell.addRect(QRectF(x - .5, y - .5, 1, 1))
+                        self.assertTrue(cell.subtracted(path).isEmpty())
+        ring = np.ones((5, 5), np.uint8)
+        ring[1:4, 1:4] = 0
+        self.assertFalse(_text_mask_path(ring).contains(QPointF(2, 2)))
+
+    def test_mask_coverage_does_not_require_empty_bounding_box_corners(self) -> None:
+        mask = np.zeros((160, 200), np.uint8)
+        cv2.ellipse(mask, (100, 80), (80, 60), 0, 0, 360, 1, -1)
+        text_mask = np.zeros_like(mask)
+        text_mask[25:136, 97:104] = 1
+        text_mask[77:84, 30:171] = 1
+        original = trace_bubble(mask, (200, 160))
+        self.assertEqual(trace_bubble(mask, (200, 160), text_mask=text_mask), original)
+        self.assertEqual(trace_bubble(mask, (200, 160), text_mask=np.zeros_like(mask)), original)
+        required = _text_mask_path(text_mask).translated(.5, .5)
+        path = bubble_path(original.nodes, QRectF(*original.frame))
+        self.assertTrue(required.subtracted(path).isEmpty())
+        self.assertFalse(path.contains(required.boundingRect()))
+
+    def test_coverage_preserves_smooth_joins(self) -> None:
+        mask = np.zeros((160, 200), np.uint8)
+        cv2.ellipse(mask, (100, 80), (80, 60), 0, 0, 360, 1, -1)
+        original = trace_bubble(mask, (200, 160))
+        text_mask = np.zeros_like(mask)
+        text_mask[20:155, 35:165] = 1
+        adjusted = trace_bubble(mask, (200, 160), text_mask=text_mask)
+        self.assertEqual(len(adjusted.nodes), len(original.nodes))
+        self.assertEqual(len(adjusted.nodes), 4)
+        nodes = np.array(adjusted.nodes).reshape(-1, 3, 2)
+        incoming, outgoing = nodes[:, 1] - nodes[:, 0], nodes[:, 2] - nodes[:, 0]
+        self.assertTrue(np.all(np.linalg.norm(incoming, axis=1) > .01))
+        self.assertTrue(np.all(np.linalg.norm(outgoing, axis=1) > .01))
+        np.testing.assert_allclose(incoming[:, 0] * outgoing[:, 1] - incoming[:, 1] * outgoing[:, 0],
+                                   0, atol=1e-5)
+        self.assertTrue(np.all(np.sum(incoming * outgoing, axis=1) < 0))
+
+    def test_coverage_keeps_polygon_order_and_adds_at_most_four_anchors(self) -> None:
+        notch = np.array([[10, 10], [150, 10], [150, 40], [80, 40],
+                          [80, 80], [150, 80], [150, 110], [10, 110]])
+        triangle = np.array([[20, 10], [160, 90], [10, 110]])
+        angles = np.linspace(0, 2 * np.pi, 64, endpoint=False)
+        radii = np.where(np.arange(64) % 2, 25, 70)
+        star = np.column_stack((80 + radii * np.cos(angles), 60 + radii * np.sin(angles)))
+        required = QPainterPath()
+        required.addRect(QRectF(25, 25, 110, 70))
+        for anchors in (notch, triangle, star):
+            for reverse in (False, True):
+                with self.subTest(count=len(anchors), reverse=reverse):
+                    original = np.tile(anchors[::-1] if reverse else anchors, (1, 3))
+                    saved = original.copy()
+                    nodes = _cover_text_region(original, required)
+                    np.testing.assert_array_equal(original, saved)
+                    self.assertGreaterEqual(len(nodes), len(original))
+                    self.assertLessEqual(len(nodes), min(64, len(original) + 4))
+                    self.assertTrue(required.subtracted(bubble_path(nodes)).isEmpty())
+
+    def test_tracing_and_coverage_preserve_a_simple_outline_at_deep_notches(self) -> None:
+        notch = np.zeros((103, 159), np.uint8)
+        notch[2:-2, 2:-2] = 1
+        cv2.fillPoly(notch, [np.array([[53, 34], [159, 51], [53, 68]])], 0)
+        cutouts = np.zeros((40, 53), np.uint8)
+        cutouts[2:-2, 2:-2] = 1
+        for center in ((15, 13), (19, 17), (32, 23), (12, 26)):
+            cv2.circle(cutouts, center, 10, 0, -1)
+        for mask in (notch, cutouts):
+            page_size = mask.shape[::-1]
+            original = trace_bubble(mask, page_size)
+            for sparse in (False, True):
+                with self.subTest(grid=mask.shape, sparse=sparse):
+                    text_mask = mask.copy()
+                    if sparse:
+                        text_mask[np.arange(len(mask)) % 8 > 1] = 0
+                    adjusted = trace_bubble(mask, page_size, text_mask=text_mask)
+                    for shape in (original, adjusted):
+                        path = bubble_path(shape.nodes, QRectF(*shape.frame))
+                        outline = [path.pointAtPercent(t) for t in np.linspace(0, 1, 513)]
+                        self.assertTrue(LinearRing([(p.x(), p.y()) for p in outline]).is_simple)
+                    required = _text_mask_path(text_mask).translated(.5, .5)
+                    self.assertTrue(required.subtracted(path).isEmpty())
+                    self.assertLessEqual(len(adjusted.nodes), len(original.nodes) + 4)
+
+    def test_concave_mask_coverage_on_a_detection_worker(self) -> None:
+        # Isolate native crashes: the main thread's larger stack hides this regression.
+        program = textwrap.dedent('''
+            import cv2
+            import numpy as np
+            from qtpy.QtCore import QCoreApplication, QThread, QRectF
+            from ballontranslator.utils.bubble_shape import trace_bubble, bubble_path, _text_mask_path
+
+            class Worker(QThread):
+                completed = False
+
+                def run(self) -> None:
+                    mask = np.zeros((120, 180), np.uint8)
+                    cv2.fillPoly(mask, [np.array([[10, 10], [150, 10], [150, 40], [80, 40],
+                                                 [80, 80], [150, 80], [150, 110], [10, 110]])], 1)
+                    text = np.zeros_like(mask)
+                    text[25:96, 25:136] = 1
+                    original = trace_bubble(mask, (180, 120))
+                    shape = trace_bubble(mask, (180, 120), text_mask=text)
+                    assert shape is not None and len(shape.nodes) <= len(original.nodes) + 4
+                    required = _text_mask_path(text).translated(.5, .5)
+                    assert required.subtracted(bubble_path(shape.nodes, QRectF(*shape.frame))).isEmpty()
+                    self.completed = True
+
+            app = QCoreApplication([])
+            worker = Worker()
+            worker.start()
+            assert worker.wait(10000) and worker.completed
+        ''')
+        result = subprocess.run(
+            [sys.executable, '-X', 'faulthandler', '-c', program],
+            cwd=os.path.dirname(os.path.dirname(__file__)),
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_tails_and_spikes_keep_compact_body_primitives(self) -> None:
+        for kind in ('rectangle', 'ellipse', 'spikes'):
+            with self.subTest(kind=kind):
+                body = np.zeros((200, 240), np.uint8)
+                if kind == 'rectangle':
+                    body[25:130, 30:200] = 1
+                else:
+                    cv2.ellipse(body, (120, 100), (85, 65), 0, 0, 360, 1, -1)
+                mask = body.copy()
+                if kind == 'spikes':
+                    angles = np.linspace(0, 2 * np.pi, 48, endpoint=False)
+                    radii = np.where(np.arange(48) % 2, 1., 1.12)
+                    points = np.column_stack((120 + 85 * radii * np.cos(angles),
+                                              100 + 65 * radii * np.sin(angles)))
+                    cv2.fillPoly(mask, [points.astype(np.int32)], 1)
+                else:
+                    cv2.fillPoly(mask, [np.array([[170, 110], [225, 190], [183, 110]])], 1)
+                shape = trace_bubble(mask, (240, 200))
+                self.assertEqual(len(shape.nodes), 4)
+                path = bubble_path(shape.nodes, QRectF(*shape.frame))
+                self.assertTrue(path.contains(QPointF(120, 100)))
+                self.assertFalse(path.contains(QPointF(222, 185)))
+                polygon = np.rint([(p.x(), p.y()) for p in path.toFillPolygon()]).astype(np.int32)
+                raster = np.zeros_like(mask)
+                cv2.fillPoly(raster, [polygon], 1)
+                self.assertGreater(np.count_nonzero(raster & body) / np.count_nonzero(body), .9)
+                self.assertLess(np.count_nonzero(raster & (mask == 0)) / np.count_nonzero(raster), .06)
+
+    def test_compound_curves_keep_lobes_and_merge_unneeded_anchors(self) -> None:
+        for scale in (1, 2):
+            with self.subTest(scale=scale):
+                mask = np.zeros((200 * scale, 260 * scale), np.uint8)
+                cv2.ellipse(mask, (85 * scale, 95 * scale), (60 * scale, 70 * scale), 0, 0, 360, 1, -1)
+                cv2.ellipse(mask, (180 * scale, 95 * scale), (60 * scale, 80 * scale), 0, 0, 360, 1, -1)
+                shape = trace_bubble(mask, (260, 200))
+                self.assertLessEqual(len(shape.nodes), 8)
+                self.assertTrue(any(node[:2] != node[2:4] for node in shape.nodes))
+                path = bubble_path(shape.nodes, QRectF(*shape.frame))
+                self.assertTrue(path.contains(QPointF(85, 95)))
+                self.assertTrue(path.contains(QPointF(180, 95)))
+                self.assertFalse(path.contains(QPointF(130, 22)))
+
+    def test_narrow_neck_does_not_discard_a_second_usable_lobe(self) -> None:
+        for axes in ((40, 45), (20, 20)):
+            with self.subTest(axes=axes):
+                mask = np.zeros((120, 240), np.uint8)
+                cv2.ellipse(mask, (55, 60), (40, 45), 0, 0, 360, 1, -1)
+                cv2.ellipse(mask, (180, 60), axes, 0, 0, 360, 1, -1)
+                mask[59:62, 90:165] = 1
+                shape = trace_bubble(mask, (240, 120))
+                self.assertLessEqual(len(shape.nodes), 12)
+                self.assertTrue(any(node[:2] != node[2:4] for node in shape.nodes))
+                path = bubble_path(shape.nodes, QRectF(*shape.frame))
+                self.assertTrue(path.contains(QPointF(55, 60)))
+                self.assertTrue(path.contains(QPointF(180, 60)))
+                self.assertFalse(path.contains(QPointF(115, 30)))
 
     def test_profiles_preserve_taper_and_concavity_and_are_reused(self) -> None:
         profile = BubbleProfile(self.shape())
@@ -137,8 +377,10 @@ class BubbleLayoutTests(unittest.TestCase):
         cv2.fillPoly(mask, [np.array([[10, 10], [150, 10], [150, 40], [80, 40],
                                      [80, 80], [150, 80], [150, 110], [10, 110]])], 1)
         shape = trace_bubble(mask, (160, 120))
-        self.assertGreater(len(shape.nodes), 4)
-        self.assertLessEqual(len(shape.nodes), 64)
+        self.assertLessEqual(len(shape.nodes), 12)
+        path = bubble_path(shape.nodes, QRectF(*shape.frame))
+        self.assertTrue(path.contains(QPointF(40, 60)))
+        self.assertFalse(path.contains(QPointF(140, 60)))
         item = self.item('Editable bubble text')
         fit_text_in_shape(item, auto_size=True, use_bubble_frame=True)
         saved = item.layout.flow_profile
