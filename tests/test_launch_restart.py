@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,51 @@ from ballontranslator import launch
 
 
 class LaunchRestartTests(unittest.TestCase):
+
+    def test_exception_hooks_log_and_route_only_main_thread_errors_to_dialog(self) -> None:
+        from ballontranslator.utils import message
+        from ballontranslator.utils.logger import logger
+
+        original_hook = mock.Mock()
+        with mock.patch.object(sys, 'excepthook', original_hook), \
+                mock.patch.object(threading, 'excepthook'), \
+                mock.patch.object(logger, 'error') as log, \
+                mock.patch.object(message, 'create_error_dialog') as dialog:
+            launch.install_exception_hooks()
+            try:
+                raise ValueError('test failure')
+            except ValueError as error:
+                traceback = error.__traceback__
+                sys.excepthook(type(error), error, traceback)
+                dialog.assert_called_once_with(error, exception_type='UnhandledPythonException')
+                log.assert_called_once_with('Unhandled Python exception',
+                                            exc_info=(ValueError, error, traceback))
+                thread_args = threading.ExceptHookArgs((ValueError, error, traceback, None))
+                threading.excepthook(thread_args)
+                self.assertEqual(log.call_count, 2)
+                self.assertEqual(log.call_args.kwargs['exc_info'], (ValueError, error, traceback))
+                dialog.assert_called_once()
+            interrupt = KeyboardInterrupt()
+            sys.excepthook(KeyboardInterrupt, interrupt, None)
+            original_hook.assert_called_once_with(KeyboardInterrupt, interrupt, None)
+            self.assertEqual(log.call_count, 2)
+
+    def test_exception_hook_is_safe_before_window_exists_and_when_headless(self) -> None:
+        from ballontranslator.utils import shared
+        from ballontranslator.utils.logger import logger
+
+        for headless in (False, True):
+            with self.subTest(headless=headless), \
+                    mock.patch.object(sys, 'excepthook'), \
+                    mock.patch.object(threading, 'excepthook'), \
+                    mock.patch.object(shared, 'HEADLESS', headless), \
+                    mock.patch.object(shared, 'create_errdialog_in_mainthread') as dispatch, \
+                    mock.patch.object(shared, 'showed_exception', set()), \
+                    mock.patch.object(logger, 'error') as log:
+                launch.install_exception_hooks()
+                sys.excepthook(ValueError, ValueError('test failure'), None)
+                self.assertTrue(log.called)
+                self.assertEqual(dispatch.call_count, 0 if headless else 1)
 
     def test_numba_cache_uses_persistent_app_directory(self):
         self.assertEqual(
