@@ -1052,7 +1052,7 @@ class ImgtransThread(QThread):
                     self.finish_blktrans_stage.emit('inpaint', int((ii+1) * progress_prod))
         self.finish_blktrans.emit(mode, blk_ids)
 
-    def _imgtrans_pipeline(self):
+    def _imgtrans_pipeline(self) -> None:
         self.detect_counter = 0
         self.ocr_counter = 0
         self.translate_counter = 0
@@ -1189,12 +1189,13 @@ class ImgtransThread(QThread):
                                 for blk in blk_removed:
                                     xywh = blk.bounding_rect()
                                     blk_mask, xyxy = get_block_mask(xywh, mask, blk.angle)
-                                    x1, y1, x2, y2 = xyxy
                                     if blk_mask is not None:
-                                        mask[y1: y2, x1: x2] = 0
+                                        x1, y1, x2, y2 = xyxy
                                         if inpainted is not None:
+                                            # blk_mask can be a view; restore before clearing it.
                                             mskpnt = np.where(blk_mask)
                                             inpainted[y1: y2, x1: x2][mskpnt] = img[y1: y2, x1: x2][mskpnt]
+                                        mask[y1: y2, x1: x2] = 0
                                         need_save_mask = True
                                 if inpainted is not None and need_save_mask:
                                     self.imgtrans_proj.save_inpainted(imgname, inpainted)
