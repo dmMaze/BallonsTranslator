@@ -125,10 +125,8 @@ class KoharuDetector(TextDetectorBase):
             'description': 'Scales the fallback size. Auto layout instead fits translated text to the flow area.',
         },
         'description': (
-            'Koharu Layout HighRes (RF-DETR). Requires Python 3.10+ and Transformers 5. '
-            'Uses local weights, region boxes and segmentation masks. '
-            'Text direction and rotation are inferred from each instance mask. '
-            'Some short dialogue may be classified as onomatopoeia.'
+            'Best suited to conventional manga, with limited training on '
+            'Western comics and CG artwork.'
         ),
     }
 

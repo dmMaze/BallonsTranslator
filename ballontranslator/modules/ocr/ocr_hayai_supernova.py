@@ -46,10 +46,7 @@ class HayaiOCRSupernova(OCRBase):
         },
         "device": DEVICE_SELECTOR(),
         "description": (
-            "Hayai OCR v2.7 Supernova recognizes Japanese, Chinese, Korean, "
-            "and English text crops. Uses automatic precision and greedy "
-            "decoding with repetition penalty 1.0. Pair with a text detector "
-            "for full pages."
+            "Reads text in English, Korean, Japanese, and Chinese."
         ),
     }
     download_file_list = [{
