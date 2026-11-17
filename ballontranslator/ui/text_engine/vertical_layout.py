@@ -766,7 +766,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 actual = line.y() - before
                 offsets = self.line_spaces_lst[block.blockNumber()][number][2]
                 offsets[:] = [value + actual for value in offsets]
-        if self.flow_overflow and bounds:
+        if self.flow_overflow and self.flow_line > len(self.flow_slots) and bounds:
             # The planned slots omit overflow columns; align the full group.
             left = min(ink.left() for ink in bounds.values())
             right = max(ink.right() for ink in bounds.values())

@@ -141,7 +141,7 @@ bounded raster profile retained by each live layout, reused across font probes a
 resizes and replaced when the path changes. Both writing modes take the widest
 continuous contour spans and derive a shared alignment axis from them. Vertical
 columns follow the saved Top/Center/Bottom setting; whitespace/caret cells move
-with the glyphs. Insets reserve one ink band with a four-pixel floor; horizontal
+with the glyphs. Insets reserve half an ink band with a four-pixel floor; horizontal
 flow measures the actual document text for both that band and baseline placement. Balanced line
 breaks reuse Qt advances and legal boundaries and preserve mandatory paragraphs;
 Ruby, bidi text and unusually long documents retain their native wrapping.

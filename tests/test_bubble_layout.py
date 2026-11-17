@@ -743,6 +743,73 @@ class BubbleLayoutTests(unittest.TestCase):
         self.assertEqual(item.toPlainText(), text)
         warning.assert_called_once()
 
+    def test_word_insertion_keeps_occupied_flow_bands_and_editing_history(self) -> None:
+        text = 'Hey, what do you think of Sakamoto, Mei?'
+
+        def positions(item: TextBlkItem) -> tuple[QPointF, ...]:
+            layout = item.document().firstBlock().layout()
+            return tuple(layout.lineAt(i).position() for i in range(layout.lineCount()))
+
+        for vertical in (False, True):
+            with self.subTest(vertical=vertical):
+                item = self.item(text, vertical=vertical)
+                if not vertical:
+                    shape = BubbleShape.rectangle((10, 20, 248, 342))
+                    item.set_bubble_shape(shape, True, QRectF(*shape.frame))
+                self.assertFalse(fit_text_in_shape(item, auto_size=True).overflow)
+                frame = item.absBoundingRect(qrect=True)
+                size = item.layout.max_font_size(to_px=True)
+                before = positions(item)
+                cursor = QTextCursor(item.document())
+                cursor.setPosition(text.index('Sakamoto') + 3)
+                cursor.insertText('s')
+                after = positions(item)
+                self.assertTrue(item.layout.flow_overflow)
+                self.assertEqual(item.layout.flow_line, len(item.layout.flow_slots))
+                self.assertEqual(item.absBoundingRect(qrect=True), frame)
+                self.assertEqual(item.layout.max_font_size(to_px=True), size)
+                self.assertLess((after[0] - before[0]).manhattanLength(),
+                                item.layout.flow_step)
+                if vertical:
+                    point = item.layout.source_cursor_rect(0).center()
+                else:
+                    line = item.document().firstBlock().layout().lineAt(0)
+                    point = QPointF(item.layout._cursor_x(line, 0), line.y() + line.height() / 2)
+                self.assertEqual(item.layout.hitTest(point, Qt.HitTestAccuracy.FuzzyHit), 0)
+                item.undo()
+                self.assertEqual(item.toPlainText(), text)
+                self.assertEqual(positions(item), before)
+                item.redo()
+                self.assertEqual(item.toPlainText(), text.replace('Sakamoto', 'Saksamoto'))
+                self.assertEqual(positions(item), after)
+                item.blk.rich_text = item.toHtml()
+                restored = TextBlock(**json.loads(json.dumps(item.blk, cls=TextBlkEncoder)))
+                loaded = TextBlkItem(restored, 0)
+                self.addCleanup(loaded.deleteLater)
+                self.assertEqual(positions(loaded), after)
+                self.assertTrue(loaded.layout.flow_overflow)
+                self.assertFalse(fit_text_in_shape(loaded, auto_size=True).overflow)
+                self.assertLess(loaded.layout.max_font_size(to_px=True), size)
+
+    def test_vertical_word_overflow_keeps_columns_in_their_bubble_slots(self) -> None:
+        text = 'Hey, what do you think of Sakamoto, Mei?'
+        for alignment in (0, 2):
+            with self.subTest(alignment=alignment):
+                item = self.item(text, vertical=True)
+                shape = BubbleShape.rectangle((10, 20, 248, 342))
+                item.set_bubble_shape(shape, True, QRectF(*shape.frame))
+                item.setAlignment(alignment)
+                self.assertFalse(fit_text_in_shape(item, auto_size=True).overflow)
+                columns = item.layout.flow_line
+                first_x = item.layout.source_cursor_rect(0).x()
+                cursor = QTextCursor(item.document())
+                cursor.setPosition(text.index('Sakamoto') + 3)
+                cursor.insertText('s')
+                self.assertTrue(item.layout.flow_overflow)
+                self.assertEqual(item.layout.flow_line, columns)
+                self.assertEqual(item.layout.flow_line, len(item.layout.flow_slots))
+                self.assertAlmostEqual(item.layout.source_cursor_rect(0).x(), first_x, delta=.05)
+
     def test_horizontal_bubble_fits_and_centers_actual_ink_across_fonts(self) -> None:
         for family in ('Arial', 'Times New Roman', 'Comic Sans MS'):
             with self.subTest(family=family):

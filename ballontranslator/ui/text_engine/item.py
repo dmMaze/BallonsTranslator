@@ -2235,7 +2235,8 @@ class TextBlkItem(QGraphicsTextItem):
         self._update_effect_padding()
         if self.effect_renderer.has_generated_effect_layers():
             repaint_background = True
-        if clip_size:
+        # Active contours constrain the text; squeezing their frame would reshape them.
+        if clip_size and self.layout.flow_profile is None:
             self.squeezeBoundingRect(True, repaint=False)
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
@@ -2256,7 +2257,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
         self._update_effect_padding()
-        if clip_size:
+        if clip_size and self.layout.flow_profile is None:
             self.squeezeBoundingRect(cond_on_alignment=True)
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)

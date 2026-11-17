@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
-from qtpy.QtCore import QLocale, Qt
+from qtpy.QtCore import QLocale, QRectF, Qt
 from qtpy.QtGui import QTextCursor, QTextCharFormat
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
@@ -16,6 +16,7 @@ from ballontranslator.ui.text_engine.formatting.panel import FontFormatPanel, Fo
 from ballontranslator.ui.text_engine.editing.commands import TextItemEditCommand
 from ballontranslator.utils import shared, config as C
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.bubble_shape import BubbleShape
 from ballontranslator.utils.fontformat import (
     FontFormat, LineSpacingType, TextTransformStack, BendTextTransform,
 )
@@ -97,6 +98,37 @@ class FontSizeEditingTests(unittest.TestCase):
         self.app.processEvents()
         self.assertAlmostEqual(self.item.get_fontformat().font_size, 20)
         self.assertEqual(self.canvas.text_undo_stack.count(), 2)
+
+    def test_font_size_edits_preserve_active_bubble_geometry_and_history(self) -> None:
+        for vertical in (False, True):
+            for parameter, value in (('font_size', 30), ('rel_font_size', 1.5)):
+                with self.subTest(vertical=vertical, parameter=parameter):
+                    self.item.setVertical(vertical)
+                    shape = BubbleShape.rectangle((30, 40, 300, 180))
+                    self.item.set_bubble_shape(shape, True, QRectF(*shape.frame))
+                    frame = self.item.absBoundingRect(qrect=True)
+                    outline = self.item.geometry_controller.bubble_outline_in_item()
+                    before = self.item.toHtml()
+                    size = self.item.get_fontformat().font_size
+                    target_size = value if parameter == 'font_size' else size * value
+                    commands = self.canvas.text_undo_stack.index()
+                    self.panel.on_param_changed(parameter, value)
+                    after = self.item.toHtml()
+                    self.assertAlmostEqual(self.item.get_fontformat().font_size, target_size)
+                    self.assertNotEqual(after, before)
+                    self.assertEqual(self.canvas.text_undo_stack.index(), commands + 1)
+                    history = self.canvas.text_undo_stack
+                    for action, html, expected_size in ((None, after, target_size),
+                                                        (history.undo, before, size),
+                                                        (history.redo, after, target_size)):
+                        if action is not None:
+                            action()
+                        self.assertEqual(self.item.toHtml(), html)
+                        self.assertAlmostEqual(self.item.get_fontformat().font_size, expected_size)
+                        self.assertEqual(self.item.absBoundingRect(qrect=True), frame)
+                        self.assertEqual(self.item.blk.bubble_shape, shape)
+                        self.assertEqual(self.item.geometry_controller.bubble_outline_in_item(), outline)
+                    self.canvas.text_undo_stack.undo()
 
     def test_whole_item_preview_commit_and_history(self):
         for vertical in (False, True):

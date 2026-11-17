@@ -393,10 +393,11 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.flow_step = step
         width, height = self.available_width, self.available_height
         across, inline = (width, height) if vertical else (height, width)
-        # Koharu keeps one ink band of breathing room, with a four-pixel floor.
-        inset = max(4., extent)
+        # Keep half an ink band of breathing room, with a four-pixel floor.
+        inset = max(4., extent / 2)
         maximum = max(1, min(64, int(max(0., across - inset * 2 - extent) / step) + 1))
         units = []
+        fallback = None
         for count in range(1, maximum + 1):
             self.flow_slots = []
             self.flow_line = 0
@@ -436,16 +437,24 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
                 self.flow_breaks = balanced_flow_breaks(units, [slot.height() if vertical else slot.width()
                                                                for slot in self.flow_slots])
             yield
-            if units and (self.flow_breaks is None or self.flow_actual_ends != self.flow_breaks):
-                # A greedy fallback may fit by breaking a protected word or
-                # punctuation run; it is editable overset, not a fitting plan.
-                self.flow_overflow = True
             if not self.flow_overflow and self.flow_line == count:
-                break
+                if not units or (self.flow_breaks is not None and self.flow_actual_ends == self.flow_breaks):
+                    return
+                # Keep a fully occupied native wrap for editing if no legal
+                # plan succeeds; the final trial can leave many empty bands.
+                if fallback is None:
+                    fallback = self.flow_slots, self.flow_breaks
             if count == 1:
                 units = measure_flow_units(self, vertical)
-        if self.flow_line != len(self.flow_slots):
-            self.flow_overflow = True
+        if fallback is not None and self.flow_slots is not fallback[0]:
+            self.flow_slots, self.flow_breaks = fallback
+            self.flow_line = 0
+            self.flow_actual_ends = []
+            self.flow_overflow = False
+            yield
+        # Native wrapping may split a protected word or punctuation run. It
+        # remains editable, but must not qualify as a successful automatic fit.
+        self.flow_overflow = True
 
     def flow_rect(self, index: int) -> QRectF:
         if index >= len(self.flow_slots):
