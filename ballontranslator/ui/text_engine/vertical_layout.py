@@ -79,6 +79,8 @@ PUNSET_PAUSEORSTOP = {
     '。', '．', '，', '、', '：', '；', '！', '‼', '？', '⁇', '⁈', '⁉',
 }
 PUNSET_ALIGNCENTER = {'·', '・', '‧', '●', '•'}
+# ASCII stops share the fullwidth placement convention, but not compact spacing.
+PUNSET_ALIGNTOPRIGHT = PUNSET_PAUSEORSTOP | set('!?.,')
 # ‶ pairs with either 〟 or ″ as the closing mark.
 PUNSET_BRACKETL = {'「', '『', '“', '‘', '‶', '〝', '（', '《', '〈', '【', '〖', '〔', '［', '｛', '〘', '〚', '｟', '⦅', '«', '('}
 PUNSET_BRACKETR = {'」', '』', '”', '’', '〟', '〞', '″', '）', '》', '〉', '】', '〗', '〕', '］', '｝', '〙', '〛', '｠', '⦆', '»', ')'}
@@ -91,15 +93,20 @@ PUNSET_NONBRACKET = {
     '〜', '‐', '゠', 'ー', '〰', '‑', '‒', '－', 'ｰ', '⸻', '⹀',
 }
 PUNSET_JAPANESE_SIDEWAYS = {'：', '；'}
+# Orientation additions must not change bearing or compact-spacing classes.
 PUNSET_VERNEEDROTATE = (
     PUNSET_NONBRACKET
     | PUNSET_BRACKET
     | PUNSET_HALF
     | PUNSET_INSEPARABLE_REPEAT
-)
+    | set('＜＝＞‹›｢｣')
+) - set('!?.,')
 PUNSET_STANDARD_VERTICAL_ROMAN = (
-    PUNSET_VERNEEDROTATE - PUNSET_HALF
-) | PUNSET_NONBRACKET | PUNSET_JAPANESE_SIDEWAYS
+    (PUNSET_VERNEEDROTATE - PUNSET_HALF)
+    | PUNSET_NONBRACKET
+    | PUNSET_JAPANESE_SIDEWAYS
+    | set('()[]{}_<=>:;')
+)
 _STANDARD_SHAPED_ROTATION_CHARS = ''.join(
     sorted(PUNSET_STANDARD_VERTICAL_ROMAN)
 )
@@ -455,6 +462,8 @@ class VerticalTextDocumentLayout(SceneTextLayout):
             char in rotation_chars
             or (
                 not self.fontformat.standard_vertical_roman_alignment
+                # ASCII is fully classified above; only extend to other Latin.
+                and char not in PUNSET_HALF
                 and _is_non_fullwidth_roman(char)
             )
         )
@@ -982,7 +991,7 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                                     - act_rect.height()
                                 ) / 2
                             )
-                        elif char in PUNSET_PAUSEORSTOP:
+                        elif char in PUNSET_ALIGNTOPRIGHT:
                             # CLREQ's Mainland convention places stop marks at
                             # the upper-right of their full character frame.
                             xoff = (
