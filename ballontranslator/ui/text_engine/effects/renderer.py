@@ -1898,6 +1898,7 @@ class TextEffectRenderer:
                     )
                     cursor.mergeCharFormat(selection.format)
                 layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+                layout.flow_profile = self.layout.flow_profile
                 layout._draw_offset = self.layout._draw_offset
                 layout.setMaxSize(
                     self.layout.max_width, self.layout.max_height, False
@@ -2275,6 +2276,8 @@ class TextEffectRenderer:
             if self.fontformat.vertical
             else HorizontalTextDocumentLayout(doc, self.fontformat)
         )
+        # Share the live profile's raster, including uncommitted anchor edits.
+        layout.flow_profile = self.layout.flow_profile
         layout._draw_offset = self.layout._draw_offset
         layout._is_painting_stroke = True
         layout.setMaxSize(self.layout.max_width, self.layout.max_height, False)

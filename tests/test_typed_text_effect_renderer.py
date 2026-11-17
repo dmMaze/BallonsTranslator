@@ -59,9 +59,11 @@ from ballontranslator.ui.text_engine.effects.shadow import (
     render_shadow_alpha,
 )
 from ballontranslator.utils.fontformat import (
+    FontFormat,
     SineTextTransform,
     TextTransformStack,
 )
+from ballontranslator.utils.bubble_shape import BubbleShape
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.raster_assets import RasterAssetRef
 from ballontranslator.utils.text_effects import (
@@ -75,6 +77,7 @@ from ballontranslator.utils.text_effects import (
     ShadowEffect,
     SolidPaint,
     StrokeEffect,
+    SyntheticBoldEffect,
     TEXT_EFFECT_BLEND_MODES,
     TextEffectStack,
     TexturePaint,
@@ -296,6 +299,70 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         if owns_scene:
             scene.removeItem(item)
         return pixmap2ndarray(image, keep_alpha=True)
+
+    def test_bubble_stroke_and_bold_follow_live_shape_and_toggle(self) -> None:
+        shape = BubbleShape((0, 0, 320, 240), (
+            (.5, 0, .223858, 0, .776142, 0),
+            (1, .5, 1, .223858, 1, .776142),
+            (.5, 1, .776142, 1, .223858, 1),
+            (0, .5, 0, .776142, 0, .223858),
+        ))
+        edited_shape = BubbleShape(shape.frame, tuple(
+            (x, y) * 3 for x, y in ((0, 0), (.75, 0), (.75, 1), (0, 1))
+        ))
+        effects = (StrokeEffect(width=.1), SyntheticBoldEffect(x=.05, y=.05))
+        for vertical in (False, True):
+            for effect in effects:
+                block = TextBlock(
+                    [0, 0, 320, 240], _bounding_rect=[0, 0, 320, 240],
+                    translation=('刚才那位是……雨宫雫小姐吧？你怎么会在这里？' if vertical
+                                 else 'Hey, what do you think of Sakamoto, Mei?'),
+                    fontformat=FontFormat(
+                        font_family='Arial', font_size=24, vertical=vertical,
+                        alignment=1, text_effects=TextEffectStack(effects=(effect,)),
+                    ),
+                    bubble_shape=shape, bubble_layout=True, text_layout_version=1,
+                )
+                item = TextBlkItem(block, 0)
+                self.addCleanup(item.deleteLater)
+                renderer = item.effect_renderer
+                document = item.document()
+                html, undo_steps = document.toHtml(), document.availableUndoSteps()
+                bounds = QRectF(-40, -40, 400, 320)
+                rendered = []
+                for live_shape, enabled in (
+                    (shape, True), (edited_shape, True),
+                    (shape, False), (shape, True),
+                ):
+                    with self.subTest(vertical=vertical, effect=effect,
+                                      shape=live_shape, enabled=enabled):
+                        # Anchor dragging changes the live shape before it is saved.
+                        item.set_bubble_shape(live_shape, enabled, QRectF(*shape.frame), preview=True)
+                        plain = renderer._capture_plain_effect_source(bounds, 1.0)
+                        ink = pixmap2ndarray(plain, keep_alpha=True)[..., 3] > 128
+                        if isinstance(effect, StrokeEffect):
+                            source = renderer._new_effect_pixmap(1.0, bounds)
+                            painter = renderer._begin_effect_layer_painter(source, bounds, 1.0)
+                            try:
+                                renderer.paint_stroke(painter)
+                            finally:
+                                painter.end()
+                        else:
+                            source = renderer._capture_effect_source(bounds, 1.0)
+                        expanded = pixmap2ndarray(source, keep_alpha=True)[..., 3] > 128
+                        nearby = cv2.dilate(ink.astype(np.uint8), np.ones((11, 11), np.uint8)) > 0
+                        self.assertGreater(np.count_nonzero(ink), 0)
+                        self.assertGreater(np.count_nonzero(expanded), np.count_nonzero(ink))
+                        self.assertGreater(np.count_nonzero(ink & expanded) / np.count_nonzero(ink), .995)
+                        self.assertEqual(np.count_nonzero(expanded & ~nearby), 0)
+                        rendered.append(self._render(item))
+                        self.assertEqual(document.toHtml(), html)
+                        self.assertEqual(document.availableUndoSteps(), undo_steps)
+                        self.assertEqual(item.blk.bubble_shape, shape)
+                        self.assertTrue(item.blk.bubble_layout)
+                np.testing.assert_array_equal(rendered[0], rendered[-1])
+                for pixels in rendered[1:-1]:
+                    self.assertFalse(np.array_equal(pixels, rendered[0]))
 
     def test_first_outlined_emoji_fit_uses_settled_native_width(self) -> None:
         # A fresh Qt font cache is required: earlier glyph paint masks this bug.
