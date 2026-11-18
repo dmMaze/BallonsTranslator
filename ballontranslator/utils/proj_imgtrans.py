@@ -711,9 +711,16 @@ class ProjImgTrans:
                 self.set_current_img_byidx(0)
         self._load_identity = object()
 
-    def get_page_progress(self, pagename: str):
+    def get_page_progress(self, pagename: str, finish_code: Optional[int] = None) -> bool:
+        """Return whether the page has finished every stage in the requested mask.
+
+        Omitting the mask checks all currently enabled stages. Pass a specific
+        bit such as RunStatus.FIN_TRANSLATE to check that stage independently.
+        """
+        if finish_code is None:
+            finish_code = pcfg.module.finish_code
         fin_code = self._image_info[pagename]['finish_code']
-        return (fin_code & pcfg.module.finish_code) == pcfg.module.finish_code
+        return (fin_code & finish_code) == finish_code
 
     def set_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] = code

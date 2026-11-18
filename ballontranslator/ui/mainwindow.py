@@ -1978,7 +1978,7 @@ class MainWindow(mainwindow_cls):
                     blk.alignment = TextAlignment.Center
                 blk.vertical = False
 
-    def on_pagtrans_finished(self, page_index: int):
+    def on_pagtrans_finished(self, page_index: int) -> None:
         blk_list = self.imgtrans_proj.get_blklist_byidx(page_index)
         ffmt_list = None
         if len(self.backup_blkstyles) == self.imgtrans_proj.num_pages and len(self.backup_blkstyles[page_index]) == len(blk_list):
@@ -2098,8 +2098,18 @@ class MainWindow(mainwindow_cls):
                     pcfg.auto_tate_chu_yoko,
                 )
 
-        self.st_manager.auto_textlayout_flag = not inpaint_only and pcfg.let_autolayout_flag and \
-            (enable_detect or enable_translate or (self._render_only and not self._run_imgtrans_wo_textstyle_update))
+        # A failed request can reach this handler with old translations still in
+        # the blocks. Check only the translation bit before fitting them: the
+        # default progress check also requires every other enabled stage to finish.
+        translation_failed = enable_translate and not self.imgtrans_proj.get_page_progress(
+            self.imgtrans_proj.idx2pagename(page_index), RunStatus.FIN_TRANSLATE
+        )
+        self.st_manager.auto_textlayout_flag = (
+            pcfg.let_autolayout_flag and not translation_failed and (
+                enable_detect or enable_translate
+                or (self._render_only and not self._run_imgtrans_wo_textstyle_update)
+            )
+        )
         # Render-only fitting must not rewrite ordinary blocks with legacy wrapping.
         self.st_manager.auto_textlayout_legacy = not self._render_only
         try:
@@ -2110,9 +2120,9 @@ class MainWindow(mainwindow_cls):
                 self.canvas.updateCanvas()
                 self.st_manager.updateSceneTextitems()
 
-            if not enable_detect and enable_translate:
+            if not enable_detect and enable_translate and not translation_failed:
                 for blkitem in self.st_manager.textblk_item_list:
-                    if not blkitem.blk.get_text():
+                    if not blkitem.blk.translation.strip() or not blkitem.blk.get_text().strip():
                         continue
                     # Shrinking the measured frame would change the fitted flow.
                     if self.st_manager.auto_textlayout_flag and (blkitem.blk.det_model == 'koharu' or blkitem.blk.bubble_layout):
