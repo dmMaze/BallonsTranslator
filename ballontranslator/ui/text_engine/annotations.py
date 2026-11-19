@@ -14,6 +14,7 @@ from html import escape, unescape
 from html.parser import HTMLParser
 import math
 import re
+import unicodedata
 from typing import AbstractSet, Callable, Optional
 from uuid import uuid4
 
@@ -41,7 +42,12 @@ from .font_family import (
     normalize_document_font_families,
     restore_project_font_families_in_html,
 )
-from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
+from .rendering.indexing import (
+    _grapheme_count,
+    _grapheme_ranges,
+    _utf16_length,
+    _utf16_slice,
+)
 
 
 RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
@@ -2460,6 +2466,66 @@ def apply_text_combine_upright(
     )
 
 
+def prepare_tate_chu_yoko_insertion(
+    cursor: QTextCursor,
+    text: str = '',
+) -> None:
+    """Keep inserted text out of an existing Tate-chu-yoko group.
+
+    A group is the fixed set of characters the user combined, so pasted or
+    replaced content must not silently join it: Qt's ``insertText`` inherits
+    the cursor's char format, which would combine the whole paragraph into one
+    upright cell. A single grapheme typed at a caret keeps that insertion
+    format, which is how the formatting toggle builds a group.
+
+    >>> document = QTextDocument('12')
+    >>> cursor = QTextCursor(document)
+    >>> cursor.select(QTextCursor.SelectionType.Document)
+    >>> prepare_tate_chu_yoko_insertion(cursor, '34')
+    >>> text_combine_upright_values(cursor.charFormat())[0]
+    'none'
+    """
+    if not text:
+        return
+    if not cursor.hasSelection() and _grapheme_count(text) < 2:
+        return
+    if text_combine_upright_values(cursor.charFormat())[0] != TEXT_COMBINE_ALL:
+        return
+    cursor.mergeCharFormat(_text_combine_modifier(False))
+
+
+def _narrow_character(character: str) -> str:
+    """Return the ASCII form of one full-width compatibility character.
+
+    Automatic detection compares characters by this form, the same
+    equivalence the layout uses when it shapes a run.
+
+    >>> _narrow_character('！'), _narrow_character('。')
+    ('!', '。')
+    """
+    decomposition = unicodedata.decomposition(character)
+    if decomposition.startswith('<wide> '):
+        return chr(int(decomposition.split()[1], 16))
+    return character
+
+
+def has_auto_text_combine_character(
+    text: str,
+    allowed_characters: AbstractSet[str],
+) -> bool:
+    """Return whether automatic detection finds a candidate in ``text``.
+
+    >>> has_auto_text_combine_character('干什么…!?', frozenset('！？'))
+    True
+    >>> has_auto_text_combine_character('干什么', frozenset('！？'))
+    False
+    """
+    narrow_allowed = {
+        _narrow_character(character) for character in allowed_characters
+    }
+    return any(_narrow_character(character) in narrow_allowed for character in text)
+
+
 def apply_auto_text_combine_upright(
     document: QTextDocument,
     allowed_characters: AbstractSet[str],
@@ -2468,12 +2534,16 @@ def apply_auto_text_combine_upright(
     """Replace Tate-chu-yoko with qualified non-Ruby character runs.
 
     ``allowed_characters`` is compiled once by the pipeline and reused for
-    every block on the page. Return whether the document changed.
+    every block on the page. Width variants of the configured characters match
+    each other, so a list holding full-width punctuation also groups the ASCII
+    forms that translators commonly emit. Return whether the document changed.
 
     >>> document = QTextDocument('12')
     >>> apply_auto_text_combine_upright(document, frozenset('12'), 2)
     True
     >>> apply_auto_text_combine_upright(document, frozenset('12'), 2)
+    True
+    >>> apply_auto_text_combine_upright(QTextDocument('干什么…!?'), frozenset('！？'), 2)
     True
     """
     if (
@@ -2483,6 +2553,9 @@ def apply_auto_text_combine_upright(
     ):
         raise ValueError(f'unsupported maximum run length: {max_length!r}')
 
+    narrow_allowed = {
+        _narrow_character(character) for character in allowed_characters
+    }
     old_ranges = []
     block = document.firstBlock()
     while block.isValid():
@@ -2503,7 +2576,7 @@ def apply_auto_text_combine_upright(
             utf16_offset = 0
             runs = []
             for character in block.text():
-                if character in allowed_characters:
+                if _narrow_character(character) in narrow_allowed:
                     if run_start < 0:
                         run_start = utf16_offset
                     run_length += 1
@@ -2570,6 +2643,138 @@ def apply_auto_text_combine_upright(
     finally:
         cursor.endEditBlock()
     return True
+
+
+def _combine_tate_chu_yoko_run(
+    block: QTextBlock,
+    run_start: int,
+    run_length: int,
+    max_length: int,
+) -> bool:
+    """Combine or release one allowed-character run inside ``block``."""
+    run_end = run_start + run_length
+    existing = [
+        entry for entry in text_combine_upright_ranges(block)
+        if entry[0] < run_end and run_start < entry[0] + entry[1]
+    ]
+    cursor = QTextCursor(block)
+
+    if run_length > max_length:
+        # The run outgrew the configured limit; it must not stay combined.
+        if not existing:
+            return False
+        clear_format = _text_combine_modifier(False)
+        for start, length, _group_id in existing:
+            cursor.setPosition(block.position() + start)
+            cursor.setPosition(
+                block.position() + start + length,
+                QTextCursor.MoveMode.KeepAnchor,
+            )
+            cursor.mergeCharFormat(clear_format)
+        return True
+
+    if (
+        len(existing) == 1
+        and existing[0][0] == run_start
+        and existing[0][1] == run_length
+    ):
+        return False
+
+    modifier = QTextCharFormat()
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_UPRIGHT, TEXT_COMBINE_ALL
+    )
+    modifier.setProperty(
+        AnnotationProperty.TEXT_COMBINE_ID,
+        existing[0][2] if len(existing) == 1 else uuid4().hex,
+    )
+    cursor.setPosition(block.position() + run_start)
+    cursor.setPosition(block.position() + run_end, QTextCursor.MoveMode.KeepAnchor)
+    cursor.mergeCharFormat(modifier)
+    _rewrite_cursor_char_formats(
+        cursor,
+        lambda char_format: sync_native_ligature_shaping(
+            char_format,
+            vertical=True,
+        ),
+    )
+    return True
+
+
+def auto_combine_tate_chu_yoko_in_range(
+    document: QTextDocument,
+    start: int,
+    end: int,
+    allowed_characters: AbstractSet[str],
+    max_length: int,
+) -> bool:
+    """Apply the automatic rule to every run the ``start``-``end`` range touches.
+
+    Live editing uses this instead of re-deriving the whole document, so groups
+    outside the edited runs keep their identity and manual groups built from
+    other characters stay untouched. An empty range covers the run at the caret.
+    Return whether the document changed.
+
+    >>> document = QTextDocument('a12b')
+    >>> auto_combine_tate_chu_yoko_in_range(document, 2, 3, frozenset('12'), 4)
+    True
+    >>> [entry[:2] for entry in text_combine_upright_ranges(document.firstBlock())]
+    [(1, 2)]
+    >>> auto_combine_tate_chu_yoko_in_range(document, 2, 3, frozenset('12'), 4)
+    False
+    >>> pasted = QTextDocument('啊!!!\\n活该!!!')
+    >>> auto_combine_tate_chu_yoko_in_range(pasted, 0, 8, frozenset('!'), 3)
+    True
+    >>> blocks = [pasted.firstBlock(), pasted.firstBlock().next()]
+    >>> [[entry[:2] for entry in text_combine_upright_ranges(b)] for b in blocks]
+    [[(1, 3)], [(2, 3)]]
+    """
+    if max_length < 1:
+        return False
+    narrow_allowed = {
+        _narrow_character(character) for character in allowed_characters
+    }
+    if not narrow_allowed:
+        return False
+    if end < start:
+        start, end = end, start
+
+    changed = False
+    last = document.findBlock(max(start, end - 1))
+    block = document.findBlock(start)
+    while block.isValid():
+        text = block.text()
+        window_start = min(max(start - block.position(), 0), len(text))
+        window_end = min(max(end - block.position(), 0), len(text))
+        while (
+            window_start > 0
+            and _narrow_character(text[window_start - 1]) in narrow_allowed
+        ):
+            window_start -= 1
+        while (
+            window_end < len(text)
+            and _narrow_character(text[window_end]) in narrow_allowed
+        ):
+            window_end += 1
+
+        index = window_start
+        while index < window_end:
+            if _narrow_character(text[index]) not in narrow_allowed:
+                index += 1
+                continue
+            run_start = index
+            while (
+                index < window_end
+                and _narrow_character(text[index]) in narrow_allowed
+            ):
+                index += 1
+            changed |= _combine_tate_chu_yoko_run(
+                block, run_start, index - run_start, max_length
+            )
+        if block == last:
+            break
+        block = block.next()
+    return changed
 
 
 class RubyValidationError(ValueError):
@@ -2836,6 +3041,219 @@ def prepare_ruby_insertion(cursor: QTextCursor, text: str = '') -> None:
     cursor.setCharFormat(char_format)
 
 
+# ---------------------------------------------------------------------------
+# Whole-style replacement
+# ---------------------------------------------------------------------------
+# ``QTextCursor.setCharFormat()`` over a selection replaces every fragment
+# format instead of merging into it, and the replacement is built from one
+# character's format. A whole text style replaces the document that way, so
+# per-character annotations need an explicit snapshot: they must stay out of
+# the replacement (otherwise the first character's annotation spreads over the
+# whole block) and be merged back afterwards (``FontFormat`` has no annotation
+# fields, so applying a style must not clear them).
+
+INLINE_ANNOTATION_PROPERTIES = (
+    AnnotationProperty.EMPHASIS_STYLE,
+    AnnotationProperty.EMPHASIS_POSITION,
+    AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+    AnnotationProperty.TEXT_COMBINE_ID,
+    AnnotationProperty.RUBY_ID,
+    AnnotationProperty.RUBY_UNIT_ID,
+    AnnotationProperty.RUBY_TYPE,
+    AnnotationProperty.RUBY_TEXT,
+    AnnotationProperty.RUBY_POSITION,
+)
+
+
+@dataclass(frozen=True)
+class EmphasisRange:
+    """One contiguous emphasis run in absolute Qt UTF-16 coordinates.
+
+    >>> EmphasisRange(3, 2, 'filled dot', 'over right').end
+    5
+    """
+
+    start: int
+    length: int
+    style: str
+    position: str
+
+    @property
+    def end(self) -> int:
+        return self.start + self.length
+
+
+@dataclass(frozen=True)
+class InlineAnnotationState:
+    """Per-character annotations captured before a whole-style replacement.
+
+    >>> InlineAnnotationState().empty
+    True
+    """
+
+    text_combine: tuple[tuple[int, int, str], ...] = ()
+    ruby: tuple[RubyContainerRange, ...] = ()
+    emphasis: tuple[EmphasisRange, ...] = ()
+
+    @property
+    def empty(self) -> bool:
+        return not (self.text_combine or self.ruby or self.emphasis)
+
+
+def emphasis_ranges(document: QTextDocument) -> tuple[EmphasisRange, ...]:
+    """Return contiguous emphasis runs in absolute document coordinates.
+
+    >>> emphasis_ranges(QTextDocument('plain'))
+    ()
+    """
+    ranges: list[EmphasisRange] = []
+    block = document.firstBlock()
+    while block.isValid():
+        iterator = block.begin()
+        while not iterator.atEnd():
+            fragment = iterator.fragment()
+            if fragment.isValid() and fragment.length() > 0:
+                style, position = emphasis_values(fragment.charFormat())
+                if style != 'none':
+                    start = fragment.position()
+                    length = fragment.length()
+                    if (
+                        ranges
+                        and ranges[-1].end == start
+                        and (ranges[-1].style, ranges[-1].position)
+                        == (style, position)
+                    ):
+                        previous = ranges[-1]
+                        ranges[-1] = EmphasisRange(
+                            previous.start,
+                            previous.length + length,
+                            style,
+                            position,
+                        )
+                    else:
+                        ranges.append(
+                            EmphasisRange(start, length, style, position)
+                        )
+            iterator += 1
+        block = block.next()
+    return tuple(ranges)
+
+
+def inline_annotation_state(document: QTextDocument) -> InlineAnnotationState:
+    """Capture every inline annotation of one document.
+
+    >>> inline_annotation_state(QTextDocument('plain')).empty
+    True
+    """
+    text_combine = []
+    block = document.firstBlock()
+    while block.isValid():
+        for start, length, group_id in text_combine_upright_ranges(block):
+            text_combine.append(
+                (block.position() + start, length, group_id)
+            )
+        block = block.next()
+    return InlineAnnotationState(
+        tuple(text_combine),
+        ruby_containers(document),
+        emphasis_ranges(document),
+    )
+
+
+def without_inline_annotations(
+    char_format: QTextCharFormat,
+) -> QTextCharFormat:
+    """Return a copy with every per-character annotation property removed.
+
+    A whole-document replacement is derived from one character's format, so
+    that format must not carry annotation state into unrelated characters.
+
+    >>> fmt = QTextCharFormat()
+    >>> fmt.setProperty(AnnotationProperty.TEXT_COMBINE_UPRIGHT, TEXT_COMBINE_ALL)
+    >>> without_inline_annotations(fmt).property(
+    ...     AnnotationProperty.TEXT_COMBINE_UPRIGHT
+    ... ) is None
+    True
+    """
+    stripped = QTextCharFormat(char_format)
+    for prop in INLINE_ANNOTATION_PROPERTIES:
+        stripped.clearProperty(prop)
+    return stripped
+
+
+def restore_inline_annotations(
+    document: QTextDocument,
+    state: InlineAnnotationState,
+    *,
+    vertical: bool = True,
+) -> bool:
+    """Merge a captured annotation state back into one document.
+
+    Only annotation properties are merged, so the font, colour, spacing,
+    effects, and transform of a replacement survive. Group and container
+    identity is preserved, which keeps the restored document equal to the
+    captured one. Return whether anything was restored.
+
+    >>> document = QTextDocument('12')
+    >>> cursor = QTextCursor(document)
+    >>> cursor.select(QTextCursor.SelectionType.Document)
+    >>> apply_text_combine_upright(cursor, True)
+    >>> state = inline_annotation_state(document)
+    >>> cursor.mergeCharFormat(_text_combine_modifier(False))
+    >>> text_combine_upright_values(cursor.charFormat())[0]
+    'none'
+    >>> restore_inline_annotations(document, state)
+    True
+    >>> [entry[:2] for entry in text_combine_upright_ranges(document.firstBlock())]
+    [(0, 2)]
+    """
+    if state.empty:
+        return False
+
+    work = QTextCursor(document)
+    for start, length, group_id in state.text_combine:
+        work.setPosition(start)
+        work.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+        modifier = QTextCharFormat()
+        modifier.setProperty(
+            AnnotationProperty.TEXT_COMBINE_UPRIGHT,
+            TEXT_COMBINE_ALL,
+        )
+        modifier.setProperty(AnnotationProperty.TEXT_COMBINE_ID, group_id)
+        work.mergeCharFormat(modifier)
+        # A combined run shapes differently from the surrounding cells, so its
+        # native spacing and feature tags are re-derived from the restored
+        # annotation state.
+        work.setPosition(start)
+        work.setPosition(start + length, QTextCursor.MoveMode.KeepAnchor)
+        _rewrite_cursor_char_formats(
+            work,
+            lambda char_format: sync_native_ligature_shaping(
+                char_format,
+                vertical=vertical,
+            ),
+        )
+
+    for container in state.ruby:
+        for unit in container.units:
+            work.setPosition(unit.start)
+            work.setPosition(unit.end, QTextCursor.MoveMode.KeepAnchor)
+            work.mergeCharFormat(_ruby_modifier(
+                container.container_id,
+                unit.unit_id,
+                container.ruby_type,
+                unit.text,
+                container.position,
+            ))
+
+    for emphasis in state.emphasis:
+        work.setPosition(emphasis.start)
+        work.setPosition(emphasis.end, QTextCursor.MoveMode.KeepAnchor)
+        apply_emphasis(work, emphasis.style, emphasis.position)
+
+    return True
+
+
 def _remap_text_combine_ids(document: QTextDocument) -> None:
     """Give every pasted combined group a document-local identity."""
     replacements = {}
@@ -2924,8 +3342,15 @@ def insert_rich_text_mime(
     mime: QMimeData,
     *,
     vertical: bool = False,
+    allowed_characters: Optional[AbstractSet[str]] = None,
+    max_length: int = 0,
 ) -> bool:
-    """Insert the custom rich-text representation when it is valid."""
+    """Insert the custom rich-text representation when it is valid.
+
+    ``allowed_characters`` applies the automatic Tate-chu-yoko rule to the
+    inserted range inside the same edit block, so a rich paste is combined just
+    like a plain-text paste.
+    """
     if not mime.hasFormat(RICH_TEXT_MIME_TYPE):
         return False
     encoded = bytes(mime.data(RICH_TEXT_MIME_TYPE))
@@ -3003,6 +3428,14 @@ def insert_rich_text_mime(
                 unit.text,
                 surrounding_group.position,
             ))
+        if allowed_characters:
+            auto_combine_tate_chu_yoko_in_range(
+                cursor.document(),
+                insertion_start,
+                insertion_end,
+                allowed_characters,
+                max_length,
+            )
     finally:
         cursor.endEditBlock()
     return True
