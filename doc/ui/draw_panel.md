@@ -12,6 +12,7 @@ routing with the [text engine](text_engine.md); changes must preserve both modes
 | Input, gesture state, cancellation, previews, history routing | [`CustomGV` and `Canvas`](../../ballontranslator/ui/canvas.py) |
 | Brush/shape rasterization and drawing composition | [`image_edit.py`](../../ballontranslator/ui/image_edit.py) |
 | Reversible drawing and image/mask edits | [`drawing_commands.py`](../../ballontranslator/ui/drawing_commands.py) |
+| Rect-tool blob selection model | [`BlobSelection`](../../ballontranslator/utils/blob_selection.py) |
 | Inpainter preparation, scheduling, request validity | [`ModuleManager`](../../ballontranslator/ui/module_manager.py) |
 | Saved tool preferences | [`DrawPanelConfig`](../../ballontranslator/utils/config.py) |
 | Page changes and saving | [`MainWindow`](../../ballontranslator/ui/mainwindow.py), [`ProjImgTrans`](../../ballontranslator/utils/proj_imgtrans.py) |
@@ -43,6 +44,16 @@ Keep brush, shape-fill, and text-creation gestures independent. Paint and eraser
 anchors must not connect to each other, and magic wand must remain outside the
 brush-segment path. Coordinate conversion must agree between mouse events,
 keyboard-driven previews, and committed pixels at every zoom level.
+
+While a rect-tool preview holds an editable blob selection,
+`Canvas.blob_selection_active` routes left and right press, move, and release
+to `DrawingPanel`, which owns the box, freehand, add, and remove gesture.
+Middle-button panning still reaches the view, and the `O` key switches the box
+rule only in this state. The selection exists only for the stroke detectors
+(`canny_flood`, `connected_canny_flood`), lives exactly as long as the preview,
+and stays undilated so the dilate slider applies on top of it. The background
+fill paints the balloon rather than the mask, so an edited selection that
+removes a detected blob or adds one outside the balloon must use the inpainter.
 
 ## Asynchronous work
 
@@ -96,6 +107,7 @@ failure paths when changing drawing pixels or render state.
 | Stroke cleanup and cursor handoff | `tests/test_canvas_stroke_lifecycle.py`, `tests/test_canvas_cursor_lifecycle.py` |
 | Inpaint scheduling and drawing profiles | `tests/test_canvas_inpaint_lifecycle.py`, `tests/test_drawing_inpainter.py` |
 | Wand selection and preview lifetime | `tests/test_inpaint_magic_wand.py`, `tests/test_magic_wand_canvas.py` |
+| Rect-tool blob selection | `tests/test_blob_selection.py` |
 | Configuration and save/export | `tests/test_drawpanel_config.py`, `tests/test_editing_layer_opacity.py` |
 
 Shared scene-event changes also need coverage for path ordering, text alpha-mask
