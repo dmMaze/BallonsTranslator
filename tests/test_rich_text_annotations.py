@@ -1731,10 +1731,9 @@ class RichTextAnnotationTest(unittest.TestCase):
             item.setTextCursor(cursor)
             item.setTateChuYoko(True)
             block = item.document().firstBlock()
-            line = block.layout().lineAt(1)
             cell = item.layout.tate_chu_yoko_cell_rect(block, 1)
             placement = item.layout.vertical_line_placement(block, 1)
-            return cell, tate_chu_yoko_natural_bounds(line), placement[2]
+            return cell, tate_chu_yoko_natural_bounds(placement[0]), placement[2]
 
         roman_cell, roman_natural, roman_transform = metrics(True)
         alternate_cell, alternate_natural, alternate_transform = metrics(False)
@@ -1745,6 +1744,36 @@ class RichTextAnnotationTest(unittest.TestCase):
         self.assertAlmostEqual(roman_transform.m11(), 1.0)
         self.assertLess(alternate_cell.width(), alternate_natural.width())
         self.assertLess(alternate_transform.m11(), 1.0)
+
+    def test_vertical_neighbor_font_size_does_not_move_previous_glyph(self) -> None:
+        for family in ('Arial', 'Times New Roman'):
+            for text in ('😀', '年', 'A', '가'):
+                with self.subTest(family=family, text=text):
+                    ink_bounds = []
+                    caret_tops = []
+                    for next_size in (18, 72):
+                        item = self._make_item(True, text=text + 'i')
+                        self.addCleanup(item.deleteLater)
+                        item.setFontFamily(family)
+                        cursor = QTextCursor(item.document())
+                        cursor.setPosition(_utf16_length(text))
+                        cursor.movePosition(
+                            QTextCursor.MoveOperation.End,
+                            QTextCursor.MoveMode.KeepAnchor,
+                        )
+                        char_format = QTextCharFormat()
+                        char_format.setFontPointSize(next_size)
+                        cursor.mergeCharFormat(char_format)
+                        block = item.document().firstBlock()
+                        line, offset, transform = item.layout.vertical_line_placement(block, 0)
+                        ink_bounds.append(glyph_rendering.glyph_geometry(
+                            line, line.textStart(), line.textLength(),
+                            offset, transform, 0.0,
+                        ).bounds)
+                        caret_tops.append(item.layout.source_cursor_rect(0).top())
+                    self.assertAlmostEqual(ink_bounds[0].top(), ink_bounds[1].top())
+                    self.assertAlmostEqual(ink_bounds[0].height(), ink_bounds[1].height())
+                    self.assertAlmostEqual(caret_tops[0], caret_tops[1])
 
     def test_fullwidth_text_combine_matches_narrow_rendering_and_interaction(self) -> None:
         for full, narrow in (
@@ -2275,8 +2304,7 @@ class RichTextAnnotationTest(unittest.TestCase):
             line.textStart() + line.textLength(),
         )
 
-    def test_text_combine_is_persistent_but_visually_inert_horizontally(self):
-        plain = self._make_item(False, text='A12B')
+    def test_text_combine_preserves_native_horizontal_shaping_and_mode_switches(self) -> None:
         combined = self._make_item(False, text='A12B')
         combined.startEdit()
         cursor = combined.textCursor()
@@ -2285,12 +2313,19 @@ class RichTextAnnotationTest(unittest.TestCase):
         combined.setTextCursor(cursor)
         combined.setTateChuYoko(True)
 
-        plain_line = plain.document().firstBlock().layout().lineAt(0)
+        # Even metadata-only format boundaries can split Qt kerning. Compare
+        # the same formatted document through Qt's native horizontal layout.
+        reference = combined.document().clone()
+        self.addCleanup(reference.deleteLater)
+        reference.setTextWidth(600)
+        reference.documentLayout().documentSize()
+        native_line = reference.firstBlock().layout().lineAt(0)
+        native_width = native_line.naturalTextWidth()
         combined_line = combined.document().firstBlock().layout().lineAt(0)
-        self.assertEqual(combined.toPlainText(), plain.toPlainText())
-        self.assertEqual(combined_line.textLength(), plain_line.textLength())
+        self.assertEqual(combined.toPlainText(), 'A12B')
+        self.assertEqual(combined_line.textLength(), native_line.textLength())
         self.assertAlmostEqual(
-            combined_line.naturalTextWidth(), plain_line.naturalTextWidth()
+            combined_line.naturalTextWidth(), native_width
         )
         self.assertEqual(
             text_combine_upright_values(
@@ -2305,7 +2340,7 @@ class RichTextAnnotationTest(unittest.TestCase):
         combined.setVertical(False)
         horizontal_line = combined.document().firstBlock().layout().lineAt(0)
         self.assertAlmostEqual(
-            horizontal_line.naturalTextWidth(), plain_line.naturalTextWidth()
+            horizontal_line.naturalTextWidth(), native_width
         )
 
     def test_wrapped_text_combine_reserves_its_own_visible_column_width(self):
@@ -3036,12 +3071,12 @@ class RichTextAnnotationTest(unittest.TestCase):
             NATIVE_DOCUMENT_CACHE.values(),
         )
 
-    def test_typed_text_fill_colors_native_emphasis_composite(self):
+    def test_typed_text_fill_colors_native_emphasis_composite(self) -> None:
         item = self._make_item(
             False, bounds=(0, 0, 420, 180), text='A            A'
         )
-        item.fontformat.font_size = 52.0
-        item.fontformat.frgb = [30, 160, 30]
+        item.setFontSize(39.0)
+        item.setFontColor((30, 160, 30))
         item.set_text_effects(TextEffectStack(effects=(
             TextFillEffect(paint=LinearGradientPaint(stops=(
                 GradientStop(0.0, (240, 20, 20)),

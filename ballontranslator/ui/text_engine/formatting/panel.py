@@ -53,6 +53,7 @@ from ballontranslator.utils.fontformat import (
     font_weight_to_qt,
 )
 from ballontranslator.utils.font_registry import FontEntry
+from ballontranslator.utils.bubble_shape import BubbleShape
 from ballontranslator.utils.font_refresh import runtime_font_refresh_supported
 from ...custom_widget import (
     AlignmentChecker,
@@ -128,56 +129,46 @@ class IncrementalBtn(QPushButton):
 
 class AlignmentBtnGroup(QFrame):
     param_changed = Signal(str, int)
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.alignLeftChecker = AlignmentChecker(self)
-        self.alignLeftChecker.clicked.connect(self.alignBtnPressed)
         self.alignCenterChecker = AlignmentChecker(self)
-        self.alignCenterChecker.clicked.connect(self.alignBtnPressed)
         self.alignRightChecker = AlignmentChecker(self)
-        self.alignRightChecker.clicked.connect(self.alignBtnPressed)
-        self.alignLeftChecker.setObjectName("AlignLeftChecker")
-        self.alignRightChecker.setObjectName("AlignRightChecker")
-        self.alignCenterChecker.setObjectName("AlignCenterChecker")
+        self.alignTopChecker = AlignmentChecker(self)
+        self.alignMiddleChecker = AlignmentChecker(self)
+        self.alignBottomChecker = AlignmentChecker(self)
+        self.horizontal_buttons = (self.alignLeftChecker, self.alignCenterChecker, self.alignRightChecker)
+        self.vertical_buttons = (self.alignTopChecker, self.alignMiddleChecker, self.alignBottomChecker)
 
         hlayout = QHBoxLayout(self)
-        hlayout.addWidget(self.alignLeftChecker)
-        hlayout.addWidget(self.alignCenterChecker)
-        hlayout.addWidget(self.alignRightChecker)
+        for button, name, label in zip(
+            self.horizontal_buttons + self.vertical_buttons,
+            ('Left', 'Center', 'Right', 'Top', 'Middle', 'Bottom'),
+            (self.tr('Left'), self.tr('Center'), self.tr('Right'),
+             self.tr('Top'), self.tr('Center'), self.tr('Bottom')),
+        ):
+            button.setObjectName(f'Align{name}Checker')
+            button.setToolTip(label)
+            button.setAccessibleName(label)
+            button.clicked.connect(self.alignBtnPressed)
+            hlayout.addWidget(button)
         hlayout.setSpacing(0)
         hlayout.setContentsMargins(8, 8, 8, 8)
+        self.setAlignment(0)
 
-    def alignBtnPressed(self):
+    def alignBtnPressed(self) -> None:
         btn = self.sender()
-        if btn == self.alignLeftChecker:
-            self.alignLeftChecker.setChecked(True)
-            self.alignCenterChecker.setChecked(False)
-            self.alignRightChecker.setChecked(False)
-            self.param_changed.emit('alignment', 0)
-        elif btn == self.alignRightChecker:
-            self.alignRightChecker.setChecked(True)
-            self.alignCenterChecker.setChecked(False)
-            self.alignLeftChecker.setChecked(False)
-            self.param_changed.emit('alignment', 2)
-        else:
-            self.alignCenterChecker.setChecked(True)
-            self.alignLeftChecker.setChecked(False)
-            self.alignRightChecker.setChecked(False)
-            self.param_changed.emit('alignment', 1)
-    
-    def setAlignment(self, alignment: int):
-        if alignment == 0:
-            self.alignLeftChecker.setChecked(True)
-            self.alignCenterChecker.setChecked(False)
-            self.alignRightChecker.setChecked(False)
-        elif alignment == 1:
-            self.alignLeftChecker.setChecked(False)
-            self.alignCenterChecker.setChecked(True)
-            self.alignRightChecker.setChecked(False)
-        else:
-            self.alignLeftChecker.setChecked(False)
-            self.alignCenterChecker.setChecked(False)
-            self.alignRightChecker.setChecked(True)
+        buttons = self.vertical_buttons if self.vertical else self.horizontal_buttons
+        alignment = buttons.index(btn)
+        self.setAlignment(alignment, self.vertical)
+        self.param_changed.emit('vertical_alignment' if self.vertical else 'alignment', alignment)
+
+    def setAlignment(self, alignment: int, vertical: bool = False) -> None:
+        self.vertical = vertical
+        for mode, buttons in ((False, self.horizontal_buttons), (True, self.vertical_buttons)):
+            for index, button in enumerate(buttons):
+                button.setVisible(mode == vertical)
+                button.setChecked(mode == vertical and index == alignment)
 
 
 class EmphasisToolButton(QToolButton):
@@ -934,7 +925,16 @@ class FontFormatPanel(Widget):
 
         self.verticalChecker = QFontChecker(self)
         self.verticalChecker.setObjectName("FontVerticalChecker")
-        self.verticalChecker.clicked.connect(lambda : self.on_param_changed('vertical', self.verticalChecker.isChecked()))
+        self.verticalChecker.clicked.connect(self.on_vertical_changed)
+
+        self.bubbleShapeChecker = QFontChecker(self)
+        self.bubbleShapeChecker.setObjectName('FontBubbleShapeChecker')
+        self.bubbleShapeChecker.setAccessibleName(self.tr('Bubble constraint'))
+        self.bubbleShapeChecker.setToolTip(self.tr(
+            'Use and edit the bubble constraint. Turn off for rectangular wrapping.\n'
+            'Drag anchors and handles; double-click the curve to add an anchor.'))
+        self.bubbleShapeChecker.setEnabled(False)
+        self.bubbleShapeChecker.clicked.connect(self.on_bubble_shape_changed)
 
         self._tate_chu_yoko_tooltip = self.tr(
             'Combine the selected text into one upright vertical cell'
@@ -1075,6 +1075,7 @@ class FontFormatPanel(Widget):
         hl3.addWidget(self.fontsizebox)
         hl3.addLayout(lettersp_hlayout)
         hl3.addLayout(linesp_hlayout)
+        hl3.addWidget(self.bubbleShapeChecker)
         hl3.setContentsMargins(3, FONTFORMAT_SPACING, 3, 0)
         hl3.setSpacing(12)
         hl4 = QHBoxLayout()
@@ -1113,8 +1114,11 @@ class FontFormatPanel(Widget):
             return None
 
     def on_param_changed(self, param_name: str, value) -> None:
-        self.line_spacing_drag.cancel()
-        self.letter_spacing_drag.cancel()
+        if param_name in {'alignment', 'vertical_alignment', 'vertical'}:
+            self.resolve_text_transform_edits_for_history_change()
+        else:
+            self.line_spacing_drag.cancel()
+            self.letter_spacing_drag.cancel()
         func = handle_ffmt_change.get(param_name)
         func_kwargs = {}
         if param_name in {'font_size', 'rel_font_size'}:
@@ -1124,6 +1128,59 @@ class FontFormatPanel(Widget):
             self.update_text_style_label()
         else:
             func(param_name, value, C.active_format, is_global=False, blkitems=self.textblk_item, set_focus=True, **func_kwargs)
+
+    def on_vertical_changed(self, checked: bool) -> None:
+        self.on_param_changed('vertical', checked)
+        # Global defaults also need to switch controls when no item is selected.
+        self.sync_alignment_controls()
+
+    def sync_bubble_controls(self) -> None:
+        items = self.text_transform_session.items
+        self.bubbleShapeChecker.setEnabled(bool(items))
+        self.bubbleShapeChecker.setChecked(bool(items) and all(item.blk.bubble_layout for item in items))
+
+    def on_bubble_shape_changed(self, enabled: bool) -> None:
+        from ..editing.commands import SetBubbleShapeCommand
+
+        self.resolve_text_transform_edits_for_save()
+        items = list(self.text_transform_session.items)
+        if not items:
+            self.sync_bubble_controls()
+            return
+        before, after = [], []
+        for item in items:
+            item.endEdit(keep_focus=False)
+            rect = item.absBoundingRect(qrect=True).getRect()
+            shape = item.blk.bubble_shape
+            before.append((shape, item.blk.bubble_layout, rect))
+            if enabled and shape is None:
+                shape = BubbleShape.rectangle(rect)
+            after.append((shape, enabled, rect))
+        canvas = SW.canvas
+        if enabled:
+            canvas.alpha_mask_edit_session.deactivate()
+            self.text_transform_session.select_transform(-1)
+        if before != after:
+            canvas.push_text_command(SetBubbleShapeCommand(items, before, after))
+        primary = canvas.primary_selected_text_item(items)
+        canvas.txtblkShapeControl.setBlkItem(primary)
+        canvas.txtblkShapeControl.showControls()
+        self.sync_bubble_controls()
+
+    def sync_alignment_controls(self, font_format: Optional[FontFormat] = None) -> None:
+        if font_format is None:
+            font_format = (self.global_format if self.textblk_item is None or self.global_mode()
+                           else self.textblk_item.fontformat)
+            if font_format is None:
+                return
+            if C.active_format is not None:
+                for name in ('vertical', 'alignment', 'vertical_alignment'):
+                    setattr(C.active_format, name, getattr(font_format, name))
+        self.verticalChecker.setChecked(font_format.vertical)
+        self.alignBtnGroup.setAlignment(
+            font_format.vertical_alignment if font_format.vertical else font_format.alignment,
+            font_format.vertical,
+        )
 
     def on_font_family_changed(
         self, param_name: str, font_family: str
@@ -1304,6 +1361,8 @@ class FontFormatPanel(Widget):
         self._restore_ruby_edit_focus(item)
 
     def resolve_text_transform_edits_for_save(self) -> None:
+        if SW.canvas is not None:
+            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
@@ -1320,6 +1379,8 @@ class FontFormatPanel(Widget):
         self.text_effect_session.stop_image_generation(detach_card=True)
 
     def resolve_text_transform_edits_for_history_change(self) -> None:
+        if SW.canvas is not None:
+            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
@@ -1331,6 +1392,8 @@ class FontFormatPanel(Widget):
         self.text_effect_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self) -> None:
+        if SW.canvas is not None:
+            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
@@ -1343,6 +1406,8 @@ class FontFormatPanel(Widget):
         self.text_transform_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self) -> None:
+        if SW.canvas is not None:
+            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
         if self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
@@ -1475,11 +1540,10 @@ class FontFormatPanel(Widget):
             multi_size,
             preserve_focused_editors=False,
         )
-        self.verticalChecker.setChecked(font_format.vertical)
+        self.sync_alignment_controls(font_format)
         self.romanAlignmentChecker.setChecked(
             font_format.standard_vertical_roman_alignment
         )
-        self.alignBtnGroup.setAlignment(font_format.alignment)
         self.textadvancedfmt_panel.set_active_format(font_format)
         if update_effect_panel:
             self.texteffect_panel.set_active_format(font_format)
@@ -1573,6 +1637,8 @@ class FontFormatPanel(Widget):
 
         if not preserve_local_owner:
             if transform_items != self.text_transform_session.items:
+                if SW.canvas is not None:
+                    SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
                 self.font_size_session.cancel()
                 self.line_spacing_drag.cancel()
                 self.letter_spacing_drag.cancel()
@@ -1630,6 +1696,7 @@ class FontFormatPanel(Widget):
                 )
                 self.texteffect_panel.set_effect_items([textblk_item])
                 self.textstyle_panel.setTitle(f'TextBlock #{textblk_item.idx}')
+        self.sync_bubble_controls()
 
     def _owns_widget(self, widget: Optional[QWidget]) -> bool:
         """Return whether a child or top-level popup belongs to this panel."""

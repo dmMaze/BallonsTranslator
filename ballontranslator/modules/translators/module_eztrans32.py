@@ -17,11 +17,9 @@ class MyServer(Server32):
     def translate(self, src_text: str | list) -> str | list:
         def work(t):
             return encode_text(self.engine.translate(decode_text(t)))
-        if type(src_text) == list:
-            if len(src_text) == 1:
-                return [work(src_text[0])]
-            return self.translate(src_text[:-1]) + [work(src_text[-1])]
-        elif type(src_text) == str:
+        if isinstance(src_text, list):
+            return [work(t) for t in src_text]
+        elif isinstance(src_text, str):
             return work(src_text)
 
 

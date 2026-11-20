@@ -13,7 +13,7 @@ import numpy as np
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PIL import Image
-from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, Qt, QTimer
+from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, QRectF, Qt, QTimer
 from qtpy.QtGui import QColor, QDragEnterEvent, QDropEvent, QImage, QTextCursor
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QHBoxLayout, QListWidget, QStackedWidget, QTextEdit, QWidget
@@ -31,6 +31,10 @@ from ballontranslator.ui.text_engine.editing.manager import (
     SceneTextManager, SceneTextReplacementReason, TextPanel,
 )
 from ballontranslator.ui.text_engine.editing.widgets import SourceTextEdit
+from ballontranslator.ui.text_engine.annotations import (
+    apply_ruby, apply_text_combine_upright, ruby_containers,
+    text_combine_upright_ranges,
+)
 from ballontranslator.ui.text_engine.transforms import grid_control
 from ballontranslator.ui.text_engine.transforms.controls import TransformParameterPanel
 from ballontranslator.utils import config as C, shared
@@ -38,6 +42,7 @@ from ballontranslator.utils.fontformat import FontFormat
 from ballontranslator.utils.io_utils import imread, imwrite
 from ballontranslator.utils.proj_imgtrans import ProjImgTrans
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.bubble_shape import BubbleShape
 
 
 class CanvasSaveStateTests(unittest.TestCase):
@@ -98,6 +103,58 @@ class CanvasSaveStateTests(unittest.TestCase):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         self.app.processEvents()
 
+    def test_alignment_controls_switch_mode_and_follow_undo_and_save(self) -> None:
+        panel = self.panel.formatpanel
+        group = panel.alignBtnGroup
+        self.assertTrue(group.alignLeftChecker.isVisible())
+        self.assertFalse(group.alignTopChecker.isVisible())
+        group.alignRightChecker.click()
+        panel.verticalChecker.click()
+        self.assertTrue(self.item.fontformat.vertical)
+        self.assertTrue(group.alignTopChecker.isVisible())
+        self.assertTrue(group.alignTopChecker.isChecked())
+        self.assertFalse(group.alignRightChecker.isVisible())
+        commands = self.canvas.text_undo_stack.count()
+        document_steps = self.item.document().availableUndoSteps()
+        group.alignBottomChecker.click()
+        self.assertEqual(self.item.fontformat.vertical_alignment, 2)
+        self.assertEqual(self.item.fontformat.alignment, 2)
+        self.assertEqual(self.canvas.text_undo_stack.count(), commands + 1)
+        self.assertEqual(self.item.document().availableUndoSteps(), document_steps)
+        self.canvas.undo_textedit()
+        self.assertEqual(self.item.fontformat.vertical_alignment, 0)
+        self.assertTrue(group.alignTopChecker.isChecked())
+        self.canvas.redo_textedit()
+        self.assertTrue(group.alignBottomChecker.isChecked())
+        panel.verticalChecker.click()
+        self.assertTrue(group.alignRightChecker.isVisible())
+        self.assertTrue(group.alignRightChecker.isChecked())
+        self.assertFalse(group.alignBottomChecker.isVisible())
+        self.canvas.undo_textedit()
+        self.assertTrue(panel.verticalChecker.isChecked())
+        self.assertTrue(group.alignBottomChecker.isVisible())
+        self._save_page()
+        loaded = ProjImgTrans(self.directory.name).pages['01.png'][0]
+        self.assertTrue(loaded.vertical)
+        self.assertEqual(loaded.fontformat.vertical_alignment, 2)
+        self.assertEqual(loaded.alignment, 2)
+        self.assertEqual(loaded.translation, 'Hello\nworld')
+
+    def test_alignment_controls_switch_global_defaults_without_selection(self) -> None:
+        self.item.setSelected(False)
+        self.manager._update_selection_panels([])
+        panel = self.panel.formatpanel
+        self.assertTrue(panel.global_mode())
+        panel.verticalChecker.click()
+        panel.alignBtnGroup.alignMiddleChecker.click()
+        self.assertTrue(panel.global_format.vertical)
+        self.assertEqual(panel.global_format.vertical_alignment, 1)
+        self.assertFalse(self.item.fontformat.vertical)
+        panel.verticalChecker.click()
+        self.assertTrue(panel.alignBtnGroup.alignLeftChecker.isVisible())
+        panel.verticalChecker.click()
+        self.assertTrue(panel.alignBtnGroup.alignMiddleChecker.isChecked())
+
     def _save_page(
         self, update_scene_text: bool = True, save_proj: bool = True, **kwargs,
     ) -> None:
@@ -144,6 +201,184 @@ class CanvasSaveStateTests(unittest.TestCase):
         QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton,
                            Qt.KeyboardModifier.NoModifier, end)
         self.app.processEvents()
+
+    def test_koharu_auto_layout_is_one_undoable_canvas_action(self) -> None:
+        self.item.blk.det_model = 'koharu'
+        self.item.blk.bubble_shape = BubbleShape((0, 0, 300, 120), (
+            (0, 0, 0, 0, 0, 0), (1, 0, 1, 0, 1, 0),
+            (1, 1, 1, 1, 1, 1), (0, 1, 0, 1, 0, 1),
+        ))
+        self.item.set_bubble_shape(self.item.blk.bubble_shape, True, self.item.absBoundingRect(qrect=True))
+        self.item.setVertical(True)
+        old_html = self.item.toHtml()
+        old_rect = self.item.absBoundingRect(qrect=True)
+        count = self.canvas.text_undo_stack.count()
+        with patch.object(C.pcfg, 'let_fntsize_flag', 0):
+            self.manager.onAutoLayoutTextblks()
+        self.app.processEvents()
+        self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
+        self.assertTrue(self.item.blk.bubble_layout)
+        self.assertEqual(self.manager.pairwidget_list[0].e_trans.toPlainText(), 'Hello\nworld')
+        self.canvas.text_undo_stack.undo()
+        self.assertEqual(self.item.toHtml(), old_html)
+        self.assertEqual(self.item.absBoundingRect(qrect=True), old_rect)
+        self.assertTrue(self.item.blk.bubble_layout)
+        self.canvas.text_undo_stack.redo()
+        self.assertTrue(self.item.blk.bubble_layout)
+        self._save_page()
+        reloaded = ProjImgTrans(self.directory.name)
+        self.assertTrue(reloaded.pages['01.png'][0].bubble_layout)
+        self.assertEqual(reloaded.pages['01.png'][0].translation, 'Hello\nworld')
+
+    def test_koharu_pipeline_fit_keeps_source_frame_and_obeys_auto_flag(self) -> None:
+        block = TextBlock(
+            [20, 20, 160, 80], _bounding_rect=[20, 20, 140, 60],
+            det_model='koharu', translation='A long translation that initially grows beyond the source frame.',
+            fontformat=FontFormat(font_family='Arial', font_size=24),
+        )
+        self.manager.auto_textlayout_flag = True
+        with patch.object(C.pcfg, 'let_fntsize_flag', 0):
+            item = self.manager.addTextBlock(block)
+        self.assertEqual(item.absBoundingRect(qrect=True), QRectF(20, 20, 140, 60))
+        self.assertEqual(item.toPlainText(), block.translation)
+        self.manager.auto_textlayout_flag = False
+        with patch('ballontranslator.ui.text_engine.editing.manager.fit_text_in_shape') as fitter:
+            self.manager.addTextBlock(TextBlock(
+                _bounding_rect=[0, 0, 100, 100], det_model='koharu', translation='Untouched',
+            ))
+        fitter.assert_not_called()
+
+    def test_auto_layout_preserves_earlier_typing_and_paired_history(self) -> None:
+        self.item.blk.set_lines_by_xywh([0, 0, 300, 120])
+        original = self.item.toPlainText()
+        editor = self.manager.pairwidget_list[0].e_trans
+        for detector, size_flag, outside in (
+            ('koharu', 0, False), ('koharu', 1, False),
+            ('ctd', 0, False), ('ctd', 0, True),
+        ):
+            with self.subTest(detector=detector, size_flag=size_flag, outside=outside), \
+                    patch.object(C.pcfg, 'let_fntsize_flag', size_flag), \
+                    patch.object(C.pcfg.module, 'translate_target', '日本語'):
+                self.item.blk.det_model = detector
+                if outside:
+                    self.item.setRect([500, 300, 300, 120])
+                editor.setFocus()
+                editor.insertPlainText('Added text. ')
+                edited = self.item.toPlainText()
+                self.assertNotEqual(original, edited)
+                self.canvas.gv.setFocus()
+                self.manager.onAutoLayoutTextblks()
+                fitted = self.item.toHtml()
+                fitted_text = self.item.toPlainText()
+                self.canvas.undo_textedit()
+                self.assertEqual(self.item.toPlainText(), edited)
+                self.canvas.undo_textedit()
+                self.assertEqual(self.item.toPlainText(), original)
+                self.assertEqual(editor.toPlainText(), original)
+                self.canvas.redo_textedit()
+                self.canvas.redo_textedit()
+                self.assertEqual(self.item.toHtml(), fitted)
+                self.assertEqual(editor.toPlainText(), fitted_text)
+                self.canvas.undo_textedit()
+                self.canvas.undo_textedit()
+
+    def test_render_only_preserves_ordinary_block_paragraphs(self) -> None:
+        self.item.setPlainText('One paragraph.\n\nAnother paragraph.')
+        self.manager.updateTextBlkList()
+        before = self.item.toPlainText()
+        writer = self._setup_render_pipeline()
+        self.host._render_only = True
+        self.host._run_imgtrans_wo_textstyle_update = False
+        self.host._render_global_format = self.panel.formatpanel.global_format
+        with patch.object(C.pcfg, 'let_autolayout_flag', True), \
+                patch.object(self.manager, 'layout_textblk', wraps=self.manager.layout_textblk) as layout:
+            self.host.on_pagtrans_finished(0)
+        self.assertTrue(writer.wait(10000))
+        self.item = self.manager.textblk_item_list[0]
+        layout.assert_not_called()
+        self.assertEqual(self.item.toPlainText(), before)
+
+    def test_pipeline_fit_does_not_leak_into_later_scene_reloads(self) -> None:
+        self.item.blk.det_model = 'koharu'
+        self.manager.updateTextBlkList()
+        writer = self._setup_render_pipeline()
+        self.host._render_only = True
+        self.host._run_imgtrans_wo_textstyle_update = False
+        self.host._render_global_format = self.panel.formatpanel.global_format
+        with patch.multiple(C.pcfg, let_autolayout_flag=True, let_fntsize_flag=0):
+            self.host.on_pagtrans_finished(0)  # A selected-page run can end before the last page.
+        self.assertTrue(writer.wait(10000))
+        item = self.manager.textblk_item_list[0]
+        item.setFontSize(10)
+        manual_size = item.layout.max_font_size(to_px=True)
+        self.manager.updateTextBlkList()
+        with patch('ballontranslator.ui.text_engine.editing.manager.fit_text_in_shape') as fitter:
+            self.manager.updateSceneTextitems()
+        fitter.assert_not_called()
+        self.assertAlmostEqual(self.manager.textblk_item_list[0].layout.max_font_size(to_px=True), manual_size)
+        with patch.object(C.pcfg, 'let_autolayout_flag', True), \
+                patch.object(self.manager, 'updateSceneTextitems', side_effect=RuntimeError('reload failed')), \
+                self.assertRaisesRegex(RuntimeError, 'reload failed'):
+            self.host.on_pagtrans_finished(0)
+        self.assertFalse(self.manager.auto_textlayout_flag)
+
+    def test_pipeline_fixed_size_overrides_saved_rich_text_sizes(self) -> None:
+        self.item.blk.det_model = 'koharu'
+        self.item.setPlainText('東京12\n\nHello')
+        self.item.setVertical(True)
+        cursor = QTextCursor(self.item.document())
+        cursor.setPosition(0)
+        cursor.setPosition(2, QTextCursor.MoveMode.KeepAnchor)
+        apply_ruby(cursor, 'group', 'とうきょう')
+        color = cursor.charFormat()
+        color.setForeground(QColor('red'))
+        cursor.mergeCharFormat(color)
+        cursor.setPosition(2)
+        cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+        apply_text_combine_upright(cursor, True)
+        self.manager.updateTextBlkList()
+        writer = self._setup_render_pipeline()
+        self.host._render_only = True
+        self.host._run_imgtrans_wo_textstyle_update = False
+        self.host._render_global_format = FontFormat(font_family='DejaVu Sans', font_size=12, vertical=True)
+        with patch.multiple(C.pcfg, let_autolayout_flag=True, let_fntsize_flag=1,
+                            let_fntcolor_flag=0), \
+                patch.object(C.pcfg.module, 'translate_target', '日本語'):
+            self.host.on_pagtrans_finished(0)
+        self.assertTrue(writer.wait(10000))
+        self.item = self.manager.textblk_item_list[0]
+        self.assertAlmostEqual(self.item.layout.max_font_size(to_px=True), 12, delta=.1)
+        self.assertEqual(self.item.toPlainText(), '東京12\n\nHello')
+        self.assertEqual(len(ruby_containers(self.item.document())), 1)
+        self.assertEqual(len(text_combine_upright_ranges(self.item.document().firstBlock())), 1)
+        cursor = QTextCursor(self.item.document())
+        cursor.setPosition(1)
+        self.assertEqual(cursor.charFormat().foreground().color(), QColor('red'))
+
+    def test_translation_only_pipeline_preserves_koharu_fit_area(self) -> None:
+        writer = self._setup_render_pipeline()
+        block = self.item.blk
+        block.det_model = 'koharu'
+        block.bubble_shape = BubbleShape((0, 0, 300, 120), (
+            (0, 0, 0, 0, 0, 0), (1, 0, 1, 0, 1, 0),
+            (1, 1, 1, 1, 1, 1), (0, 1, 0, 1, 0, 1),
+        ))
+        block.bubble_layout = True
+        before = self.item.absBoundingRect(qrect=True)
+        self.host._render_only = False
+        self.host._render_global_format = FontFormat(font_family='Arial')
+        self.host._run_imgtrans_wo_textstyle_update = False
+        with patch.multiple(C.pcfg, let_autolayout_flag=True, let_fntsize_flag=0), \
+                patch.multiple(C.pcfg.module, enable_detect=False, enable_ocr=False,
+                               enable_translate=True, enable_inpaint=False):
+            try:
+                self.host.on_pagtrans_finished(0)
+            finally:
+                self.assertTrue(writer.wait(5000))
+        item = self.manager.textblk_item_list[0]
+        self.assertTrue(item.blk.bubble_layout)
+        self.assertEqual(item.absBoundingRect(qrect=True), before)
+        self.assertEqual(item.toPlainText(), 'Hello\nworld')
 
     def test_transform_enter_keeps_focus_and_both_controls(self) -> None:
         control = self._add_transform('projective').controls['rotation_x']

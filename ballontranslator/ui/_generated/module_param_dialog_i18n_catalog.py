@@ -223,6 +223,30 @@ MODULE_PARAM_CATALOG = {
     ('ocr', 'hayai_ocr_v2', 'max_num_patches', 'display_name'): {
         "source": 'Max Num Patches', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Num Patches'),
     },
+    ('ocr', 'hayai_ocr_v2_7_supernova', '', 'description'): {
+        "source": 'Reads text in English, Korean, Japanese, and Chinese.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Reads text in English, Korean, Japanese, and Chinese.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_new_tokens', 'description'): {
+        "source": 'Maximum output tokens per crop. Recommended: 128.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Maximum output tokens per crop. Recommended: 128.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_new_tokens', 'display_name'): {
+        "source": 'Max New Tokens', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max New Tokens'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_patches', 'description'): {
+        "source": '256 is recommended. Use 384 or 512 for unusually dense multi-line blocks or tiny glyphs; larger budgets are slower.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '256 is recommended. Use 384 or 512 for unusually dense multi-line blocks or tiny glyphs; larger budgets are slower.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'max_patches', 'display_name'): {
+        "source": 'Max Patches', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Max Patches'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'use_cuda_graph', 'description'): {
+        "source": 'Enable CUDA graphs for faster decoding (recommended). Automatically ignored on non-CUDA devices.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Enable CUDA graphs for faster decoding (recommended). Automatically ignored on non-CUDA devices.'),
+    },
+    ('ocr', 'hayai_ocr_v2_7_supernova', 'use_cuda_graph', 'display_name'): {
+        "source": 'Use CUDA Graphs', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Use CUDA Graphs'),
+    },
     ('ocr', 'manga_ocr', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
     },
@@ -243,24 +267,6 @@ MODULE_PARAM_CATALOG = {
     },
     ('ocr', 'mit48px_ctc', 'device', 'display_name'): {
         "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
-    },
-    ('ocr', 'paddle_vl', '', 'description'): {
-        "source": '本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '本地部署的 Paddle OCR-VL 服务 (POST /layout-parsing)'),
-    },
-    ('ocr', 'paddle_vl', 'max retry times', 'display_name'): {
-        "source": 'max retry times', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'max retry times'),
-    },
-    ('ocr', 'paddle_vl', 'prettifyMarkdown', 'display_name'): {
-        "source": 'Prettify Markdown', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Prettify Markdown'),
-    },
-    ('ocr', 'paddle_vl', 'retry interval', 'display_name'): {
-        "source": 'retry interval', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'retry interval'),
-    },
-    ('ocr', 'paddle_vl', 'server_url', 'display_name'): {
-        "source": 'Server URL', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Server URL'),
-    },
-    ('ocr', 'paddle_vl', 'visualize', 'display_name'): {
-        "source": 'visualize', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'visualize'),
     },
     ('ocr', 'ppv6_onnx', '', 'description'): {
         "source": 'PP-OCRv6 ONNX recognition-only — crops text blocks then recognizes via ONNX Runtime', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'PP-OCRv6 ONNX recognition-only — crops text blocks then recognizes via ONNX Runtime'),
@@ -450,6 +456,48 @@ MODULE_PARAM_CATALOG = {
     },
     ('textdetector', 'ctd', 'mask dilate size', 'display_name'): {
         "source": 'mask dilate size', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'mask dilate size'),
+    },
+    ('textdetector', 'koharu', '', 'description'): {
+        "source": 'Best suited to conventional manga, with limited training on Western comics and CG artwork.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Best suited to conventional manga, with limited training on Western comics and CG artwork.'),
+    },
+    ('textdetector', 'koharu', 'detect size', 'description'): {
+        "source": '1152 by default. Larger sizes may recover small text but use more memory.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '1152 by default. Larger sizes may recover small text but use more memory.'),
+    },
+    ('textdetector', 'koharu', 'detect size', 'display_name'): {
+        "source": 'Detect size', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Detect size'),
+    },
+    ('textdetector', 'koharu', 'device', 'display_name'): {
+        "source": 'device', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'device'),
+    },
+    ('textdetector', 'koharu', 'font size multiplier', 'description'): {
+        "source": 'Scales the fallback size. Auto layout instead fits translated text to the flow area.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Scales the fallback size. Auto layout instead fits translated text to the flow area.'),
+    },
+    ('textdetector', 'koharu', 'font size multiplier', 'display_name'): {
+        "source": 'Font size multiplier', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Font size multiplier'),
+    },
+    ('textdetector', 'koharu', 'label', 'description'): {
+        "source": 'text: dialogue/captions. onomatopoeia: sound effects. Unchecked types add no blocks or cleanup masks.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'text: dialogue/captions. onomatopoeia: sound effects. Unchecked types add no blocks or cleanup masks.'),
+    },
+    ('textdetector', 'koharu', 'label', 'display_name'): {
+        "source": 'Types', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Types'),
+    },
+    ('textdetector', 'koharu', 'model path', 'description'): {
+        "source": 'Default files download automatically. Custom weights need config.json in the same folder.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Default files download automatically. Custom weights need config.json in the same folder.'),
+    },
+    ('textdetector', 'koharu', 'model path', 'display_name'): {
+        "source": 'Model path', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Model path'),
+    },
+    ('textdetector', 'koharu', 'onomatopoeia threshold', 'description'): {
+        "source": 'Minimum sound-effect confidence, from 0 to 1.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Minimum sound-effect confidence, from 0 to 1.'),
+    },
+    ('textdetector', 'koharu', 'onomatopoeia threshold', 'display_name'): {
+        "source": 'SFX threshold', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'SFX threshold'),
+    },
+    ('textdetector', 'koharu', 'text threshold', 'description'): {
+        "source": 'Minimum text confidence, from 0 to 1.', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Minimum text confidence, from 0 to 1.'),
+    },
+    ('textdetector', 'koharu', 'text threshold', 'display_name'): {
+        "source": 'Text threshold', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', 'Text threshold'),
     },
     ('textdetector', 'stariver_ocr', '', 'description'): {
         "source": '星河云(团子翻译器) OCR 文字检测器', "translate": lambda: QCoreApplication.translate('ModuleParamDialog', '星河云(团子翻译器) OCR 文字检测器'),

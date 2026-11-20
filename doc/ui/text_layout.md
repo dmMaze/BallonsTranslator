@@ -89,6 +89,70 @@ overhang is not supported.
 
 ## Flow and spacing
 
+Koharu blocks (`TextBlock.det_model == 'koharu'`) use measured automatic fitting
+when Auto layout is enabled, including Run -> Rendering. Pipeline Font Formatting
+controls whether size is fitted or kept at the configured value. Other detectors
+retain the image-based automatic layout during translation; render-only runs
+preserve their existing wrapping. Explicit current frames take precedence;
+new detections use their associated bubble, or the rotated source frame if none
+was found. Automatic breaks remain derived Qt placements, preserving paragraphs,
+rich-text ranges and the paired translation editor.
+
+[`BubbleShape`](../../ballontranslator/utils/bubble_shape.py) stores a closed cubic
+path as normalized `(anchor x/y, incoming handle x/y, outgoing handle x/y)` nodes
+and an initial page frame. Tracing approximates the usable body, removing narrow
+tails and spikes before preferring four-node rectangles or ellipses. Clipped and
+compound bodies use short cubic chains with redundant anchors merged; bounded
+fit error preserves significant concavities. Intricate contours retain simplified
+corners when a short curve cannot represent them safely. Coverage of each block's
+native text segmentation, clipped to its detected text box, is a separate adjustment
+after fitting: keep a covering fit unchanged; otherwise tune its anchors and tangent
+handles, splitting at most four additional anchors for difficult concavities. Full
+retained foreground cells, including disconnected strokes, guide coverage; empty
+bounding-box corners do not. Masks remain temporary detector data. The adjustment
+never selects another fit.
+Detection works on native mask crops, selects the component containing the source
+text, and partitions shared bubbles at physical necks, with source bisectors as a fallback.
+Coincident source anchors receive separate strips.
+`TextBlock.bubble_layout` records whether that path is active for wrapping. Koharu
+enables it when a bubble was detected; missing fields use ordinary defaults.
+Resizing scales the local path without retracing. Automatic fitting honors this
+switch, including user-created constraints on blocks from other detectors.
+
+The anchor pen on the font panel's second row toggles the constraint. Enabled
+blocks show the actual wrapping path instead of rectangular resize handles;
+disabling retains the path, and enabling a block without one creates a rectangle.
+[`bubble_control.py`](../../ballontranslator/ui/text_engine/bubble_control.py)
+owns anchor selection and editing: drag anchors/handles, Shift to select multiple
+anchors or constrain movement, Alt to pull/break handles, double-click the curve
+to insert an anchor or an anchor to switch smooth/corner, and Delete to remove
+selected anchors (at least three remain). A context menu provides the same point
+operations. Arrows nudge selected anchors; Escape cancels the gesture.
+
+Each drag previews only live layout geometry and commits one canvas undo command
+with the shape and logical frame. Reframing preserves the untransformed contour
+while updating its logical frame. Save, history, selection and tool transitions
+cancel unfinished drags. The outline and raster share `bubble_path()`; guides and
+handles are excluded from export. Text, font size and document history are not
+modified by anchor editing.
+
+[`bubble_layout.py`](../../ballontranslator/ui/text_engine/bubble_layout.py) owns a
+bounded raster profile retained by each live layout, reused across font probes and
+resizes and replaced when the path changes. Both writing modes take the widest
+continuous contour spans and derive a shared alignment axis from them. Vertical
+columns follow the saved Top/Center/Bottom setting; whitespace/caret cells move
+with the glyphs. Insets reserve half an ink band with a four-pixel floor; horizontal
+flow measures the actual document text for both that band and baseline placement. Balanced line
+breaks reuse Qt advances and legal boundaries and preserve mandatory paragraphs;
+Ruby, bidi text and unusually long documents retain their native wrapping.
+Automatic sizing probes detached Qt items before applying the result; fixed sizes
+are laid out directly. Arbitrary mid-word wrapping cannot qualify as a successful
+automatic fit. Fitting reports overflow and sizes below 9 page pixels.
+The minimum is a readability floor, not a guarantee that every translation
+fits. Manual auto-layout groups native document edits and frame/size changes in
+one canvas command, preserving earlier typing history in both editors.
+Save/export rebuild the same placements from the saved document.
+
 For paragraph spacing, a caret formats its paragraph, a selection formats
 intersected paragraphs, and Enter inherits the block format.
 
@@ -110,7 +174,15 @@ visual leading-edge rule.
 
 ## Alignment and resize
 
-Vertical alignment translates settled columns horizontally:
+The formatting panel shows Left/Center/Right in horizontal mode and
+Top/Center/Bottom in vertical mode. `FontFormat.vertical_alignment` aligns each
+vertical column along its height, including bubble-guided flow. It defaults to
+Top when absent in older projects/styles. The two settings are independent and
+survive writing-mode changes; Pipeline Font Formatting's alignment override
+copies both from the global format.
+
+The existing `FontFormat.alignment` also controls horizontal placement of vertical
+columns and their width-growth anchor:
 
 | Alignment | Fixed growth anchor | Added-width movement |
 | --- | --- | --- |
@@ -118,8 +190,8 @@ Vertical alignment translates settled columns horizontally:
 | Center | Top-center | Columns move by half and grow evenly |
 | Right | Top-right | Columns move with the right edge and grow leftward |
 
-Alignment changes every placement and ink-bound record together but does not
-reshape text or change document content. A width-only resize may reuse that
+Horizontal column placement changes every placement and ink-bound record together
+without reshaping text or changing document content. A width-only resize may reuse that
 translation when the settled content still fits; height, padding, or flow
 changes require full layout. The geometry controller preserves the matching
 scene-space anchor, so layout and scene movement must not both compensate for

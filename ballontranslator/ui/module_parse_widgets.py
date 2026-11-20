@@ -8,6 +8,7 @@ from ballontranslator.utils.shared import (
 from ballontranslator.utils.config import save_config
 from .framelesswindow import OutsideClickFramelessMixin
 from .module_param_i18n import (
+    module_display_name,
     tr_module_description,
     tr_param_description,
     tr_param_display_name,
@@ -565,7 +566,8 @@ class ModuleParamDialog(OutsideClickFramelessMixin, QDialog):
         self.module_type = module_type
         self.module_key = module_key
         self.setObjectName('ModuleParamDialog')
-        self.setWindowTitle(module_key)
+        display_name = module_display_name(module_key)
+        self.setWindowTitle(display_name)
         self.setWindowModality(Qt.WindowModality.NonModal)
         self.setMinimumWidth(420)
         self.setMaximumHeight(640)
@@ -586,7 +588,7 @@ class ModuleParamDialog(OutsideClickFramelessMixin, QDialog):
         self.title_bar.setObjectName('ModuleParamTitleBar')
         title_layout = QHBoxLayout(self.title_bar)
         title_layout.setContentsMargins(0, 0, 0, 0)
-        self.title_label = QLabel(module_key, self.title_bar)
+        self.title_label = QLabel(display_name, self.title_bar)
         self.title_label.setObjectName('ModuleParamTitle')
         title_layout.addWidget(self.title_label)
         title_layout.addStretch()

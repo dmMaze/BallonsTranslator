@@ -194,7 +194,7 @@ OCR并翻译选中文本框
 * Ctrl++/- 或滚轮缩放画布
 * Ctrl+A 可选中界面中所有文本块
 * Ctrl+F 查找当前页，Ctrl+G全局查找
-* 0-9调整嵌字/原图透明度
+* 在嵌字画布上按 `1`-`9` 可按显示顺序激活前九个字体样式并应用到选中的文本块，`0` 对应第十个。
 * 文本编辑下 ```Ctrl+B``` 加粗，```Ctrl+U``` 下划线，```Ctrl+I``` 斜体
 * 字体样式面板-"特效"修改透明度添加阴影
 * ```Alt+Arrow Keys``` 或 ```Alt+WASD``` (正在编辑文本块时 ```pageDown``` 或 ```pageUp```) 在文本块间切换
@@ -222,12 +222,14 @@ Sugoi 翻译器作者: [mingshiba](https://www.patreon.com/mingshiba)
    * 详细说明见 [团子OCR说明](doc/团子OCR说明.md)
  * `YSGDetector` 是由 [lhj5426](https://github.com/lhj5426) 训练的模型，能更好地过滤日漫/CG里的拟声词。需要手动从 [YSGYoloDetector](https://huggingface.co/YSGforMTL/YSGYoloDetector) 下载模型放到 data/models 目录下。
  * `ysg_ctd` 结合 YSG 文本框与 CTD 精细掩膜；CTD 漏检的文本行保留框形掩膜，推理失败时回退到 YSG 掩膜。可在文本检测器中选择，参数独立于 `ysgyolo` 和 `ctd`，首次使用时会准备两套模型。
+ * `koharu-layout-highres` 使用 [Koharu Layout HighRes](https://huggingface.co/mayocream/koharu-layout-highres) 检测文本并生成清理掩膜。
 
 
 ### OCR
  * 所有 mit 模型来自 manga-image-translator，支持日英汉识别和颜色提取
  * [manga_ocr](https://github.com/kha-white/manga-ocr) 来自 [kha-white](https://github.com/kha-white)，支持日语识别，注意选用该模型程序不会提取颜色
  * [PaddleOCRVLManga](https://huggingface.co/jzhang533/PaddleOCR-VL-For-Manga) 支持日语识别，选用该模型程序不会提取颜色
+ * [Hayai OCR v2.7 Supernova](https://huggingface.co/JustANormalTinkerer/hayai-ocr-v2.7-supernova)：选择 `hayai_ocr_v2_7_supernova`，支持日文、中文、韩文和英文文本块识别。
  * 支持使用 [星河云(团子漫画OCR)](https://cloud.stariver.org.cn/)的OCR，需要填写用户名和密码，每次启动时会自动登录。
    * 目前的实现方案是逐个textblock进行OCR，速度较慢，准确度没有明显提升，不推荐使用。如果有需要，请使用团子Detector。
    * 推荐文本检测设置为团子Detector时，将OCR设为none_ocr，直接读取文本，节省时间和请求次数。

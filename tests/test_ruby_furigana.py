@@ -1667,7 +1667,7 @@ class RubyFuriganaTest(unittest.TestCase):
                         item.repaint_background()
                     neutral_generic_dilation.assert_not_called()
 
-    def test_vertical_glyph_slant_stroke_keeps_ruby_out_of_dilation(self):
+    def test_vertical_glyph_slant_stroke_keeps_ruby_out_of_dilation(self) -> None:
         block = TextBlock([0, 0, 220, 260])
         block._bounding_rect = [0, 0, 220, 260]
         block.translation = '学'
@@ -1690,7 +1690,6 @@ class RubyFuriganaTest(unittest.TestCase):
         live_document = item.document()
         document_block = live_document.firstBlock()
         normal = item.layout._vertical_ruby_placements(document_block)[0]
-        normal_bounds = QRectF(normal.ink_bounds)
         surface_rect = QRectF(item.boundingRect())
 
         def alpha_region(alpha, bounds: QRectF, padding: float = 0.0):
@@ -1704,24 +1703,33 @@ class RubyFuriganaTest(unittest.TestCase):
             return alpha[top:bottom, left:right]
 
         stroke_context = item.effect_renderer._stroke_paint_context()
-        mask_pixmap = QPixmap(
-            max(1, math.ceil(surface_rect.width())),
-            max(1, math.ceil(surface_rect.height())),
-        )
-        mask_pixmap.fill(Qt.GlobalColor.transparent)
-        mask_painter = QPainter(mask_pixmap)
-        try:
-            mask_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            mask_painter.translate(-surface_rect.topLeft())
-            item.geometry_controller.draw_layout_selection_mask(
-                mask_painter,
-                stroke_context,
-                include_annotations=False,
+
+        def render_mask(include_annotations: bool) -> QImage:
+            mask_pixmap = QPixmap(
+                max(1, math.ceil(surface_rect.width())),
+                max(1, math.ceil(surface_rect.height())),
             )
-        finally:
-            mask_painter.end()
-        mask_alpha = pixmap2ndarray(mask_pixmap, keep_alpha=True)[..., 3]
-        self.assertFalse(alpha_region(mask_alpha, normal_bounds).any())
+            mask_pixmap.fill(Qt.GlobalColor.transparent)
+            mask_painter = QPainter(mask_pixmap)
+            try:
+                mask_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                mask_painter.translate(-surface_rect.topLeft())
+                item.geometry_controller.draw_layout_selection_mask(
+                    mask_painter,
+                    stroke_context,
+                    include_annotations=include_annotations,
+                )
+            finally:
+                mask_painter.end()
+            return mask_pixmap.toImage()
+
+        excluded = render_mask(False)
+        # Slanted base ink may overlap the Ruby rectangle. Keep its placement
+        # fixed and remove only the annotation to obtain the expected mask.
+        with patch.object(item.layout, '_vertical_ruby_placements', return_value=()):
+            base_only = render_mask(True)
+        self.assertEqual(excluded, base_only)
+        self.assertNotEqual(excluded, render_mask(True))
 
         outlined = item.layout._vertical_ruby_placements(
             document_block, stroke_context

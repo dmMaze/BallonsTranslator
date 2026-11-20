@@ -13,6 +13,8 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from ..item import TextBlkItem, TextBlock
+from ..bubble_layout import fit_text_in_shape
+from ..rendering.indexing import _grapheme_ranges, _utf16_slice
 from ...canvas import Canvas
 from .widgets import TransTextEdit, SourceTextEdit, TransPairWidget, TextEditListScrollArea, QVBoxLayout, Widget
 from ballontranslator.utils.fontformat import FontFormat
@@ -403,6 +405,12 @@ class SceneTextManager(QObject):
         self.textEditList.selection_changed.connect(self.on_transwidget_selection_changed)
         self.textEditList.rearrange_blks.connect(self.on_rearrange_blks)
         self.formatpanel = textpanel.formatpanel
+        self.canvas.textstack_changed.connect(self.formatpanel.sync_alignment_controls)
+        self.canvas.textstack_changed.connect(self.formatpanel.sync_bubble_controls)
+        self.canvas.bubble_edit_started.connect(self.formatpanel.resolve_text_transform_edits_for_save)
+        self.canvas.apply_text_style.connect(
+            self.formatpanel.textstyle_panel.activate_and_apply_style
+        )
         self.formatpanel.textstyle_panel.apply_fontfmt.connect(self.onFormatTextblks)
 
         self.imgtrans_proj = self.canvas.imgtrans_proj
@@ -410,6 +418,7 @@ class SceneTextManager(QObject):
         self.pairwidget_list: List[TransPairWidget] = self.textEditList.pairwidget_list
 
         self.auto_textlayout_flag = False
+        self.auto_textlayout_legacy = True
         self.hovering_transwidget : TransTextEdit = None
 
         self._text_move_snapshot = {}
@@ -542,11 +551,16 @@ class SceneTextManager(QObject):
             blk_item.idx = len(self.textblk_item_list)
         else:
             translation = ''
-            if self.auto_textlayout_flag and not blk.vertical:
+            measured_layout = self.auto_textlayout_flag and (blk.det_model == 'koharu' or blk.bubble_layout)
+            use_bubble_frame = measured_layout and blk._bounding_rect is None
+            fit_rect = blk.bounding_rect() if measured_layout else None
+            if self.auto_textlayout_flag and self.auto_textlayout_legacy and not blk.vertical and not measured_layout:
                 translation = blk.translation
                 blk.translation = ''
             blk_item = TextBlkItem(blk, len(self.textblk_item_list), show_rect=self.canvas.textblock_mode)
-            if translation:
+            if measured_layout:
+                self.layout_textblk(blk_item, bounding_rect=fit_rect, use_bubble_frame=use_bubble_frame)
+            elif translation:
                 blk.translation = translation
                 rst = self.layout_textblk(blk_item, text=translation)
                 if rst is None:
@@ -702,7 +716,8 @@ class SceneTextManager(QObject):
         return blk_item is not None and blk_item.isEditing()
 
     def onTextBlkItemHoverEnter(self, blk_id: int) -> None:
-        if self.is_editting():
+        bubble = self.txtblkShapeControl.bubble_control
+        if self.is_editting() or bubble.dragging or bubble.hasFocus():
             return
         blk_item = self.textblk_item_list[blk_id]
         if (
@@ -822,16 +837,11 @@ class SceneTextManager(QObject):
     def onAutoLayoutTextblks(self) -> None:
         self.formatpanel.resolve_text_transform_edits_for_history_change()
         selected_blks = self.canvas.selected_text_items()
-        old_html_lst, old_rect_lst, trans_widget_lst = [], [], []
-        selected_blks = [blk for blk in selected_blks if not blk.fontformat.vertical]
+        selected_blks = [blk for blk in selected_blks if not blk.fontformat.vertical
+                         or blk.blk.det_model == 'koharu' or blk.blk.bubble_layout]
         if len(selected_blks) > 0:
-            for blkitem in selected_blks:
-                old_html_lst.append(blkitem.toHtml())
-                old_rect_lst.append(blkitem.absBoundingRect(qrect=True))
-                trans_widget_lst.append(self.pairwidget_list[blkitem.idx].e_trans)
-                self.layout_textblk(blkitem)
-
-            self.canvas.push_undo_command(AutoLayoutCommand(selected_blks, old_rect_lst, old_html_lst, trans_widget_lst))
+            editors = [self.pairwidget_list[item.idx].e_trans for item in selected_blks]
+            self.canvas.push_undo_command(AutoLayoutCommand(selected_blks, editors, self.layout_textblk))
 
     def onResetAngle(self) -> None:
         self.formatpanel.resolve_text_transform_edits_for_history_change()
@@ -876,11 +886,21 @@ class SceneTextManager(QObject):
             self._update_selection_panels([item])
         session.activate_last_projective(item)
 
-    def layout_textblk(self, blkitem: TextBlkItem, text: str = None, mask: np.ndarray = None, bounding_rect: List = None, region_rect: List = None):
+    def layout_textblk(self, blkitem: TextBlkItem, text: Optional[str] = None, mask: Optional[np.ndarray] = None, bounding_rect: Optional[List] = None, region_rect: Optional[List] = None, *, use_bubble_frame: bool = False) -> Optional[bool]:
         
         '''
-        auto text layout, vertical writing is not supported yet.
+        Koharu and explicit constraints use measured flow; other blocks retain legacy layout.
         '''
+
+        if blkitem.blk.det_model == 'koharu' or blkitem.blk.bubble_layout:
+            if text is not None and text != blkitem.toPlainText():
+                blkitem.setPlainText(text)
+            if not blkitem.toPlainText().strip():
+                return None
+            fit_text_in_shape(blkitem, auto_size=pcfg.let_fntsize_flag == 0,
+                              use_bubble_frame=use_bubble_frame,
+                              bounding_rect=QRectF(*bounding_rect) if bounding_rect is not None else None)
+            return True
 
         img = self.imgtrans_proj.img_array
         if img is None:
@@ -915,9 +935,6 @@ class SceneTextManager(QObject):
             im_h, im_w = img.shape[:2]
             bounding_rect = blkitem.absBoundingRect(max_h=im_h, max_w=im_w)
             if bounding_rect[2] <= 0 or bounding_rect[3] <= 0:
-                blkitem.setPlainText(text)
-                if len(self.pairwidget_list) > blkitem.idx:
-                    self.pairwidget_list[blkitem.idx].e_trans.setPlainText(text)
                 return
             if tgt_is_cjk:
                 max_enlarge_ratio = 2.5
@@ -1038,43 +1055,32 @@ class SceneTextManager(QObject):
         ffmt = QFontMetricsF(blk_font)
         maxw = max([ffmt.horizontalAdvance(t) for t in new_text.split('\n')])
         blkitem.set_size(maxw * 1.5, xywh[3], set_layout_maxsize=True)
-        blkitem.setPlainText(new_text)
+        blkitem.setPlainTextAndKeepUndoStack(new_text)
         if len(self.pairwidget_list) > blkitem.idx:
-            self.pairwidget_list[blkitem.idx].e_trans.setPlainText(new_text)
+            self.pairwidget_list[blkitem.idx].e_trans.setPlainTextAndKeepUndoStack(new_text)
         if restore_charfmts:
             self.restore_charfmts(blkitem, text, new_text, char_fmts)
         blkitem.squeezeBoundingRect()
         return True
     
-    def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]):
+    def restore_charfmts(self, blkitem: TextBlkItem, text: str, new_text: str, char_fmts: List[QTextCharFormat]) -> None:
         cursor = blkitem.textCursor()
         cpos = 0
-        num_text = len(new_text)
-        num_fmt = len(char_fmts)
+        ranges = _grapheme_ranges(new_text)
         blkitem.layout.relayout_on_changed = False
         blkitem.repaint_on_changed = False
-        if num_text >= num_fmt:
-            for fmt_i in range(num_fmt):
-                fmt = char_fmts[fmt_i]
-                ori_char = text[fmt_i].strip()
-                if ori_char == '':
-                    continue
-                else:
-                    if cursor.atEnd():   
-                        break
-                    matched = False
-                    while cpos < num_text:
-                        if new_text[cpos] == ori_char:
-                            matched = True
-                            break
-                        cpos += 1
-                    if matched:
-                        cursor.clearSelection()
-                        cursor.setPosition(cpos)
-                        cursor.setPosition(cpos+1, QTextCursor.MoveMode.KeepAnchor)
-                        cursor.setCharFormat(fmt)
-                        cursor.setBlockCharFormat(fmt)
-                        cpos += 1
+        for (start, end), fmt in zip(_grapheme_ranges(text), char_fmts):
+            original = _utf16_slice(text, start, end - start)
+            if not original.strip():
+                continue
+            while cpos < len(ranges):
+                first, last = ranges[cpos]
+                cpos += 1
+                if _utf16_slice(new_text, first, last - first) == original:
+                    cursor.setPosition(first)
+                    cursor.setPosition(last, QTextCursor.MoveMode.KeepAnchor)
+                    cursor.setCharFormat(fmt)
+                    break
         blkitem.repaint_on_changed = True
         blkitem.layout.relayout_on_changed = True
         blkitem.layout.reLayout()
@@ -1312,6 +1318,7 @@ class SceneTextManager(QObject):
             cl.sort(key=lambda x: x.idx)
 
     def updateTextBlkList(self) -> None:
+        self.canvas.txtblkShapeControl.bubble_control.cancel_drag()
         self.canvas.text_move_session.cancel()
         cbl = self.imgtrans_proj.current_block_list()
         if cbl is None:

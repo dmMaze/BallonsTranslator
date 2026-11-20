@@ -74,6 +74,24 @@ def _load_text_block_document(block: TextBlock) -> QTextDocument:
     return document
 
 
+def apply_pipeline_font_size(block: TextBlock) -> None:
+    """Apply an explicit pipeline size to saved ranges as well as block defaults."""
+    if not block.rich_text:
+        return
+    document = _load_text_block_document(block)
+    cursor = QTextCursor(document)
+    cursor.select(QTextCursor.SelectionType.Document)
+    char_format = QTextCharFormat()
+    char_format.setFontPointSize(block.fontformat.size_pt)
+    cursor.mergeCharFormat(char_format)
+    cursor.mergeBlockCharFormat(char_format)
+    block.rich_text = to_rich_text_html(
+        document,
+        line_spacing_fallback=block.fontformat.line_spacing,
+        line_spacing_type_fallback=block.fontformat.line_spacing_type,
+    )
+
+
 def apply_auto_tate_chu_yoko(
     blocks: Sequence[TextBlock],
     settings: AutoTateChuYokoConfig,

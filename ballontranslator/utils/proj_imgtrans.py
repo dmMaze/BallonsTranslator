@@ -28,6 +28,7 @@ from .raster_assets import (
 )
 from .rgba import premultiply_rgba_in_place
 from .text_alpha_mask import AlphaBrushStroke, TextAlphaMask
+from .bubble_shape import BubbleShape
 from .config import pcfg, RunStatus
 from . import shared
 
@@ -127,7 +128,7 @@ class TextBlkEncoder(NumpyEncoder):
             return obj.to_dict()
         elif isinstance(obj, FontFormat):
             return obj.to_serializable_dict()
-        elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke)):
+        elif isinstance(obj, (TextAlphaMask, AlphaBrushStroke, BubbleShape)):
             return obj.to_serializable_dict()
         return NumpyEncoder.default(self, obj)
 
@@ -710,9 +711,16 @@ class ProjImgTrans:
                 self.set_current_img_byidx(0)
         self._load_identity = object()
 
-    def get_page_progress(self, pagename: str):
+    def get_page_progress(self, pagename: str, finish_code: Optional[int] = None) -> bool:
+        """Return whether the page has finished every stage in the requested mask.
+
+        Omitting the mask checks all currently enabled stages. Pass a specific
+        bit such as RunStatus.FIN_TRANSLATE to check that stage independently.
+        """
+        if finish_code is None:
+            finish_code = pcfg.module.finish_code
         fin_code = self._image_info[pagename]['finish_code']
-        return (fin_code & pcfg.module.finish_code) == pcfg.module.finish_code
+        return (fin_code & finish_code) == finish_code
 
     def set_page_progress(self, pagename, code):
         self._image_info[pagename]['finish_code'] = code

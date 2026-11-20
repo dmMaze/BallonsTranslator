@@ -1100,7 +1100,8 @@ class ConfigPanel(OutsideClickFramelessMixin, FramelessWindow):
         self.let_autolayout_checker, sublock = typesettingConfigPanel.addCheckBox(
             self.tr('Auto layout'),
             discription=self.tr(
-                'Split translation into multi-lines according to the extracted balloon region.'
+                'Fit translated text to balloon regions. Koharu blocks use saved bubble shapes; '
+                'automatic font sizing follows Pipeline Font Formatting.'
             ),
         )
         self.let_autolayout_checker.stateChanged.connect(self.on_autolayout_changed)

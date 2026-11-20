@@ -29,6 +29,7 @@ except (ModuleNotFoundError, ImportError):
 
 DEFAULT_PACKAGE_IMPORT_NAMES = {
     'hf-transfer': ['hf_transfer'],
+    'msl-loadlib': ['msl.loadlib'],
     'opencv-contrib-python': ['cv2'],
     'opencv-python': ['cv2'],
     'opencv-python-headless': ['cv2'],

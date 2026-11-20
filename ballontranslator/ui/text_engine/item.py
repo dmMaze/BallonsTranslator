@@ -20,6 +20,7 @@ from qtpy.QtGui import (QKeyEvent, QKeySequence, QFont, QTextCursor,
                        QTextBlockFormat)
 
 from ballontranslator.utils.textblock import TextBlock
+from ballontranslator.utils.bubble_shape import BubbleShape
 from ballontranslator.utils.text_alpha_mask import TextAlphaMask
 from ballontranslator.utils.text_effects import (
     SolidPaint,
@@ -34,6 +35,7 @@ from ballontranslator.utils.fontformat import (
     FontWeight,
     LineSpacingType,
     TextTransformStack,
+    coerce_vertical_alignment,
     font_weight_from_qt,
     font_weight_to_qt,
     pt2px,
@@ -46,6 +48,7 @@ from .editing.context_menu import create_text_edit_context_menu
 from ..misc import td_pattern, table_pattern
 from .horizontal_layout import HorizontalTextDocumentLayout
 from .vertical_layout import VerticalTextDocumentLayout
+from .rendering.indexing import _grapheme_ranges
 from .effects.renderer import TextEffectRenderer
 from .geometry import TextItemGeometryController
 from .annotations import (
@@ -547,7 +550,10 @@ class TextBlkItem(QGraphicsTextItem):
         self.geometry_controller.bind_model()
 
         self.setVertical(blk.vertical)
-        self.setRect(blk.bounding_rect(), update_blk_rect=False)
+        initial_rect = (list(blk.bubble_shape.frame)
+                        if blk.bubble_layout and blk._bounding_rect is None
+                        else blk.bounding_rect())
+        self.setRect(initial_rect, update_blk_rect=False)
 
         if blk.angle != 0:
             self.setRotation(blk.angle)
@@ -757,6 +763,21 @@ class TextBlkItem(QGraphicsTextItem):
     def documentSize(self):
         return self.layout.documentSize()
 
+    def set_bubble_shape(self, shape: Optional[BubbleShape], enabled: bool,
+                         rect: QRectF, *, preview: bool = False) -> None:
+        """Apply wrapping geometry without changing text, font size or text history."""
+        if shape is not None and not isinstance(shape, BubbleShape):
+            raise TypeError('bubble shape must be a BubbleShape or None')
+        if not isinstance(enabled, bool) or enabled and shape is None:
+            raise ValueError('enabled bubble wrapping requires a shape')
+        self.prepareGeometryChange()
+        if not preview:
+            self.blk.bubble_shape = shape
+            self.blk.bubble_layout = enabled
+        self.layout.set_flow_shape(shape if enabled else None)
+        self.setRect(rect, update_blk_rect=not preview)
+        self.update()
+
     def boundingRect(self) -> QRectF:
         controller = getattr(self, 'geometry_controller', None)
         base_rect = super().boundingRect()
@@ -951,6 +972,7 @@ class TextBlkItem(QGraphicsTextItem):
                 layout = VerticalTextDocumentLayout(doc, self.fontformat)
             else:
                 layout = HorizontalTextDocumentLayout(doc, self.fontformat)
+            layout.set_flow_shape(self.blk.bubble_shape if self.blk.bubble_layout else None)
             if valid_layout:
                 # setDocumentLayout() immediately announces the existing
                 # document. Defer that provisional zero-size layout and run
@@ -1270,7 +1292,12 @@ class TextBlkItem(QGraphicsTextItem):
         draw_rect = self.draw_rect and not self.under_ctrl
         if not selected and not draw_rect:
             return
-        outline = self.geometry_controller.visual_outline_in_item()
+        if self.layout.flow_profile is not None:
+            if self.under_ctrl:
+                return
+            outline = self.geometry_controller.bubble_outline_in_item()
+        else:
+            outline = self.geometry_controller.visual_outline_in_item()
         if outline.isEmpty():
             return
         painter.save()
@@ -1654,6 +1681,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.setOpacity(ffmat.opacity)
         
         self.setAlignment(ffmat.alignment, repaint_background=False)
+        self.setVerticalAlignment(ffmat.vertical_alignment, repaint_background=False)
         
         if set_char_format:
             self._set_line_spacing_pair(
@@ -2174,8 +2202,14 @@ class TextBlkItem(QGraphicsTextItem):
         doc = self.document()
         cursor = QTextCursor(doc)
         ranges: list[tuple[int, int, QTextCharFormat]] = []
+        block_formats: list[tuple[int, QTextCharFormat]] = []
         block = doc.firstBlock()
         while block.isValid():
+            block_format = block.charFormat()
+            size = block_format.fontPointSize()
+            if size > 0 or not block.text():
+                block_format.setFontPointSize(round((size if size > 0 else doc.defaultFont().pointSizeF()) * value, 2))
+                block_formats.append((block.position(), block_format))
             it = block.begin()
             while not it.atEnd():
                 fragment = it.fragment()
@@ -2193,12 +2227,16 @@ class TextBlkItem(QGraphicsTextItem):
             cursor.setPosition(pos1)
             cursor.setPosition(pos2, QTextCursor.MoveMode.KeepAnchor)
             cursor.mergeCharFormat(cfmt)
+        for position, cfmt in block_formats:
+            cursor.setPosition(position)
+            cursor.setBlockCharFormat(cfmt)
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
         self._update_effect_padding()
         if self.effect_renderer.has_generated_effect_layers():
             repaint_background = True
-        if clip_size:
+        # Active contours constrain the text; squeezing their frame would reshape them.
+        if clip_size and self.layout.flow_profile is None:
             self.squeezeBoundingRect(True, repaint=False)
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
@@ -2219,7 +2257,7 @@ class TextBlkItem(QGraphicsTextItem):
         self.layout.relayout_on_changed = True
         self.layout.reLayoutEverything()
         self._update_effect_padding()
-        if clip_size:
+        if clip_size and self.layout.flow_profile is None:
             self.squeezeBoundingRect(cond_on_alignment=True)
 
         self._after_set_ffmt(cursor, repaint_background, restore_cursor, **after_kwargs)
@@ -2268,17 +2306,28 @@ class TextBlkItem(QGraphicsTextItem):
             self._update_effect_padding()
         self.update()
 
+    def setVerticalAlignment(self, value: int, repaint_background: bool = True) -> None:
+        value = coerce_vertical_alignment(value)
+        if self.fontformat.vertical_alignment == value:
+            return
+        self.prepareGeometryChange()
+        self.fontformat.vertical_alignment = value
+        if isinstance(self.layout, VerticalTextDocumentLayout):
+            self.layout.reLayout()
+            self.geometry_controller.invalidate_surface_cache()
+            if repaint_background:
+                self.repaint_background()
+            else:
+                self._update_effect_padding()
+            self.update()
+
     def get_char_fmts(self) -> List[QTextCharFormat]:
         cursor = self.textCursor()
-        
-        cursor.movePosition(QTextCursor.MoveOperation.Start)
         char_fmts = []
-        while True:
-            cursor.movePosition(QTextCursor.MoveOperation.NextCharacter)
-            cursor.clearSelection()
+        for start, end in _grapheme_ranges(self.toPlainText()):
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
             char_fmts.append(cursor.charFormat())
-            if cursor.atEnd():
-                break
         return char_fmts
 
     def setOpacity(self, opacity: float):

@@ -455,12 +455,12 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         )
         self.assertTrue(malformed.standard_vertical_roman_alignment)
 
-    def test_standard_mode_keeps_roman_upright(self):
+    def test_standard_mode_keeps_roman_upright(self) -> None:
         text = 'A9(éＡ。（—'
         standard = self._make_item(text, True)
         chinese = self._make_item(text, False)
 
-        for position in (0, 1, 2, 3):
+        for position in (0, 1, 3):
             self.assertTrue(
                 self._orientation(standard, position).isIdentity()
             )
@@ -474,13 +474,104 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             self.assertTrue(
                 self._orientation(chinese, position).isIdentity()
             )
-        for position in (6, 7):
+        for position in (2, 6, 7):
             self.assertFalse(
                 self._orientation(standard, position).isIdentity()
             )
             self.assertFalse(
                 self._orientation(chinese, position).isIdentity()
             )
+
+    def test_punctuation_orientation_table_survives_mode_switches(self) -> None:
+        groups = (
+            ('()[]{}_<=>:;（）［］｛｝＿＜＝＞‹›｢｣「」〈〉‘’“”-~—', True, True),
+            ('：；', True, False),
+            ('!?.,！？．，。、', False, False),
+            ('''Aa09é'"#$%&*+/@\\^`|''', False, True),
+            ('＇＂Ａ９木／＼＃＄％＆＊＋＠＾｀｜｡､･', False, False),
+        )
+        for compact in (False, True):
+            for text, roman_rotation, alternate_rotation in groups:
+                with self.subTest(compact=compact, text=text), patch.object(
+                    C.pcfg, 'compact_vertical_punctuation_spacing', compact
+                ):
+                    item = self._make_item(text, True)
+                    self.addCleanup(item.deleteLater)
+                    document = item.document()
+                    before = (item.toHtml(), document.availableUndoSteps())
+                    for roman in (True, False, True):
+                        item.setStandardVerticalRomanAlignment(roman)
+                        rotated = roman_rotation if roman else alternate_rotation
+                        for position, char in enumerate(text):
+                            with self.subTest(roman=roman, char=char):
+                                orientation = self._orientation(item, position)
+                                self.assertEqual(orientation.m11(), 0 if rotated else 1)
+                                self.assertEqual(orientation.m12(), 1 if rotated else 0)
+                                self.assertEqual(orientation.m21(), -1 if rotated else 0)
+                                self.assertEqual(orientation.m22(), 0 if rotated else 1)
+                                ink, _ = self._ink_and_cell(item, position)
+                                self.assertTrue(
+                                    item.geometry_controller.source_paint_rect()
+                                    .adjusted(-0.1, -0.1, 0.1, 0.1).contains(ink)
+                                )
+                        self.assertEqual(
+                            (item.toHtml(), document.availableUndoSteps()), before
+                        )
+
+    def test_ascii_stop_placement_keeps_roman_centering(self) -> None:
+        for compact in (False, True):
+            for roman in (False, True):
+                with self.subTest(compact=compact, roman=roman), patch.object(
+                    C.pcfg, 'compact_vertical_punctuation_spacing', compact
+                ):
+                    item = self._make_item('木!?.,木', roman)
+                    self.addCleanup(item.deleteLater)
+                    for position in range(1, 5):
+                        ink, cell = self._ink_and_cell(item, position)
+                        self.assertTrue(self._orientation(item, position).isIdentity())
+                        if roman:
+                            self.assertAlmostEqual(ink.center().x(), cell.center().x(), delta=1.0)
+                            self.assertAlmostEqual(ink.center().y(), cell.center().y(), delta=1.0)
+                        else:
+                            self.assertAlmostEqual(ink.right(), cell.right(), delta=1.0)
+                            self.assertAlmostEqual(ink.top(), cell.top(), delta=1.0)
+                        self.assertIn(
+                            item.layout.hitTest(ink.center(), Qt.HitTestAccuracy.FuzzyHit),
+                            (position, position + 1),
+                        )
+
+    def test_orientation_additions_do_not_enable_compact_spacing(self) -> None:
+        for roman in (False, True):
+            for char in '[]{}_<=>:;!?.,＜＝＞‹›｢｣':
+                with self.subTest(roman=roman, char=char), patch.object(
+                    C.pcfg, 'compact_vertical_punctuation_spacing', False
+                ):
+                    item = self._make_item('木' + char + '木', roman)
+                    self.addCleanup(item.deleteLater)
+                    before = [self._ink_and_cell(item, pos) for pos in range(3)]
+                    C.pcfg.compact_vertical_punctuation_spacing = True
+                    item.refreshVerticalLayout()
+                    self.assertEqual(
+                        [self._ink_and_cell(item, pos) for pos in range(3)], before
+                    )
+
+    def test_combined_punctuation_bypasses_individual_rotation(self) -> None:
+        item = self._make_item('木:;()!?木', True)
+        self.addCleanup(item.deleteLater)
+        document = item.document()
+        cursor = QTextCursor(document)
+        cursor.setPosition(1)
+        cursor.setPosition(7, QTextCursor.MoveMode.KeepAnchor)
+        apply_text_combine_upright(cursor, True)
+        item.refreshVerticalLayout()
+        before = (item.toHtml(), document.availableUndoSteps())
+        for roman in (False, True):
+            item.setStandardVerticalRomanAlignment(roman)
+            for position in range(1, 7):
+                orientation = self._orientation(item, position)
+                self.assertEqual(orientation.m12(), 0)
+                self.assertEqual(orientation.m21(), 0)
+            self.assertEqual((item.toHtml(), document.availableUndoSteps()), before)
 
     def test_dash_variants_rotate_in_both_modes(self) -> None:
         text = '〜‐゠ー〰‑‒－ｰ⸻⹀'
@@ -541,7 +632,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                     bottom_target.x - bottom_source.x,
                 )
 
-    def test_mirrored_rotated_punctuation_keeps_the_same_column(self):
+    def test_mirrored_rotated_punctuation_keeps_the_same_column(self) -> None:
         item = self._make_item('（）', True)
         block = item.document().firstBlock()
         for angle in (-45.0, 45.0):
@@ -572,10 +663,11 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                     slanted.bounds.center().x()
                     - neutral.bounds.center().x()
                 )
-            self.assertAlmostEqual(shifts[0], shifts[1], places=6)
+            # Mirrored font outlines need not have bit-identical extrema.
+            self.assertAlmostEqual(shifts[0], shifts[1], delta=1 / 64)
             self.assertGreater(shifts[0] * angle, 0.0)
 
-    def test_glyph_slant_enlargement_uses_stable_bounds_and_anchor(self):
+    def test_glyph_slant_enlargement_uses_stable_bounds_and_anchor(self) -> None:
         block = TextBlock([0, 0, 90, 70])
         block._bounding_rect = [0, 0, 90, 70]
         block.translation = 'A'
@@ -583,22 +675,19 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         block.fontformat.alignment = TextAlignment.Right
         block.fontformat.standard_vertical_roman_alignment = False
         block.fontformat.glyph_slant_angle = 24.0
+        block.fontformat.font_size = 64.0
         item = TextBlkItem(block, 0)
         renderer = item.geometry_controller.layout_renderer
-        probes = []
+        old_width = item.logical_unpadded_rect().width()
         anchor = item.mapToScene(item.logical_unpadded_rect().topRight())
-
-        def probe_geometry() -> None:
-            probes.append(renderer.ink_bounds())
-
-        item.layout.size_enlarged.connect(probe_geometry)
         cursor = item.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertText('(—BCDEFGH')
         item.setTextCursor(cursor)
         self.app.processEvents()
 
-        self.assertTrue(probes)
+        self.assertGreater(item.logical_unpadded_rect().width(), old_width)
+        self.assertTrue(item.boundingRect().contains(renderer.ink_bounds()))
         self.assertEqual(
             item.mapToScene(item.logical_unpadded_rect().topRight()),
             anchor,
@@ -611,7 +700,9 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         wide_block.fontformat.alignment = TextAlignment.Right
         wide_block.fontformat.standard_vertical_roman_alignment = True
         wide_block.fontformat.glyph_slant_angle = 18.0
+        wide_block.fontformat.font_size = 64.0
         wide_item = TextBlkItem(wide_block, 1)
+        wide_width = wide_item.logical_unpadded_rect().width()
         wide_anchor = wide_item.mapToScene(
             wide_item.logical_unpadded_rect().topRight()
         )
@@ -620,6 +711,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
         cursor.insertText('書き、句読点。（ABC）—テスト縦書き。')
         wide_item.setTextCursor(cursor)
         self.app.processEvents()
+        self.assertGreater(wide_item.logical_unpadded_rect().width(), wide_width)
         self.assertEqual(
             wide_item.mapToScene(
                 wide_item.logical_unpadded_rect().topRight()
@@ -627,8 +719,8 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             wide_anchor,
         )
 
-    def test_standard_roman_ink_is_centered_in_its_cell(self):
-        text = 'Aa09!?()é'
+    def test_standard_roman_ink_is_centered_in_its_cell(self) -> None:
+        text = '''Aa09!?.,'"é'''
         item = self._make_item(text, True)
 
         for position, char in enumerate(text):
@@ -683,7 +775,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                             ink.center().y(), reference.center().y()
                         )
 
-    def test_small_vertical_ink_shares_exact_column_center(self):
+    def test_small_vertical_ink_uses_precise_column_alignment(self) -> None:
         tolerance = 1 / 64 + 0.001
         for font_size in (5.0, 16.0):
             for standard in (True, False):
@@ -697,11 +789,12 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
                         char=char,
                     ):
                         ink, cell = self._ink_and_cell(item, position)
-                        self.assertAlmostEqual(
-                            ink.center().x(),
-                            cell.center().x(),
-                            delta=tolerance,
-                        )
+                        if char == '!' and not standard:
+                            self.assertAlmostEqual(ink.right(), cell.right(), delta=tolerance)
+                        else:
+                            self.assertAlmostEqual(
+                                ink.center().x(), cell.center().x(), delta=tolerance
+                            )
 
     def test_line_ink_bounds_cache_reuses_exact_shaping(self):
         font = QFont('Noto Sans CJK SC')
@@ -1488,7 +1581,7 @@ class VerticalRomanAlignmentTest(unittest.TestCase):
             self.assertTrue(
                 standard.layout.needs_vertical_rotation(char), char
             )
-        for char in PUNSET_BRACKET | PUNSET_HALF:
+        for char in PUNSET_BRACKET | (PUNSET_HALF - set('!?.,')):
             self.assertTrue(
                 chinese.layout.needs_vertical_rotation(char), char
             )

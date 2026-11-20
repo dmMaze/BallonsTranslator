@@ -177,7 +177,7 @@ OCR & Chỉ dịch văn bản đã chọn
 * Đặt tham số cho các module tự động trong Bảng cấu hình.  
 * ```Ctrl++```/```Ctrl+-``` (hoặc ```Ctrl+Shift+=```) Để thay đổi kích thước hình ảnh.
 * ```Ctrl+G```/```Ctrl+F``` Để tìm kiếm trên tất cả hoặc trong trang hiện tại.
-* ```0-9``` Để điều chỉnh độ trong suốt của lớp chữ
+* Trên khung vẽ ở chế độ văn bản, `1`-`9` kích hoạt chín kiểu chữ đầu tiên theo thứ tự hiển thị và áp dụng cho các khối văn bản đã chọn; `0` chọn kiểu thứ mười.
 * Trong chỉnh sửa văn bản: **bold** - ```Ctrl+B```, <u>underline</u> - ```Ctrl+U```, *italics* - ```Ctrl+I``` 
 * Cài đặt đổ bóng và độ trong suốt chữ ở text style panel -> Effect.  
   

@@ -1,6 +1,7 @@
+import inspect
 from pathlib import Path
 
-from transformers import AutoModelForCausalLM, AutoProcessor
+from transformers import AutoProcessor, PaddleOCRVLForConditionalGeneration
 import numpy as np
 import torch
 
@@ -12,7 +13,7 @@ MODEL_DIR = Path(MODEL_PATH)
 
 @register_OCR('PaddleOCRVLManga')
 class PaddleOCRVLManga(OCRBase):
-    dependencies = ['torch', 'torchvision', 'transformers==4.57.6', 'einops']
+    dependencies = ['torch', 'torchvision', 'transformers>=5.1,<6', 'einops']
 
     params = {
         'device': DEVICE_SELECTOR(),
@@ -73,7 +74,7 @@ class PaddleOCRVLManga(OCRBase):
         self.model = None
         self.processor = None
 
-    def ocr_img(self, img: np.ndarray, **kwargs) -> str:
+    def ocr_img(self, img: np.ndarray, **kwargs) -> list[str]:
         # Scale down if excessively large to prevent CUDA OOM on ultra-high-res crops
         rh, rw = img.shape[:2]
         max_dim = max(rh, rw)
@@ -102,6 +103,9 @@ class PaddleOCRVLManga(OCRBase):
             k: (v.to(self.model.device) if isinstance(v, torch.Tensor) else v)
             for k, v in inputs.items()
         }
+        # Newer native models need modality IDs to preserve the image's spatial positions.
+        if 'mm_token_type_ids' in inspect.signature(self.model.forward).parameters:
+            inputs['mm_token_type_ids'] = (inputs['input_ids'] == self.model.config.image_token_id).long()
 
         # Generate text
         with torch.inference_mode():
@@ -118,13 +122,17 @@ class PaddleOCRVLManga(OCRBase):
             
         return answer.split('\n')
 
-    def _load_model(self):
+    def _load_model(self) -> None:
         if self.model is None:
-            model = AutoModelForCausalLM.from_pretrained(
+            # Use the native model; the checkpoint's custom model uses removed v4 APIs.
+            model = PaddleOCRVLForConditionalGeneration.from_pretrained(
                 MODEL_PATH,
-                trust_remote_code=True,
+                # This checkpoint keeps its output head separate from token embeddings.
+                tie_word_embeddings=False,
                 dtype=torch.float16 if self.device == "cuda" else torch.float32
             ).to(self.device).eval()
+            # Newer Transformers changed the checkpoint's position interpolation default.
+            model.model.visual.vision_model.embeddings.interpolation_align_corners = False
 
             # sentencepiece 0.2.1 on Windows appears sensitive to being first loaded/used from a PyQt QThread
             # setting add_prefix_space to None bypasses the sentencepiece loading completely

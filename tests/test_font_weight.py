@@ -11,6 +11,7 @@ from qtpy.QtGui import QFont, QTextCharFormat, QTextCursor, QTextDocument
 from qtpy.QtWidgets import QApplication
 
 from ballontranslator.ui import shared_widget as SW
+from ballontranslator.ui.canvas import Canvas
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.text_engine.annotations import (
     load_rich_text_html,
@@ -398,6 +399,9 @@ class FontWeightUiTest(unittest.TestCase):
         self.assertIs(active.font_weight, FontWeight.Normal)
 
     def test_bold_toggle_preserves_text_selection_and_native_undo(self) -> None:
+        SW.canvas = Canvas()
+        self.addCleanup(SW.canvas.deleteLater)
+        self.addCleanup(SW.canvas.gv.deleteLater)
         block = TextBlock([0, 0, 300, 100], translation='AB')
         block._bounding_rect = [0, 0, 300, 100]
         block.fontformat.text_effects = TextEffectStack(effects=(SyntheticBoldEffect(shape='ellipse'),))

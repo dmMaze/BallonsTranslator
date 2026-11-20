@@ -24,6 +24,7 @@ from ballontranslator.ui.codex_settings import CodexSettingsPanel
 from ballontranslator.ui.configpanel import ConfigPanel
 from ballontranslator.ui.mainwindow import MainWindow
 from ballontranslator.ui.module_manager import ModuleManager
+from ballontranslator.ui.module_parse_widgets import ModuleParamDialog
 from ballontranslator.ui.module_tool_button import ModuleSelectionWidget
 from ballontranslator.ui.run_pipeline_dialog import RunPipelineDialog
 from ballontranslator.utils.config import pcfg
@@ -156,6 +157,28 @@ class ModuleSelectionMenuTest(unittest.TestCase):
 
         with patch.object(RunPipelineDialog, 'exec_', interact):
             MainWindow.run_imgtrans(self.window)
+
+    def test_koharu_display_name_preserves_selection_key(self) -> None:
+        bottom = self.window.bottomBar.textdet_selector
+        bottom.menu.rebuildMenu()
+        action = next(a for a in bottom.menu.actions() if a.data() == 'koharu')
+        self.assertEqual(action.text().split('\t')[0], 'koharu-layout-highres')
+        action.trigger()
+        self.assertEqual(pcfg.module.textdetector, 'koharu')
+        self.assertEqual(bottom.selector.currentText(), 'koharu')
+        self.assertEqual(bottom.tool_btn.text().strip(), 'koharu-layout-highres')
+
+        run_dialog = RunPipelineDialog(self.window)
+        params_dialog = ModuleParamDialog('textdetector', 'koharu', {}, False)
+        try:
+            activator = next(a for a in run_dialog.module_activators if a.module_type == 'textdetector')
+            self.assertEqual(activator.module_combo.currentText(), 'koharu')
+            self.assertEqual(activator.selector.text(), 'koharu-layout-highres')
+            self.assertEqual(params_dialog.module_key, 'koharu')
+            self.assertEqual(params_dialog.windowTitle(), 'koharu-layout-highres')
+        finally:
+            run_dialog.deleteLater()
+            params_dialog.deleteLater()
 
     def test_profiles_are_filtered_and_languages_remain_bottom_bar_only(self) -> None:
         pcfg.module.llm_profiles.append(LLMProfile(

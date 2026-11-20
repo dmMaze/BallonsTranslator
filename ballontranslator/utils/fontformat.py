@@ -432,6 +432,18 @@ class TextAlignment(enum.IntEnum):
     Right = 2
 
 
+class VerticalAlignment(enum.IntEnum):
+    Top = 0
+    Center = 1
+    Bottom = 2
+
+
+def coerce_vertical_alignment(value: object) -> VerticalAlignment:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError('vertical alignment requires Top (0), Center (1), or Bottom (2)')
+    return VerticalAlignment(value)
+
+
 _QT5_TO_FONT_WEIGHT = {
     0: FontWeight.Thin,
     12: FontWeight.ExtraLight,
@@ -709,6 +721,7 @@ class FontFormat(Config):
     underline: bool = False
     italic: bool = False
     alignment: int = 0
+    vertical_alignment: VerticalAlignment = VerticalAlignment.Top
     vertical: bool = False
     standard_vertical_roman_alignment: bool = True
     # None is constructor-only so legacy payloads can distinguish an omitted
@@ -769,6 +782,8 @@ class FontFormat(Config):
 
     def __setattr__(self, name: str, value: object) -> None:
         data = object.__getattribute__(self, '__dict__')
+        if name == 'vertical_alignment' and name in data:
+            value = coerce_vertical_alignment(value)
         stack = data.get('text_effects')
         if name == 'text_effects' and 'text_effects' in data:
             if not isinstance(value, TextEffectStack):
@@ -837,6 +852,15 @@ class FontFormat(Config):
                 self.font_weight = FontWeight.Bold
             if 'family' in da:
                 self.font_family = da['family']
+
+        try:
+            self.vertical_alignment = self.vertical_alignment
+        except ValueError:
+            LOGGER.warning(
+                'Ignoring invalid vertical alignment (%r); using Top.',
+                self.vertical_alignment,
+            )
+            self.vertical_alignment = VerticalAlignment.Top
 
         if not isinstance(self.standard_vertical_roman_alignment, bool):
             LOGGER.warning(

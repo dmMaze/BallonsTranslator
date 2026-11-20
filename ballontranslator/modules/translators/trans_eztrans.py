@@ -18,9 +18,11 @@ if shared.ON_WINDOWS:
             return self.request32('translate', src_text)
 
 
-    def fullwidth_to_halfwidth(text):
+    def fullwidth_to_halfwidth(text: Union[str, List[str]]):
         mapping = {i: i - 0xFEE0 for i in range(0xFF01, 0xFF5F)}
         mapping[0x3000] = 0x0020  # 전각 공백 → 반각 공백
+        if isinstance(text, list):
+            return [t.translate(mapping) for t in text]
         return text.translate(mapping)
 
     @register_translator('ezTrans')

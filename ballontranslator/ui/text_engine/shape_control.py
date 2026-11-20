@@ -336,6 +336,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._proxy_pointer_device_start = None
         self._proxy_actual_scene_start = None
         self.ctrlblock_group = [ControlBlockItem(self, idx) for idx in range(8)]
+        from .bubble_control import BubbleShapeControl
+        self.bubble_control = BubbleShapeControl(self)
+        self._handles_visible = True
 
         pen = QPen(QColor(69, 71, 87), 2, Qt.PenStyle.SolidLine)
         pen.setDashPattern([7, 14])
@@ -418,6 +421,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             and self.isVisible()
         ):
             return
+        self.bubble_control.bind(None)
         if self.blk_item is not None:
             try:
                 self.blk_item.visual_geometry_changed.disconnect(
@@ -434,6 +438,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.blk_item.update()
 
         self.blk_item = blk_item
+        self.bubble_control.bind(blk_item)
+        self._handles_visible = blk_item is None or not blk_item.isEditing()
         if blk_item is None:
             self.resetInteraction()
             self._visual_path = QPainterPath()
@@ -461,7 +467,11 @@ class TextBlkShapeControl(QGraphicsRectItem):
         if self.blk_item is None:
             return
 
-        scene_path = self.blk_item.geometry_controller.visual_outline_in_scene()
+        if self.blk_item.layout.flow_profile is not None:
+            scene_path = self.blk_item.sceneTransform().map(
+                self.blk_item.geometry_controller.bubble_outline_in_item())
+        else:
+            scene_path = self.blk_item.geometry_controller.visual_outline_in_scene()
         parent = self.parentItem()
         if parent is None:
             parent_path = QPainterPath(scene_path)
@@ -543,6 +553,19 @@ class TextBlkShapeControl(QGraphicsRectItem):
         super().setRotation(angle)
 
     def updateControlBlocks(self):
+        if self.blk_item is not None and self.blk_item.layout.flow_profile is not None:
+            for control in self.ctrlblock_group:
+                control.hide()
+            canvas = self.scene()
+            other_tool = (canvas is not None and
+                          (canvas.active_text_transform_control() is not None
+                           or canvas.alpha_mask_edit_session.active))
+            self.bubble_control.refresh()
+            self.bubble_control.setVisible(self._handles_visible and not other_tool)
+            return
+        self.bubble_control.hide()
+        for control in self.ctrlblock_group:
+            control.setVisible(self._handles_visible)
         if self.blk_item is not None:
             true_scene_points = self._item_handle_points_in_scene(self.blk_item)
         else:
@@ -809,6 +832,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
     def resetInteraction(self) -> None:
         """Clear transient state before the control crosses an item/page boundary."""
         self.reshaping = False
+        self.bubble_control.cancel_drag()
         self.finishResize()
         self.finishProxyDrag()
         self.angleLabel.hide()
@@ -952,6 +976,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         option: QStyleOptionGraphicsItem,
         widget=...,
     ) -> None:
+        if self.bubble_control.isVisible():
+            return
         painter.save()
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         path = self._visual_path
@@ -963,24 +989,21 @@ class TextBlkShapeControl(QGraphicsRectItem):
         painter.restore()
 
     def hideControls(self):
+        self.bubble_control.cancel_drag()
+        self._handles_visible = False
+        self.bubble_control.hide()
         for ctrl in self.ctrlblock_group:
             ctrl.hide()
         self.requestGeometryRefresh()
 
     def showControls(self):
-        for ctrl in self.ctrlblock_group:
-            ctrl.show()
+        self._handles_visible = True
         self.requestGeometryRefresh()
 
     def startEditing(self):
         self.setCursor(Qt.CursorShape.IBeamCursor)
-        for ctrlb in self.ctrlblock_group:
-            ctrlb.hide()
-        self.requestGeometryRefresh()
+        self.hideControls()
 
     def endEditing(self):
         self.setCursor(Qt.CursorShape.SizeAllCursor)
-        if self.isVisible():
-            for ctrlb in self.ctrlblock_group:
-                ctrlb.show()
-        self.requestGeometryRefresh()
+        self.showControls()

@@ -1,6 +1,6 @@
 from bisect import bisect_right
 from functools import cached_property, lru_cache
-from typing import Callable, List, Optional, Sequence, Tuple
+from typing import Callable, Iterator, List, Optional, Sequence, Tuple
 
 from qtpy.QtCore import QPointF, QRectF, Signal, QSizeF
 from qtpy.QtGui import (
@@ -16,9 +16,10 @@ from qtpy.QtGui import (
     QTextFrame,
 )
 
-from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, pt2px
+from ballontranslator.utils.fontformat import FontFormat, LineSpacingType, TextAlignment, VerticalAlignment, pt2px
+from ballontranslator.utils.bubble_shape import BubbleShape
 from .font_family import qfont_with_family
-from .annotations import letter_spacing_value, line_spacing_values
+from .annotations import AnnotationProperty, emphasis_values, letter_spacing_value, line_spacing_values
 
 
 def selection_segments_excluding(
@@ -225,6 +226,15 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         self.max_width = 0
         self.available_width = 0
         self.available_height = 0
+        self.flow_profile = None
+        self.flow_slots: List[QRectF] = []
+        self.flow_line = 0
+        self.flow_overflow = False
+        self.flow_vertical = False
+        self.flow_step = 1.
+        self.flow_ink: Optional[QRectF] = None
+        self.flow_breaks: Optional[List[int]] = None
+        self.flow_actual_ends: List[int] = []
         self.line_spacing = fontformat.line_spacing
         self.letter_spacing = fontformat.letter_spacing
         self.linespacing_type = fontformat.line_spacing_type
@@ -323,6 +333,143 @@ class SceneTextLayout(QAbstractTextDocumentLayout):
         handler = self.render_failure_handler
         if handler is not None:
             handler(error, effect_pass)
+
+    def set_flow_shape(self, shape: Optional[BubbleShape]) -> None:
+        from .bubble_layout import BubbleProfile
+
+        if shape is None:
+            self.flow_profile = None
+        elif self.flow_profile is None or self.flow_profile.shape != shape:
+            self.flow_profile = BubbleProfile(shape)
+        self.flow_slots = []
+        self.flow_overflow = False
+
+    def flow_layout_passes(self, vertical: bool = False) -> Iterator[None]:
+        """Try contour bands until Qt consumes the document inside them.
+
+        >>> callable(SceneTextLayout.flow_layout_passes)
+        True
+        """
+        from .bubble_layout import balanced_flow_breaks, measure_flow_units
+
+        self.flow_overflow = False
+        self.flow_breaks = None
+        self.flow_ink = None
+        if self.flow_profile is None:
+            yield
+            return
+        self.flow_vertical = vertical
+        if not vertical:
+            ink = QRectF()
+            block = self.document().firstBlock()
+            while block.isValid():
+                fragments = block.begin()
+                for cfmt in self.block_charfmt_lst[block.blockNumber()]:
+                    ink = ink.united(cfmt.font_metrics.tightBoundingRect(fragments.fragment().text()))
+                    fragments += 1
+                block = block.next()
+            if not ink.isEmpty():
+                self.flow_ink = ink
+        # Match layoutBlock's tight column ink; ordinary font bounds can be
+        # narrower on CoreText and falsely reject every candidate font size.
+        metrics = self.block_ideal_height
+        if vertical:
+            metrics = [fmt.tbr.width() for formats in self.block_charfmt_lst for fmt in formats]
+        elif self.flow_ink is not None:
+            metrics = [self.flow_ink.height()]
+        extent = max(max(metrics, default=self.max_font_size(to_px=True)), 1.) + .5
+        formats = [fmt for block_formats in self.block_qcharfmt_lst for fmt in block_formats]
+        if any(fmt.hasProperty(AnnotationProperty.RUBY_TEXT) for fmt in formats):
+            extent += self.max_font_size(to_px=True) * .75 + 2.
+        if any(emphasis_values(fmt)[0] != 'none' for fmt in formats):
+            extent += self.max_font_size(to_px=True) * .5
+        # Ink, not the interline leading, is constrained by the bubble edge.
+        block = self.document().firstBlock()
+        step = extent
+        while block.isValid():
+            spacing, kind = self.block_line_spacing(block)
+            step = max(step, self.calculate_line_spacing(extent, spacing, kind))
+            block = block.next()
+        self.flow_step = step
+        width, height = self.available_width, self.available_height
+        across, inline = (width, height) if vertical else (height, width)
+        # Keep half an ink band of breathing room, with a four-pixel floor.
+        inset = max(4., extent / 2)
+        maximum = max(1, min(64, int(max(0., across - inset * 2 - extent) / step) + 1))
+        units = []
+        fallback = None
+        for count in range(1, maximum + 1):
+            self.flow_slots = []
+            self.flow_line = 0
+            self.flow_overflow = False
+            self.flow_actual_ends = []
+            slack = across - ((count - 1) * step + extent)
+            origin = slack / 2
+            if vertical and self.fontformat.alignment == TextAlignment.Left:
+                origin = inset
+            elif vertical and self.fontformat.alignment == TextAlignment.Right:
+                origin = slack - inset
+            starts = [origin + index * step for index in range(count)]
+            spans = [self.flow_profile.band(start / max(across, 1), (start + extent) / max(across, 1), vertical)
+                     for start in starts]
+            common_left = max(low for low, _ in spans)
+            common_right = min(high for _, high in spans)
+            # Keep one visual axis, but derive it from the usable spans rather
+            # than the frame center, which can lie in a tail or near a cut.
+            center = sum((low + high) / 2 for low, high in spans) / count
+            center = min(max(center, common_left), common_right)
+            for start, (low, high) in zip(starts, spans):
+                half = max(0., min(center - low, high - center) * inline - inset)
+                begin, length = center * inline - half, half * 2
+                # Keep a common top/bottom across columns without reserving
+                # unused space on the opposite side of an irregular bubble.
+                if vertical and self.fontformat.vertical_alignment == VerticalAlignment.Top:
+                    begin = common_left * inline + inset
+                    length = max(0., high * inline - inset - begin)
+                elif vertical and self.fontformat.vertical_alignment == VerticalAlignment.Bottom:
+                    begin = low * inline + inset
+                    length = max(0., common_right * inline - inset - begin)
+                self.flow_slots.append(QRectF(start, begin, extent, length) if vertical
+                                       else QRectF(begin, start, length, extent))
+            if vertical:
+                self.flow_slots.reverse()
+            if units:
+                self.flow_breaks = balanced_flow_breaks(units, [slot.height() if vertical else slot.width()
+                                                               for slot in self.flow_slots])
+            yield
+            if not self.flow_overflow and self.flow_line == count:
+                if not units or (self.flow_breaks is not None and self.flow_actual_ends == self.flow_breaks):
+                    return
+                # Keep a fully occupied native wrap for editing if no legal
+                # plan succeeds; the final trial can leave many empty bands.
+                if fallback is None:
+                    fallback = self.flow_slots, self.flow_breaks
+            if count == 1:
+                units = measure_flow_units(self, vertical)
+        if fallback is not None and self.flow_slots is not fallback[0]:
+            self.flow_slots, self.flow_breaks = fallback
+            self.flow_line = 0
+            self.flow_actual_ends = []
+            self.flow_overflow = False
+            yield
+        # Native wrapping may split a protected word or punctuation run. It
+        # remains editable, but must not qualify as a successful automatic fit.
+        self.flow_overflow = True
+
+    def flow_rect(self, index: int) -> QRectF:
+        if index >= len(self.flow_slots):
+            self.flow_overflow = True
+            # Overset remains editable in successive rows/columns, rather
+            # than stacking every exhausted line at the frame origin.
+            last = self.flow_slots[-1]
+            distance = (index - len(self.flow_slots) + 1) * self.flow_step
+            if self.flow_vertical:
+                return QRectF(last.left() - distance, 0, last.width(), max(1., self.available_height))
+            return QRectF(0, last.top() + distance, max(1., self.available_width), last.height())
+        rect = self.flow_slots[index]
+        if rect.width() < 1 or rect.height() < 1:
+            self.flow_overflow = True
+        return rect
 
     def setMaxSize(self, max_width: int, max_height: int, relayout=True):
         self.max_height = max_height
