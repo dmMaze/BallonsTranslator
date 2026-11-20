@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="530" viewBox="0 0 900 530">
+<rect width="900" height="530" fill="white"/>
+<g font-family="Arial,sans-serif" fill="#17212b">
+<text x="24" y="30" font-size="21">Optional CTD box padding</text>
+<text x="24" y="53" font-size="13">Synthetic geometry using the padding helper; no model inference or comic artwork.</text>
+<text x="120" y="78" font-size="15">0 px (default)</text>
+<text x="545" y="78" font-size="15">16 px requested</text>
+<text x="24" y="107" font-size="13">Horizontal</text>
+<g transform="translate(80,113) scale(1.15)">
+<rect x="0" y="0" width="160" height="90" fill="#f6f8fa" stroke="#d0d7de"/>
+<polygon points="30.00,30.00 95.00,30.00 95.00,50.00 30.00,50.00" fill="#66717e"/>
+<polygon points="30.00,30.00 95.00,30.00 95.00,50.00 30.00,50.00" fill="none" stroke="#0969da" stroke-width="1.2"/>
+</g>
+<g transform="translate(505,113) scale(1.15)">
+<rect x="0" y="0" width="160" height="90" fill="#f6f8fa" stroke="#d0d7de"/>
+<polygon points="30.00,30.00 95.00,30.00 95.00,50.00 30.00,50.00" fill="#66717e"/>
+<polygon points="14.00,14.00 111.00,14.00 111.00,66.00 14.00,66.00" fill="none" stroke="#0969da" stroke-width="1.2"/>
+</g>
+<text x="24" y="244" font-size="13">Rotated 10 degrees</text>
+<g transform="translate(80,250) scale(1.15)">
+<rect x="0" y="0" width="160" height="90" fill="#f6f8fa" stroke="#d0d7de"/>
+<polygon points="52.19,29.94 111.28,40.36 107.81,60.06 48.72,49.64" fill="#66717e"/>
+<polygon points="52.19,29.94 111.28,40.36 107.81,60.06 48.72,49.64" fill="none" stroke="#0969da" stroke-width="1.2"/>
+<rect x="48" y="29" width="64" height="32" fill="none" stroke="#0969da" stroke-width="0.7" stroke-dasharray="3 2"/>
+</g>
+<g transform="translate(505,250) scale(1.15)">
+<rect x="0" y="0" width="160" height="90" fill="#f6f8fa" stroke="#d0d7de"/>
+<polygon points="52.19,29.94 111.28,40.36 107.81,60.06 48.72,49.64" fill="#66717e"/>
+<polygon points="39.21,11.41 129.82,27.38 120.79,78.59 30.18,62.62" fill="none" stroke="#0969da" stroke-width="1.2"/>
+<rect x="30" y="11" width="100" height="68" fill="none" stroke="#0969da" stroke-width="0.7" stroke-dasharray="3 2"/>
+</g>
+<text x="24" y="381" font-size="13">Nearby boxes: margin is limited</text>
+<g transform="translate(80,387) scale(1.15)">
+<rect x="0" y="0" width="160" height="90" fill="#f6f8fa" stroke="#d0d7de"/>
+<polygon points="25.00,35.00 65.00,35.00 65.00,55.00 25.00,55.00" fill="#66717e"/>
+<polygon points="25.00,35.00 65.00,35.00 65.00,55.00 25.00,55.00" fill="none" stroke="#0969da" stroke-width="1.2"/>
+<polygon points="75.00,35.00 115.00,35.00 115.00,55.00 75.00,55.00" fill="#66717e"/>
+<polygon points="75.00,35.00 115.00,35.00 115.00,55.00 75.00,55.00" fill="none" stroke="#0969da" stroke-width="1.2"/>
+</g>
+<g transform="translate(505,387) scale(1.15)">
+<rect x="0" y="0" width="160" height="90" fill="#f6f8fa" stroke="#d0d7de"/>
+<polygon points="25.00,35.00 65.00,35.00 65.00,55.00 25.00,55.00" fill="#66717e"/>
+<polygon points="15.00,25.00 75.00,25.00 75.00,65.00 15.00,65.00" fill="none" stroke="#0969da" stroke-width="1.2"/>
+<polygon points="75.00,35.00 115.00,35.00 115.00,55.00 75.00,55.00" fill="#66717e"/>
+<polygon points="65.00,25.00 125.00,25.00 125.00,65.00 65.00,65.00" fill="none" stroke="#0969da" stroke-width="1.2"/>
+</g>
+<text x="24" y="520" font-size="12">Gray: source-line regions. Blue: editable box. Dashed blue: rotated OCR crop.</text>
+</g></svg>
