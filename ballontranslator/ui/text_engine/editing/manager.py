@@ -1083,7 +1083,7 @@ class SceneTextManager(QObject):
                     break
         blkitem.repaint_on_changed = True
         blkitem.layout.relayout_on_changed = True
-        blkitem.layout.reLayout()
+        blkitem.layout.reLayoutEverything()
         blkitem.repaint_background()
 
     def onEndCreateTextBlock(self, rect: QRectF):
