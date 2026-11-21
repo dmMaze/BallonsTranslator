@@ -120,6 +120,14 @@ PROVIDER_DEFAULTS = {
         "image_model": "black-forest-labs/flux.2-klein-4b",
         "image_model_options": ["black-forest-labs/flux.2-klein-4b"]
     },
+    "Atlas Cloud": {
+        "id": "atlascloud",
+        "base_url": "https://api.atlascloud.ai/v1",
+        "require_api_key": True,
+        "model": "deepseek-ai/deepseek-v4-flash",
+        "model_options": ["deepseek-ai/deepseek-v4-flash", "deepseek-ai/deepseek-v4-pro",
+        "moonshotai/kimi-k3", "zai-org/glm-5.2", "qwen/qwen3.7-plus"],
+    },
     "LM Studio": {
         "id": "lmstudio",
         "base_url": "http://localhost:1234/v1",

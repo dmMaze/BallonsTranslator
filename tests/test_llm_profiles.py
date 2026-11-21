@@ -683,6 +683,16 @@ class SecretStoreTest(unittest.TestCase):
         self.assertEqual(saved_profile['base_url'], 'https://api.deepseek.com')
         self.assertEqual(saved_profile['max_tokens'], 8192)
 
+    def test_atlascloud_builtin_uses_openai_compatible_gateway(self):
+        profile = default_profile('Atlas Cloud')
+
+        self.assertEqual(profile.id, 'atlascloud')
+        self.assertEqual(profile.backend, 'openai')
+        self.assertEqual(profile.base_url, 'https://api.atlascloud.ai/v1')
+        self.assertTrue(profile.require_api_key)
+        self.assertIn(profile.model, profile.model_options)
+        self.assertIn('atlascloud', [p.id for p in default_profiles()])
+
     def test_saved_profiles_roundtrip_without_provider(self):
         profile = default_profile('OpenAI')
         profile.api_key = 'sk-demo'
