@@ -877,12 +877,11 @@ class VerticalTextDocumentLayout(SceneTextLayout):
                 )
                 cfmt = self.get_char_fontfmt(blk_no, char_idx)
 
-                line_width = -1
-                if char_idx in char_records:
-                    line_width = char_records[char_idx]['line_width']
+                record = char_records.get(char_idx, {})
+                # IME preedit can leave punctuation metrics without a settled column width.
+                line_width = record.get('line_width', -1)
                 if line_width < 0:
                     line_width = cfmt.tbr.width()
-                record = char_records.get(char_idx, {})
                 char = record.get('orientation_char', char)
                 base_width = record.get('base_width', line_width)
                 left_margin = record.get('left_margin', 0.0)
