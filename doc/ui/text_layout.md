@@ -149,8 +149,10 @@ Automatic sizing probes detached Qt items before applying the result; fixed size
 are laid out directly. Arbitrary mid-word wrapping cannot qualify as a successful
 automatic fit. Fitting reports overflow and sizes below 9 page pixels.
 The minimum is a readability floor, not a guarantee that every translation
-fits. Manual auto-layout groups native document edits and frame/size changes in
-one canvas command, preserving earlier typing history in both editors.
+fits. Manual Auto Layout keeps the fitted result on overflow and continues through
+the selection. Legacy horizontal blocks write the fitter's output, including its
+spacing and punctuation normalization, to both editors. The selection is one canvas
+undo command, preserving earlier typing history.
 Save/export rebuild the same placements from the saved document.
 
 For paragraph spacing, a caret formats its paragraph, a selection formats

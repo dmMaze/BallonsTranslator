@@ -38,7 +38,7 @@ from ..formatting.panel import FontFormatPanel
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
 from ballontranslator.utils.imgproc_utils import extract_ballon_region, get_block_mask
-from ballontranslator.utils.text_processing import seg_text, is_cjk
+from ballontranslator.utils.text_processing import half_len, seg_text, is_cjk
 from ballontranslator.utils.text_layout import layout_text
 
 
@@ -1067,23 +1067,29 @@ class SceneTextManager(QObject):
         cursor = blkitem.textCursor()
         cpos = 0
         ranges = _grapheme_ranges(new_text)
-        blkitem.layout.relayout_on_changed = False
-        blkitem.repaint_on_changed = False
-        for (start, end), fmt in zip(_grapheme_ranges(text), char_fmts):
-            original = _utf16_slice(text, start, end - start)
-            if not original.strip():
-                continue
-            while cpos < len(ranges):
-                first, last = ranges[cpos]
-                cpos += 1
-                if _utf16_slice(new_text, first, last - first) == original:
-                    cursor.setPosition(first)
-                    cursor.setPosition(last, QTextCursor.MoveMode.KeepAnchor)
-                    cursor.setCharFormat(fmt)
-                    break
-        blkitem.repaint_on_changed = True
-        blkitem.layout.relayout_on_changed = True
-        blkitem.layout.reLayout()
+        layout = blkitem.layout
+        relayout, repaint = layout.relayout_on_changed, blkitem.repaint_on_changed
+        layout.relayout_on_changed = blkitem.repaint_on_changed = False
+        try:
+            for (start, end), fmt in zip(_grapheme_ranges(text), char_fmts):
+                original = _utf16_slice(text, start, end - start)
+                if not original.strip():
+                    continue
+                while cpos < len(ranges):
+                    first, last = ranges[cpos]
+                    cpos += 1
+                    fitted = _utf16_slice(new_text, first, last - first)
+                    # Segmentation can narrow punctuation. Match its style while keeping the fitted text.
+                    if fitted == original or fitted == half_len(original):
+                        cursor.setPosition(first)
+                        cursor.setPosition(last, QTextCursor.MoveMode.KeepAnchor)
+                        cursor.setCharFormat(fmt)
+                        break
+        finally:
+            layout.relayout_on_changed, blkitem.repaint_on_changed = relayout, repaint
+        # The undo command defers Qt's documentChanged until after squeezing.
+        # New paragraphs and rich-text runs need current metrics before placement.
+        layout.reLayoutEverything()
         blkitem.repaint_background()
 
     def onEndCreateTextBlock(self, rect: QRectF):

@@ -31,6 +31,7 @@ from ballontranslator.ui.text_engine.editing.manager import (
     SceneTextManager, SceneTextReplacementReason, TextPanel,
 )
 from ballontranslator.ui.text_engine.editing.widgets import SourceTextEdit
+from ballontranslator.ui.text_engine.item import TextBlkItem
 from ballontranslator.ui.text_engine.annotations import (
     apply_ruby, apply_text_combine_upright, ruby_containers,
     text_combine_upright_ranges,
@@ -280,6 +281,129 @@ class CanvasSaveStateTests(unittest.TestCase):
                 self.assertEqual(self.item.toHtml(), fitted)
                 self.assertEqual(editor.toPlainText(), fitted_text)
                 self.canvas.undo_textedit()
+                self.canvas.undo_textedit()
+
+    def _select_long_translation(
+        self, text: str = 'A little fox 🦊 stepped out into the sunlight and looked around the garden.',
+    ) -> TextBlkItem:
+        rect = [90, 45, 140, 105]
+        item = self.manager.addTextBlock(TextBlock(
+            [100, 55, 220, 140], _bounding_rect=rect, text=['Original source'],
+            translation=text,
+            fontformat=FontFormat(font_family='DejaVu Sans', font_size=20, alignment=1),
+        ))
+        self.item.setSelected(True)
+        item.setSelected(True)
+        return item
+
+    def test_manual_reflow_preserves_words_formats_and_selection_history(self) -> None:
+        item = self._select_long_translation()
+        cursor = item.document().find('garden')
+        fmt = cursor.charFormat()
+        fmt.setForeground(QColor('red'))
+        fmt.setFontPointSize(18)
+        cursor.setCharFormat(fmt)
+        pair = self.manager.pairwidget_list[item.idx]
+
+        def state() -> list[tuple[str, QRectF, str]]:
+            return [(i.toHtml(), i.absBoundingRect(qrect=True), p.e_trans.toPlainText())
+                    for i, p in zip(self.manager.textblk_item_list, self.manager.pairwidget_list)]
+
+        before = state()
+        count = self.canvas.text_undo_stack.count()
+        with patch.object(C.pcfg.module, 'translate_target', 'English'):
+            self.manager.onAutoLayoutTextblks()
+        after = state()
+        self.assertGreater(item.document().blockCount(), 1)
+        self.assertEqual(item.toPlainText().split(), before[1][2].split())
+        self.assertEqual(pair.e_trans.toPlainText(), item.toPlainText())
+        self.assertEqual(pair.e_source.toPlainText(), 'Original source')
+        cursor = item.document().find('garden')
+        self.assertEqual(cursor.charFormat().foreground().color(), QColor('red'))
+        self.assertEqual(cursor.charFormat().fontPointSize(), 18)
+        self.assertEqual(self.canvas.text_undo_stack.count(), count + 1)
+        self.canvas.undo_textedit()
+        self.assertEqual(state(), before)
+        self.canvas.redo_textedit()
+        self.assertEqual(state(), after)
+
+    def test_manual_reflow_writes_normalized_fitter_output_to_both_editors(self) -> None:
+        text = '😀测试A。这是Ｂ，最后  结束。'
+        item = self._select_long_translation(text)
+        self.item.setSelected(False)
+        pair = self.manager.pairwidget_list[item.idx].e_trans
+        cursor = item.document().find('最后')
+        fmt = cursor.charFormat()
+        fmt.setFontUnderline(True)
+        cursor.setCharFormat(fmt)
+        original = item.toHtml()
+        # Model the Chinese segmenter's width conversion without needing its model files.
+        words = ['😀', '测试', 'A.', '这是', 'B,', '最后 结束.']
+        with patch.object(C.pcfg.module, 'translate_target', '简体中文'), patch(
+            'ballontranslator.ui.text_engine.editing.manager.seg_text', return_value=(words, '')
+        ):
+            self.manager.onAutoLayoutTextblks()
+        fitted = item.toPlainText()
+        self.assertIn('\n', fitted)
+        self.assertEqual(fitted.replace('\n', ''), '😀测试A.这是B,最后 结束.')
+        self.assertEqual(pair.toPlainText(), fitted)
+        self.assertTrue(item.document().find('最后').charFormat().fontUnderline())
+        self.canvas.undo_textedit()
+        self.assertEqual(item.toHtml(), original)
+        self.assertEqual(pair.toPlainText(), text)
+        self.canvas.redo_textedit()
+        self.assertEqual(item.toPlainText(), fitted)
+        self.assertEqual(pair.toPlainText(), fitted)
+
+    def test_manual_reflow_skips_off_page_block_in_selection(self) -> None:
+        item = self._select_long_translation()
+        self.item.setRect([500, 300, 300, 120])
+        outside_frame = self.item.absBoundingRect(qrect=True)
+        outside_html = self.item.toHtml()
+        original_html = item.toHtml()
+        with patch.object(C.pcfg.module, 'translate_target', 'English'):
+            self.canvas.layout_textblks.emit()
+        self.assertGreater(item.document().blockCount(), 1)
+        self.assertEqual(self.item.toHtml(), outside_html)
+        self.assertEqual(self.item.absBoundingRect(qrect=True), outside_frame)
+        self.canvas.undo_textedit()
+        self.assertEqual(item.toHtml(), original_html)
+
+    def test_manual_layout_keeps_overflow_result_and_fits_other_selected_blocks(self) -> None:
+        frame = (50, 10, 22, 30)
+        source = [52, 12, 62, 22]
+        text = 'x' * 100
+        item = self.manager.addTextBlock(TextBlock(
+            source.copy(), _bounding_rect=list(frame), translation=text,
+            bubble_layout=True, bubble_shape=BubbleShape.rectangle(frame),
+            fontformat=FontFormat(font_family='DejaVu Sans', font_size=18, alignment=1),
+        ))
+        self.item.setSelected(True)
+        item.setSelected(True)
+        original_frame = self.item.absBoundingRect(qrect=True)
+        original_size = item.layout.max_font_size(to_px=True)
+        history = self.canvas.text_undo_stack.index()
+        for size_flag, expected_size in ((1, original_size), (0, 9.0)):
+            with self.subTest(size_flag=size_flag), patch.object(C.pcfg, 'let_fntsize_flag', size_flag), patch.object(
+                C.pcfg.module, 'translate_target', 'English'
+            ), patch('ballontranslator.ui.text_engine.bubble_layout.LOGGER.warning') as warning:
+                self.canvas.layout_textblks.emit()
+                warning.assert_called_once()
+                self.assertNotEqual(self.item.absBoundingRect(qrect=True), original_frame)
+                self.assertEqual(item.absBoundingRect(qrect=True), QRectF(*frame))
+                self.assertAlmostEqual(item.layout.max_font_size(to_px=True), expected_size, delta=.1)
+                self.assertEqual(item.toPlainText(), text)
+                self.assertEqual(self.manager.pairwidget_list[item.idx].e_trans.toPlainText(), text)
+                fitted_box = list(item.blk.xyxy)
+                self.assertEqual(fitted_box, [50, 10, 72, 40])
+                self.assertEqual(self.canvas.text_undo_stack.index(), history + 1)
+                self.canvas.undo_textedit()
+                self.assertEqual(self.item.absBoundingRect(qrect=True), original_frame)
+                self.assertEqual(item.blk.xyxy, fitted_box)
+                self.assertAlmostEqual(item.layout.max_font_size(to_px=True), original_size)
+                self.canvas.redo_textedit()
+                self.assertEqual(item.blk.xyxy, fitted_box)
+                self.assertAlmostEqual(item.layout.max_font_size(to_px=True), expected_size, delta=.1)
                 self.canvas.undo_textedit()
 
     def test_render_only_preserves_ordinary_block_paragraphs(self) -> None:
