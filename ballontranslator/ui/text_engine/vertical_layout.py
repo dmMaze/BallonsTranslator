@@ -664,8 +664,14 @@ class VerticalTextDocumentLayout(SceneTextLayout):
         self.reLayoutEverything()
 
     def reLayout(self) -> None:
-        self._begin_layout_generation()
         doc = self.document()
+        if (
+            len(self.block_ideal_width) != doc.blockCount()
+            or len(self.block_charfmt_lst) != doc.blockCount()
+        ):
+            self.reLayoutEverything()
+            return
+        self._begin_layout_generation()
         option = doc.defaultTextOption()
         device = self.paintDevice()
         device_metrics = (

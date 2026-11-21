@@ -946,6 +946,27 @@ class BubbleLayoutTests(unittest.TestCase):
         cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
         self.assertEqual(cursor.charFormat().foreground().color(), QColor('red'))
 
+    def test_restore_charfmts_rebuilds_block_metrics_after_line_splits(self) -> None:
+        for vertical in (False, True):
+            item = self.item('Hello world again', vertical=vertical, shape=False)
+            cursor = QTextCursor(item.document())
+            cursor.setPosition(6)
+            cursor.setPosition(11, QTextCursor.MoveMode.KeepAnchor)
+            fmt = cursor.charFormat()
+            fmt.setFontPointSize(32)
+            cursor.setCharFormat(fmt)
+            formats = item.get_char_fmts()
+            item.layout.relayout_on_changed = False
+            item.setPlainText('Hello\nworld\nagain')
+            SceneTextManager.restore_charfmts(
+                None, item, 'Hello world again', 'Hello\nworld\nagain', formats
+            )
+            self.assertEqual(len(item.layout.block_charfmt_lst), item.document().blockCount())
+            if vertical:
+                self.assertEqual(len(item.layout.block_ideal_width), item.document().blockCount())
+            else:
+                self.assertEqual(len(item.layout.block_ideal_height), item.document().blockCount())
+
     def test_project_reload_and_export_share_flow(self) -> None:
         item = self.item('A persisted bubble with enough text to wrap.')
         fit_text_in_shape(item, auto_size=True, use_bubble_frame=True)
