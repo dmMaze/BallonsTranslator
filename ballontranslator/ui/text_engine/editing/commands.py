@@ -9,7 +9,7 @@ except:
     from qtpy.QtGui import QUndoCommand
 
 from ..item import TextBlkItem, TextBlock
-from ..annotations import prepare_ruby_insertion
+from ..annotations import insert_plain_text, prepare_ruby_insertion
 from ..rendering.indexing import _utf16_boundaries
 from .widgets import TransTextEdit, SourceTextEdit
 from ballontranslator.utils.fontformat import (
@@ -59,14 +59,18 @@ def propagate_user_edit(
             selection_end,
             QTextCursor.MoveMode.KeepAnchor,
         )
-    if isinstance(target_edit, TextBlkItem):
-        prepare_ruby_insertion(cursor, added_text)
     # During focus loss the paired editor may already have focus. Replaying
     # the edit must not publish it again as a new user action.
     in_redo_undo = target_edit.in_redo_undo
     target_edit.in_redo_undo = True
     try:
-        cursor.insertText(added_text)
+        if isinstance(target_edit, TextBlkItem):
+            prepare_ruby_insertion(cursor, added_text)
+            insert_plain_text(
+                cursor, added_text, vertical=target_edit.fontformat.vertical,
+            )
+        else:
+            cursor.insertText(added_text)
         cursor.endEditBlock()
         target_edit.old_undo_steps = target_edit.document().availableUndoSteps()
     finally:
@@ -918,7 +922,9 @@ class MultiPasteCommand(QUndoCommand):
 
         for blkitem, etran, text in zip(self.blkitems, self.etrans, text_list):
             etran.setPlainTextAndKeepUndoStack(text)
-            blkitem.setPlainTextAndKeepUndoStack(text)
+            cursor = QTextCursor(blkitem.document())
+            cursor.select(QTextCursor.SelectionType.Document)
+            insert_plain_text(cursor, text, vertical=blkitem.fontformat.vertical)
 
     def redo(self):
         if self.op_counter == 0:

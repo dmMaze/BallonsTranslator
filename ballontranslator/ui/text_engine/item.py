@@ -67,6 +67,7 @@ from .annotations import (
     canonical_letter_spacing,
     create_rich_text_mime,
     emphasis_values,
+    insert_plain_text,
     insert_rich_text_mime,
     ligature_axis_value,
     letter_spacing_value,
@@ -1154,25 +1155,11 @@ class TextBlkItem(QGraphicsTextItem):
                 return
         elif e.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             e.accept()
-            cursor = self.textCursor()
-            cursor.beginEditBlock()
-            try:
-                prepare_ruby_insertion(cursor, '\n')
-                cursor.insertText('\n')
-            finally:
-                cursor.endEditBlock()
-            self.setTextCursor(cursor)
+            self.insert_plain_text_at_cursor('\n')
             return
         elif e.text() and e.text().isprintable():
             e.accept()
-            cursor = self.textCursor()
-            cursor.beginEditBlock()
-            try:
-                prepare_ruby_insertion(cursor, e.text())
-                cursor.insertText(e.text())
-            finally:
-                cursor.endEditBlock()
-            self.setTextCursor(cursor)
+            self.insert_plain_text_at_cursor(e.text())
             return
         super().keyPressEvent(e)
         self._emit_inline_format_changed()
@@ -1558,12 +1545,12 @@ class TextBlkItem(QGraphicsTextItem):
         return inserted
 
     def insert_plain_text_at_cursor(self, text: str) -> None:
-        """Insert clipboard text with Ruby's boundary inheritance rules."""
+        """Insert plain text using the active inline annotation rules."""
         cursor = self.textCursor()
         cursor.beginEditBlock()
         try:
             prepare_ruby_insertion(cursor, text)
-            cursor.insertText(text)
+            insert_plain_text(cursor, text, vertical=self.fontformat.vertical)
         finally:
             cursor.endEditBlock()
         self.setTextCursor(cursor)

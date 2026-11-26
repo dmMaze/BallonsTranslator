@@ -41,7 +41,7 @@ from .font_family import (
     normalize_document_font_families,
     restore_project_font_families_in_html,
 )
-from .rendering.indexing import _grapheme_ranges, _utf16_length, _utf16_slice
+from .rendering.indexing import _grapheme_ranges, _has_multiple_graphemes, _utf16_length, _utf16_slice
 
 
 RICH_TEXT_MIME_TYPE = 'application/x-ballonstranslator-rich-text'
@@ -2430,6 +2430,23 @@ def _text_combine_modifier(enabled: bool) -> QTextCharFormat:
         uuid4().hex if enabled else '',
     )
     return modifier
+
+
+def insert_plain_text(cursor: QTextCursor, text: str, *, vertical: bool) -> None:
+    """Only a single typed grapheme at the caret extends a tate-chu-yoko group."""
+    fmt = cursor.charFormat()
+    if text and text_combine_upright_values(fmt)[1] and (
+        cursor.hasSelection() or _has_multiple_graphemes(text)
+        or any(separator in text for separator in '\r\n\u2028\u2029')
+    ):
+        fmt.clearProperty(AnnotationProperty.TEXT_COMBINE_UPRIGHT)
+        fmt.clearProperty(AnnotationProperty.TEXT_COMBINE_ID)
+        sync_native_ligature_shaping(fmt, vertical=vertical)
+        # Match Qt's plain insertText overload when the selection ends in an image.
+        fmt.clearProperty(QTextFormat.Property.ObjectType)
+        cursor.insertText(text, fmt)
+    else:
+        cursor.insertText(text)
 
 
 def apply_text_combine_upright(

@@ -1555,6 +1555,48 @@ class RichTextAnnotationTest(unittest.TestCase):
             apply_auto_text_combine_upright(document, frozenset(), 4)
         )
 
+    def test_plain_edits_do_not_copy_a_trailing_text_combine_group(self) -> None:
+        for paired in (False, True):
+            with self.subTest(paired=paired):
+                item = self._make_item(True, text='原文！？')
+                doc = item.document()
+                apply_auto_text_combine_upright(doc, frozenset('！？'), 4)
+                original = item.toHtml()
+                replacement = '到底是哪方面的熟人呢'
+                if paired:
+                    propagate_user_edit(item, 0, 4, replacement)
+                else:
+                    cursor = item.textCursor()
+                    cursor.select(QTextCursor.SelectionType.Document)
+                    item.setTextCursor(cursor)
+                    item.insert_plain_text_at_cursor(replacement)
+                self.assertEqual(item.toPlainText(), replacement)
+                self.assertEqual(text_combine_upright_ranges(doc.firstBlock()), ())
+                item.undo()
+                self.assertEqual(item.toHtml(), original)
+                item.redo()
+                self.assertEqual(text_combine_upright_ranges(doc.firstBlock()), ())
+
+    def test_typing_and_pasting_after_a_text_combine_group(self) -> None:
+        item = self._make_item(True, text='原！？')
+        doc = item.document()
+        apply_auto_text_combine_upright(doc, frozenset('！？'), 4)
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        item.insert_plain_text_at_cursor('e\u0301')
+        item.insert_plain_text_at_cursor('👩\u200d🚀')
+        extended = text_combine_upright_ranges(doc.firstBlock())
+        self.assertEqual(extended[0][:2], (1, 9))
+        item.insert_plain_text_at_cursor('新句子')
+        self.assertEqual(text_combine_upright_ranges(doc.firstBlock()), extended)
+        item.undo()
+        cursor = item.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        item.setTextCursor(cursor)
+        item.insert_plain_text_at_cursor('\n\u200d')
+        self.assertEqual(text_combine_upright_ranges(doc.lastBlock()), ())
+
     def test_adjacent_text_combine_runs_and_pastes_keep_boundaries(self):
         source = QTextDocument()
         source.setPlainText('1234')
