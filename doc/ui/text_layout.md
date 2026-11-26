@@ -122,6 +122,9 @@ switch, including user-created constraints on blocks from other detectors.
 The anchor pen on the font panel's second row toggles the constraint. Enabled
 blocks show the actual wrapping path instead of rectangular resize handles;
 disabling retains the path, and enabling a block without one creates a rectangle.
+The curved-arrow grip sits above the block in its own orientation and rotates
+with it. Drag it to rotate the text and constraint together. Release commits
+the angle to canvas undo. Escape cancels.
 [`bubble_control.py`](../../ballontranslator/ui/text_engine/bubble_control.py)
 owns anchor selection and editing: drag anchors/handles, Shift to select multiple
 anchors or constrain movement, Alt to pull/break handles, double-click the curve
@@ -129,8 +132,8 @@ to insert an anchor or an anchor to switch smooth/corner, and Delete to remove
 selected anchors (at least three remain). A context menu provides the same point
 operations. Arrows nudge selected anchors; Escape cancels the gesture.
 
-Each drag previews only live layout geometry and commits one canvas undo command
-with the shape and logical frame. Reframing preserves the untransformed contour
+Each anchor or tangent drag previews live layout geometry and commits one canvas
+undo command with the shape and logical frame. Reframing preserves the untransformed contour
 while updating its logical frame. Save, history, selection and tool transitions
 cancel unfinished drags. The outline and raster share `bubble_path()`; guides and
 handles are excluded from export. Text, font size and document history are not

@@ -27,7 +27,6 @@ from .commands import (
     PageReplaceAllCommand,
     PageReplaceOneCommand,
     ReshapeItemCommand,
-    ResetAngleCommand,
     RotateItemCommand,
     SqueezeCommand,
     TextEditCommand,
@@ -717,7 +716,7 @@ class SceneTextManager(QObject):
 
     def onTextBlkItemHoverEnter(self, blk_id: int) -> None:
         bubble = self.txtblkShapeControl.bubble_control
-        if self.is_editting() or bubble.dragging or bubble.hasFocus():
+        if self.is_editting() or self.txtblkShapeControl.rotating or bubble.dragging or bubble.hasFocus():
             return
         blk_item = self.textblk_item_list[blk_id]
         if (
@@ -760,15 +759,11 @@ class SceneTextManager(QObject):
             ReshapeItemCommand(item)
         )
 
-    def onTextBlkItemRotated(self, new_angle: float):
-        blk_item = self.txtblkShapeControl.blk_item
-        if blk_item:
-            self.canvas.push_undo_command(
-                RotateItemCommand(
-                    blk_item,
-                    new_angle,
-                )
-            )
+    def onTextBlkItemRotated(self, new_angle: float) -> None:
+        item = self.sender()
+        if isinstance(item, TextBlkItem):
+            before = self.txtblkShapeControl.rotationUndoAngle(item)
+            self.canvas.push_undo_command(RotateItemCommand([(item, before)], new_angle))
 
     def onDeleteBlkItems(self, mode: int) -> None:
         # Recovery masks and undo rectangles must use committed geometry;
@@ -845,11 +840,10 @@ class SceneTextManager(QObject):
 
     def onResetAngle(self) -> None:
         self.formatpanel.resolve_text_transform_edits_for_history_change()
-        selected_blks = self.canvas.selected_text_items()
-        if len(selected_blks) > 0:
-            self.canvas.push_undo_command(
-                ResetAngleCommand(selected_blks)
-            )
+        before = [(item, angle) for item in self.canvas.selected_text_items()
+                  if (angle := item.rotation()) != 0]
+        if before:
+            self.canvas.push_undo_command(RotateItemCommand(before, 0))
 
     def onSqueezeBlk(self) -> None:
         self.formatpanel.resolve_text_transform_edits_for_history_change()
@@ -1324,7 +1318,7 @@ class SceneTextManager(QObject):
             cl.sort(key=lambda x: x.idx)
 
     def updateTextBlkList(self) -> None:
-        self.canvas.txtblkShapeControl.bubble_control.cancel_drag()
+        self.canvas.txtblkShapeControl.cancelDrag()
         self.canvas.text_move_session.cancel()
         cbl = self.imgtrans_proj.current_block_list()
         if cbl is None:

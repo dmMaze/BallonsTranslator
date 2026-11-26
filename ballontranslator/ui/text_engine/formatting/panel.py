@@ -1360,14 +1360,18 @@ class FontFormatPanel(Widget):
         self.textadvancedfmt_panel.set_ruby_state(*item.ruby_editor_values())
         self._restore_ruby_edit_focus(item)
 
-    def resolve_text_transform_edits_for_save(self) -> None:
-        if SW.canvas is not None:
-            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
-        if self.text_move_session is not None:
+    def _cancel_edit_drags(self, *, include_move: bool = True) -> None:
+        shape_control = getattr(SW.canvas, 'txtblkShapeControl', None)
+        if shape_control is not None:
+            shape_control.cancelDrag()
+        if include_move and self.text_move_session is not None:
             self.text_move_session.cancel()
         self.font_size_session.cancel()
         self.line_spacing_drag.cancel()
         self.letter_spacing_drag.cancel()
+
+    def resolve_text_transform_edits_for_save(self) -> None:
+        self._cancel_edit_drags()
         self.fontsizebox.fcombobox.finish_edit()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_save()
@@ -1379,26 +1383,14 @@ class FontFormatPanel(Widget):
         self.text_effect_session.stop_image_generation(detach_card=True)
 
     def resolve_text_transform_edits_for_history_change(self) -> None:
-        if SW.canvas is not None:
-            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
-        if self.text_move_session is not None:
-            self.text_move_session.cancel()
-        self.font_size_session.cancel()
-        self.line_spacing_drag.cancel()
-        self.letter_spacing_drag.cancel()
+        self._cancel_edit_drags()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_history_change()
         self.text_transform_session.resolve_for_history_change()
         self.text_effect_session.resolve_for_history_change()
 
     def resolve_text_transform_edits_for_page_change(self) -> None:
-        if SW.canvas is not None:
-            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
-        if self.text_move_session is not None:
-            self.text_move_session.cancel()
-        self.font_size_session.cancel()
-        self.line_spacing_drag.cancel()
-        self.letter_spacing_drag.cancel()
+        self._cancel_edit_drags()
         self.fontsizebox.fcombobox.finish_edit()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.resolve_for_page_change()
@@ -1406,13 +1398,7 @@ class FontFormatPanel(Widget):
         self.text_transform_session.resolve_for_page_change()
 
     def cancel_text_transform_edits_for_scene_change(self) -> None:
-        if SW.canvas is not None:
-            SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
-        if self.text_move_session is not None:
-            self.text_move_session.cancel()
-        self.font_size_session.cancel()
-        self.line_spacing_drag.cancel()
-        self.letter_spacing_drag.cancel()
+        self._cancel_edit_drags()
         if self.alpha_mask_session is not None:
             self.alpha_mask_session.cancel_for_scene_change()
         self.text_effect_session.cancel_for_scene_change()
@@ -1637,11 +1623,7 @@ class FontFormatPanel(Widget):
 
         if not preserve_local_owner:
             if transform_items != self.text_transform_session.items:
-                if SW.canvas is not None:
-                    SW.canvas.txtblkShapeControl.bubble_control.cancel_drag()
-                self.font_size_session.cancel()
-                self.line_spacing_drag.cancel()
-                self.letter_spacing_drag.cancel()
+                self._cancel_edit_drags(include_move=False)
                 self.fontsizebox.fcombobox.finish_edit()
             # A real selection transition settles edits against the old target
             # list. A transient clear from a nested color dialog is not one.

@@ -1,4 +1,5 @@
 import math
+from typing import Optional, Tuple
 
 from qtpy.QtWidgets import (
     QGraphicsItem,
@@ -9,7 +10,7 @@ from qtpy.QtWidgets import (
     QStyleOptionGraphicsItem,
     QWidget,
 )
-from qtpy.QtCore import QPoint, QPointF, QRectF, Qt
+from qtpy.QtCore import QEvent, QPointF, QRectF, Qt
 from qtpy.QtGui import (
     QBrush,
     QColor,
@@ -83,8 +84,6 @@ class ControlBlockItem(QGraphicsRectItem):
         self.ctrl = parent
         self.edge_width = 0
         self.drag_mode = self.DRAG_NONE
-        self.rotate_start = 0.0
-        self.rotate_original = 0.0
         self._outward_device = QPointF()
         self._attached_to_item = False
         self._device_angle = 0.0
@@ -198,9 +197,6 @@ class ControlBlockItem(QGraphicsRectItem):
             )
             painter.drawRect(self.boundingRect())
 
-    def hoverEnterEvent(self, event: QGraphicsSceneHoverEvent) -> None:
-        return super().hoverEnterEvent(event)
-
     def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent) -> None:
         if self.ctrl.blk_item is None:
             return super().hoverMoveEvent(event)
@@ -227,47 +223,27 @@ class ControlBlockItem(QGraphicsRectItem):
         if scene is not None and scene.mouseGrabberItem() is self:
             self.ungrabMouse()
         self.drag_mode = self.DRAG_NONE
-        self.rotate_start = 0.0
-        self.rotate_original = 0.0
         self.CURSOR_IDX = -1
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
+    def sceneEvent(self, event: QEvent) -> bool:
+        if self.drag_mode == self.DRAG_ROTATE and event.type() == QEvent.Type.UngrabMouse:
+            self.ctrl.finishRotation()
+        return super().sceneEvent(event)
+
     def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        if event.button() == Qt.MouseButton.LeftButton and self.ctrl.blk_item is not None:
+        scene = self.scene()
+        if (event.button() == Qt.MouseButton.LeftButton and self.ctrl.ctrlblockPressed(event.modifiers())
+                and scene.mouseGrabberItem() is self):
             blk_item = self.ctrl.blk_item
-            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                # Control-click is selection input even when the fixed-size
-                # handle happens to be the topmost scene item.
-                blk_item.setSelected(not blk_item.isSelected())
-                event.accept()
-                return
-            self.ctrl.ctrlblockPressed()
-            blk_item.setSelected(True)
             if self.visible_rect.contains(event.pos()):
-                self.ctrl.reshaping = True
                 self.drag_mode = self.DRAG_RESHAPE
                 self.ctrl.beginResize(self.idx, event.scenePos())
                 blk_item.startReshape()
             else:
                 self.drag_mode = self.DRAG_ROTATE
-                self.rotate_start, self.rotate_original = self.ctrl.beginRotation(
-                    event.scenePos(), self.idx
-                )
-                self.updateAngleLabelPos()
+                self.ctrl.beginRotation(event.scenePos(), self.idx)
         event.accept()
-
-    def updateAngleLabelPos(self):
-        angle_label = self.ctrl.angleLabel
-        gv = angle_label.parent()
-        pos = gv.mapFromScene(self.ctrl.handleScenePoint(self.idx))
-        x = max(min(pos.x(), gv.width() - angle_label.width()), 0)
-        y = max(min(pos.y(), gv.height() - angle_label.height()), 0)
-        angle_label.move(QPoint(x, y))
-        angle = self.ctrl.blk_item.rotation() if self.ctrl.blk_item is not None else 0
-        angle_label.setText("{:.1f}\N{DEGREE SIGN}".format(angle))
-        if not angle_label.isVisible():
-            angle_label.setVisible(True)
-            angle_label.raise_()
 
     def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         blk_item = self.ctrl.blk_item
@@ -276,31 +252,25 @@ class ControlBlockItem(QGraphicsRectItem):
         if self.drag_mode == self.DRAG_RESHAPE:
             self.ctrl.resizeFromScene(self.idx, event.scenePos())
         elif self.drag_mode == self.DRAG_ROTATE:
-            self.ctrl.rotateFromScene(event.scenePos(), self.rotate_start, self.idx)
+            self.ctrl.rotateFromScene(event.scenePos())
             angle_idx = scene_angle_to_cursor_index(
                 self.ctrl.handleSceneAngle(self.idx)
             )
             if self.CURSOR_IDX != angle_idx:
                 self.setCursor(rotateCursorList[angle_idx])
                 self.CURSOR_IDX = angle_idx
-            self.updateAngleLabelPos()
         event.accept()
 
     def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton and self.ctrl.blk_item is not None:
-            self.ctrl.reshaping = False
             if self.drag_mode == self.DRAG_RESHAPE:
                 self.ctrl.blk_item.endReshape()
+                self.ctrl.finishResize()
+                self.ctrl.finishProxyDrag()
+                self.ctrl.blk_item.update()
             elif self.drag_mode == self.DRAG_ROTATE:
-                preview_angle = self.ctrl.finishRotationPreview(
-                    self.rotate_original
-                )
-                self.ctrl.blk_item.rotated.emit(preview_angle)
+                self.ctrl.finishRotation(event.scenePos())
             self.drag_mode = self.DRAG_NONE
-            self.ctrl.angleLabel.setVisible(False)
-            self.ctrl.blk_item.update()
-            self.ctrl.finishResize()
-            self.ctrl.finishProxyDrag()
         return super().mouseReleaseEvent(event)
 
 
@@ -313,8 +283,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
     """
 
     blk_item: TextBlkItem = None
-    ctrl_block: ControlBlockItem = None
-    reshaping: bool = False
 
     def __init__(self, parent) -> None:
         super().__init__()
@@ -324,6 +292,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._true_handle_scene_points = []
         self._display_handle_scene_points = []
         self._reported_angle = 0.0
+        self._rotation: Optional[Tuple[QGraphicsItem, float]] = None
+        self._rotation_origin: Optional[Tuple[TextBlkItem, float]] = None
         self._updating_bounds = False
         self._resize_opposite_scene = None
         self._resize_opposite_idx = None
@@ -421,7 +391,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
             and self.isVisible()
         ):
             return
-        self.bubble_control.bind(None)
+        self.resetInteraction()
         if self.blk_item is not None:
             try:
                 self.blk_item.visual_geometry_changed.disconnect(
@@ -438,10 +408,8 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.blk_item.update()
 
         self.blk_item = blk_item
-        self.bubble_control.bind(blk_item)
         self._handles_visible = blk_item is None or not blk_item.isEditing()
         if blk_item is None:
-            self.resetInteraction()
             self._visual_path = QPainterPath()
             self._outline_bounds = QRectF()
             self._true_handle_scene_points = []
@@ -450,7 +418,6 @@ class TextBlkShapeControl(QGraphicsRectItem):
             self.hide()
             self.requestGeometryRefresh()
             return
-        self.resetInteraction()
         blk_item.under_ctrl = True
         blk_item.visual_geometry_changed.connect(
             self._on_item_geometry_changed
@@ -560,8 +527,10 @@ class TextBlkShapeControl(QGraphicsRectItem):
             other_tool = (canvas is not None and
                           (canvas.active_text_transform_control() is not None
                            or canvas.alpha_mask_edit_session.active))
-            self.bubble_control.refresh()
-            self.bubble_control.setVisible(self._handles_visible and not other_tool)
+            show_bubble = self._handles_visible and not other_tool
+            if show_bubble:
+                self.bubble_control.refresh()
+            self.bubble_control.setVisible(show_bubble)
             return
         self.bubble_control.hide()
         for control in self.ctrlblock_group:
@@ -774,8 +743,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         return self.ctrlblock_group[idx].scenePos()
 
     def handleSceneAngle(self, idx: int) -> float:
-        vector = self.handleScenePoint(idx) - self.visualCenterInScene()
-        return math.degrees(math.atan2(vector.y(), vector.x()))
+        return self._pointerAngleInScene(self.handleScenePoint(idx))
 
     def resizeHandleSceneAngle(self, idx: int) -> float:
         if (
@@ -809,7 +777,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         self._proxy_pointer_device_start = transform.map(pointer_scene)
         self._proxy_actual_scene_start = QPointF(self.handleScenePoint(idx))
 
-    def _proxySceneTarget(self, idx: int, pointer_scene: QPointF) -> QPointF:
+    def _proxySceneTarget(self, idx: Optional[int], pointer_scene: QPointF) -> QPointF:
         if (
             self._proxy_drag_idx != idx
             or self._proxy_pointer_device_start is None
@@ -831,8 +799,9 @@ class TextBlkShapeControl(QGraphicsRectItem):
 
     def resetInteraction(self) -> None:
         """Clear transient state before the control crosses an item/page boundary."""
-        self.reshaping = False
-        self.bubble_control.cancel_drag()
+        self.cancelDrag()
+        self.bubble_control.selected_indices.clear()
+        self.bubble_control.hide()
         self.finishResize()
         self.finishProxyDrag()
         self.angleLabel.hide()
@@ -935,40 +904,122 @@ class TextBlkShapeControl(QGraphicsRectItem):
         item.blk._bounding_rect = item.absBoundingRect()
         item.visual_geometry_changed.emit()
 
-    def beginRotation(self, scene_pos: QPointF, idx: int = None):
-        if idx is not None:
-            self._beginProxyDrag(idx, scene_pos)
-            scene_pos = self._proxySceneTarget(idx, scene_pos)
-        rotate_vec = scene_pos - self.visualCenterInScene()
-        pointer_angle = math.degrees(math.atan2(rotate_vec.y(), rotate_vec.x()))
-        original_angle = self.blk_item.rotation()
-        return original_angle - pointer_angle, original_angle
+    @property
+    def rotating(self) -> bool:
+        return self._rotation is not None
 
-    def rotateFromScene(
-        self, scene_pos: QPointF, rotate_start: float, idx: int = None
-    ) -> float:
-        if idx is not None:
-            scene_pos = self._proxySceneTarget(idx, scene_pos)
-        rotate_vec = scene_pos - self.visualCenterInScene()
-        pointer_angle = math.degrees(math.atan2(rotate_vec.y(), rotate_vec.x()))
-        preview_angle = pointer_angle + rotate_start
-        self.blk_item.setRotation(preview_angle)
-        return preview_angle
+    def _showRotationAngle(self, pointer: QPointF) -> None:
+        angle_label = self.angleLabel
+        idx = self._proxy_drag_idx
+        pos = self.gv.mapFromScene(self.handleScenePoint(idx) if idx is not None else pointer)
+        x = max(min(pos.x(), self.gv.width() - angle_label.width()), 0)
+        y = max(min(pos.y(), self.gv.height() - angle_label.height()), 0)
+        angle_label.move(x, y)
+        angle_label.setText(f"{self.blk_item.rotation():.1f}°")
+        if not angle_label.isVisible():
+            angle_label.show()
+            angle_label.raise_()
 
-    def finishRotationPreview(self, original_angle: float) -> float:
-        preview_angle = self.blk_item.rotation()
-        # Keep the model angle as the command's sole owner during preview.
-        self.blk_item.setRotation(original_angle)
+    def _pointerAngleInScene(self, position: QPointF) -> float:
+        delta = position - self.visualCenterInScene()
+        return math.degrees(math.atan2(delta.y(), delta.x()))
+
+    def beginRotation(self, position: QPointF, idx: Optional[int] = None) -> None:
+        if idx is None:
+            self.finishProxyDrag()
+            handle = self.bubble_control.rotation_handle
+        else:
+            self._beginProxyDrag(idx, position)
+            handle = self.ctrlblock_group[idx]
+        pointer = self._proxySceneTarget(idx, position)
+        self._rotation = handle, self._pointerAngleInScene(pointer)
+        self._rotation_origin = self.blk_item, self.blk_item.rotation()
+        self._showRotationAngle(position)
+
+    def rotationUndoAngle(self, item: TextBlkItem) -> float:
+        # A rotation signal is synchronous. Mouse capture ends before undo
+        # is pushed, but its before-image must survive until the slot reads it.
+        if self._rotation_origin is not None and self._rotation_origin[0] is item:
+            return self._rotation_origin[1]
+        return item.angle
+
+    def _rotationAt(self, position: QPointF) -> float:
+        _, start = self._rotation
+        _, original = self._rotation_origin
+        pointer = self._proxySceneTarget(self._proxy_drag_idx, position)
+        target = original + self._pointerAngleInScene(pointer) - start
+        # atan2 wraps at the left edge. Continue from the last preview so
+        # crossing it in either direction, even on a full turn, stays smooth.
+        current = self.blk_item.rotation()
+        return current + math.remainder(target - current, 360.0)
+
+    def rotateFromScene(self, position: QPointF) -> None:
+        if self.rotating:
+            self.blk_item.setRotation(self._rotationAt(position))
+            self._showRotationAngle(position)
+
+    def finishRotation(self, release_position: Optional[QPointF] = None) -> None:
+        if self._rotation is None:
+            return
+        handle, _ = self._rotation
+        origin = self._rotation_origin
+        item, original = origin
+        angle = original if release_position is None else self._rotationAt(release_position)
+        self._rotation = None
+        self.angleLabel.hide()
+        if release_position is None and isinstance(handle, ControlBlockItem):
+            handle.drag_mode = handle.DRAG_NONE
         self.finishProxyDrag()
-        return preview_angle
+        preview = item.rotation()
+        changed = not math.isclose(math.remainder(angle - original, 360.0), 0, abs_tol=1e-9)
+        try:
+            if changed:
+                item.rotated.emit(angle)
+        finally:
+            if self._rotation_origin is origin:
+                self._rotation_origin = None
+        # An unhandled signal (e.g. a standalone overlay) leaves the model
+        # untouched and must roll back the preview just like a cancelled drag.
+        if not changed or item.angle != angle:
+            item.setRotation(original)
+        if self.bubble_control.isVisible() and item is self.blk_item and item.rotation() == preview:
+            # No geometry signal was needed. Recheck the grabbed grip against
+            # the viewport and anchors now that it can move to a clear side.
+            self.bubble_control.refresh()
 
-    def ctrlblockPressed(self) -> None:
+    def cancelDrag(self) -> None:
+        """Discard a rotation preview or a bubble outline edit."""
+        if self._rotation is not None:
+            handle = self._rotation[0]
+            self.finishRotation()
+            scene = handle.scene()
+            if scene is not None and scene.mouseGrabberItem() is handle:
+                handle.ungrabMouse()
+        self.bubble_control.cancel_drag()
+
+    def handle_shortcut(self, key: int, modifiers: Qt.KeyboardModifier) -> bool:
+        if self.rotating:
+            if key == Qt.Key.Key_Escape:
+                self.cancelDrag()
+            return True
+        return self.bubble_control.handle_shortcut(key, modifiers)
+
+    def ctrlblockPressed(self, modifiers: Qt.KeyboardModifier) -> bool:
+        item = self.blk_item
+        if item is None:
+            return False
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            item.setSelected(not item.isSelected())
+            return False
         # Keep a sole owner's card selected; Qt batches larger selection changes.
         scene = self.scene()
-        if scene.selectedItems() != [self.blk_item]:
+        if scene.selectedItems() != [item]:
             scene.clearSelection()
-        if self.blk_item is not None:
-            self.blk_item.endEdit()
+            if self.blk_item is not item:
+                return False
+        item.endEdit()
+        item.setSelected(True)
+        return self.blk_item is item and self.isVisible()
 
     def paint(
         self,
@@ -989,7 +1040,7 @@ class TextBlkShapeControl(QGraphicsRectItem):
         painter.restore()
 
     def hideControls(self):
-        self.bubble_control.cancel_drag()
+        self.cancelDrag()
         self._handles_visible = False
         self.bubble_control.hide()
         for ctrl in self.ctrlblock_group:

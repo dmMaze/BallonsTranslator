@@ -14,7 +14,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 from PIL import Image
 from qtpy.QtCore import QCoreApplication, QEvent, QMimeData, QPoint, QPointF, QRectF, Qt, QTimer
-from qtpy.QtGui import QColor, QDragEnterEvent, QDropEvent, QImage, QTextCursor
+from qtpy.QtGui import QColor, QDragEnterEvent, QDropEvent, QImage, QMouseEvent, QTextCursor
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QHBoxLayout, QListWidget, QStackedWidget, QTextEdit, QWidget
 
@@ -198,7 +198,10 @@ class CanvasSaveStateTests(unittest.TestCase):
         viewport = self.canvas.gv.viewport()
         QTest.mousePress(viewport, Qt.MouseButton.LeftButton,
                          Qt.KeyboardModifier.NoModifier, start)
-        QTest.mouseMove(viewport, end)
+        # Qt 5's offscreen QTest move can omit the held mouse button.
+        move = QMouseEvent(QEvent.Type.MouseMove, QPointF(end), QPointF(viewport.mapToGlobal(end)),
+                           Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier)
+        QApplication.sendEvent(viewport, move)
         QTest.mouseRelease(viewport, Qt.MouseButton.LeftButton,
                            Qt.KeyboardModifier.NoModifier, end)
         self.app.processEvents()

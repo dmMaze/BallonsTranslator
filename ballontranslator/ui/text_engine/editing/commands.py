@@ -471,35 +471,20 @@ class ReshapeItemCommand(QUndoCommand):
 
 
 class RotateItemCommand(QUndoCommand):
-    def __init__(
-        self,
-        item: Union[TextBlkItem, List[TextBlkItem]],
-        new_angle: float = None,
-    ):
-        super(RotateItemCommand, self).__init__()
-        self.items = item if isinstance(item, list) else [item]
-        self.items = [item for item in self.items if item is not None]
-        self.item = self.items[0] if len(self.items) > 0 else None
-        self.old_angles = [item.rotation() for item in self.items]
-        if new_angle is None and self.item is not None:
-            new_angle = self.item.angle
-        self.new_angle = new_angle
+    """Commit a shared angle and restore each block's starting angle on undo."""
 
-    def redo(self):
-        for item in self.items:
-            item.setAngle(self.new_angle)
+    def __init__(self, before: Sequence[Tuple[TextBlkItem, float]], angle: float) -> None:
+        super().__init__()
+        self.before = tuple(before)
+        self.angle = angle
 
-    def undo(self):
-        for item, old_angle in zip(self.items, self.old_angles):
-            item.setAngle(old_angle)
+    def redo(self) -> None:
+        for item, _ in self.before:
+            item.setAngle(self.angle)
 
-    def mergeWith(self, command: QUndoCommand):
-        if not isinstance(command, RotateItemCommand):
-            return False
-        if self.items != command.items:
-            return False
-        self.new_angle = command.new_angle
-        return True
+    def undo(self) -> None:
+        for item, original in self.before:
+            item.setAngle(original)
 
 
 class AutoLayoutCommand(QUndoCommand):
@@ -581,27 +566,6 @@ class SqueezeCommand(QUndoCommand):
             blk.setRect(rect, repaint=True)
             if blk.under_ctrl:
                 self.ctrl.updateBoundingRect()
-
-class ResetAngleCommand(QUndoCommand):
-    def __init__(self, blkitem_lst: List[TextBlkItem]):
-        super(ResetAngleCommand, self).__init__()
-        self.blkitem_lst = blkitem_lst
-        self.angle_lst = []
-        blkitem_lst = []
-        for blk in self.blkitem_lst:
-            rotation = blk.rotation()
-            if rotation != 0:
-                self.angle_lst.append(rotation)
-                blkitem_lst.append(blk)
-        self.blkitem_lst = blkitem_lst
-    
-    def redo(self):
-        for blk in self.blkitem_lst:
-            blk.setAngle(0)
-
-    def undo(self):
-        for blk, angle in zip(self.blkitem_lst, self.angle_lst):
-            blk.setAngle(angle)
 
 class TextItemEditCommand(QUndoCommand):
     def __init__(self, blkitem: TextBlkItem, trans_edit: TransTextEdit, num_steps: int, formatpanel=None):

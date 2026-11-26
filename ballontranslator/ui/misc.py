@@ -1,9 +1,10 @@
 import cv2, re, json, os
 from pathlib import Path
+from typing import Optional
 import numpy as np
 import os.path as osp
 from qtpy.QtGui import QPixmap,  QColor, QImage, QTextDocument, QTextCursor
-from qtpy.QtCore import Qt, QPointF
+from qtpy.QtCore import Qt, QPointF, QRectF
 
 from ballontranslator.utils.config import pcfg
 from ballontranslator.utils import shared
@@ -19,6 +20,36 @@ ARROWKEY2DIRECTION = {
     QKEY.Key_Up: QPointF(0., -1.),
     QKEY.Key_Down: QPointF(0., 1.),
 }
+
+
+def segment_rect_interval(start: QPointF, end: QPointF, rect: QRectF) -> Optional[Tuple[float, float]]:
+    """Return the interval along a segment inside a rectangle, including touching edges.
+
+    >>> segment_rect_interval(QPointF(0, 0), QPointF(100, 0), QRectF(20, -5, 20, 10))
+    (0.2, 0.4)
+    """
+    dx = end.x() - start.x()
+    dy = end.y() - start.y()
+    entry = 0.0
+    exit_ = 1.0
+    for origin, delta, lower, upper in (
+        (start.x(), dx, rect.left(), rect.right()),
+        (start.y(), dy, rect.top(), rect.bottom()),
+    ):
+        if abs(delta) < 1e-9:
+            if origin < lower or origin > upper:
+                return None
+            continue
+        near = (lower - origin) / delta
+        far = (upper - origin) / delta
+        if near > far:
+            near, far = far, near
+        entry = max(entry, near)
+        exit_ = min(exit_, far)
+        if entry > exit_:
+            return None
+    return entry, exit_
+
 
 # return bgr tuple
 def qrgb2bgr(color: Union[QColor, Tuple, List] = None) -> Tuple[int, int, int]:

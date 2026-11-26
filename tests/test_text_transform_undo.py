@@ -4451,8 +4451,10 @@ class TextTransformGeometryTest(TextTransformTestBase):
 
             refresh_geometry.reset_mock()
             center = control.visualCenterInScene()
-            control.rotateFromScene(center + QPointF(100, 100), 0.0)
+            control.beginRotation(center + QPointF(100, 0))
+            control.rotateFromScene(center + QPointF(100, 100))
             refresh_geometry.assert_called_once_with()
+            control.finishRotation()
 
             refresh_geometry.reset_mock()
             handle_index = 4
@@ -5926,7 +5928,6 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                     old_item.startEdit()
                     control.startEditing()
                 else:
-                    control.reshaping = True
                     control.ctrlblock_group[0].drag_mode = (
                         control.ctrlblock_group[0].DRAG_RESHAPE
                     )
@@ -5935,7 +5936,6 @@ class TextTransformShapeControlTest(TextTransformTestBase):
                 control.setBlkItem(None)
                 control.setBlkItem(new_item)
 
-                self.assertFalse(control.reshaping)
                 self.assertTrue(control.isVisible())
                 self.assertTrue(
                     all(

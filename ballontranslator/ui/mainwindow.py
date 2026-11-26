@@ -1141,7 +1141,7 @@ class MainWindow(mainwindow_cls):
     def shortcutSelectAll(self):
         if self.centralStackWidget.currentIndex() == 0:
             if self.textPanel.isVisible():
-                if self.canvas.txtblkShapeControl.bubble_control.handle_shortcut(
+                if self.canvas.txtblkShapeControl.handle_shortcut(
                     QKEY.Key_A, Qt.KeyboardModifier.ControlModifier,
                 ):
                     return
@@ -1159,7 +1159,7 @@ class MainWindow(mainwindow_cls):
 
     def shortcutDelete(self):
         if self.canvas.gv.isVisible():
-            if self.canvas.txtblkShapeControl.bubble_control.handle_shortcut(
+            if self.canvas.txtblkShapeControl.handle_shortcut(
                 QKEY.Key_Delete, Qt.KeyboardModifier.NoModifier,
             ):
                 return
