@@ -171,6 +171,7 @@ pengenalan kata & menerjemahkan area yang dipilih
 *```W``` untuk masuk mode pembuatan text block, lalu seret mouse dengan diklik tombol kanan pada kanvas untuk menambahkan blok teks baru. (lihat gif pengeditan teks)
 * ```P``` untuk mode edit gambar.  
 * Di mode edit gambar, gunakan penggeser di bagian kanan bawah untuk mengontrol transparansi gambar asli.
+* Pada kanvas dalam mode teks, tekan `O` untuk beralih antara gambar asli dan hasil penyuntingan.
 * Tombol "OCR" dan "A" di toolbar bagian bawah dapat mengaktifkan OCR dan penerjemahan, jika Anda menonaktifkannya, program hanya akan melakukan deteksi dan penghapusan teks.
 * Mengatur parameter modul otomatis di panel konfigurasi.  
 * ```Ctrl++```/```Ctrl+-``` untuk mengubah ukuran gambar

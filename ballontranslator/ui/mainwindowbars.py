@@ -649,6 +649,11 @@ class BottomBar(Widget):
         self.hlayout.setContentsMargins(60, 0, 10, WINDOW_BORDER_WIDTH)
 
 
+    def toggle_layer_opacity(self) -> None:
+        editing_opacity = 100 if self.editingLayerSlider.value() == 0 else 0
+        self.editingLayerSlider.setValue(editing_opacity)
+        self.originalSlider.setValue(100 - editing_opacity)
+
     def onPaintCheckerPressed(self):
         checked = self.paintChecker.isChecked()
         if checked:

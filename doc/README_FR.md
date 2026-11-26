@@ -186,6 +186,7 @@ OCR & traduction d’une zone sélectionnée
 * ```Ctrl++```/```Ctrl+-``` (Aussi ```Ctrl+Shift+=```) pour redimensionner l’image.
 * ```Ctrl+G```/```Ctrl+F``` pour faire une recherche globale/dans la page actuelle.
 * Sur le canevas en mode texte, `1`-`9` activent les neuf premiers styles de texte dans l'ordre affiché et les appliquent aux blocs sélectionnés ; `0` correspond au dixième.
+* Sur le canevas en mode texte, appuyez sur `O` pour alterner entre l’image originale et le résultat modifié.
 * Pour l'édition de texte : gras - ```Ctrl+B```, souligné - ```Ctrl+U```, italique - ```Ctrl+I``` 
 * Définissez l'ombre et la transparence du texte dans le panneau Style de texte -> Effet.
 * ```Alt+Touches fléchées``` ou ```Alt+WASD``` (```pageDown``` ou ```pageUp``` en mode édition de texte) pour passer d'un bloc de texte à l'autre.

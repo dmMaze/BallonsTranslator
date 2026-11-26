@@ -178,6 +178,7 @@ Para 'borrar' los resultados de inpainting no deseados, utilice la herramienta i
 * `Ctrl++`/`Ctrl+-` (También `Ctrl+Shift+=`) para redimensionar la imagen.
 * `Ctrl+G`/`Ctrl+F` para buscar globalmente/en la página actual.
 * En el lienzo en modo texto, `1`-`9` activan los primeros nueve estilos de texto en el orden mostrado y los aplican a los bloques seleccionados; `0` corresponde al décimo.
+* En el lienzo de texto, pulsa `O` para alternar entre la imagen original y el resultado editado.
 * Para editar texto: negrita - `Ctrl+B`, subrayado - `Ctrl+U`, cursiva - `Ctrl+I`.
 * Ajuste la sombra y la transparencia del texto en el panel de estilo de texto -> Efecto.
 * ```Alt+Arrow Keys``` o ```Alt+WASD``` (```pageDown``` o ```pageUp``` mientras estás en el modo de edición de texto) para cambiar entre bloques de texto.

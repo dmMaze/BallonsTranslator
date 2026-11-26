@@ -335,6 +335,7 @@ class MainWindow(mainwindow_cls):
 
         self.bottomBar.originalSlider.valueChanged.connect(self.canvas.setOriginalTransparencyBySlider)
         self.bottomBar.editingLayerSlider.valueChanged.connect(self.canvas.setEditingLayerOpacityBySlider)
+        self.canvas.toggle_layer_opacity.connect(self.bottomBar.toggle_layer_opacity)
         
         self.drawingPanel = DrawingPanel(self.canvas)
         self.textPanel = TextPanel(self.app)

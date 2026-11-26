@@ -186,6 +186,7 @@ OCR & Translate Selected Area
 * ```Ctrl++```/```Ctrl+-``` (Also ```Ctrl+Shift+=```) to resize image.
 * ```Ctrl+G```/```Ctrl+F``` to search globally/in current page.
 * On the text canvas, `1`-`9` activate the first nine text styles in displayed order and apply them to selected text blocks; `0` uses the tenth.
+* On the text canvas, press `O` to switch between the original image and the edited result.
 * For text editing: bold - ```Ctrl+B```, underline - ```Ctrl+U```, Italics - ```Ctrl+I``` 
 * Set text shadow and transparency in the text style panel -> Effect.  
 * ```Alt+Arrow Keys``` or ```Alt+WASD``` (```pageDown``` or ```pageUp``` while in text editing mode) to switch between text blocks.

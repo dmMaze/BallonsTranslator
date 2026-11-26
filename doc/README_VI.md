@@ -178,6 +178,7 @@ OCR & Chỉ dịch văn bản đã chọn
 * ```Ctrl++```/```Ctrl+-``` (hoặc ```Ctrl+Shift+=```) Để thay đổi kích thước hình ảnh.
 * ```Ctrl+G```/```Ctrl+F``` Để tìm kiếm trên tất cả hoặc trong trang hiện tại.
 * Trên khung vẽ ở chế độ văn bản, `1`-`9` kích hoạt chín kiểu chữ đầu tiên theo thứ tự hiển thị và áp dụng cho các khối văn bản đã chọn; `0` chọn kiểu thứ mười.
+* Trên khung vẽ ở chế độ văn bản, nhấn `O` để chuyển đổi giữa ảnh gốc và kết quả chỉnh sửa.
 * Trong chỉnh sửa văn bản: **bold** - ```Ctrl+B```, <u>underline</u> - ```Ctrl+U```, *italics* - ```Ctrl+I``` 
 * Cài đặt đổ bóng và độ trong suốt chữ ở text style panel -> Effect.  
   

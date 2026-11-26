@@ -219,6 +219,7 @@ class Canvas(QGraphicsScene):
 
     format_textblks = Signal()
     apply_text_style = Signal(int)
+    toggle_layer_opacity = Signal()
     layout_textblks = Signal()
     reset_angle = Signal()
     squeeze_blk = Signal()
@@ -819,6 +820,10 @@ class Canvas(QGraphicsScene):
         if self.editing_textblkitem is not None:
             return super().keyPressEvent(event)
         # Single-letter canvas shortcuts must remain below live text editing.
+        elif key == QKEY.Key_O and modifiers == Qt.KeyboardModifier.NoModifier and self.textEditMode():
+            self.toggle_layer_opacity.emit()
+            event.accept()
+            return
         elif (
             modifiers == Qt.KeyboardModifier.NoModifier
             and key == QKEY.Key_S

@@ -177,6 +177,7 @@ Para 'apagar' resultados indesejados de inpainting, use a ferramenta de inpainti
 * `Ctrl++`/`Ctrl+-` (Também `Ctrl+Shift+=`) para redimensionar a imagem.
 * `Ctrl+G`/`Ctrl+F` para pesquisar globalmente/na página atual.
 * Na tela em modo de texto, `1`-`9` ativam os primeiros nove estilos de texto na ordem exibida e os aplicam aos blocos selecionados; `0` corresponde ao décimo.
+* Na tela em modo de texto, pressione `O` para alternar entre a imagem original e o resultado editado.
 * Para edição de texto: negrito - `Ctrl+B`, sublinhado - `Ctrl+U`, itálico - `Ctrl+I`.
 * Defina a sombra e a transparência do texto no painel de estilo de texto -> Efeito.
 
