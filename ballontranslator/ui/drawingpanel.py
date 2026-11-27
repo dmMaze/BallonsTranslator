@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
-from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
-from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
+from qtpy.QtCore import Signal, Qt, QEvent, QPointF, QRect, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
+from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem, QGraphicsRectItem, QToolTip
+from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFont, QFontMetrics, QImage
 
 from typing import Union, Tuple, List
 from concurrent.futures import Future, ThreadPoolExecutor
 from math import log
+import html
+
 import numpy as np
 import cv2
 
@@ -17,6 +19,7 @@ from ballontranslator.utils.imgproc_utils import (
     MagicWandFillMode,
 )
 from ballontranslator.utils.textblock_mask import canny_flood, connected_canny_flood, region_mask
+from ballontranslator.utils.blob_selection import BlobSelection, RULE_ANY, RULE_MAJORITY
 from ballontranslator.utils.logger import logger
 from .cursor import magic_wand_cursor
 from .funcmaps import get_maskseg_method
@@ -25,16 +28,31 @@ from .module_tool_button import ModuleSelectionMenu, ModuleSelectionToolButton
 from .llm_modality import LLM_MODALITY_IMAGE
 from .image_edit import ImageEditMode, PenShape, PixmapItem, StrokeImgItem, shape_fill_image
 from .custom_widget import Widget, SeparatorWidget, PaintQSlider, ColorPickerLabel
+from .custom_widget.helper import borderColor
 from .canvas import Canvas
 from .misc import ndarray2pixmap, themed_icon_path
 from ballontranslator.utils.config import DrawPanelConfig, pcfg
 from ballontranslator.utils.llm_profiles import LLMProfile, LLM_INPAINT_KEY, profile_by_id
+from ballontranslator.utils import shared
 from ballontranslator.utils.shared import CONFIG_COMBOBOX_SHORT, CONFIG_COMBOBOX_HEIGHT
 from ballontranslator.utils.logger import logger as LOGGER
 from .drawing_commands import InpaintUndoCommand, StrokeItemUndoCommand
 from .text_engine.shape_control import CONTROL_ITEM_DATA_KEY
 
 INPAINT_BRUSH_COLOR = QColor(127, 0, 127, 127)
+
+# Rect tool preview overlay, as RGBA. Purple marks the pixels that will be
+# inpainted; cyan marks blobs that exist but are not selected, so the user
+# can see what is available to click. Pixels tinted by neither colour did
+# not survive binarization and cannot be selected at all.
+BLOB_SELECTED_RGBA = (127, 0, 127, 127)
+BLOB_AVAILABLE_RGBA = (0, 229, 255, 140)
+BLOB_BOX_COLOR = QColor(0, 255, 255, 220)
+# Which blobs a marquee catches by default. RULE_ANY takes a blob if any
+# pixel is inside; RULE_MAJORITY needs more than half of it, which fails
+# safe when a letter is fused to the balloon outline. Press O while a
+# preview is up to switch between them.
+BLOB_BOX_RULE_DEFAULT = RULE_MAJORITY
 MAX_PEN_SIZE = 1000
 MIN_PEN_SIZE = 1
 TOOLNAME_POINT_SIZE = 13
@@ -563,6 +581,92 @@ class ShapeFillPanel(Widget):
             pcfg.drawpanel.shape_fill_color = self.colorPicker.color.name()
 
 
+class HelpHintButton(QToolButton):
+    """A circled question mark that reads as help at a glance.
+
+    Painted rather than styled, so the circle follows the light/dark theme
+    without a stylesheet rule of its own. The outline and the glyph borrow
+    the theme colours the rest of the window uses for borders and text.
+
+    >>> HelpHintButton.__name__
+    'HelpHintButton'
+    """
+
+    DIAMETER = 30
+    OUTLINE_WIDTH = 1.4
+    GLYPH_POINT_SIZE = 15
+    GLYPH_WEIGHT = QFont.Weight.DemiBold
+    #: Hover uses the accent the other toggles use.
+    HOVER_INK = QColor(30, 147, 229)
+    #: Qt hides a tooltip on a timer derived from its length, which a help
+    #: card outlives. Qt still hides it as soon as the pointer leaves.
+    TOOLTIP_MS = 120000
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(self.DIAMETER, self.DIAMETER)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setCursor(Qt.CursorShape.WhatsThisCursor)
+        self._hovered = False
+
+    def outline_ink(self) -> QColor:
+        """The colour the rest of the UI draws its outlines in."""
+        if self._hovered:
+            return QColor(self.HOVER_INK)
+        # Read at paint time: parse_stylesheet rewrites these from the
+        # active theme, so a light/dark switch needs nothing cached here.
+        return borderColor()
+
+    def glyph_ink(self) -> QColor:
+        """The colour the rest of the UI draws its text in."""
+        if self._hovered:
+            return QColor(self.HOVER_INK)
+        return QColor(*shared.FOREGROUND_FONTCOLOR)
+
+    def event(self, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.ToolTip:
+            # Qt's own timeout is too short to read a table; show it for
+            # as long as the pointer stays here instead.
+            QToolTip.showText(
+                event.globalPos(),
+                self.toolTip(),
+                self,
+                QRect(),
+                self.TOOLTIP_MS,
+            )
+            return True
+        return super().event(event)
+
+    def enterEvent(self, event) -> None:
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hovered = False
+        self.update()
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event) -> None:
+        # Skip QToolButton's own frame entirely; this is all custom ink.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        inset = self.OUTLINE_WIDTH
+        circle = QRectF(self.rect()).adjusted(inset, inset, -inset, -inset)
+        painter.setPen(QPen(self.outline_ink(), self.OUTLINE_WIDTH))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        painter.drawEllipse(circle)
+        font = self.font()
+        font.setWeight(self.GLYPH_WEIGHT)
+        font.setPointSize(self.GLYPH_POINT_SIZE)
+        painter.setFont(font)
+        painter.setPen(QPen(self.glyph_ink()))
+        painter.drawText(circle, Qt.AlignmentFlag.AlignCenter, '?')
+        painter.end()
+
+
 class RectPanel(Widget):
     dilate_ksize_changed = Signal()
     mask_changed = Signal()
@@ -601,9 +705,18 @@ class RectPanel(Widget):
         self.delete_btn = QPushButton(self.tr("Delete"))
         self.delete_btn.setToolTip(self.tr('Ctrl+D'))
         self.delete_btn.clicked.connect(self.delete_btn_clicked)
+        # The blob controls are mouse chords and a bare key, which nothing
+        # on screen hints at. A hover card next to the buttons that drive
+        # the same preview is where someone would look for them.
+        self.blob_help_btn = HelpHintButton(self)
+        self.blob_help_btn.setObjectName('BlobHelpButton')
+        self.blob_help_btn.setAccessibleName(self.tr('Blob selection controls'))
+        self.blob_help_btn.setToolTip(self.blob_help_text())
+
         self.btnlayout = QHBoxLayout()
         self.btnlayout.addWidget(self.inpaint_btn)
         self.btnlayout.addWidget(self.delete_btn)
+        self.btnlayout.addWidget(self.blob_help_btn)
 
         self.inpainter_selector = InpainterSelectorRow(self)
 
@@ -621,6 +734,56 @@ class RectPanel(Widget):
         layout.addWidget(self.inpainter_selector.prompt_panel)
         layout.addLayout(self.btnlayout)
         layout.setSpacing(14)
+
+    def blob_help_text(self) -> str:
+        """Rich text listing the blob selection controls.
+
+        Each string is translated on its own so a translator never has to
+        work around markup, and the rows are escaped before being placed
+        in the table.
+        """
+        title = self.tr('Editing the detected blobs')
+        intro = self.tr(
+            'While a rectangle preview is waiting to be inpainted, each '
+            'detected blob is tinted by whether it is selected.'
+        )
+        legend = (
+            self.tr('Purple: selected, and will be inpainted'),
+            self.tr('Cyan: detected but not selected'),
+        )
+        rows = (
+            (self.tr('Left click or drag'), self.tr('Add blobs')),
+            (self.tr('Right click or drag'), self.tr('Remove blobs')),
+            (
+                self.tr('Hold one mouse button, press the other'),
+                self.tr(
+                    'Stop dragging a box and paint freehand instead. The '
+                    'mouse button pressed first still decides add or remove'
+                ),
+            ),
+            (
+                self.tr('Shift + click'),
+                self.tr('Paint freehand straight away, using only one mouse button'),
+            ),
+            (
+                self.tr('O key'),
+                self.tr(
+                    'Switch the box rule between catching any blob it '
+                    'touches and only blobs mostly inside it'
+                ),
+            ),
+        )
+        cells = ''.join(
+            f'<tr><td><b>{html.escape(key)}</b>&nbsp;&nbsp;</td>'
+            f'<td>{html.escape(action)}</td></tr>'
+            for key, action in rows
+        )
+        legend_html = '<br>'.join(html.escape(line) for line in legend)
+        return (
+            f'<p><b>{html.escape(title)}</b></p>'
+            f'<p>{html.escape(intro)}<br>{legend_html}</p>'
+            f'<table cellspacing="0">{cells}</table>'
+        )
 
     def on_inpaint_seg_method_changed(self) -> None:
         pcfg.drawpanel.rectool_method = self.methodComboBox.currentIndex()
@@ -672,9 +835,24 @@ class DrawingPanel(Widget):
         self.rect_inpaint_dict: dict = None
         self.inpaint_mask_array: np.ndarray = None
         self.extracted_imask_array: np.ndarray = None
+        self.blob_selection: BlobSelection = None
+        self.blob_held: List[str] = []      # buttons down, in press order
+        self.blob_mode: str = None          # None | 'box' | 'paint'
+        self.blob_paint_add: bool = True
+        self.blob_box_add: bool = True
+        self.blob_box_anchor = None         # crop coords
+        self.blob_box_cur = None
+        self.blob_box_rule: str = BLOB_BOX_RULE_DEFAULT
 
         border_pen = QPen(INPAINT_BRUSH_COLOR, 3, Qt.PenStyle.DashLine)
         self.inpaint_mask_item: PixmapItem = PixmapItem(border_pen)
+        # Marquee outline. Parented to the preview pixmap, so its own
+        # coordinates are crop pixels and it follows any pan or zoom.
+        # Width 0 keeps the line one screen pixel at every zoom level.
+        self.blob_box_item = QGraphicsRectItem(self.inpaint_mask_item)
+        self.blob_box_item.setPen(QPen(BLOB_BOX_COLOR, 0, Qt.PenStyle.DashLine))
+        self.blob_box_item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        self.blob_box_item.hide()
         self.scale_circle = QGraphicsEllipseItem()
         self.magic_wand_preview_item = QGraphicsPixmapItem()
         self.magic_wand_preview_item.setData(CONTROL_ITEM_DATA_KEY, True)
@@ -714,6 +892,10 @@ class DrawingPanel(Widget):
         canvas.magic_wand_hover.connect(self.on_magic_wand_hover)
         canvas.magic_wand_hover_left.connect(self.clear_magic_wand_preview)
         canvas.image_layers_updated.connect(self._refresh_magic_wand_preview)
+        canvas.blob_selection_press.connect(self.on_blob_press)
+        canvas.blob_selection_move.connect(self.on_blob_move)
+        canvas.blob_selection_release.connect(self.on_blob_release)
+        canvas.blob_rule_toggled.connect(self.on_blob_rule_toggled)
 
         self.currentTool: DrawToolCheckBox = None
         self.handTool = DrawToolCheckBox()
@@ -1554,6 +1736,22 @@ class DrawingPanel(Widget):
         )
         request.update(use_mask=use_mask, need_inpaint=info['need_inpaint'],
                        bground_rgb=info['bground_rgb'], ballon_mask=balloon_mask)
+
+        # Only the two detectors produce a mask made of text strokes.
+        # 'Use Existing Mask' returns the page mask and region_mask returns
+        # a solid block, neither of which has blobs worth selecting, so no
+        # editable selection is built for them.
+        if use_mask and method in (canny_flood, connected_canny_flood):
+            try:
+                self.blob_selection = BlobSelection(request['img'], self.inpaint_mask_array)
+            except Exception:
+                LOGGER.exception('failed to build blob selection')
+                self.blob_selection = None
+        else:
+            self.blob_selection = None
+        self.canvas.blob_selection_active = self.blob_selection is not None
+        self.reset_blob_gesture()
+
         self._update_rect_mask_preview()
 
     def inpaintRect(self, inpaint_dict: dict) -> None:
@@ -1562,8 +1760,17 @@ class DrawingPanel(Widget):
         need_inpaint = inpaint_dict['need_inpaint']
         bground_rgb = inpaint_dict['bground_rgb']
         ballon_mask = inpaint_dict['ballon_mask']
+        # The background fill below paints the balloon interior, not mask, so
+        # it cannot honour a blob the user deselected, nor an added blob that
+        # reaches outside the balloon (an overflowing SFX). Fall through to
+        # the inpainter in those cases; an unedited selection keeps the fill.
+        blob_edit_needs_inpainter = self.blob_selection is not None and (
+            self.blob_selection.removed_any
+            or self.blob_selection.added_outside(ballon_mask)
+        )
         if (inpaint_dict['use_mask'] and pcfg.drawpanel.inpainter != LLM_INPAINT_KEY
-                and not need_inpaint and pcfg.module.check_need_inpaint):
+                and not need_inpaint and pcfg.module.check_need_inpaint
+                and not blob_edit_needs_inpainter):
             x1, y1, x2, y2 = inpaint_dict['inpaint_rect']
             if not np.array_equal(img, self.canvas.imgtrans_proj.inpainted_array[y1:y2, x1:x2]):
                 LOGGER.info('Draw inpaint result discarded: source image changed, rectangle=%s',
@@ -1596,15 +1803,183 @@ class DrawingPanel(Widget):
         pcfg.drawpanel.recttool_dilate_ksize = self.rectPanel.dilate_slider.value()
         self._update_rect_mask_preview()
 
+    def rect_mask_source(self) -> np.ndarray:
+        """The undilated mask everything else is derived from.
+
+        Once the user has edited the selection that becomes the source of
+        truth instead of the detector's raw output. Kept undilated so the
+        dilate slider still stacks on top of it.
+        """
+        if self.blob_selection is not None:
+            return self.blob_selection.to_mask()
+        return self.inpaint_mask_array
+
+    def build_rect_preview_pixmap(self, mask: np.ndarray) -> QPixmap:
+        """The purple overlay, plus cyan for blobs available to click."""
+        h, w = mask.shape[:2]
+        preview = np.zeros((h, w, 4), dtype=np.uint8)
+
+        if self.blob_selection is not None:
+            available = self.blob_selection.available_mask() > 0
+            preview[available] = BLOB_AVAILABLE_RGBA
+
+        preview[mask > 0] = BLOB_SELECTED_RGBA
+        return ndarray2pixmap(preview)
+
     def _update_rect_mask_preview(self) -> None:
-        if self.rect_inpaint_dict is None or self.inpaint_mask_array is None:
+        if self.rect_inpaint_dict is None:
             return
-        mask = (self.rectPanel.post_process_mask(self.inpaint_mask_array)
-                if self.rect_inpaint_dict['use_mask'] else self.inpaint_mask_array)
+        source = self.rect_mask_source()
+        if source is None:
+            return
+        mask = (self.rectPanel.post_process_mask(source)
+                if self.rect_inpaint_dict['use_mask'] else source)
         self.rect_inpaint_dict['mask'] = mask
-        user_preview_mask = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-        user_preview_mask[:, :, [0, 2, 3]] = (mask[:, :, np.newaxis] / 2).astype(np.uint8)
-        self.inpaint_mask_item.setPixmap(ndarray2pixmap(user_preview_mask))
+        self.inpaint_mask_item.setPixmap(self.build_rect_preview_pixmap(mask))
+
+    # ------------------------------------------------------ blob selection
+
+    def blob_pos(self, scene_pos: QPointF, clamp: bool = False):
+        """Scene position -> crop pixel coordinates.
+
+        The preview pixmap sits directly over the crop, so its local
+        coordinates ARE crop coordinates. Letting Qt map through the item
+        survives any pan, zoom or layer transform, which hand arithmetic on
+        the rect origin does not.
+        """
+        if self.blob_selection is None or self.inpaint_mask_item is None:
+            return None
+        local = self.inpaint_mask_item.mapFromScene(scene_pos)
+        cx, cy = int(local.x()), int(local.y())
+        h, w = self.blob_selection.shape
+        if clamp:
+            return max(0, min(cx, w - 1)), max(0, min(cy, h - 1))
+        return (cx, cy) if 0 <= cx < w and 0 <= cy < h else None
+
+    def reset_blob_gesture(self) -> None:
+        # getattr: hideEvent can reach clearInpaintItems before __init__ has
+        # finished building the marquee item.
+        self.blob_held = []
+        self.blob_mode = None
+        self.blob_box_anchor = None
+        self.blob_box_cur = None
+        box_item = getattr(self, 'blob_box_item', None)
+        if box_item is not None:
+            box_item.hide()
+
+    def on_blob_rule_toggled(self) -> None:
+        """Switch which blobs a marquee catches, and show the new rule.
+
+        Applies to the next box drawn; it does not re-run the last one.
+        """
+        self.blob_box_rule = (
+            RULE_ANY if self.blob_box_rule == RULE_MAJORITY else RULE_MAJORITY
+        )
+        if self.blob_box_rule == RULE_ANY:
+            message = self.tr('Marquee selects blobs with any pixel inside')
+        else:
+            message = self.tr(
+                'Marquee selects blobs with the majority of pixels inside'
+            )
+        # The main window is frameless and has no status bar, so the
+        # feedback appears next to the pointer instead.
+        QToolTip.showText(QCursor.pos(), message, self.canvas.gv)
+
+    def update_blob_box_item(self) -> None:
+        """Redraw the marquee outline from the anchor and current corner."""
+        if self.blob_box_anchor is None or self.blob_box_cur is None:
+            self.blob_box_item.hide()
+            return
+        ax, ay = self.blob_box_anchor
+        cx, cy = self.blob_box_cur
+        x0, x1 = sorted((ax, cx))
+        y0, y1 = sorted((ay, cy))
+        self.blob_box_item.setRect(QRectF(x0, y0, x1 - x0 + 1, y1 - y0 + 1))
+        self.blob_box_item.show()
+
+    def on_blob_press(self, scene_pos: QPointF, btn: int, shift: bool) -> None:
+        """Left adds, right removes.
+
+        A plain drag draws a marquee; pressing the second button turns the
+        gesture into free-hand painting, with the FIRST button still deciding
+        add versus remove. Shift starts painting directly, for trackpads that
+        cannot chord.
+        """
+        if self.blob_selection is None or self.rect_inpaint_dict is None:
+            return
+
+        first_press = not self.blob_held
+        self.blob_held.append('L' if btn == 0 else 'R')
+
+        if first_press:
+            self.blob_selection.begin_gesture()
+            if shift:
+                self.blob_mode = 'paint'
+                self.blob_paint_add = (btn == 0)
+                self.blob_paint_at(scene_pos)
+            else:
+                self.blob_mode = 'box'
+                self.blob_box_add = (btn == 0)
+                self.blob_box_anchor = self.blob_pos(scene_pos, clamp=True)
+                self.blob_box_cur = self.blob_box_anchor
+                self.update_blob_box_item()
+        elif self.blob_mode == 'box':
+            # The pending box applied nothing, so there is nothing to undo.
+            self.blob_mode = 'paint'
+            self.blob_paint_add = (self.blob_held[0] == 'L')
+            self.blob_box_anchor = self.blob_box_cur = None
+            self.blob_box_item.hide()
+            self.blob_paint_at(scene_pos)
+
+    def on_blob_move(self, scene_pos: QPointF) -> None:
+        if self.blob_selection is None:
+            return
+        if self.blob_mode == 'box':
+            self.blob_box_cur = self.blob_pos(scene_pos, clamp=True)
+            self.update_blob_box_item()
+        elif self.blob_mode == 'paint':
+            self.blob_paint_at(scene_pos)
+
+    def on_blob_release(self, scene_pos: QPointF, btn: int) -> None:
+        if self.blob_selection is None:
+            self.reset_blob_gesture()
+            return
+
+        tag = 'L' if btn == 0 else 'R'
+        if tag in self.blob_held:
+            self.blob_held.remove(tag)
+
+        if self.blob_mode == 'box':
+            self.commit_blob_box()
+        self.reset_blob_gesture()
+
+    def blob_paint_at(self, scene_pos: QPointF) -> None:
+        """Free-hand painting. Blobs already touched this gesture are
+        skipped, so sweeping back over one does not flip it again."""
+        pos = self.blob_pos(scene_pos)
+        if pos is None:
+            return
+        if self.blob_selection.paint(pos[0], pos[1], self.blob_paint_add):
+            self._update_rect_mask_preview()
+
+    def commit_blob_box(self) -> None:
+        anchor, cur = self.blob_box_anchor, self.blob_box_cur
+        if anchor is None or cur is None:
+            return
+
+        x0, x1 = sorted((anchor[0], cur[0]))
+        y0, y1 = sorted((anchor[1], cur[1]))
+
+        # A box with no drag in it is just a click on one blob.
+        if x1 - x0 <= 1 and y1 - y0 <= 1:
+            if self.blob_selection.click(x0, y0, add=self.blob_box_add):
+                self._update_rect_mask_preview()
+            return
+
+        if self.blob_selection.box(x0, y0, x1, y1,
+                                   add=self.blob_box_add,
+                                   rule=self.blob_box_rule):
+            self._update_rect_mask_preview()
 
     def on_rectchecker_changed(self):
         if not self.rectTool.isChecked():
@@ -1622,6 +1997,9 @@ class DrawingPanel(Widget):
 
         self.rect_inpaint_dict = None
         self.inpaint_mask_array = None
+        self.blob_selection = None
+        self.canvas.blob_selection_active = False
+        self.reset_blob_gesture()
         if self.inpaint_mask_item is not None:
             if self.inpaint_mask_item.scene() == self.canvas:
                 self.canvas.removeItem(self.inpaint_mask_item)
