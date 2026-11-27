@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer
-from qtpy.QtWidgets import QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
-from qtpy.QtGui import QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
+from qtpy.QtCore import Signal, Qt, QPointF, QSize, QSizeF, QLineF, QRectF, QSignalBlocker, QTimer, QEvent, QObject
+from qtpy.QtWidgets import QApplication, QAbstractSpinBox, QGridLayout, QPushButton, QComboBox, QPlainTextEdit, QToolButton, QSizePolicy, QBoxLayout, QCheckBox, QHBoxLayout, QGraphicsView, QSpinBox, QStackedWidget, QVBoxLayout, QLabel, QGraphicsPixmapItem, QGraphicsEllipseItem
+from qtpy.QtGui import QKeyEvent, QIcon, QPen, QColor, QCursor, QPainter, QPixmap, QBrush, QFontMetrics, QImage
 
 from typing import Union, Tuple, List
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -682,6 +682,13 @@ class DrawingPanel(Widget):
         self.magic_wand_preview_item.setAcceptHoverEvents(False)
         self.magic_wand_preview_item.setZValue(20)
         self.magic_wand_preview_item.hide()
+        self.magic_wand_accumulated_item = QGraphicsPixmapItem()
+        self.magic_wand_accumulated_item.setData(CONTROL_ITEM_DATA_KEY, True)
+        self.magic_wand_accumulated_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self.magic_wand_accumulated_item.setAcceptHoverEvents(False)
+        self.magic_wand_accumulated_item.setZValue(20)
+        self.magic_wand_accumulated_item.hide()
+        self._magic_wand_accumulated_mask: np.ndarray | None = None
         self._magic_wand_hover_pos: QPointF | None = None
         self._magic_wand_hover_seed = None
         self._magic_wand_generation = 0
@@ -696,6 +703,9 @@ class DrawingPanel(Widget):
             lambda _obj=None, executor=self._magic_wand_executor:
                 executor.shutdown(wait=False, cancel_futures=True)
         )
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         self._magic_wand_hover_timer = QTimer(self)
         self._magic_wand_hover_timer.setSingleShot(True)
         self._magic_wand_hover_timer.setInterval(40)
@@ -760,6 +770,10 @@ class DrawingPanel(Widget):
         self.inpaintConfigPanel.thickness_row.setToolTip(
             brush_tip + '\n' + self.tr('Hold Ctrl to accumulate brush strokes; release Ctrl to inpaint.')
         )
+        wand_tip = self.tr('Hold Ctrl to accumulate magic wand selections; release Ctrl to inpaint.')
+        self.inpaintConfigPanel.tolerance_row.setToolTip(wand_tip)
+        self.inpaintConfigPanel.range_row.setToolTip(wand_tip)
+        self.inpaintConfigPanel.fill_mode_row.setToolTip(wand_tip)
 
         self.shapeTool = DrawToolCheckBox()
         self.shapeTool.setObjectName('DrawShapeTool')
@@ -912,11 +926,26 @@ class DrawingPanel(Widget):
         )
         if mask is None or mask.size == 0 or int(mask.max()) == 0:
             return
-        x1, y1, width, height = cv2.boundingRect(mask)
-        x2, y2 = x1 + width, y1 + height
-        crop_mask = mask[y1:y2, x1:x2]
-        inpaint_rect = [x1, y1, x2, y2]
+
+        app = QApplication.instance()
+        kb_ctrl = bool(
+            app is not None
+            and (app.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier)
+        )
+        ctrl_held = bool(self.canvas.gv.ctrl_pressed or kb_ctrl)
+
         if erasing:
+            if ctrl_held and self._magic_wand_accumulated_mask is not None and int(self._magic_wand_accumulated_mask.max()) > 0:
+                self._magic_wand_accumulated_mask = cv2.bitwise_and(
+                    self._magic_wand_accumulated_mask, cv2.bitwise_not(mask)
+                )
+                self._update_magic_wand_accumulated_overlay()
+                return
+
+            x1, y1, width, height = cv2.boundingRect(mask)
+            x2, y2 = x1 + width, y1 + height
+            crop_mask = mask[y1:y2, x1:x2]
+            inpaint_rect = [x1, y1, x2, y2]
             origin = proj.img_array[y1:y2, x1:x2]
             inpainted = img[y1:y2, x1:x2]
             existing = proj.mask_array[y1:y2, x1:x2]
@@ -933,6 +962,85 @@ class DrawingPanel(Widget):
             )
             return
 
+        if ctrl_held:
+            if (
+                self._magic_wand_accumulated_mask is None
+                or self._magic_wand_accumulated_mask.shape != mask.shape
+            ):
+                self._magic_wand_accumulated_mask = mask.copy()
+            else:
+                self._magic_wand_accumulated_mask = cv2.bitwise_or(
+                    self._magic_wand_accumulated_mask, mask
+                )
+            self._update_magic_wand_accumulated_overlay()
+            return
+
+        if (
+            self._magic_wand_accumulated_mask is not None
+            and self._magic_wand_accumulated_mask.shape == mask.shape
+        ):
+            mask = cv2.bitwise_or(self._magic_wand_accumulated_mask, mask)
+        self.clear_magic_wand_accumulated()
+
+        x1, y1, width, height = cv2.boundingRect(mask)
+        x2, y2 = x1 + width, y1 + height
+        crop_mask = mask[y1:y2, x1:x2]
+        inpaint_rect = [x1, y1, x2, y2]
+        img_h, img_w = img.shape[:2]
+        rect_enlarged = enlarge_window(inpaint_rect, img_w, img_h)
+        top = y1 - rect_enlarged[1]
+        bottom = rect_enlarged[3] - y2
+        left = x1 - rect_enlarged[0]
+        right = rect_enlarged[2] - x2
+        padded = cv2.copyMakeBorder(
+            crop_mask, top, bottom, left, right, cv2.BORDER_CONSTANT, value=0
+        )
+        inpaint_rect = rect_enlarged
+        crop_img = img[inpaint_rect[1]: inpaint_rect[3], inpaint_rect[0]: inpaint_rect[2]]
+        self.runInpaint({
+            'img': crop_img,
+            'mask': padded,
+            'inpaint_rect': inpaint_rect,
+        })
+
+    def _update_magic_wand_accumulated_overlay(self) -> None:
+        mask = self._magic_wand_accumulated_mask
+        if mask is None or mask.size == 0 or int(mask.max()) == 0:
+            self.clear_magic_wand_accumulated()
+            return
+        overlay = magic_wand_preview_overlay(mask, (120, 190, 255, 128))
+        if overlay is not None:
+            rgba, x1, y1 = overlay
+            self.magic_wand_accumulated_item.setPixmap(ndarray2pixmap(rgba))
+            self.magic_wand_accumulated_item.setPos(x1, y1)
+            self.magic_wand_accumulated_item.setParentItem(self.canvas.baseLayer)
+            self.magic_wand_accumulated_item.show()
+        else:
+            self.clear_magic_wand_accumulated()
+
+    def clear_magic_wand_accumulated(self) -> None:
+        self._magic_wand_accumulated_mask = None
+        if self.magic_wand_accumulated_item.scene() is not None:
+            self.magic_wand_accumulated_item.hide()
+            self.magic_wand_accumulated_item.setPixmap(QPixmap())
+            if self.magic_wand_accumulated_item.parentItem() is not None:
+                self.magic_wand_accumulated_item.setParentItem(None)
+
+    def _commit_magic_wand_accumulated(self) -> None:
+        mask = self._magic_wand_accumulated_mask
+        self.clear_magic_wand_accumulated()
+        if mask is None or mask.size == 0 or int(mask.max()) == 0:
+            return
+        proj = self.canvas.imgtrans_proj
+        if not proj or not proj.img_valid:
+            return
+        img = proj.inpainted_array
+        if img is None:
+            return
+        x1, y1, width, height = cv2.boundingRect(mask)
+        x2, y2 = x1 + width, y1 + height
+        crop_mask = mask[y1:y2, x1:x2]
+        inpaint_rect = [x1, y1, x2, y2]
         img_h, img_w = img.shape[:2]
         rect_enlarged = enlarge_window(inpaint_rect, img_w, img_h)
         top = y1 - rect_enlarged[1]
@@ -972,6 +1080,17 @@ class DrawingPanel(Widget):
 
     def _refresh_magic_wand_preview(self) -> None:
         self.clear_magic_wand_preview(clear_pos=False)
+        proj = self.canvas.imgtrans_proj
+        if (
+            self._magic_wand_accumulated_mask is not None
+            and (
+                proj is None
+                or not proj.img_valid
+                or proj.inpainted_array is None
+                or self._magic_wand_accumulated_mask.shape != proj.inpainted_array.shape[:2]
+            )
+        ):
+            self.clear_magic_wand_accumulated()
         if self.canvas._magic_wand_hover_enabled and self._magic_wand_hover_pos is not None:
             self._magic_wand_hover_timer.start()
 
@@ -1390,6 +1509,9 @@ class DrawingPanel(Widget):
             # Releasing Ctrl during a held segment must wait for mouse release.
             if self.canvas.stroke_img_item is not None and self.canvas.stroke_img_item.is_painting:
                 return
+            if self.inpaintConfigPanel.is_magic_wand():
+                self._commit_magic_wand_accumulated()
+                return
             self.runInpaint()
 
     def on_begin_scale_tool(self, pos: QPointF):
@@ -1610,6 +1732,51 @@ class DrawingPanel(Widget):
         if not self.rectTool.isChecked():
             self.clearInpaintItems()
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        etype = event.type()
+        if etype == QEvent.Type.KeyPress:
+            if isinstance(event, QKeyEvent):
+                if event.key() == Qt.Key.Key_Control and not event.isAutoRepeat():
+                    self.canvas.gv.ctrl_pressed = True
+                elif event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+                    if (
+                        self.isVisible()
+                        and self.canvas.image_edit_mode == ImageEditMode.InpaintTool
+                        and self.currentTool == self.inpaintTool
+                        and self.inpaintConfigPanel.is_magic_wand()
+                        and self._magic_wand_accumulated_mask is not None
+                        and int(self._magic_wand_accumulated_mask.max()) > 0
+                    ):
+                        self._commit_magic_wand_accumulated()
+                        event.accept()
+                        return True
+                elif event.key() == Qt.Key.Key_Escape:
+                    if (
+                        self.isVisible()
+                        and self.canvas.image_edit_mode == ImageEditMode.InpaintTool
+                        and self.currentTool == self.inpaintTool
+                        and self.inpaintConfigPanel.is_magic_wand()
+                        and self._magic_wand_accumulated_mask is not None
+                    ):
+                        self.clear_magic_wand_accumulated()
+                        event.accept()
+                        return True
+        elif etype == QEvent.Type.KeyRelease:
+            if isinstance(event, QKeyEvent):
+                if event.key() == Qt.Key.Key_Control and not event.isAutoRepeat():
+                    self.canvas.gv.ctrl_pressed = False
+                    self.canvas.gv.ctrl_released.emit()
+        return super().eventFilter(watched, event)
+
+    def closeEvent(self, event) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            try:
+                app.removeEventFilter(self)
+            except Exception:
+                pass
+        return super().closeEvent(event)
+
     def hideEvent(self, e) -> None:
         self.canvas.reset_brush_line()
         self.canvas.cancel_shape_fill()
@@ -1620,6 +1787,7 @@ class DrawingPanel(Widget):
 
     def clearInpaintItems(self) -> None:
 
+        self.clear_magic_wand_accumulated()
         self.rect_inpaint_dict = None
         self.inpaint_mask_array = None
         if self.inpaint_mask_item is not None:

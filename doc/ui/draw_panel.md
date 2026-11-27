@@ -34,7 +34,7 @@ Small changes to one handler can otherwise affect a later, unrelated action.
 | --- | --- |
 | Mouse release | Only the initiating button can finish a gesture. A late release must not reuse a retained mask or turn it into an erase operation. |
 | Tool or brush-mode change | Clear the old gesture and incompatible pending state without forgetting physically held modifiers. Broad canvas cleanup is not interchangeable with tool cleanup. |
-| Modifier release | Ctrl accumulates inpaint masks as well as constraining Shift segments. Releasing it during an active stroke must wait for mouse release before submission. |
+| Modifier release | Ctrl accumulates inpaint masks and Magic Wand selections as well as constraining Shift segments. Releasing it commits accumulated Magic Wand regions; releasing it during an active brush stroke must wait for mouse release before submission. |
 | Escape, history changes, mode exit, hide/deactivation, page replacement | Cancel applicable gestures and invalidate their anchors so later input cannot commit stale work. Application shortcuts and scene handlers must agree on cancellation. |
 | Inpaint completion or failure | Restore input only for the tool that is still selected and visible. A temporary busy state must not discard a valid line anchor; completion must not reactivate a tool the user left. |
 | Leaving the view | Hide guides, and keep modifier-key events from recreating them outside the canvas. |
