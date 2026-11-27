@@ -1,7 +1,7 @@
 from typing import List, Union, Tuple, Dict
 import re, time
 
-from qtpy.QtWidgets import QHBoxLayout, QSizePolicy, QComboBox, QStyledItemDelegate, QLabel, QTreeView, QCheckBox, QStyleOptionViewItem, QVBoxLayout, QStyle, QMessageBox, QStyle,  QApplication, QWidget
+from qtpy.QtWidgets import QGridLayout, QHBoxLayout, QSizePolicy, QComboBox, QStyledItemDelegate, QLabel, QTreeView, QCheckBox, QStyleOptionViewItem, QVBoxLayout, QStyle, QMessageBox, QStyle,  QApplication, QWidget
 from qtpy.QtCore import Qt, QItemSelection, QSize, Signal, QUrl, QModelIndex, QRectF
 from qtpy.QtGui import QFont, QPainter, QTextCursor, QStandardItemModel, QStandardItem, QAbstractTextDocumentLayout, QColor, QPalette, QTextDocument, QTextCharFormat
 
@@ -358,31 +358,34 @@ class GlobalSearchWidget(Widget):
         sp.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
         self.replace_rerender_btn.setSizePolicy(sp)
 
-        hlayout_bar1_0 = QHBoxLayout()
-        hlayout_bar1_0.addWidget(self.search_editor)
-        hlayout_bar1_0.setAlignment(Qt.AlignmentFlag.AlignTop)
-        hlayout_bar1_0.setSpacing(10)
+        # Find and replace editors share one grid column so the two rows always
+        # end at the same edge, however wide the panel happens to be.
+        search_layout = QGridLayout()
+        search_layout.setHorizontalSpacing(10)
+        search_layout.setVerticalSpacing(7)
+        search_layout.addWidget(self.search_editor, 0, 0)
+        search_layout.addWidget(self.replace_editor, 1, 0)
+        search_layout.setColumnStretch(0, 1)
 
-        hlayout_bar1_1 = QHBoxLayout()
-        hlayout_bar1_1.addWidget(self.case_sensitive_toggle)
-        hlayout_bar1_1.addWidget(self.whole_word_toggle)
-        hlayout_bar1_1.addWidget(self.regex_toggle)
-        hlayout_bar1_1.setAlignment(hlayout_bar1_1.alignment() | Qt.AlignmentFlag.AlignTop)
-        hlayout_bar1_1.setSpacing(5)
+        toggles_layout = QHBoxLayout()
+        toggles_layout.addWidget(self.case_sensitive_toggle)
+        toggles_layout.addWidget(self.whole_word_toggle)
+        toggles_layout.addWidget(self.regex_toggle)
+        toggles_layout.setSpacing(5)
+        search_layout.addLayout(
+            toggles_layout, 0, 1, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
 
-        hlayout_bar1 = QHBoxLayout()
-        hlayout_bar1.addLayout(hlayout_bar1_0)
-        hlayout_bar1.addLayout(hlayout_bar1_1)
-        
-        hlayout_bar2 = QHBoxLayout()
-        hlayout_bar2.addWidget(self.replace_editor)
-        hlayout_bar2.addWidget(self.range_label)
-        hlayout_bar2.addWidget(self.range_combobox)
-        hlayout_bar2.setSpacing(5)
+        range_layout = QHBoxLayout()
+        range_layout.addWidget(self.range_label)
+        range_layout.addWidget(self.range_combobox)
+        range_layout.setSpacing(5)
+        search_layout.addLayout(
+            range_layout, 1, 1, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+        )
 
         vlayout = QVBoxLayout(self)
-        vlayout.addLayout(hlayout_bar1)
-        vlayout.addLayout(hlayout_bar2)
+        vlayout.addLayout(search_layout)
         vlayout.addWidget(self.result_label)
         vlayout.addWidget(self.search_tree)
         vlayout.addWidget(self.replace_btn)
