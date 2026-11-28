@@ -61,7 +61,7 @@ but must not allocate surfaces when they cannot change output.
 | --- | --- |
 | Synthetic Bold | One source modifier that expands glyph coverage before other effects, preserving layout metrics and inline formatting. |
 | Gradient / Texture | Repeatable paints composed in their own visible order, clipped once by canonical glyph coverage, and used in place of rich foreground. If none can render, rich foreground remains. An enabled transparent Gradient can intentionally erase the face; an Empty or missing Texture is neutral interactively. |
-| Stroke | Canonical glyph alpha. Width retains the historical native-outline meaning; Center splits it across the edge, while Outside and Inside clip that same width to one side. New and legacy-flat strokes default to Outside. |
+| Stroke | Canonical glyph alpha. Width retains the historical native-outline meaning; Center splits it across the edge, while Outside and Inside clip that same width to one side. New and legacy-flat strokes default to Outside. Per Character (off by default, serialized only when on) rasterizes each character alone and clips Outside/Center coverage by that character's face and every character to its left, so left outlines cover right neighbours; glyph-distorting layouts keep the whole-text outline. |
 | Drop / Long Shadow | Canonical glyph alpha plus enabled Stroke cards already applied. Output is clipped outside the canonical face. |
 | Inner Shadow | Canonical glyph alpha only; suppressed by Hollow. |
 | Outer Glow | Canonical glyph alpha plus enabled Stroke cards already applied. |

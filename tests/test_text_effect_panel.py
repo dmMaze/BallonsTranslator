@@ -432,6 +432,25 @@ class TextEffectPanelTest(unittest.TestCase):
         self.assertEqual(item.effective_text_effects(), committed)
         self.assertEqual(self.canvas.stack.count(), 1)
 
+    def test_stroke_per_character_checkbox_commits_one_undo_step(self):
+        item = self._item(self._stack(StrokeEffect(width=0.12)))
+        self.panel.set_textblk_item(item)
+        card = self._cards(StrokeEffectCard)[0]
+        self.assertFalse(card.per_character_toggle.isChecked())
+
+        card.per_character_toggle.click()
+        committed = item.blk.fontformat.text_effects
+        self.assertTrue(committed[0].per_character)
+        self.assertEqual(committed[0].width, 0.12)
+        self.assertEqual(self.canvas.stack.count(), 1)
+        self.assertTrue(self._cards(StrokeEffectCard)[0].per_character_toggle.isChecked())
+
+        self.canvas.stack.undo()
+        self.assertFalse(item.blk.fontformat.text_effects[0].per_character)
+        self.assertFalse(
+            self._cards(StrokeEffectCard)[0].per_character_toggle.isChecked()
+        )
+
     def test_global_preview_cancel_and_commit_update_style_only_on_commit(self):
         before = self.panel.global_format.text_effects
         C.active_format = self.panel.global_format

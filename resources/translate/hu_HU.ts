@@ -5409,6 +5409,16 @@ Ezután indítsa újra a Photoshopot. A Fájlkezelő ezután megnyitja a forrás
         <translation>Körvonal</translation>
     </message>
     <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="910"/>
+        <source>Per Character</source>
+        <translation>Karakterenként</translation>
+    </message>
+    <message>
+        <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="914"/>
+        <source>Outline every character separately. A character is drawn above the characters to its right.</source>
+        <translation>Minden karakter körvonala külön készül. Egy karakter a tőle jobbra lévő karakterek fölött jelenik meg.</translation>
+    </message>
+    <message>
         <location filename="../../ballontranslator/ui/text_engine/effects/cards.py" line="731"/>
         <source>Stroke Position</source>
         <translation>Körvonal helye</translation>
