@@ -1673,6 +1673,11 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         per_character = rendered(per_character=True)
         np.testing.assert_array_equal(whole, explicit_off)
         self.assertFalse(np.array_equal(whole, per_character))
+        # The normal fill must not be repainted over left outlines.
+        item = self._item(TextEffectStack(effects=(
+            StrokeEffect(per_character=True),
+        )))
+        self.assertTrue(item.effect_renderer._renders_completed_foreground())
         # Both modes outline the same ink; only overlap ordering differs.
         # Allow isolated antialiasing pixels that differ between rasterizers.
         mismatch = (whole[..., 3] > 0) != (per_character[..., 3] > 0)

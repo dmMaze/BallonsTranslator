@@ -1633,6 +1633,12 @@ class TextEffectRenderer:
             or bool(self._retained_phase_effects('interior', retained))
             or self._mask_requires_surface()
             or self._has_inside_strokes(retained)
+            # Left outlines cover right faces, so the normal fill must not be
+            # repainted over the finished surface.
+            or any(
+                stroke.per_character
+                for stroke in self._retained_strokes(retained)
+            )
             or bool(self._active_text_fills())
             or any(
                 isinstance(effect, (ImageEffect, FilterEffect))
