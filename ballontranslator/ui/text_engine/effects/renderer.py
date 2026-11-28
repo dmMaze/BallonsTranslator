@@ -1965,7 +1965,19 @@ class TextEffectRenderer:
             bounds.translate(self.logical_unpadded_rect().topLeft())
         return bounds
 
-    def _stroke_paint_context(self):
+    def _stroke_paint_context(
+        self,
+        isolate: Optional[Tuple[int, int]] = None,
+        outline: bool = True,
+        include_hidden: bool = True,
+    ):
+        """Build per-fragment stroke selections.
+
+        ``isolate`` is a UTF-16 ``(position, length)`` range that stays
+        visible; the rest is hidden unless ``include_hidden`` is false and the
+        caller only draws listed selections. ``outline=False`` paints the
+        isolated range's plain face instead of its outline.
+        """
         context = self._effect_paint_context()
         doc = self.document()
         selections = []
@@ -1988,28 +2000,46 @@ class TextEffectRenderer:
                     Qt.PenCapStyle.RoundCap,
                     Qt.PenJoinStyle.RoundJoin,
                 )
-                effect_format = QTextCharFormat()
-                effect_format.setProperty(
-                    GLYPH_STROKE_FORMAT_PROPERTY, True
-                )
-                # The later normal fill restores glyph interiors. Keeping this
-                # pass opaque also avoids bindings that suppress textOutline
-                # when the selection foreground itself is transparent.
-                foreground = QColor(self.stroke_qcolor)
-                if self._outline_only_stroke:
-                    foreground.setAlpha(1)
-                effect_format.setForeground(foreground)
-                effect_format.setTextOutline(pen)
+                for start, end, visible in self._isolated_segments(
+                    fragment.position(), fragment.length(), isolate
+                ):
+                    if not visible and not include_hidden:
+                        continue
+                    effect_format = QTextCharFormat()
+                    # Every selection must carry the marker, or the glyph
+                    # renderer falls back to the interactive-selection path.
+                    effect_format.setProperty(
+                        GLYPH_STROKE_FORMAT_PROPERTY, True
+                    )
+                    if not visible:
+                        effect_format.setForeground(QColor(0, 0, 0, 0))
+                        effect_format.setTextOutline(
+                            QPen(Qt.PenStyle.NoPen)
+                        )
+                    elif not outline:
+                        effect_format.setForeground(QColor(0, 0, 0, 255))
+                        effect_format.setTextOutline(
+                            QPen(Qt.PenStyle.NoPen)
+                        )
+                    else:
+                        # The later normal fill restores glyph interiors.
+                        # Keeping this pass opaque also avoids bindings that
+                        # suppress textOutline when the selection foreground
+                        # itself is transparent.
+                        foreground = QColor(self.stroke_qcolor)
+                        if self._outline_only_stroke:
+                            foreground.setAlpha(1)
+                        effect_format.setForeground(foreground)
+                        effect_format.setTextOutline(pen)
 
-                selection = QAbstractTextDocumentLayout.Selection()
-                selection.cursor = QTextCursor(doc)
-                selection.cursor.setPosition(fragment.position())
-                selection.cursor.setPosition(
-                    fragment.position() + fragment.length(),
-                    QTextCursor.MoveMode.KeepAnchor,
-                )
-                selection.format = effect_format
-                selections.append(selection)
+                    selection = QAbstractTextDocumentLayout.Selection()
+                    selection.cursor = QTextCursor(doc)
+                    selection.cursor.setPosition(start)
+                    selection.cursor.setPosition(
+                        end, QTextCursor.MoveMode.KeepAnchor
+                    )
+                    selection.format = effect_format
+                    selections.append(selection)
                 it += 1
             block = block.next()
         context.selections = selections
@@ -2394,11 +2424,17 @@ class TextEffectRenderer:
         painter: QPainter,
         render_scale: float = 1.0,
         surface_rect: QRectF = None,
+        isolate: Optional[Tuple[int, int]] = None,
+        outline: bool = True,
     ):
         """Stroke vertical glyphs per rich-text fragment on every binding."""
         stroke_alpha = None
         rgba = None
-        stroke_context = self._stroke_paint_context()
+        # Mask drawing only paints listed selections, so hidden ranges are
+        # simply omitted.
+        stroke_context = self._stroke_paint_context(
+            isolate, outline, include_hidden=False
+        )
         selections_by_radius = {}
         for selection in stroke_context.selections:
             logical_radius = selection.format.textOutline().widthF() / 2
@@ -2469,37 +2505,50 @@ class TextEffectRenderer:
         self._draw_surface_pixmap(
             painter, rect, stroke_pixmap, render_scale
         )
-        # Half-font annotations own native outlines, not the base mask's
-        # full-font morphology radius.
-        self.geometry_controller.draw_layout_annotations(
-            painter, stroke_context
-        )
+        if isolate is None:
+            # Half-font annotations own native outlines, not the base mask's
+            # full-font morphology radius.
+            self.geometry_controller.draw_layout_annotations(
+                painter, stroke_context
+            )
 
     def paint_stroke(
         self,
         painter: QPainter,
         render_scale: float = 1.0,
         surface_rect: Optional[QRectF] = None,
+        isolate: Optional[Tuple[int, int]] = None,
+        outline: bool = True,
     ) -> None:
+        """Paint the stroke source; ``isolate``/``outline`` select one character."""
         if self._text_transform_is_neutral():
-            self._paint_cloned_document_stroke(painter)
+            self._paint_cloned_document_stroke(painter, isolate, outline)
             return
         active_layout = self.document().documentLayout()
         if (
             isinstance(active_layout, VerticalTextDocumentLayout)
             and self._has_layout_distortion()
         ):
-            self._paint_vertical_stroke(painter, render_scale, surface_rect)
+            self._paint_vertical_stroke(
+                painter, render_scale, surface_rect, isolate, outline
+            )
             return
-        self._paint_source_local_stroke(painter)
+        self._paint_source_local_stroke(painter, isolate, outline)
 
-    def _paint_source_local_stroke(self, painter: QPainter):
+    def _paint_source_local_stroke(
+        self,
+        painter: QPainter,
+        isolate: Optional[Tuple[int, int]] = None,
+        outline: bool = True,
+    ):
         # Native box transforms map the completed source surface. Only an
         # attached glyph renderer changes the source glyph geometry itself.
         if self._has_layout_distortion():
-            self._paint_live_layout(painter, self._stroke_paint_context())
+            self._paint_live_layout(
+                painter, self._stroke_paint_context(isolate, outline)
+            )
             return
-        self._paint_cloned_document_stroke(painter)
+        self._paint_cloned_document_stroke(painter, isolate, outline)
 
     def _shadow_metrics(
         self, shadow: ShadowEffect
@@ -3654,20 +3703,6 @@ class TextEffectRenderer:
         # here replaces the quadratic grid of translated pixmap draws.
         return self._dilate_synthetic_bold_alpha(alpha, render_scale)
 
-    def _strokes_per_character(self, stroke: StrokeEffect) -> bool:
-        """Return whether ``stroke`` can be isolated per character.
-
-        Glyph-distorting layouts have no cloned-document stroke path, so
-        they keep the whole-text outline instead of changing geometry.
-
-        >>> hasattr(TextEffectRenderer, '_strokes_per_character')
-        True
-        """
-        return stroke.per_character and (
-            self._text_transform_is_neutral()
-            or not self._has_layout_distortion()
-        )
-
     def _per_character_stroke_coverage(
         self,
         surface_rect: QRectF,
@@ -3692,18 +3727,16 @@ class TextEffectRenderer:
             face = self._render_stroke_alpha(
                 surface_rect,
                 render_scale,
-                lambda painter, isolate=isolate: (
-                    self._paint_cloned_document_stroke(
-                        painter, isolate, outline=False
-                    )
+                lambda painter, isolate=isolate: self.paint_stroke(
+                    painter, render_scale, surface_rect, isolate, False
                 ),
                 outline=False,
             )
             ring = self._render_stroke_alpha(
                 surface_rect,
                 render_scale,
-                lambda painter, isolate=isolate: (
-                    self._paint_cloned_document_stroke(painter, isolate)
+                lambda painter, isolate=isolate: self.paint_stroke(
+                    painter, render_scale, surface_rect, isolate
                 ),
             )
             rows = np.flatnonzero(((ring > 0) | (face > 0)).any(axis=1))
@@ -3795,7 +3828,7 @@ class TextEffectRenderer:
         self._render_stroke = stroke
         self._outline_only_stroke = True
         try:
-            if self._strokes_per_character(stroke):
+            if stroke.per_character:
                 # Position clipping happens per character, in left-to-right
                 # stacking order, instead of against the whole silhouette.
                 alpha = self._per_character_stroke_coverage(
@@ -3863,7 +3896,7 @@ class TextEffectRenderer:
             )
             if (
                 stroke.position == 'center'
-                and not self._strokes_per_character(stroke)
+                and not stroke.per_character
                 and not self._hollow_enabled()
             ):
                 if canonical_alpha is None:
