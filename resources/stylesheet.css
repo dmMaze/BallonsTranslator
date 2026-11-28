@@ -2901,6 +2901,7 @@ QToolButton#AddTextEffectButton::menu-indicator {
     right: 4px;
 }
 
+QCheckBox#TextEffectStrokePerCharacterToggle,
 QCheckBox#TextEffectFasterPreviewToggle {
     background-color: transparent;
     font-size: 12px;

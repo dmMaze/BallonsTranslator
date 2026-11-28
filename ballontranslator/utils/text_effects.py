@@ -260,10 +260,14 @@ class StrokeEffect:
 
     Width is the full band relative to font size. Center splits it across the
     glyph edge; Inside and Outside place it wholly on the corresponding side.
-    Newly created strokes default to Outside.
+    Newly created strokes default to Outside. ``per_character`` outlines each
+    character separately, with a left character above those to its right,
+    instead of outlining the complete text as one silhouette.
 
     >>> StrokeEffect(width=0.2).effect_type
     'stroke'
+    >>> StrokeEffect().per_character
+    False
     """
 
     enabled: bool = True
@@ -272,11 +276,14 @@ class StrokeEffect:
     width: float = 0.1
     paint: GeneratedEffectPaint = field(default_factory=SolidPaint)
     position: str = 'outside'
+    per_character: bool = False
     effect_type: str = field(init=False, default='stroke')
 
     def __post_init__(self) -> None:
         if not isinstance(self.enabled, bool):
             raise TypeError('stroke enabled must be a bool')
+        if not isinstance(self.per_character, bool):
+            raise TypeError('stroke per_character must be a bool')
         object.__setattr__(
             self,
             'opacity',
@@ -298,7 +305,7 @@ class StrokeEffect:
             raise ValueError('unsupported stroke position')
 
     def to_serializable_dict(self) -> dict:
-        return {
+        payload = {
             'effect_type': self.effect_type,
             'enabled': self.enabled,
             'opacity': self.opacity,
@@ -307,6 +314,11 @@ class StrokeEffect:
             'position': self.position,
             'paint': self.paint.to_serializable_dict(),
         }
+        # Omitted when off so projects without the option stay readable by
+        # releases that reject unknown Stroke fields.
+        if self.per_character:
+            payload['per_character'] = True
+        return payload
 
     def is_neutral(self) -> bool:
         return (
@@ -1043,7 +1055,7 @@ def coerce_text_effect(value: Union[TextEffect, dict]) -> TextEffect:
             payload,
             (
                 'effect_type', 'enabled', 'opacity', 'blend_mode', 'width',
-                'paint', 'position',
+                'paint', 'position', 'per_character',
             ),
             'Stroke effect',
         )
@@ -1302,6 +1314,16 @@ def _coerce_text_effect_passive(value: object) -> TextEffect:
             payload['blend_mode'],
         )
         payload['blend_mode'] = 'normal'
+    if (
+        effect_type == 'stroke'
+        and 'per_character' in payload
+        and not isinstance(payload['per_character'], bool)
+    ):
+        LOGGER.warning(
+            'Ignoring invalid Stroke per_character (%r); using False.',
+            payload['per_character'],
+        )
+        del payload['per_character']
     return coerce_text_effect(payload)
 
 

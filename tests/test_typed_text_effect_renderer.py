@@ -1601,6 +1601,96 @@ class TypedTextEffectRendererTest(unittest.TestCase):
         self.assertEqual(np.count_nonzero(outside_blue & deep_glyph), 0)
         np.testing.assert_array_equal(outside_blue, center_blue)
 
+    def test_per_character_stroke_stacks_left_characters_above_right(self):
+        for slant in (0.0, 0.1):
+            with self.subTest(glyph_slant_angle=slant):
+                self._check_per_character_stacking(slant)
+
+    def _check_per_character_stacking(self, slant):
+        def coverage(**options):
+            item = self._item(TextEffectStack(effects=(
+                StrokeEffect(width=0.5, **options),
+            )))
+            item.fontformat.glyph_slant_angle = slant
+            item.setPlainText('\N{FULL BLOCK}\N{FULL BLOCK}')
+            item.layout.reLayoutEverything()
+            renderer = item.effect_renderer
+            bounds = QRectF(-40, -40, 400, 260)
+            _canonical, alpha = renderer._cached_effect_source(
+                bounds, 1.0, needs_alpha=True
+            )
+            stroke = item.fontformat.text_effects[0]
+            band = renderer._positioned_stroke_coverage(
+                bounds, 1.0, stroke, alpha
+            )
+            return alpha > 250, band
+
+        for position in ('outside',):
+            with self.subTest(position=position):
+                faces, whole = coverage(position=position)
+                same_faces, per_character = coverage(
+                    position=position, per_character=True
+                )
+                np.testing.assert_array_equal(faces, same_faces)
+                columns = np.flatnonzero(faces.any(axis=0))
+                middle = (columns[0] + columns[-1]) // 2
+                left = faces.copy()
+                left[:, middle:] = False
+                right = faces.copy()
+                right[:, :middle] = False
+                # The whole-text outline never covers any glyph face.
+                self.assertEqual(np.count_nonzero((whole > 250) & faces), 0)
+                # Left outlines cover the right character, never the reverse.
+                self.assertGreater(
+                    np.count_nonzero((per_character > 250) & right), 0
+                )
+                self.assertEqual(
+                    np.count_nonzero((per_character > 250) & left), 0
+                )
+
+        _faces, inside = coverage(position='inside', per_character=True)
+        solid, _ = coverage(position='inside')
+        self.assertGreater(np.count_nonzero(inside), 0)
+        self.assertEqual(
+            np.count_nonzero((inside > 0) & ~cv2.dilate(
+                solid.astype(np.uint8), np.ones((3, 3), np.uint8)
+            ).astype(bool)),
+            0,
+        )
+
+    def test_per_character_stroke_changes_only_overlapping_render(self):
+        def rendered(**options):
+            item = self._item(TextEffectStack(effects=(
+                StrokeEffect(width=0.45, paint=SolidPaint((20, 60, 220)),
+                             **options),
+            )))
+            item.setPlainText('MANGA')
+            item.layout.reLayoutEverything()
+            return self._render(item)
+
+        whole = rendered()
+        explicit_off = rendered(per_character=False)
+        per_character = rendered(per_character=True)
+        np.testing.assert_array_equal(whole, explicit_off)
+        self.assertFalse(np.array_equal(whole, per_character))
+        # The normal fill must not be repainted over left outlines.
+        item = self._item(TextEffectStack(effects=(
+            StrokeEffect(per_character=True),
+        )))
+        self.assertTrue(item.effect_renderer._renders_completed_foreground())
+        # Both modes outline the same ink; only overlap ordering differs.
+        # Allow isolated antialiasing pixels that differ between rasterizers.
+        mismatch = (whole[..., 3] > 0) != (per_character[..., 3] > 0)
+        self.assertLess(np.count_nonzero(mismatch), 8)
+
+    def test_stroke_character_ranges_group_marks_and_skip_whitespace(self):
+        item = self._item(TextEffectStack(effects=(StrokeEffect(),)))
+        item.setPlainText('e\u0301 \U0001F600b\nc')
+        self.assertEqual(
+            item.effect_renderer._stroke_character_ranges(),
+            [(0, 2), (3, 2), (5, 1), (7, 1)],
+        )
+
     def test_hollow_and_shadow_silhouette_use_positioned_stroke_band(self):
         plain = self._item(TextEffectStack())
         plain.setPlainText('\N{FULL BLOCK}')

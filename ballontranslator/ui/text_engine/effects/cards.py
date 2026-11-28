@@ -26,6 +26,7 @@ from qtpy.QtGui import (
 )
 from qtpy.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QColorDialog,
     QDoubleSpinBox,
     QFileDialog,
@@ -906,6 +907,20 @@ class StrokeEffectCard(_EffectCard):
             self._on_blend_changed
         )
 
+        self.per_character_toggle = QCheckBox(self.tr('Per Character'), self)
+        self.per_character_toggle.setObjectName(
+            'TextEffectStrokePerCharacterToggle'
+        )
+        per_character_hint = self.tr(
+            'Outline every character separately. A character is drawn '
+            'above the characters to its right.'
+        )
+        self.per_character_toggle.setToolTip(per_character_hint)
+        self.per_character_toggle.setAccessibleDescription(per_character_hint)
+        self.per_character_toggle.toggled.connect(
+            self._on_per_character_toggled
+        )
+
         fill_label = QLabel(self.tr('Fill'), self)
         fill_label.setObjectName('TextEffectParamLabel')
         fill_label.setAlignment(
@@ -978,6 +993,7 @@ class StrokeEffectCard(_EffectCard):
         controls.addWidget(self.opacity_control, 0, 1)
         controls.addLayout(paint_row, 1, 0, 1, 2)
         controls.addWidget(blend_widget, 2, 0)
+        controls.addWidget(self.per_character_toggle, 2, 1)
         controls.addWidget(self.gradient_editor, 3, 0, 1, 2)
         controls.setColumnStretch(0, 1)
         controls.setColumnStretch(1, 1)
@@ -996,6 +1012,9 @@ class StrokeEffectCard(_EffectCard):
     def set_value(self, stroke: StrokeEffect) -> None:
         self.visibility_button.set_visibility(stroke.enabled)
         _set_blend_value(self.blend_selector, stroke)
+
+        with QSignalBlocker(self.per_character_toggle):
+            self.per_character_toggle.setChecked(stroke.per_character)
 
         with QSignalBlocker(self.position_selector):
             self.position_selector.setCurrentIndex(
@@ -1044,6 +1063,11 @@ class StrokeEffectCard(_EffectCard):
                 'position',
                 self.position_selector.itemData(combo_index),
             )
+
+    def _on_per_character_toggled(self, checked: bool) -> None:
+        self.value_commit_requested.emit(
+            self.index, 'per_character', bool(checked)
+        )
 
     def _on_fill_type_changed(self, combo_index: int) -> None:
         if combo_index >= 0:

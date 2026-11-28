@@ -262,7 +262,7 @@ class TextEffectEditSession:
         elif isinstance(effect, StrokeEffect):
             if param_name not in {
                 'enabled', 'width', 'opacity', 'paint', 'paint_type',
-                'position', 'blend_mode',
+                'position', 'blend_mode', 'per_character',
             }:
                 raise ValueError('unknown Stroke field')
             if param_name == 'paint':

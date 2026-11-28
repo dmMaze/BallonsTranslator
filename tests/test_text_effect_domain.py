@@ -33,6 +33,24 @@ from ballontranslator.utils.text_effects import (
 
 
 class TextEffectDomainTest(unittest.TestCase):
+    def test_stroke_per_character_is_strict_and_serialized_only_when_enabled(self):
+        self.assertFalse(StrokeEffect().per_character)
+        self.assertNotIn('per_character', StrokeEffect().to_serializable_dict())
+        enabled = StrokeEffect(per_character=True)
+        payload = enabled.to_serializable_dict()
+        self.assertIs(payload['per_character'], True)
+        self.assertEqual(coerce_text_effect_stack({'effects': (payload,)}).effects, (enabled,))
+        with self.assertRaises(TypeError):
+            StrokeEffect(per_character=1)
+
+    def test_passive_stroke_discards_only_invalid_per_character(self):
+        stack = coerce_text_effect_stack({'effects': (
+            {'effect_type': 'stroke', 'width': 0.3, 'per_character': 'yes'},
+        )})
+        self.assertEqual(
+            stack.effects, (StrokeEffect(width=0.3, position='center'),)
+        )
+
     def test_image_effect_is_repeatable_hashable_strict_and_neutral_empty(self):
         asset = RasterAssetRef('assets/' + 'a' * 64 + '.png')
         effect = ImageEffect(asset, mode='background')
